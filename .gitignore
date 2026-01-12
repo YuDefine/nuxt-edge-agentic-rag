@@ -1,0 +1,30 @@
+# Nuxt dev/build outputs
+.output
+.data
+.nuxt
+.nitro
+.cache
+dist
+
+# Node dependencies
+node_modules
+
+# Logs
+logs
+*.log
+
+# Misc
+.DS_Store
+.fleet
+.idea
+.vscode
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Local CLI / generated artifacts
+app/types/database.types.ts
+supabase/.branches/
+supabase/.temp/
