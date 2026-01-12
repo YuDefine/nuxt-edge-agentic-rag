@@ -1,6 +1,6 @@
 ---
 description: 開發規範（TDD, coding style, UI reuse）
-globs: ["app/**/*.{vue,ts}", "server/**/*.ts", "test/**/*.ts", "shared/**/*.ts"]
+globs: ['app/**/*.{vue,ts}', 'server/**/*.ts', 'test/**/*.ts', 'shared/**/*.ts']
 ---
 
 # UI Reuse

@@ -1,5 +1,5 @@
 ---
-description: "顯示和管理安全護欄"
+description: '顯示和管理安全護欄'
 ---
 
 # /guard — 安全護欄 Dashboard

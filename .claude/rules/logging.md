@@ -1,6 +1,6 @@
 ---
 description: Server API logging 與錯誤記錄規範（evlog）
-globs: ["server/api/**/*.ts"]
+globs: ['server/api/**/*.ts']
 ---
 
 # Logging
@@ -18,20 +18,20 @@ globs: ["server/api/**/*.ts"]
 ```typescript
 // ✅ 非預期 — 要 log.error
 if (error) {
-  log.error(error as Error, { step: "db-insert" });
-  const result = handleDbError(error);
+  log.error(error as Error, { step: 'db-insert' })
+  const result = handleDbError(error)
   throw createError({
     status: result.statusCode,
     message: result.message,
     why: result.why,
     fix: result.fix,
-  });
+  })
 }
 
 // ❌ 預期 — 不要 log.error
-if (error?.code === "PGRST116") {
+if (error?.code === 'PGRST116') {
   // 404 是正常情況，直接 throw
-  throw createError({ status: 404, message: "找不到資料" });
+  throw createError({ status: 404, message: '找不到資料' })
 }
 ```
 
@@ -48,19 +48,19 @@ if (error?.code === "PGRST116") {
 ```typescript
 // ✅ 正確 — log + handle + throw
 if (error) {
-  log.error(error as Error, { step: "db-insert" });
-  const result = handleDbError(error);
+  log.error(error as Error, { step: 'db-insert' })
+  const result = handleDbError(error)
   throw createError({
     status: result.statusCode,
     message: result.message,
     why: result.why,
     fix: result.fix,
-  });
+  })
 }
 
 // ❌ 忘記 throw — 錯誤被吞掉，程式繼續執行
 if (error) {
-  handleDbError(error); // returns but doesn't throw!
+  handleDbError(error) // returns but doesn't throw!
 }
 ```
 
@@ -69,11 +69,11 @@ if (error) {
 ```typescript
 // ✅ 安全
 if (fetchError.value) {
-  log.error(fetchError.value as Error);
+  log.error(fetchError.value as Error)
 }
 
 // ❌ fetchError.value 可能是 null
-log.error(fetchError.value as Error); // null → runtime error or no-op
+log.error(fetchError.value as Error) // null → runtime error or no-op
 ```
 
 ## 搜尋字串消毒
@@ -82,11 +82,11 @@ log.error(fetchError.value as Error); // null → runtime error or no-op
 
 ```typescript
 // ✅ 消毒後插值
-const safeSearch = sanitizeSearchTerm(search.trim());
-query.where("name", "like", `%${safeSearch}%`);
+const safeSearch = sanitizeSearchTerm(search.trim())
+query.where('name', 'like', `%${safeSearch}%`)
 
 // ❌ 直接插值 — filter injection + wildcard 注入
-query.where("name", "like", `%${search}%`);
+query.where('name', 'like', `%${search}%`)
 ```
 
 Escaping helper 至少要處理資料層使用的 wildcard 與保留字元。

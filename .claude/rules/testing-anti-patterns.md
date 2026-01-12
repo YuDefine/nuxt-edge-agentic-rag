@@ -1,6 +1,6 @@
 ---
 description: Testing anti-patterns to avoid — mock 濫用、test-only production methods、不完整 mock
-globs: ["test/**/*.ts"]
+globs: ['test/**/*.ts']
 ---
 
 # Testing Anti-Patterns
@@ -27,10 +27,10 @@ Tests must verify real behavior, not mock behavior. Mocks are a means to isolate
 
 ```typescript
 // ❌ BAD: Testing that the mock exists
-test("renders sidebar", () => {
-  const wrapper = mount(MyPage);
-  expect(wrapper.find('[data-testid="sidebar-mock"]').exists()).toBe(true);
-});
+test('renders sidebar', () => {
+  const wrapper = mount(MyPage)
+  expect(wrapper.find('[data-testid="sidebar-mock"]').exists()).toBe(true)
+})
 ```
 
 **Why this is wrong:**
@@ -43,10 +43,10 @@ test("renders sidebar", () => {
 
 ```typescript
 // ✅ GOOD: Test real component or don't mock it
-test("renders sidebar", () => {
-  const wrapper = mount(MyPage); // Don't mock sidebar
-  expect(wrapper.find('[role="navigation"]').exists()).toBe(true);
-});
+test('renders sidebar', () => {
+  const wrapper = mount(MyPage) // Don't mock sidebar
+  expect(wrapper.find('[role="navigation"]').exists()).toBe(true)
+})
 
 // OR if sidebar must be mocked for isolation:
 // Don't assert on the mock - test Page's behavior with sidebar present
@@ -73,13 +73,13 @@ BEFORE asserting on any mock element:
 class Session {
   async destroy() {
     // Looks like production API!
-    await this._workspaceManager?.destroyWorkspace(this.id);
+    await this._workspaceManager?.destroyWorkspace(this.id)
     // ... cleanup
   }
 }
 
 // In tests
-afterEach(() => session.destroy());
+afterEach(() => session.destroy())
 ```
 
 **Why this is wrong:**
@@ -97,14 +97,14 @@ afterEach(() => session.destroy());
 
 // In test/helpers/
 export async function cleanupSession(session: Session) {
-  const workspace = session.getWorkspaceInfo();
+  const workspace = session.getWorkspaceInfo()
   if (workspace) {
-    await workspaceManager.destroyWorkspace(workspace.id);
+    await workspaceManager.destroyWorkspace(workspace.id)
   }
 }
 
 // In tests
-afterEach(() => cleanupSession(session));
+afterEach(() => cleanupSession(session))
 ```
 
 ### Gate Function
@@ -129,17 +129,17 @@ BEFORE adding any method to production class:
 
 ```typescript
 // ❌ BAD: Mock breaks test logic
-test("detects duplicate entry", () => {
+test('detects duplicate entry', () => {
   // Mock prevents side effect that test depends on!
-  vi.mock("~/server/utils/database", () => ({
+  vi.mock('~/server/utils/database', () => ({
     getDbClient: vi.fn().mockReturnValue({
       query: vi.fn().mockResolvedValue({ data: [], error: null }),
     }),
-  }));
+  }))
 
-  await addEntry(config);
-  await addEntry(config); // Should throw - but won't!
-});
+  await addEntry(config)
+  await addEntry(config) // Should throw - but won't!
+})
 ```
 
 **Why this is wrong:**
@@ -152,19 +152,19 @@ test("detects duplicate entry", () => {
 
 ```typescript
 // ✅ GOOD: Mock at correct level
-test("detects duplicate entry", () => {
+test('detects duplicate entry', () => {
   // Mock only the network call, preserve state management
-  vi.mock("~/server/utils/database", () => ({
+  vi.mock('~/server/utils/database', () => ({
     getDbClient: vi.fn().mockReturnValue(
       createMockDbClient({
         initialData: existingEntries,
-      }),
+      })
     ),
-  }));
+  }))
 
-  await addEntry(config); // State updated
-  await addEntry(config); // Duplicate detected ✓
-});
+  await addEntry(config) // State updated
+  await addEntry(config) // Duplicate detected ✓
+})
 ```
 
 ### Gate Function
@@ -200,10 +200,10 @@ BEFORE mocking any method:
 ```typescript
 // ❌ BAD: Partial mock - only fields you think you need
 const mockResponse = {
-  status: "success",
-  data: { userId: "123", name: "Alice" },
+  status: 'success',
+  data: { userId: '123', name: 'Alice' },
   // Missing: metadata that downstream code uses
-};
+}
 
 // Later: breaks when code accesses response.metadata.requestId
 ```
@@ -222,11 +222,11 @@ const mockResponse = {
 ```typescript
 // ✅ GOOD: Mirror real API completeness
 const mockResponse = {
-  status: "success",
-  data: { userId: "123", name: "Alice" },
-  metadata: { requestId: "req-789", timestamp: 1234567890 },
+  status: 'success',
+  data: { userId: '123', name: 'Alice' },
+  metadata: { requestId: 'req-789', timestamp: 1234567890 },
   // All fields real API returns
-};
+}
 ```
 
 ### Gate Function

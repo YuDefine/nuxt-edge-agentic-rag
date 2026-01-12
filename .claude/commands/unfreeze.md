@@ -1,5 +1,5 @@
 ---
-description: "解凍已凍結的路徑"
+description: '解凍已凍結的路徑'
 ---
 
 # /unfreeze <path> — 解凍路徑

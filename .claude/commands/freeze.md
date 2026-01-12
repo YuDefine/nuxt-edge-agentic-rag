@@ -1,5 +1,5 @@
 ---
-description: "凍結指定路徑，防止 Claude 修改"
+description: '凍結指定路徑，防止 Claude 修改'
 ---
 
 # /freeze <path> — 凍結路徑

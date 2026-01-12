@@ -1,6 +1,6 @@
 ---
 description: UX 完整性規則——定義 "feature complete"、強制列舉 user-facing surface、防止 DB+API 完成但 UI 缺失
-globs: ["openspec/changes/**", "app/**/*.vue", "shared/types/**/*.ts", "supabase/migrations/**"]
+globs: ['openspec/changes/**', 'app/**/*.vue', 'shared/types/**/*.ts', 'supabase/migrations/**']
 ---
 
 # UX Completeness
@@ -88,24 +88,24 @@ globs: ["openspec/changes/**", "app/**/*.vue", "shared/types/**/*.ts", "supabase
 ```typescript
 // ❌ 錯誤——加新 enum 值時 TypeScript 不會抱怨，靜默漏 case
 function getStatusLabel(status: PostStatus): string {
-  if (status === "draft") return "草稿";
-  if (status === "published") return "已發布";
-  return "未知"; // 默默吃掉未知值
+  if (status === 'draft') return '草稿'
+  if (status === 'published') return '已發布'
+  return '未知' // 默默吃掉未知值
 }
 
 // ✅ 正確——加新 enum 值時 compiler 立刻報錯
-import { assertNever } from "~/utils/assert-never";
+import { assertNever } from '~/utils/assert-never'
 
 function getStatusLabel(status: PostStatus): string {
   switch (status) {
-    case "draft":
-      return "草稿";
-    case "published":
-      return "已發布";
-    case "archived":
-      return "已歸檔";
+    case 'draft':
+      return '草稿'
+    case 'published':
+      return '已發布'
+    case 'archived':
+      return '已歸檔'
     default:
-      return assertNever(status, "getStatusLabel");
+      return assertNever(status, 'getStatusLabel')
   }
 }
 ```
