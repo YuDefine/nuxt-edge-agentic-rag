@@ -1,0 +1,74 @@
+schema: spec-driven
+
+context: |
+  Product baseline source: ../../workspace/report/versions/main-v0.0.36.md
+
+  Product goal:
+  - Build a v1.0.0 edge-native Agentic RAG system for SME knowledge-base Q&A.
+  - Deliver a defensible minimal closed loop before optional dashboards or richer formats.
+
+  Tech stack:
+  - Nuxt 4, Vue 3, TypeScript, Nuxt UI
+  - Cloudflare Workers / NuxtHub
+  - D1, R2, KV, Cloudflare AI Search
+  - better-auth with Google OAuth
+  - Vercel AI SDK and Workers AI
+  - MCP via @nuxtjs/mcp-toolkit
+
+  Current repository state:
+  - The app is still an early scaffold with auth pages and a minimal home page.
+  - Spectra artifacts should define the next implementation stages instead of assuming the report is already implemented.
+
+  Core users:
+  - Web User: ask about SOPs, ERP operations, report fields, and definitions.
+  - Web Admin: manage knowledge documents, versions, logs, and MCP tokens.
+  - External AI Client: use MCP tools for search, ask, citation replay, and category listing.
+
+  Non-negotiable boundaries:
+  - Retrieval is handled by Cloudflare AI Search; answer generation, refusal, citations, masking, and audit stay in the application layer.
+  - Formal answer eligibility is determined by D1 state (`documents.status = active`, `document_versions.index_status = indexed`, `document_versions.is_current = true`) plus prebuilt `source_chunks`.
+  - `normalized_text_r2_key` and `source_chunks` are the replay truth source; AI Search metadata and provider chunk ids are only for filtering and observation.
+  - Web and MCP share one retrieval/citation/governance core, but Web conversations and MCP contracts stay separate. MCP v1.0.0 is stateless and does not use `MCP-Session-Id`.
+  - Admin authority comes from runtime `ADMIN_EMAIL_ALLOWLIST`; every admin-only action must re-check the current session email against the allowlist.
+  - Sensitive data, secrets, OAuth credentials, binding names, and feature flags must come from runtime config or environment injection and must never be hard-coded.
+  - Preview/Staging and Production must not share the same D1, R2, KV, or AI Search instances.
+  - Production v1.0.0 defaults `features.passkey`, `features.mcpSession`, `features.cloudFallback`, and `features.adminDashboard` to false.
+
+  Delivery priority:
+  - First finish the six-step minimal closed loop: publish document, answer on Web, replay citation, enforce current-version-only, isolate restricted content, redact persisted logs.
+  - Same-version follow-up scope such as `searchKnowledge`, `listCategories`, token management UI, dashboards, and rich-format expansion must not displace the core loop.
+
+rules:
+  proposal:
+    - Use Summary > Motivation > Scope > Impact structure.
+    - Explicitly separate the core loop scope from same-version follow-up scope.
+    - Identify affected milestones (M1-M8), APIs, server boundaries, UI surfaces, and runtime bindings when they matter.
+    - Call out truth-source changes, environment changes, model-role changes, or governance impacts.
+    - Add Non-Goals whenever the report marks work as postponed or excluded from v1.0.0.
+  specs:
+    - Use "# Spec: <name>" title format.
+    - Write scenarios in English with WHEN / THEN / AND normative language.
+    - Model capabilities around independently deliverable slices such as auth, ingestion, retrieval-answering, MCP, and governance.
+    - Include authorization, current-version-only, citation replay, refusal, redaction, retention, and rate-limit behavior whenever it is relevant to the capability.
+    - Do not promote provider-specific fields into business truth unless the report treats them as stable contracts.
+  design:
+    - Preserve clear boundaries between client UI, application orchestration, managed retrieval, and MCP.
+    - Record state transitions and truth sources for documents, versions, source chunks, citations, query logs, and tokens before UI flow details.
+    - Keep model names abstracted behind stable roles (`models.defaultAnswer`, `models.agentJudge`) until deployment locks a concrete model.
+    - Prefer incremental design that lands the six-step minimal closed loop before optional dashboards or rich-format support.
+  tasks:
+    - Follow TDD: write test first, verify red, implement, verify green.
+    - Keep each task independently verifiable and scoped to one milestone or a tight cross-cutting slice.
+    - Prioritize the six-step minimal closed loop before same-version follow-up work.
+    - Mark `[P]` only when tasks truly touch disjoint files and have no dependency on unfinished work.
+    - When any task touches UI paths (`.vue`, `pages/`, `components/`, `layouts/`), the task group MUST include a Design Review section before 人工檢查.
+    - Design Review section MUST include: impeccable check, /design improve, DRIFT fix loop, targeted skills, /audit, /review-screenshot.
+
+  design_workflow:
+    - Design Review is mandatory for UI-touching changes; it is not optional polish.
+    - /teach-impeccable runs once per project if .impeccable.md is missing.
+    - /design improve produces a Design Fidelity Report; all DRIFT items must be fixed before proceeding.
+    - Fidelity fix loop has max 2 rounds; if still failing, escalate to user.
+    - /audit must reach Critical = 0 before marking Design Review complete.
+    - /review-screenshot captures visual evidence for archive.
+    - Design Review findings are logged to docs/design-review-findings.md for cross-change pattern analysis.

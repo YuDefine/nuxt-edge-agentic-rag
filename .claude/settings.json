@@ -1,0 +1,197 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/post-edit-typecheck.sh",
+            "timeout": 90,
+            "type": "command"
+          },
+          {
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/post-edit-ui-qa.sh",
+            "timeout": 5,
+            "type": "command"
+          },
+          {
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/post-edit-roadmap-sync.sh",
+            "timeout": 10,
+            "type": "command"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "command": "jq -r '.tool_input.command' | grep -q '^git commit' && code-review-graph update 2>/dev/null || true",
+            "statusMessage": "Updating code knowledge graph...",
+            "timeout": 30,
+            "type": "command"
+          },
+          {
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/post-bash-error-debug.sh",
+            "timeout": 5,
+            "type": "command"
+          }
+        ]
+      },
+      {
+        "matcher": "Skill",
+        "hooks": [
+          {
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/post-propose-design-inject.sh",
+            "timeout": 10,
+            "type": "command"
+          },
+          {
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/post-propose-journey-check.sh",
+            "timeout": 10,
+            "type": "command"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/knowledge-search-reminder.sh",
+            "timeout": 5,
+            "type": "command"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "command": "node \"$CLAUDE_PROJECT_DIR\"/.claude/scripts/guard-check.mjs",
+            "type": "command"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/pre-commit-review.sh",
+            "timeout": 10,
+            "type": "command",
+            "statusMessage": "Checking commit authorization..."
+          }
+        ]
+      },
+      {
+        "matcher": "Skill",
+        "hooks": [
+          {
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/pre-propose-ux-scan.sh",
+            "timeout": 10,
+            "type": "command"
+          },
+          {
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/pre-apply-journey-brief.sh",
+            "timeout": 10,
+            "type": "command"
+          },
+          {
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/pre-archive-design-gate.sh",
+            "timeout": 10,
+            "type": "command"
+          },
+          {
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/pre-archive-ux-gate.sh",
+            "timeout": 10,
+            "type": "command"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/init-code-graph.sh",
+            "timeout": 120,
+            "type": "command",
+            "statusMessage": "Initializing code knowledge graph..."
+          },
+          {
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/session-start-roadmap-sync.sh",
+            "timeout": 10,
+            "type": "command",
+            "statusMessage": "Syncing Spectra roadmap..."
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/stop-accumulate.sh",
+            "timeout": 5,
+            "type": "command"
+          }
+        ]
+      }
+    ]
+  },
+  "includeGitInstructions": false,
+  "permissions": {
+    "allow": [
+      "Bash(ls:*)",
+      "Bash(wc:*)",
+      "Bash(node:*)",
+      "Bash(head:*)",
+      "Bash(grep:*)",
+      "Bash(cat:*)",
+      "Bash(find:*)",
+      "Bash(tree:*)",
+      "Bash(echo:*)",
+      "Bash(sort:*)",
+      "Bash(jq:*)",
+      "Bash(curl:*)",
+      "Bash(test:*)",
+      "Bash(fi)",
+      "Bash(done)",
+      "Bash(openssl rand:*)",
+      "Bash(pnpm check:*)",
+      "Bash(pnpm test:*)",
+      "Bash(pnpm lint:*)",
+      "Bash(pnpm format:*)",
+      "Bash(pnpm typecheck:*)",
+      "Bash(pnpm build:*)",
+      "Bash(pnpm dev:*)",
+      "Bash(pnpm add:*)",
+      "Bash(pnpm skills:*)",
+      "Bash(npx tsx:*)",
+      "Bash(npx nuxi:*)",
+      "Bash(npx skills:*)",
+      "Bash(npx skills add:*)",
+      "Bash(claude skills:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git diff:*)",
+      "Bash(git status:*)",
+      "Bash(git log:*)",
+      "Bash(git push:*)",
+      "Bash(git fetch:*)",
+      "Bash(git stash:*)",
+      "Bash(git checkout:*)",
+      "Bash(git restore:*)",
+      "Bash(git rebase:*)",
+      "Bash(git worktree:*)",
+      "Bash(gh run:*)",
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "Skill(frontend-design)",
+      "WebFetch(domain:ui.nuxt.com)",
+      "WebFetch(domain:vueuse.org)",
+      "WebFetch(domain:pinia-colada.esm.dev)"
+    ]
+  }
+}
