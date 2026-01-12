@@ -86,7 +86,7 @@ Buttons can look small but need large touch targets (44px minimum). Use padding 
 }
 
 .icon-button::before {
-  content: "";
+  content: '';
   position: absolute;
   inset: -10px; /* Expand tap target to 44px */
 }

@@ -9,9 +9,9 @@ Reactive online state. A wrapper of `useNetwork`.
 ## Usage
 
 ```ts
-import { useOnline } from "@vueuse/core";
+import { useOnline } from '@vueuse/core'
 
-const online = useOnline();
+const online = useOnline()
 ```
 
 ## Component Usage
@@ -33,5 +33,5 @@ const online = useOnline();
  *
  * @__NO_SIDE_EFFECTS__
  */
-export declare function useOnline(options?: ConfigurableWindow): Readonly<ShallowRef<boolean>>;
+export declare function useOnline(options?: ConfigurableWindow): Readonly<ShallowRef<boolean>>
 ```

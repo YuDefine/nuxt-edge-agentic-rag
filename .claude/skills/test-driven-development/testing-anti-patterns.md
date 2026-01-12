@@ -72,13 +72,13 @@ BEFORE asserting on any mock element:
 class Session {
   async destroy() {
     // Looks like production API!
-    await this._workspaceManager?.destroyWorkspace(this.id);
+    await this._workspaceManager?.destroyWorkspace(this.id)
     // ... cleanup
   }
 }
 
 // In tests
-afterEach(() => session.destroy());
+afterEach(() => session.destroy())
 ```
 
 **Why this is wrong:**
@@ -96,14 +96,14 @@ afterEach(() => session.destroy());
 
 // In test-utils/
 export async function cleanupSession(session: Session) {
-  const workspace = session.getWorkspaceInfo();
+  const workspace = session.getWorkspaceInfo()
   if (workspace) {
-    await workspaceManager.destroyWorkspace(workspace.id);
+    await workspaceManager.destroyWorkspace(workspace.id)
   }
 }
 
 // In tests
-afterEach(() => cleanupSession(session));
+afterEach(() => cleanupSession(session))
 ```
 
 ### Gate Function
@@ -128,15 +128,15 @@ BEFORE adding any method to production class:
 
 ```typescript
 // ❌ BAD: Mock breaks test logic
-test("detects duplicate server", () => {
+test('detects duplicate server', () => {
   // Mock prevents config write that test depends on!
-  vi.mock("ToolCatalog", () => ({
+  vi.mock('ToolCatalog', () => ({
     discoverAndCacheTools: vi.fn().mockResolvedValue(undefined),
-  }));
+  }))
 
-  await addServer(config);
-  await addServer(config); // Should throw - but won't!
-});
+  await addServer(config)
+  await addServer(config) // Should throw - but won't!
+})
 ```
 
 **Why this is wrong:**
@@ -149,13 +149,13 @@ test("detects duplicate server", () => {
 
 ```typescript
 // ✅ GOOD: Mock at correct level
-test("detects duplicate server", () => {
+test('detects duplicate server', () => {
   // Mock the slow part, preserve behavior test needs
-  vi.mock("MCPServerManager"); // Just mock slow server startup
+  vi.mock('MCPServerManager') // Just mock slow server startup
 
-  await addServer(config); // Config written
-  await addServer(config); // Duplicate detected ✓
-});
+  await addServer(config) // Config written
+  await addServer(config) // Duplicate detected ✓
+})
 ```
 
 ### Gate Function
@@ -191,10 +191,10 @@ BEFORE mocking any method:
 ```typescript
 // ❌ BAD: Partial mock - only fields you think you need
 const mockResponse = {
-  status: "success",
-  data: { userId: "123", name: "Alice" },
+  status: 'success',
+  data: { userId: '123', name: 'Alice' },
   // Missing: metadata that downstream code uses
-};
+}
 
 // Later: breaks when code accesses response.metadata.requestId
 ```
@@ -213,11 +213,11 @@ const mockResponse = {
 ```typescript
 // ✅ GOOD: Mirror real API completeness
 const mockResponse = {
-  status: "success",
-  data: { userId: "123", name: "Alice" },
-  metadata: { requestId: "req-789", timestamp: 1234567890 },
+  status: 'success',
+  data: { userId: '123', name: 'Alice' },
+  metadata: { requestId: 'req-789', timestamp: 1234567890 },
   // All fields real API returns
-};
+}
 ```
 
 ### Gate Function

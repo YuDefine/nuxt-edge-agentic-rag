@@ -10,10 +10,10 @@ Extended `inject` with ability to call `provideLocal` to provide the value in th
 
 ```vue
 <script setup>
-import { injectLocal, provideLocal } from "@vueuse/core";
+  import { injectLocal, provideLocal } from '@vueuse/core'
 
-provideLocal("MyInjectionKey", 1);
-const injectedValue = injectLocal("MyInjectionKey"); // injectedValue === 1
+  provideLocal('MyInjectionKey', 1)
+  const injectedValue = injectLocal('MyInjectionKey') // injectedValue === 1
 </script>
 ```
 
@@ -31,5 +31,5 @@ const injectedValue = injectLocal("MyInjectionKey"); // injectedValue === 1
  *
  * @__NO_SIDE_EFFECTS__
  */
-export declare const injectLocal: typeof inject;
+export declare const injectLocal: typeof inject
 ````

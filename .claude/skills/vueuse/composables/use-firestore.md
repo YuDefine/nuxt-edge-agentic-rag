@@ -8,12 +8,12 @@ Reactive Firestore binding. Making it straightforward to **always keep your loca
 ## Usage
 
 ```ts
-const todos = useFirestore(collection(db, "todos"), [], {
+const todos = useFirestore(collection(db, 'todos'), [], {
   errorHandler: (err) => {
-    console.error("Firestore error:", err);
+    console.error('Firestore error:', err)
     // Handle error (e.g., show notification)
   },
-});
+})
 ```
 
 ## Reference

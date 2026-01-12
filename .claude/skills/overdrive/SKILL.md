@@ -121,9 +121,9 @@ Every technique must degrade gracefully. The experience without the enhancement 
 ```
 
 ```javascript
-if ("gpu" in navigator) {
+if ('gpu' in navigator) {
   /* WebGPU */
-} else if (canvas.getContext("webgl2")) {
+} else if (canvas.getContext('webgl2')) {
   /* WebGL2 fallback */
 }
 /* CSS-only fallback must still look good */

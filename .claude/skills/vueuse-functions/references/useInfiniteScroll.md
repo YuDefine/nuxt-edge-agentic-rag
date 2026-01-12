@@ -10,32 +10,32 @@ Infinite scrolling of the element.
 
 ```vue
 <script setup lang="ts">
-import { useInfiniteScroll } from "@vueuse/core";
-import { ref, useTemplateRef } from "vue";
+  import { useInfiniteScroll } from '@vueuse/core'
+  import { ref, useTemplateRef } from 'vue'
 
-const el = useTemplateRef("el");
-const data = ref([1, 2, 3, 4, 5, 6]);
+  const el = useTemplateRef('el')
+  const data = ref([1, 2, 3, 4, 5, 6])
 
-const { reset } = useInfiniteScroll(
-  el,
-  () => {
-    // load more
-    data.value.push(...moreData);
-  },
-  {
-    distance: 10,
-    canLoadMore: () => {
-      // inidicate when there is no more content to load so onLoadMore stops triggering
-      // if (noMoreContent) return false
-      return true; // for demo purposes
+  const { reset } = useInfiniteScroll(
+    el,
+    () => {
+      // load more
+      data.value.push(...moreData)
     },
-  },
-);
+    {
+      distance: 10,
+      canLoadMore: () => {
+        // inidicate when there is no more content to load so onLoadMore stops triggering
+        // if (noMoreContent) return false
+        return true // for demo purposes
+      },
+    }
+  )
 
-function resetList() {
-  data.value = [];
-  reset();
-}
+  function resetList() {
+    data.value = []
+    reset()
+  }
 </script>
 
 <template>
@@ -67,20 +67,20 @@ Make sure to indicate when there is no more content to load with `canLoadMore`, 
 
 ```vue
 <script setup lang="ts">
-import { vInfiniteScroll } from "@vueuse/components";
-import { ref } from "vue";
+  import { vInfiniteScroll } from '@vueuse/components'
+  import { ref } from 'vue'
 
-const data = ref([1, 2, 3, 4, 5, 6]);
+  const data = ref([1, 2, 3, 4, 5, 6])
 
-function onLoadMore() {
-  const length = data.value.length + 1;
-  data.value.push(...Array.from({ length: 5 }, (_, i) => length + i));
-}
-function canLoadMore() {
-  // inidicate when there is no more content to load so onLoadMore stops triggering
-  // if (noMoreContent) return false
-  return true; // for demo purposes
-}
+  function onLoadMore() {
+    const length = data.value.length + 1
+    data.value.push(...Array.from({ length: 5 }, (_, i) => length + i))
+  }
+  function canLoadMore() {
+    // inidicate when there is no more content to load so onLoadMore stops triggering
+    // if (noMoreContent) return false
+    return true // for demo purposes
+  }
 </script>
 
 <template>
@@ -102,7 +102,7 @@ function canLoadMore() {
 ## Type Declarations
 
 ```ts
-type InfiniteScrollElement = HTMLElement | SVGElement | Window | Document | null | undefined;
+type InfiniteScrollElement = HTMLElement | SVGElement | Window | Document | null | undefined
 export interface UseInfiniteScrollOptions<
   T extends InfiniteScrollElement = InfiniteScrollElement,
 > extends UseScrollOptions {
@@ -111,29 +111,29 @@ export interface UseInfiniteScrollOptions<
    *
    * @default 0
    */
-  distance?: number;
+  distance?: number
   /**
    * The direction in which to listen the scroll.
    *
    * @default 'bottom'
    */
-  direction?: "top" | "bottom" | "left" | "right";
+  direction?: 'top' | 'bottom' | 'left' | 'right'
   /**
    * The interval time between two load more (to avoid too many invokes).
    *
    * @default 100
    */
-  interval?: number;
+  interval?: number
   /**
    * A function that determines whether more content can be loaded for a specific element.
    * Should return `true` if loading more content is allowed for the given element,
    * and `false` otherwise.
    */
-  canLoadMore?: (el: T) => boolean;
+  canLoadMore?: (el: T) => boolean
 }
 export interface UseInfiniteScrollReturn {
-  isLoading: ComputedRef<boolean>;
-  reset: () => void;
+  isLoading: ComputedRef<boolean>
+  reset: () => void
 }
 /**
  * Reactive infinite scroll.
@@ -143,6 +143,6 @@ export interface UseInfiniteScrollReturn {
 export declare function useInfiniteScroll<T extends InfiniteScrollElement>(
   element: MaybeRefOrGetter<T>,
   onLoadMore: (state: UnwrapNestedRefs<UseScrollReturn>) => Awaitable<void>,
-  options?: UseInfiniteScrollOptions<T>,
-): UseInfiniteScrollReturn;
+  options?: UseInfiniteScrollOptions<T>
+): UseInfiniteScrollReturn
 ```

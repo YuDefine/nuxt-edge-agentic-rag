@@ -40,15 +40,15 @@ Use a virtualization library when dealing with lists that could exceed 50-100 it
 </template>
 
 <script setup>
-import { ref, onMounted } from "vue";
-import UserCard from "./UserCard.vue";
+  import { ref, onMounted } from 'vue'
+  import UserCard from './UserCard.vue'
 
-const users = ref([]);
+  const users = ref([])
 
-onMounted(async () => {
-  // 10,000 DOM nodes created, browser struggles
-  users.value = await fetchAllUsers();
-});
+  onMounted(async () => {
+    // 10,000 DOM nodes created, browser struggles
+    users.value = await fetchAllUsers()
+  })
 </script>
 ```
 
@@ -69,23 +69,23 @@ onMounted(async () => {
 </template>
 
 <script setup>
-import { ref, onMounted } from "vue";
-import { RecycleScroller } from "vue-virtual-scroller";
-import "vue-virtual-scroller/dist/vue-virtual-scroller.css";
-import UserCard from "./UserCard.vue";
+  import { ref, onMounted } from 'vue'
+  import { RecycleScroller } from 'vue-virtual-scroller'
+  import 'vue-virtual-scroller/dist/vue-virtual-scroller.css'
+  import UserCard from './UserCard.vue'
 
-const users = ref([]);
+  const users = ref([])
 
-onMounted(async () => {
-  // 10,000 items in memory, but only ~20 DOM nodes
-  users.value = await fetchAllUsers();
-});
+  onMounted(async () => {
+    // 10,000 items in memory, but only ~20 DOM nodes
+    users.value = await fetchAllUsers()
+  })
 </script>
 
 <style scoped>
-.user-list {
-  height: 600px; /* Container must have fixed height */
-}
+  .user-list {
+    height: 600px; /* Container must have fixed height */
+  }
 </style>
 ```
 
@@ -119,27 +119,27 @@ onMounted(async () => {
 </template>
 
 <script setup>
-import { ref } from "vue";
-import { useVirtualizer } from "@tanstack/vue-virtual";
+  import { ref } from 'vue'
+  import { useVirtualizer } from '@tanstack/vue-virtual'
 
-const users = ref([
-  /* 10,000 users */
-]);
-const parentRef = ref(null);
+  const users = ref([
+    /* 10,000 users */
+  ])
+  const parentRef = ref(null)
 
-const rowVirtualizer = useVirtualizer({
-  count: users.value.length,
-  getScrollElement: () => parentRef.value,
-  estimateSize: () => 80, // Estimated row height
-  overscan: 5, // Render 5 extra items above/below viewport
-});
+  const rowVirtualizer = useVirtualizer({
+    count: users.value.length,
+    getScrollElement: () => parentRef.value,
+    estimateSize: () => 80, // Estimated row height
+    overscan: 5, // Render 5 extra items above/below viewport
+  })
 </script>
 
 <style scoped>
-.list-container {
-  height: 600px;
-  overflow: auto;
-}
+  .list-container {
+    height: 600px;
+    overflow: auto;
+  }
 </style>
 ```
 
@@ -158,7 +158,7 @@ const rowVirtualizer = useVirtualizer({
 </template>
 
 <script setup>
-import { DynamicScroller, DynamicScrollerItem } from "vue-virtual-scroller";
+  import { DynamicScroller, DynamicScrollerItem } from 'vue-virtual-scroller'
 </script>
 ```
 

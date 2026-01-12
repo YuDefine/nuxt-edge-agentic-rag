@@ -10,9 +10,9 @@ Reactive window scroll
 
 ```vue
 <script setup lang="ts">
-import { useWindowScroll } from "@vueuse/core";
+  import { useWindowScroll } from '@vueuse/core'
 
-const { x, y } = useWindowScroll();
+  const { x, y } = useWindowScroll()
 </script>
 
 <template>
@@ -33,5 +33,5 @@ export interface UseWindowScrollReturn extends UseScrollReturn {}
  * @see https://vueuse.org/useWindowScroll
  * @param options
  */
-export declare function useWindowScroll(options?: UseWindowScrollOptions): UseWindowScrollReturn;
+export declare function useWindowScroll(options?: UseWindowScrollOptions): UseWindowScrollReturn
 ```

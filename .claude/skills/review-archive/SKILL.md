@@ -1,6 +1,6 @@
 ---
 name: review-archive
-description: "將已完成的人工檢查項目從 tasks artifact 遷移到 docs/manual-review-archive.md，保留追溯資訊。"
+description: '將已完成的人工檢查項目從 tasks artifact 遷移到 docs/manual-review-archive.md，保留追溯資訊。'
 ---
 
 # 人工檢查歸檔（Review Archive）

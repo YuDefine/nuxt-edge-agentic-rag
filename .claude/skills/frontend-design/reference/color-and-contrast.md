@@ -109,7 +109,7 @@ You can't just swap colors. Dark mode requires different design decisions:
 
 ```css
 /* Dark mode depth via surface color, not shadow */
-:root[data-theme="dark"] {
+:root[data-theme='dark'] {
   --surface-1: oklch(15% 0.01 250);
   --surface-2: oklch(20% 0.01 250); /* "Higher" = lighter */
   --surface-3: oklch(25% 0.01 250);

@@ -25,10 +25,10 @@ tags: [vue3, render-function, h, v-model, directives, performance, jsx]
 
 ```vue
 <script setup>
-import { h, ref } from "vue";
+  import { h, ref } from 'vue'
 
-const count = ref(0);
-const render = () => h("div", `Count: ${count.value}`);
+  const count = ref(0)
+  const render = () => h('div', `Count: ${count.value}`)
 </script>
 ```
 
@@ -36,9 +36,9 @@ const render = () => h("div", `Count: ${count.value}`);
 
 ```vue
 <script setup>
-import { ref } from "vue";
+  import { ref } from 'vue'
 
-const count = ref(0);
+  const count = ref(0)
 </script>
 
 <template>
@@ -51,37 +51,37 @@ const count = ref(0);
 **BAD:**
 
 ```javascript
-import { h, ref } from "vue";
+import { h, ref } from 'vue'
 
 export default {
   setup() {
-    const items = ref([{ id: 1, name: "Apple" }]);
+    const items = ref([{ id: 1, name: 'Apple' }])
 
     return () =>
       h(
-        "ul",
-        items.value.map((item) => h("li", item.name)),
-      );
+        'ul',
+        items.value.map((item) => h('li', item.name))
+      )
   },
-};
+}
 ```
 
 **GOOD:**
 
 ```javascript
-import { h, ref } from "vue";
+import { h, ref } from 'vue'
 
 export default {
   setup() {
-    const items = ref([{ id: 1, name: "Apple" }]);
+    const items = ref([{ id: 1, name: 'Apple' }])
 
     return () =>
       h(
-        "ul",
-        items.value.map((item) => h("li", { key: item.id }, item.name)),
-      );
+        'ul',
+        items.value.map((item) => h('li', { key: item.id }, item.name))
+      )
   },
-};
+}
 ```
 
 ## Use `withModifiers` / `withKeys` for event modifiers
@@ -89,45 +89,45 @@ export default {
 **BAD:**
 
 ```javascript
-import { h } from "vue";
+import { h } from 'vue'
 
 export default {
   setup() {
     const handleClick = (e) => {
-      e.stopPropagation();
-      e.preventDefault();
-    };
+      e.stopPropagation()
+      e.preventDefault()
+    }
 
-    return () => h("button", { onClick: handleClick }, "Click");
+    return () => h('button', { onClick: handleClick }, 'Click')
   },
-};
+}
 ```
 
 **GOOD:**
 
 ```javascript
-import { h, withModifiers, withKeys } from "vue";
+import { h, withModifiers, withKeys } from 'vue'
 
 export default {
   setup() {
-    const handleClick = () => {};
-    const handleEnter = () => {};
+    const handleClick = () => {}
+    const handleEnter = () => {}
 
     return () =>
-      h("div", [
+      h('div', [
         h(
-          "button",
+          'button',
           {
-            onClick: withModifiers(handleClick, ["stop", "prevent"]),
+            onClick: withModifiers(handleClick, ['stop', 'prevent']),
           },
-          "Click",
+          'Click'
         ),
-        h("input", {
-          onKeyup: withKeys(handleEnter, ["enter"]),
+        h('input', {
+          onKeyup: withKeys(handleEnter, ['enter']),
         }),
-      ]);
+      ])
   },
-};
+}
 ```
 
 ## Implement `v-model` explicitly
@@ -135,35 +135,35 @@ export default {
 **BAD:**
 
 ```javascript
-import { h, ref } from "vue";
-import CustomInput from "./CustomInput.vue";
+import { h, ref } from 'vue'
+import CustomInput from './CustomInput.vue'
 
 export default {
   setup() {
-    const text = ref("");
-    return () => h(CustomInput, { modelValue: text.value });
+    const text = ref('')
+    return () => h(CustomInput, { modelValue: text.value })
   },
-};
+}
 ```
 
 **GOOD:**
 
 ```javascript
-import { h, ref } from "vue";
-import CustomInput from "./CustomInput.vue";
+import { h, ref } from 'vue'
+import CustomInput from './CustomInput.vue'
 
 export default {
   setup() {
-    const text = ref("");
+    const text = ref('')
     return () =>
       h(CustomInput, {
         modelValue: text.value,
-        "onUpdate:modelValue": (value) => {
-          text.value = value;
+        'onUpdate:modelValue': (value) => {
+          text.value = value
         },
-      });
+      })
   },
-};
+}
 ```
 
 ## Use `withDirectives` for custom directives
@@ -171,29 +171,29 @@ export default {
 **BAD:**
 
 ```javascript
-import { h } from "vue";
+import { h } from 'vue'
 
-const vFocus = { mounted: (el) => el.focus() };
+const vFocus = { mounted: (el) => el.focus() }
 
 export default {
   setup() {
-    return () => h("input", { "v-focus": true });
+    return () => h('input', { 'v-focus': true })
   },
-};
+}
 ```
 
 **GOOD:**
 
 ```javascript
-import { h, withDirectives } from "vue";
+import { h, withDirectives } from 'vue'
 
-const vFocus = { mounted: (el) => el.focus() };
+const vFocus = { mounted: (el) => el.focus() }
 
 export default {
   setup() {
-    return () => withDirectives(h("input"), [[vFocus]]);
+    return () => withDirectives(h('input'), [[vFocus]])
   },
-};
+}
 ```
 
 ## Prefer functional components for stateless UI
@@ -201,25 +201,25 @@ export default {
 **BAD:**
 
 ```javascript
-import { h } from "vue";
+import { h } from 'vue'
 
 export default {
   setup() {
-    return () => h("span", { class: "badge" }, "New");
+    return () => h('span', { class: 'badge' }, 'New')
   },
-};
+}
 ```
 
 **GOOD:**
 
 ```javascript
-import { h } from "vue";
+import { h } from 'vue'
 
 function Badge(props, { slots }) {
-  return h("span", { class: "badge" }, slots.default?.());
+  return h('span', { class: 'badge' }, slots.default?.())
 }
 
-Badge.props = ["variant"];
+Badge.props = ['variant']
 
-export default Badge;
+export default Badge
 ```

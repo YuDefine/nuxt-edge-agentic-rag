@@ -54,18 +54,18 @@ Unstyled, accessible Vue 3 component primitives. WAI-ARIA compliant. Previously 
 ```ts
 // nuxt.config.ts (auto-imports all components)
 export default defineNuxtConfig({
-  modules: ["reka-ui/nuxt"],
-});
+  modules: ['reka-ui/nuxt'],
+})
 ```
 
 ```ts
-import { RekaResolver } from "reka-ui/resolver";
+import { RekaResolver } from 'reka-ui/resolver'
 // vite.config.ts (with auto-import resolver)
-import Components from "unplugin-vue-components/vite";
+import Components from 'unplugin-vue-components/vite'
 
 export default defineConfig({
   plugins: [vue(), Components({ resolvers: [RekaResolver()] })],
-});
+})
 ```
 
 ## Basic Patterns
@@ -73,17 +73,17 @@ export default defineConfig({
 ```vue
 <!-- Dialog with controlled state -->
 <script setup>
-import {
-  DialogRoot,
-  DialogTrigger,
-  DialogPortal,
-  DialogOverlay,
-  DialogContent,
-  DialogTitle,
-  DialogDescription,
-  DialogClose,
-} from "reka-ui";
-const open = ref(false);
+  import {
+    DialogRoot,
+    DialogTrigger,
+    DialogPortal,
+    DialogOverlay,
+    DialogContent,
+    DialogTitle,
+    DialogDescription,
+    DialogClose,
+  } from 'reka-ui'
+  const open = ref(false)
 </script>
 
 <template>

@@ -53,13 +53,13 @@ components/
 ```vue
 <!-- components/UserCard.vue -->
 <script setup>
-import { computed } from "vue";
+  import { computed } from 'vue'
 
-const props = defineProps({
-  user: { type: Object, required: true },
-});
+  const props = defineProps({
+    user: { type: Object, required: true },
+  })
 
-const displayName = computed(() => `${props.user.firstName} ${props.user.lastName}`);
+  const displayName = computed(() => `${props.user.firstName} ${props.user.lastName}`)
 </script>
 
 <template>
@@ -69,13 +69,13 @@ const displayName = computed(() => `${props.user.firstName} ${props.user.lastNam
 </template>
 
 <style scoped>
-.user-card {
-  padding: 1rem;
-}
+  .user-card {
+    padding: 1rem;
+  }
 
-.name {
-  margin: 0;
-}
+  .name {
+    margin: 0;
+  }
 </style>
 ```
 
@@ -85,7 +85,7 @@ const displayName = computed(() => `${props.user.firstName} ${props.user.lastNam
 
 ```vue
 <script setup>
-import userProfile from "./user-profile.vue";
+  import userProfile from './user-profile.vue'
 </script>
 
 <template>
@@ -97,7 +97,7 @@ import userProfile from "./user-profile.vue";
 
 ```vue
 <script setup>
-import UserProfile from "./UserProfile.vue";
+  import UserProfile from './UserProfile.vue'
 </script>
 
 <template>
@@ -117,10 +117,10 @@ import UserProfile from "./UserProfile.vue";
 
 ```vue
 <style>
-/* ❌ leaks everywhere */
-button {
-  border-radius: 999px;
-}
+  /* ❌ leaks everywhere */
+  button {
+    border-radius: 999px;
+  }
 </style>
 ```
 
@@ -128,9 +128,9 @@ button {
 
 ```vue
 <style scoped>
-.button {
-  border-radius: 999px;
-}
+  .button {
+    border-radius: 999px;
+  }
 </style>
 ```
 
@@ -157,15 +157,15 @@ button {
 </template>
 
 <style scoped>
-article {
-  max-width: 800px;
-}
-h1 {
-  font-size: 2rem;
-}
-p {
-  line-height: 1.6;
-}
+  article {
+    max-width: 800px;
+  }
+  h1 {
+    font-size: 2rem;
+  }
+  p {
+    line-height: 1.6;
+  }
 </style>
 ```
 
@@ -180,15 +180,15 @@ p {
 </template>
 
 <style scoped>
-.article {
-  max-width: 800px;
-}
-.article-title {
-  font-size: 2rem;
-}
-.article-subtitle {
-  line-height: 1.6;
-}
+  .article {
+    max-width: 800px;
+  }
+  .article-title {
+    font-size: 2rem;
+  }
+  .article-subtitle {
+    line-height: 1.6;
+  }
 </style>
 ```
 
@@ -198,13 +198,13 @@ For Vue 3.5+: use `useTemplateRef()` to access template refs.
 
 ```vue
 <script setup lang="ts">
-import { onMounted, useTemplateRef } from "vue";
+  import { onMounted, useTemplateRef } from 'vue'
 
-const inputRef = useTemplateRef<HTMLInputElement>("input");
+  const inputRef = useTemplateRef<HTMLInputElement>('input')
 
-onMounted(() => {
-  inputRef.value?.focus();
-});
+  onMounted(() => {
+    inputRef.value?.focus()
+  })
 </script>
 
 <template>
@@ -263,9 +263,9 @@ It leads to unclear intent and unnecessary work.
 
 ```vue
 <script setup lang="ts">
-import { computed } from "vue";
+  import { computed } from 'vue'
 
-const activeUsers = computed(() => users.value.filter((u) => u.active));
+  const activeUsers = computed(() => users.value.filter((u) => u.active))
 </script>
 
 <template>
@@ -301,15 +301,15 @@ const activeUsers = computed(() => users.value.filter((u) => u.active));
 
 ```vue
 <script setup>
-import { computed } from 'vue'
-import DOMPurify from 'dompurify'
+  import { computed } from 'vue'
+  import DOMPurify from 'dompurify'
 
-const props = defineProps<{
-  trustedHtml?: string
-  plainText: string
-}>()
+  const props = defineProps<{
+    trustedHtml?: string
+    plainText: string
+  }>()
 
-const safeHtml = computed(() => DOMPurify.sanitize(props.trustedHtml ?? ''))
+  const safeHtml = computed(() => DOMPurify.sanitize(props.trustedHtml ?? ''))
 </script>
 
 <template>

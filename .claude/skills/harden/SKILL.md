@@ -121,7 +121,7 @@ padding-inline: 1rem; /* Not padding-left/right */
 border-inline-end: 1px solid; /* Not border-right */
 
 /* Or use dir attribute */
-[dir="rtl"] .arrow {
+[dir='rtl'] .arrow {
   transform: scaleX(-1);
 }
 ```
@@ -137,23 +137,23 @@ border-inline-end: 1px solid; /* Not border-right */
 
 ```javascript
 // ✅ Use Intl API for proper formatting
-new Intl.DateTimeFormat("en-US").format(date); // 1/15/2024
-new Intl.DateTimeFormat("de-DE").format(date); // 15.1.2024
+new Intl.DateTimeFormat('en-US').format(date) // 1/15/2024
+new Intl.DateTimeFormat('de-DE').format(date) // 15.1.2024
 
-new Intl.NumberFormat("en-US", {
-  style: "currency",
-  currency: "USD",
-}).format(1234.56); // $1,234.56
+new Intl.NumberFormat('en-US', {
+  style: 'currency',
+  currency: 'USD',
+}).format(1234.56) // $1,234.56
 ```
 
 **Pluralization**:
 
 ```javascript
 // ❌ Bad: Assumes English pluralization
-`${count} item${count !== 1 ? "s" : ""}`;
+;`${count} item${count !== 1 ? 's' : ''}`
 
 // ✅ Good: Use proper i18n library
-t("items", { count }); // Handles complex plural rules
+t('items', { count }) // Handles complex plural rules
 ```
 
 ### Error Handling
@@ -174,7 +174,7 @@ t("items", { count }); // Handles complex plural rules
       <p>Failed to load data. {error.message}</p>
       <button onClick={retry}>Try again</button>
     </ErrorMessage>
-  );
+  )
 }
 ```
 
@@ -334,10 +334,10 @@ t("items", { count }); // Handles complex plural rules
 
 ```javascript
 // Debounce search input
-const debouncedSearch = debounce(handleSearch, 300);
+const debouncedSearch = debounce(handleSearch, 300)
 
 // Throttle scroll handler
-const throttledScroll = throttle(handleScroll, 100);
+const throttledScroll = throttle(handleScroll, 100)
 ```
 
 ## Testing Strategies

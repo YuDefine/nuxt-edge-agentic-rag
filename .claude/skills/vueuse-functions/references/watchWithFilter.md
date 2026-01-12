@@ -11,17 +11,17 @@ category: Watch
 Similar to `watch`, but offering an extra option `eventFilter` which will be applied to the callback function.
 
 ```ts
-import { debounceFilter, watchWithFilter } from "@vueuse/core";
+import { debounceFilter, watchWithFilter } from '@vueuse/core'
 
 watchWithFilter(
   source,
   () => {
-    console.log("changed!");
+    console.log('changed!')
   }, // callback will be called in 500ms debounced manner
   {
     eventFilter: debounceFilter(500), // throttledFilter, pausableFilter or custom filters
-  },
-);
+  }
+)
 ```
 
 ## Type Declarations
@@ -35,19 +35,19 @@ export declare function watchWithFilter<
 >(
   sources: [...T],
   cb: WatchCallback<MapSources<T>, MapOldSources<T, Immediate>>,
-  options?: WatchWithFilterOptions<Immediate>,
-): WatchHandle;
+  options?: WatchWithFilterOptions<Immediate>
+): WatchHandle
 export declare function watchWithFilter<T, Immediate extends Readonly<boolean> = false>(
   source: WatchSource<T>,
   cb: WatchCallback<T, Immediate extends true ? T | undefined : T>,
-  options?: WatchWithFilterOptions<Immediate>,
-): WatchHandle;
+  options?: WatchWithFilterOptions<Immediate>
+): WatchHandle
 export declare function watchWithFilter<
   T extends object,
   Immediate extends Readonly<boolean> = false,
 >(
   source: T,
   cb: WatchCallback<T, Immediate extends true ? T | undefined : T>,
-  options?: WatchWithFilterOptions<Immediate>,
-): WatchHandle;
+  options?: WatchWithFilterOptions<Immediate>
+): WatchHandle
 ```

@@ -25,11 +25,11 @@ In Vue 3.5+, async components can delay hydration until idle time, visibility, m
 
 ```vue
 <script setup lang="ts">
-import { defineAsyncComponent } from "vue";
+  import { defineAsyncComponent } from 'vue'
 
-const AsyncComments = defineAsyncComponent({
-  loader: () => import("./Comments.vue"),
-});
+  const AsyncComments = defineAsyncComponent({
+    loader: () => import('./Comments.vue'),
+  })
 </script>
 ```
 
@@ -37,17 +37,17 @@ const AsyncComments = defineAsyncComponent({
 
 ```vue
 <script setup lang="ts">
-import { defineAsyncComponent, hydrateOnVisible, hydrateOnIdle } from "vue";
+  import { defineAsyncComponent, hydrateOnVisible, hydrateOnIdle } from 'vue'
 
-const AsyncComments = defineAsyncComponent({
-  loader: () => import("./Comments.vue"),
-  hydrate: hydrateOnVisible({ rootMargin: "100px" }),
-});
+  const AsyncComments = defineAsyncComponent({
+    loader: () => import('./Comments.vue'),
+    hydrate: hydrateOnVisible({ rootMargin: '100px' }),
+  })
 
-const AsyncFooter = defineAsyncComponent({
-  loader: () => import("./Footer.vue"),
-  hydrate: hydrateOnIdle(5000),
-});
+  const AsyncFooter = defineAsyncComponent({
+    loader: () => import('./Footer.vue'),
+    hydrate: hydrateOnIdle(5000),
+  })
 </script>
 ```
 
@@ -59,14 +59,14 @@ Avoid showing loading UI immediately for components that usually resolve quickly
 
 ```vue
 <script setup lang="ts">
-import { defineAsyncComponent } from "vue";
-import LoadingSpinner from "./LoadingSpinner.vue";
+  import { defineAsyncComponent } from 'vue'
+  import LoadingSpinner from './LoadingSpinner.vue'
 
-const AsyncDashboard = defineAsyncComponent({
-  loader: () => import("./Dashboard.vue"),
-  loadingComponent: LoadingSpinner,
-  delay: 0,
-});
+  const AsyncDashboard = defineAsyncComponent({
+    loader: () => import('./Dashboard.vue'),
+    loadingComponent: LoadingSpinner,
+    delay: 0,
+  })
 </script>
 ```
 
@@ -74,17 +74,17 @@ const AsyncDashboard = defineAsyncComponent({
 
 ```vue
 <script setup lang="ts">
-import { defineAsyncComponent } from "vue";
-import LoadingSpinner from "./LoadingSpinner.vue";
-import ErrorDisplay from "./ErrorDisplay.vue";
+  import { defineAsyncComponent } from 'vue'
+  import LoadingSpinner from './LoadingSpinner.vue'
+  import ErrorDisplay from './ErrorDisplay.vue'
 
-const AsyncDashboard = defineAsyncComponent({
-  loader: () => import("./Dashboard.vue"),
-  loadingComponent: LoadingSpinner,
-  errorComponent: ErrorDisplay,
-  delay: 200,
-  timeout: 30000,
-});
+  const AsyncDashboard = defineAsyncComponent({
+    loader: () => import('./Dashboard.vue'),
+    loadingComponent: LoadingSpinner,
+    errorComponent: ErrorDisplay,
+    delay: 200,
+    timeout: 30000,
+  })
 </script>
 ```
 

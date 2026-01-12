@@ -15,15 +15,15 @@ Create virtual lists with ease. Virtual lists (sometimes called [_virtual scroll
 ### Simple list
 
 ```ts
-import { useVirtualList } from "@vueuse/core";
+import { useVirtualList } from '@vueuse/core'
 
 const { list, containerProps, wrapperProps } = useVirtualList(
   Array.from(Array.from({ length: 99999 }).keys()),
   {
     // Keep `itemHeight` in sync with the item's row.
     itemHeight: 22,
-  },
-);
+  }
+)
 ```
 
 ### Config
@@ -39,23 +39,23 @@ const { list, containerProps, wrapperProps } = useVirtualList(
 ### Reactive list
 
 ```ts
-import { useToggle, useVirtualList } from "@vueuse/core";
-import { computed } from "vue";
+import { useToggle, useVirtualList } from '@vueuse/core'
+import { computed } from 'vue'
 
-const [isEven, toggle] = useToggle();
-const allItems = Array.from(Array.from({ length: 99999 }).keys());
+const [isEven, toggle] = useToggle()
+const allItems = Array.from(Array.from({ length: 99999 }).keys())
 const filteredList = computed(() =>
-  allItems.filter((i) => (isEven.value ? i % 2 === 0 : i % 2 === 1)),
-);
+  allItems.filter((i) => (isEven.value ? i % 2 === 0 : i % 2 === 1))
+)
 
 const { list, containerProps, wrapperProps } = useVirtualList(filteredList, {
   itemHeight: 22,
-});
+})
 ```
 
 ```vue
 <template>
-  <p>Showing {{ isEven ? "even" : "odd" }} items</p>
+  <p>Showing {{ isEven ? 'even' : 'odd' }} items</p>
   <button @click="toggle">Toggle Even/Odd</button>
   <div v-bind="containerProps" style="height: 300px">
     <div v-bind="wrapperProps">
@@ -68,13 +68,13 @@ const { list, containerProps, wrapperProps } = useVirtualList(filteredList, {
 ### Horizontal list
 
 ```ts
-import { useVirtualList } from "@vueuse/core";
+import { useVirtualList } from '@vueuse/core'
 
-const allItems = Array.from(Array.from({ length: 99999 }).keys());
+const allItems = Array.from(Array.from({ length: 99999 }).keys())
 
 const { list, containerProps, wrapperProps } = useVirtualList(allItems, {
   itemWidth: 200,
-});
+})
 ```
 
 ```vue
@@ -105,14 +105,14 @@ To scroll to a specific element, the component exposes `scrollTo(index: number) 
 ## Type Declarations
 
 ```ts
-type UseVirtualListItemSize = number | ((index: number) => number);
+type UseVirtualListItemSize = number | ((index: number) => number)
 export interface UseHorizontalVirtualListOptions extends UseVirtualListOptionsBase {
   /**
    * item width, accept a pixel value or a function that returns the width
    *
    * @default 0
    */
-  itemWidth: UseVirtualListItemSize;
+  itemWidth: UseVirtualListItemSize
 }
 export interface UseVerticalVirtualListOptions extends UseVirtualListOptionsBase {
   /**
@@ -120,7 +120,7 @@ export interface UseVerticalVirtualListOptions extends UseVirtualListOptionsBase
    *
    * @default 0
    */
-  itemHeight: UseVirtualListItemSize;
+  itemHeight: UseVirtualListItemSize
 }
 export interface UseVirtualListOptionsBase {
   /**
@@ -128,41 +128,41 @@ export interface UseVirtualListOptionsBase {
    *
    * @default 5
    */
-  overscan?: number;
+  overscan?: number
 }
-export type UseVirtualListOptions = UseHorizontalVirtualListOptions | UseVerticalVirtualListOptions;
+export type UseVirtualListOptions = UseHorizontalVirtualListOptions | UseVerticalVirtualListOptions
 export interface UseVirtualListItem<T> {
-  data: T;
-  index: number;
+  data: T
+  index: number
 }
 export interface UseVirtualListReturn<T> {
-  list: Ref<UseVirtualListItem<T>[]>;
-  scrollTo: (index: number) => void;
+  list: Ref<UseVirtualListItem<T>[]>
+  scrollTo: (index: number) => void
   containerProps: {
-    ref: Ref<HTMLElement | null>;
-    onScroll: () => void;
-    style: StyleValue;
-  };
+    ref: Ref<HTMLElement | null>
+    onScroll: () => void
+    style: StyleValue
+  }
   wrapperProps: ComputedRef<{
     style:
       | {
-          width: string;
-          height: string;
-          marginTop: string;
+          width: string
+          height: string
+          marginTop: string
         }
       | {
-          width: string;
-          height: string;
-          marginLeft: string;
-          display: string;
-        };
-  }>;
+          width: string
+          height: string
+          marginLeft: string
+          display: string
+        }
+  }>
 }
 /**
  * Please consider using [`vue-virtual-scroller`](https://github.com/Akryum/vue-virtual-scroller) if you are looking for more features.
  */
 export declare function useVirtualList<T = any>(
   list: MaybeRef<readonly T[]>,
-  options: UseVirtualListOptions,
-): UseVirtualListReturn<T>;
+  options: UseVirtualListOptions
+): UseVirtualListReturn<T>
 ```

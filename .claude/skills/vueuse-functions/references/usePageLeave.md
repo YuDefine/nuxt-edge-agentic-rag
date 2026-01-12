@@ -9,9 +9,9 @@ Reactive state to show whether the mouse leaves the page.
 ## Usage
 
 ```ts
-import { usePageLeave } from "@vueuse/core";
+import { usePageLeave } from '@vueuse/core'
 
-const isLeft = usePageLeave();
+const isLeft = usePageLeave()
 ```
 
 ## Component Usage
@@ -26,7 +26,7 @@ const isLeft = usePageLeave();
 
 ```ts
 export interface UsePageLeaveOptions extends ConfigurableWindow {}
-export type UsePageLeaveReturn = ShallowRef<boolean>;
+export type UsePageLeaveReturn = ShallowRef<boolean>
 /**
  * Reactive state to show whether mouse leaves the page.
  *
@@ -35,5 +35,5 @@ export type UsePageLeaveReturn = ShallowRef<boolean>;
  *
  * @__NO_SIDE_EFFECTS__
  */
-export declare function usePageLeave(options?: UsePageLeaveOptions): UsePageLeaveReturn;
+export declare function usePageLeave(options?: UsePageLeaveOptions): UsePageLeaveReturn
 ```

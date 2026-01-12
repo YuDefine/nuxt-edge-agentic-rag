@@ -246,8 +246,8 @@ Illustration or icon (not just text on blank page)
 
 ```javascript
 // Track which onboarding steps user has seen
-localStorage.setItem("onboarding-completed", "true");
-localStorage.setItem("feature-tooltip-seen-reports", "true");
+localStorage.setItem('onboarding-completed', 'true')
+localStorage.setItem('feature-tooltip-seen-reports', 'true')
 ```
 
 **IMPORTANT**: Don't show same onboarding twice (annoying). Track completion and respect dismissals.

@@ -4,7 +4,7 @@ description: Apply VueUse composables where appropriate to build concise, mainta
 license: MIT
 metadata:
   author: SerKo <https://github.com/serkodev>
-  version: "1.0"
+  version: '1.0'
 compatibility: Requires Vue 3 (or above) or Nuxt 3 (or above) project
 ---
 

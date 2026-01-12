@@ -8,9 +8,9 @@ Reactive value that becomes after a given time.
 ## Usage
 
 ```ts
-import { useTimeout } from "@vueuse/core";
+import { useTimeout } from '@vueuse/core'
 
-const ready = useTimeout(1000);
+const ready = useTimeout(1000)
 ```
 
 ## Options

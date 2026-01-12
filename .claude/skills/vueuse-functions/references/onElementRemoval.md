@@ -10,18 +10,18 @@ Fires when the element or any element containing it is removed from the DOM.
 
 ```vue {13}
 <script setup lang="ts">
-import { onElementRemoval } from "@vueuse/core";
-import { shallowRef, useTemplateRef } from "vue";
+  import { onElementRemoval } from '@vueuse/core'
+  import { shallowRef, useTemplateRef } from 'vue'
 
-const btnRef = useTemplateRef("btn");
-const btnState = shallowRef(true);
-const removedCount = shallowRef(0);
+  const btnRef = useTemplateRef('btn')
+  const btnState = shallowRef(true)
+  const removedCount = shallowRef(0)
 
-function btnOnClick() {
-  btnState.value = !btnState.value;
-}
+  function btnOnClick() {
+    btnState.value = !btnState.value
+  }
 
-onElementRemoval(btnRef, () => ++removedCount.value);
+  onElementRemoval(btnRef, () => ++removedCount.value)
 </script>
 
 <template>
@@ -36,11 +36,11 @@ onElementRemoval(btnRef, () => ++removedCount.value);
 The callback receives an array of `MutationRecord` objects that triggered the removal.
 
 ```ts
-import { onElementRemoval } from "@vueuse/core";
+import { onElementRemoval } from '@vueuse/core'
 
 onElementRemoval(targetRef, (mutationRecords) => {
-  console.log("Element removed", mutationRecords);
-});
+  console.log('Element removed', mutationRecords)
+})
 ```
 
 ### Return Value
@@ -48,10 +48,10 @@ onElementRemoval(targetRef, (mutationRecords) => {
 Returns a stop function to stop observing.
 
 ```ts
-const stop = onElementRemoval(targetRef, callback);
+const stop = onElementRemoval(targetRef, callback)
 
 // Later, stop observing
-stop();
+stop()
 ```
 
 ## Type Declarations
@@ -69,6 +69,6 @@ export interface OnElementRemovalOptions
 export declare function onElementRemoval(
   target: MaybeElementRef,
   callback: (mutationRecords: MutationRecord[]) => void,
-  options?: OnElementRemovalOptions,
-): Fn;
+  options?: OnElementRemovalOptions
+): Fn
 ```

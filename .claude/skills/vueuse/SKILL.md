@@ -1,6 +1,6 @@
 ---
 name: vueuse
-description: Use when working with VueUse composables. Check VueUse before writing custom composables — most reactive patterns already implemented.
+description: Use when working with VueUse composables - track mouse position with useMouse, manage localStorage with useStorage, detect network status with useNetwork, debounce values with refDebounced, and access browser APIs reactively. Check VueUse before writing custom composables - most patterns already implemented.
 license: MIT
 ---
 
@@ -27,8 +27,8 @@ pnpm add @vueuse/nuxt @vueuse/core
 ```ts
 // nuxt.config.ts
 export default defineNuxtConfig({
-  modules: ["@vueuse/nuxt"],
-});
+  modules: ['@vueuse/nuxt'],
+})
 ```
 
 Nuxt module auto-imports composables - no import needed.
@@ -72,26 +72,26 @@ Load composable files based on what you need:
 **State persistence:**
 
 ```ts
-const state = useLocalStorage("my-key", { count: 0 });
+const state = useLocalStorage('my-key', { count: 0 })
 ```
 
 **Mouse tracking:**
 
 ```ts
-const { x, y } = useMouse();
+const { x, y } = useMouse()
 ```
 
 **Debounced ref:**
 
 ```ts
-const search = ref("");
-const debouncedSearch = refDebounced(search, 300);
+const search = ref('')
+const debouncedSearch = refDebounced(search, 300)
 ```
 
 **Shared composable (singleton):**
 
 ```ts
-const useSharedMouse = createSharedComposable(useMouse);
+const useSharedMouse = createSharedComposable(useMouse)
 ```
 
 ## SSR Gotchas
@@ -101,32 +101,32 @@ Many VueUse composables use browser APIs unavailable during SSR.
 **Check with `isClient`:**
 
 ```ts
-import { isClient } from "@vueuse/core";
+import { isClient } from '@vueuse/core'
 
 if (isClient) {
   // Browser-only code
-  const { width } = useWindowSize();
+  const { width } = useWindowSize()
 }
 ```
 
 **Wrap in onMounted:**
 
 ```ts
-const width = ref(0);
+const width = ref(0)
 
 onMounted(() => {
   // Only runs in browser
-  const { width: w } = useWindowSize();
-  width.value = w.value;
-});
+  const { width: w } = useWindowSize()
+  width.value = w.value
+})
 ```
 
 **Use SSR-safe composables:**
 
 ```ts
 // These check isClient internally
-const mouse = useMouse(); // Returns {x: 0, y: 0} on server
-const storage = useLocalStorage("key", "default"); // Uses default on server
+const mouse = useMouse() // Returns {x: 0, y: 0} on server
+const storage = useLocalStorage('key', 'default') // Uses default on server
 ```
 
 **`@vueuse/nuxt` auto-handles SSR** - composables return safe defaults on server.
@@ -136,26 +136,26 @@ const storage = useLocalStorage("key", "default"); // Uses default on server
 When targeting component refs instead of DOM elements:
 
 ```ts
-import type { MaybeElementRef } from "@vueuse/core";
+import type { MaybeElementRef } from '@vueuse/core'
 
 // Component ref needs .$el to get DOM element
-const compRef = ref<ComponentInstance>();
-const { width } = useElementSize(compRef); // ❌ Won't work
+const compRef = ref<ComponentInstance>()
+const { width } = useElementSize(compRef) // ❌ Won't work
 
 // Use MaybeElementRef pattern
-import { unrefElement } from "@vueuse/core";
+import { unrefElement } from '@vueuse/core'
 
-const el = computed(() => unrefElement(compRef)); // Gets .$el
-const { width } = useElementSize(el); // ✅ Works
+const el = computed(() => unrefElement(compRef)) // Gets .$el
+const { width } = useElementSize(el) // ✅ Works
 ```
 
 **Or access `$el` directly:**
 
 ```ts
-const compRef = ref<ComponentInstance>();
+const compRef = ref<ComponentInstance>()
 
 onMounted(() => {
-  const el = compRef.value?.$el as HTMLElement;
-  const { width } = useElementSize(el);
-});
+  const el = compRef.value?.$el as HTMLElement
+  const { width } = useElementSize(el)
+})
 ```

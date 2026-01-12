@@ -62,15 +62,15 @@ The layout shift problem: fonts load late, text reflows, and users see content j
 ```css
 /* 1. Use font-display: swap for visibility */
 @font-face {
-  font-family: "CustomFont";
-  src: url("font.woff2") format("woff2");
+  font-family: 'CustomFont';
+  src: url('font.woff2') format('woff2');
   font-display: swap;
 }
 
 /* 2. Match fallback metrics to minimize shift */
 @font-face {
-  font-family: "CustomFont-Fallback";
-  src: local("Arial");
+  font-family: 'CustomFont-Fallback';
+  src: local('Arial');
   size-adjust: 105%; /* Scale to match x-height */
   ascent-override: 90%; /* Match ascender height */
   descent-override: 20%; /* Match descender depth */
@@ -78,7 +78,7 @@ The layout shift problem: fonts load late, text reflows, and users see content j
 }
 
 body {
-  font-family: "CustomFont", "CustomFont-Fallback", sans-serif;
+  font-family: 'CustomFont', 'CustomFont-Fallback', sans-serif;
 }
 ```
 

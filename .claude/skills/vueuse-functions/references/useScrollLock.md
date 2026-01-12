@@ -10,14 +10,14 @@ Lock scrolling of the element.
 
 ```vue
 <script setup lang="ts">
-import { useScrollLock } from "@vueuse/core";
-import { useTemplateRef } from "vue";
+  import { useScrollLock } from '@vueuse/core'
+  import { useTemplateRef } from 'vue'
 
-const el = useTemplateRef("el");
-const isLocked = useScrollLock(el);
+  const el = useTemplateRef('el')
+  const isLocked = useScrollLock(el)
 
-isLocked.value = true; // lock
-isLocked.value = false; // unlock
+  isLocked.value = true // lock
+  isLocked.value = false // unlock
 </script>
 
 <template>
@@ -29,11 +29,11 @@ isLocked.value = false; // unlock
 
 ```vue
 <script setup lang="ts">
-import { vScrollLock } from "@vueuse/components";
+  import { vScrollLock } from '@vueuse/components'
 
-const data = ref([1, 2, 3, 4, 5, 6]);
-const isLocked = ref(false);
-const toggleLock = useToggle(isLocked);
+  const data = ref([1, 2, 3, 4, 5, 6])
+  const isLocked = ref(false)
+  const toggleLock = useToggle(isLocked)
 </script>
 
 <template>
@@ -57,6 +57,6 @@ const toggleLock = useToggle(isLocked);
  */
 export declare function useScrollLock(
   element: MaybeRefOrGetter<HTMLElement | SVGElement | Window | Document | null | undefined>,
-  initialState?: boolean,
-): WritableComputedRef<boolean, boolean>;
+  initialState?: boolean
+): WritableComputedRef<boolean, boolean>
 ```

@@ -8,11 +8,11 @@ Fires when the element or any element containing it is removed from the DOM.
 ## Usage
 
 ```ts
-import { onElementRemoval } from "@vueuse/core";
+import { onElementRemoval } from '@vueuse/core'
 
 onElementRemoval(targetRef, (mutationRecords) => {
-  console.log("Element removed", mutationRecords);
-});
+  console.log('Element removed', mutationRecords)
+})
 ```
 
 ## Reference

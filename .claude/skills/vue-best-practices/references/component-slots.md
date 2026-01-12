@@ -91,12 +91,12 @@ In `<script setup lang="ts">`, use `defineSlots` so slot consumers get autocompl
 ```vue
 <!-- ProductList.vue -->
 <script setup lang="ts">
-interface Product {
-  id: number;
-  name: string;
-}
+  interface Product {
+    id: number
+    name: string
+  }
 
-defineProps<{ products: Product[] }>();
+  defineProps<{ products: Product[] }>()
 </script>
 
 <template>
@@ -113,17 +113,17 @@ defineProps<{ products: Product[] }>();
 ```vue
 <!-- ProductList.vue -->
 <script setup lang="ts">
-interface Product {
-  id: number;
-  name: string;
-}
+  interface Product {
+    id: number
+    name: string
+  }
 
-defineProps<{ products: Product[] }>();
+  defineProps<{ products: Product[] }>()
 
-defineSlots<{
-  default(props: { product: Product; index: number }): any;
-  empty(): any;
-}>();
+  defineSlots<{
+    default(props: { product: Product; index: number }): any
+    empty(): any
+  }>()
 </script>
 
 <template>
@@ -171,18 +171,18 @@ Renderless components are still useful for slot-driven composition, but composab
 ```vue
 <!-- MouseTracker.vue -->
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from "vue";
+  import { ref, onMounted, onUnmounted } from 'vue'
 
-const x = ref(0);
-const y = ref(0);
+  const x = ref(0)
+  const y = ref(0)
 
-function onMove(event: MouseEvent) {
-  x.value = event.pageX;
-  y.value = event.pageY;
-}
+  function onMove(event: MouseEvent) {
+    x.value = event.pageX
+    y.value = event.pageY
+  }
 
-onMounted(() => window.addEventListener("mousemove", onMove));
-onUnmounted(() => window.removeEventListener("mousemove", onMove));
+  onMounted(() => window.addEventListener('mousemove', onMove))
+  onUnmounted(() => window.removeEventListener('mousemove', onMove))
 </script>
 
 <template>
@@ -194,30 +194,30 @@ onUnmounted(() => window.removeEventListener("mousemove", onMove));
 
 ```ts
 // composables/useMouse.ts
-import { ref, onMounted, onUnmounted } from "vue";
+import { ref, onMounted, onUnmounted } from 'vue'
 
 export function useMouse() {
-  const x = ref(0);
-  const y = ref(0);
+  const x = ref(0)
+  const y = ref(0)
 
   function onMove(event: MouseEvent) {
-    x.value = event.pageX;
-    y.value = event.pageY;
+    x.value = event.pageX
+    y.value = event.pageY
   }
 
-  onMounted(() => window.addEventListener("mousemove", onMove));
-  onUnmounted(() => window.removeEventListener("mousemove", onMove));
+  onMounted(() => window.addEventListener('mousemove', onMove))
+  onUnmounted(() => window.removeEventListener('mousemove', onMove))
 
-  return { x, y };
+  return { x, y }
 }
 ```
 
 ```vue
 <!-- MousePosition.vue -->
 <script setup lang="ts">
-import { useMouse } from "@/composables/useMouse";
+  import { useMouse } from '@/composables/useMouse'
 
-const { x, y } = useMouse();
+  const { x, y } = useMouse()
 </script>
 
 <template>

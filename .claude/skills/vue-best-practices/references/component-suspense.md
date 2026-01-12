@@ -164,17 +164,17 @@ Use `@pending`, `@resolve`, and `@fallback` for analytics, global loading indica
 
 ```vue
 <script setup>
-import { ref } from "vue";
+  import { ref } from 'vue'
 
-const isLoading = ref(false);
+  const isLoading = ref(false)
 
-const onPending = () => {
-  isLoading.value = true;
-};
+  const onPending = () => {
+    isLoading.value = true
+  }
 
-const onResolve = () => {
-  isLoading.value = false;
-};
+  const onResolve = () => {
+    isLoading.value = false
+  }
 </script>
 
 <template>

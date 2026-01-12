@@ -8,15 +8,15 @@ Debounced watch. The callback will only be invoked after the source stops changi
 ## Usage
 
 ```ts
-import { watchDebounced } from "@vueuse/core";
+import { watchDebounced } from '@vueuse/core'
 
 watchDebounced(
   source,
   () => {
-    console.log("changed!");
+    console.log('changed!')
   },
-  { debounce: 500, maxWait: 1000 },
-);
+  { debounce: 500, maxWait: 1000 }
+)
 ```
 
 ## Reference

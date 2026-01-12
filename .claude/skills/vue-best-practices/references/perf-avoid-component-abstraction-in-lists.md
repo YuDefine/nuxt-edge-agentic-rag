@@ -75,25 +75,25 @@ Don't avoid abstraction entirely, but be mindful of component depth in frequentl
 </template>
 
 <script setup>
-defineProps({
-  user: Object,
-});
+  defineProps({
+    user: Object,
+  })
 </script>
 
 <style scoped>
-/* Styles that would have been in Card, CardHeader, etc. */
-.card {
-  /* ... */
-}
-.card-header {
-  /* ... */
-}
-.card-body {
-  /* ... */
-}
-.avatar {
-  /* ... */
-}
+  /* Styles that would have been in Card, CardHeader, etc. */
+  .card {
+    /* ... */
+  }
+  .card-header {
+    /* ... */
+  }
+  .card-body {
+    /* ... */
+  }
+  .avatar {
+    /* ... */
+  }
 </style>
 ```
 
@@ -125,24 +125,24 @@ defineProps({
 
 ```javascript
 // In development, profile component counts
-import { onMounted, getCurrentInstance } from "vue";
+import { onMounted, getCurrentInstance } from 'vue'
 
 onMounted(() => {
-  const instance = getCurrentInstance();
-  let count = 0;
+  const instance = getCurrentInstance()
+  let count = 0
 
   function countComponents(vnode) {
-    if (vnode.component) count++;
+    if (vnode.component) count++
     if (vnode.children) {
       vnode.children.forEach((child) => {
-        if (child.component || child.children) countComponents(child);
-      });
+        if (child.component || child.children) countComponents(child)
+      })
     }
   }
 
   // Use Vue DevTools instead for accurate counts
-  console.log("Check Vue DevTools Components tab for instance counts");
-});
+  console.log('Check Vue DevTools Components tab for instance counts')
+})
 ```
 
 ## Alternatives to Wrapper Components

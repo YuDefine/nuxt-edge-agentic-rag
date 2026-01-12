@@ -7,21 +7,21 @@
 ```typescript
 // app/plugins/my-store-init.client.ts
 export default defineNuxtPlugin(() => {
-  const { user, loggedIn } = useUserSession();
-  const myStore = useMyStore();
+  const { user, loggedIn } = useUserSession()
+  const myStore = useMyStore()
 
   watch(
     loggedIn,
     (isLoggedIn) => {
       if (isLoggedIn && user.value?.id) {
-        myStore.loadData();
+        myStore.loadData()
       } else {
-        myStore.clearData();
+        myStore.clearData()
       }
     },
-    { immediate: true },
-  );
-});
+    { immediate: true }
+  )
+})
 ```
 
 優點：全域只執行一次、自動響應狀態變化、不需在組件中手動呼叫。
@@ -33,16 +33,16 @@ export default defineNuxtPlugin(() => {
 ```typescript
 // app/composables/useMyFeature.ts
 export function useMyFeature(config: MyConfig) {
-  const store = useMyStore();
+  const store = useMyStore()
 
   if (!store.isInitialized) {
-    store.initialize(config);
+    store.initialize(config)
   }
 
   return {
     data: store.data,
     isLoading: store.isLoading,
     refresh: store.refresh,
-  };
+  }
 }
 ```

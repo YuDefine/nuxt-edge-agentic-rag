@@ -9,9 +9,9 @@ Reactive time ago. Automatically update the time ago string when the time change
 ## Usage
 
 ```ts
-import { useTimeAgo } from "@vueuse/core";
+import { useTimeAgo } from '@vueuse/core'
 
-const timeAgo = useTimeAgo(new Date(2021, 0, 1));
+const timeAgo = useTimeAgo(new Date(2021, 0, 1))
 ```
 
 ## Component Usage
@@ -29,62 +29,62 @@ const timeAgo = useTimeAgo(new Date(2021, 0, 1));
 In case you don't need the reactivity, you can use the `formatTimeAgo` function to get the formatted string instead of a Ref.
 
 ```ts
-import { formatTimeAgo } from "@vueuse/core";
+import { formatTimeAgo } from '@vueuse/core'
 
-const timeAgo = formatTimeAgo(new Date(2021, 0, 1)); // string
+const timeAgo = formatTimeAgo(new Date(2021, 0, 1)) // string
 ```
 
 ## Type Declarations
 
 ```ts
-export type UseTimeAgoFormatter<T = number> = (value: T, isPast: boolean) => string;
+export type UseTimeAgoFormatter<T = number> = (value: T, isPast: boolean) => string
 export type UseTimeAgoUnitNamesDefault =
-  | "second"
-  | "minute"
-  | "hour"
-  | "day"
-  | "week"
-  | "month"
-  | "year";
+  | 'second'
+  | 'minute'
+  | 'hour'
+  | 'day'
+  | 'week'
+  | 'month'
+  | 'year'
 export interface UseTimeAgoMessagesBuiltIn {
-  justNow: string;
-  past: string | UseTimeAgoFormatter<string>;
-  future: string | UseTimeAgoFormatter<string>;
-  invalid: string;
+  justNow: string
+  past: string | UseTimeAgoFormatter<string>
+  future: string | UseTimeAgoFormatter<string>
+  invalid: string
 }
 export type UseTimeAgoMessages<UnitNames extends string = UseTimeAgoUnitNamesDefault> =
-  UseTimeAgoMessagesBuiltIn & Record<UnitNames, string | UseTimeAgoFormatter<number>>;
+  UseTimeAgoMessagesBuiltIn & Record<UnitNames, string | UseTimeAgoFormatter<number>>
 export interface FormatTimeAgoOptions<UnitNames extends string = UseTimeAgoUnitNamesDefault> {
   /**
    * Maximum unit (of diff in milliseconds) to display the full date instead of relative
    *
    * @default undefined
    */
-  max?: UnitNames | number;
+  max?: UnitNames | number
   /**
    * Formatter for full date
    */
-  fullDateFormatter?: (date: Date) => string;
+  fullDateFormatter?: (date: Date) => string
   /**
    * Messages for formatting the string
    */
-  messages?: UseTimeAgoMessages<UnitNames>;
+  messages?: UseTimeAgoMessages<UnitNames>
   /**
    * Minimum display time unit (default is minute)
    *
    * @default false
    */
-  showSecond?: boolean;
+  showSecond?: boolean
   /**
    * Rounding method to apply.
    *
    * @default 'round'
    */
-  rounding?: "round" | "ceil" | "floor" | number;
+  rounding?: 'round' | 'ceil' | 'floor' | number
   /**
    * Custom units
    */
-  units?: UseTimeAgoUnit<UnitNames>[];
+  units?: UseTimeAgoUnit<UnitNames>[]
 }
 export interface UseTimeAgoOptions<
   Controls extends boolean,
@@ -96,25 +96,25 @@ export interface UseTimeAgoOptions<
    *
    * @default false
    */
-  controls?: Controls;
+  controls?: Controls
   /**
    * Intervals to update, set 0 to disable auto update
    *
    * @deprecated Please use `scheduler` option instead
    * @default 30_000
    */
-  updateInterval?: number;
+  updateInterval?: number
 }
 export interface UseTimeAgoUnit<Unit extends string = UseTimeAgoUnitNamesDefault> {
-  max: number;
-  value: number;
-  name: Unit;
+  max: number
+  value: number
+  name: Unit
 }
 export type UseTimeAgoReturn<Controls extends boolean = false> = Controls extends true
   ? {
-      timeAgo: ComputedRef<string>;
+      timeAgo: ComputedRef<string>
     } & Pausable
-  : ComputedRef<string>;
+  : ComputedRef<string>
 /**
  * Reactive time ago formatter.
  *
@@ -124,15 +124,15 @@ export type UseTimeAgoReturn<Controls extends boolean = false> = Controls extend
  */
 export declare function useTimeAgo<UnitNames extends string = UseTimeAgoUnitNamesDefault>(
   time: MaybeRefOrGetter<Date | number | string>,
-  options?: UseTimeAgoOptions<false, UnitNames>,
-): UseTimeAgoReturn<false>;
+  options?: UseTimeAgoOptions<false, UnitNames>
+): UseTimeAgoReturn<false>
 export declare function useTimeAgo<UnitNames extends string = UseTimeAgoUnitNamesDefault>(
   time: MaybeRefOrGetter<Date | number | string>,
-  options: UseTimeAgoOptions<true, UnitNames>,
-): UseTimeAgoReturn<true>;
+  options: UseTimeAgoOptions<true, UnitNames>
+): UseTimeAgoReturn<true>
 export declare function formatTimeAgo<UnitNames extends string = UseTimeAgoUnitNamesDefault>(
   from: Date,
   options?: FormatTimeAgoOptions<UnitNames>,
-  now?: Date | number,
-): string;
+  now?: Date | number
+): string
 ```

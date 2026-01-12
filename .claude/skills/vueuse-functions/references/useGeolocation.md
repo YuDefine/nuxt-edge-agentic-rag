@@ -9,9 +9,9 @@ Reactive [Geolocation API](https://developer.mozilla.org/en-US/docs/Web/API/Geol
 ## Usage
 
 ```ts
-import { useGeolocation } from "@vueuse/core";
+import { useGeolocation } from '@vueuse/core'
 
-const { coords, locatedAt, error, resume, pause } = useGeolocation();
+const { coords, locatedAt, error, resume, pause } = useGeolocation()
 ```
 
 | State     | Type                                                                          | Description                                                              |
@@ -40,14 +40,14 @@ const { coords, locatedAt, error, resume, pause } = useGeolocation();
 
 ```ts
 export interface UseGeolocationOptions extends Partial<PositionOptions>, ConfigurableNavigator {
-  immediate?: boolean;
+  immediate?: boolean
 }
 export interface UseGeolocationReturn extends Supportable {
-  coords: Ref<Omit<GeolocationPosition["coords"], "toJSON">>;
-  locatedAt: ShallowRef<number | null>;
-  error: ShallowRef<GeolocationPositionError | null>;
-  resume: () => void;
-  pause: () => void;
+  coords: Ref<Omit<GeolocationPosition['coords'], 'toJSON'>>
+  locatedAt: ShallowRef<number | null>
+  error: ShallowRef<GeolocationPositionError | null>
+  resume: () => void
+  pause: () => void
 }
 /**
  * Reactive Geolocation API.
@@ -55,5 +55,5 @@ export interface UseGeolocationReturn extends Supportable {
  * @see https://vueuse.org/useGeolocation
  * @param options
  */
-export declare function useGeolocation(options?: UseGeolocationOptions): UseGeolocationReturn;
+export declare function useGeolocation(options?: UseGeolocationOptions): UseGeolocationReturn
 ```

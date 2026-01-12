@@ -35,15 +35,15 @@ When an ancestor has `transform`, `filter`, or `perspective`, fixed-position ove
 </template>
 
 <style>
-.animated-container {
-  transform: translateZ(0);
-}
+  .animated-container {
+    transform: translateZ(0);
+  }
 
-.modal {
-  position: fixed;
-  inset: 0;
-  z-index: 9999;
-}
+  .modal {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+  }
 </style>
 ```
 
@@ -67,9 +67,9 @@ Use `:disabled` to render inline on mobile and teleport on larger screens:
 
 ```vue
 <script setup>
-import { useMediaQuery } from "@vueuse/core";
+  import { useMediaQuery } from '@vueuse/core'
 
-const isMobile = useMediaQuery("(max-width: 768px)");
+  const isMobile = useMediaQuery('(max-width: 768px)')
 </script>
 
 <template>

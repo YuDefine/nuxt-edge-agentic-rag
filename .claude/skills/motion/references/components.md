@@ -8,7 +8,7 @@ The standard way to use motion-v with dot notation:
 
 ```vue
 <script setup>
-import { motion } from "motion-v";
+  import { motion } from 'motion-v'
 </script>
 
 <template>
@@ -22,7 +22,7 @@ Alternative pattern using `as` prop. Useful when element type needs to be dynami
 
 ```vue
 <script setup>
-import { Motion } from "motion-v";
+  import { Motion } from 'motion-v'
 </script>
 
 <template>
@@ -38,7 +38,7 @@ The `motion` component wraps any HTML or SVG element:
 
 ```vue
 <script setup lang="ts">
-import { motion } from "motion-v";
+  import { motion } from 'motion-v'
 </script>
 
 <template>
@@ -90,7 +90,7 @@ Animation when component unmounts. Requires `AnimatePresence`:
 
 ```vue
 <script setup>
-import { motion, AnimatePresence } from "motion-v";
+  import { motion, AnimatePresence } from 'motion-v'
 </script>
 
 <template>
@@ -186,10 +186,10 @@ Animation when element enters viewport:
 
 ```ts
 interface ViewportOptions {
-  once?: boolean; // Animate only first time (default: false)
-  amount?: number | "some" | "all"; // Visibility threshold (default: 'some')
-  margin?: string; // Rootmargin (e.g., '-100px')
-  root?: Element; // Scroll container (default: window)
+  once?: boolean // Animate only first time (default: false)
+  amount?: number | 'some' | 'all' // Visibility threshold (default: 'some')
+  margin?: string // Rootmargin (e.g., '-100px')
+  root?: Element // Scroll container (default: window)
 }
 ```
 
@@ -222,7 +222,7 @@ Animate between components with matching layoutId:
 
 ```vue
 <script setup>
-const selected = (ref < string) | (null > null);
+  const selected = (ref < string) | (null > null)
 </script>
 
 <template>
@@ -247,7 +247,7 @@ Sync layout animations across components:
 
 ```vue
 <script setup>
-import { motion, LayoutGroup } from "motion-v";
+  import { motion, LayoutGroup } from 'motion-v'
 </script>
 
 <template>
@@ -336,7 +336,7 @@ Animate components as they mount/unmount:
 
 ```vue
 <script setup>
-import { motion, AnimatePresence } from "motion-v";
+  import { motion, AnimatePresence } from 'motion-v'
 </script>
 
 <template>

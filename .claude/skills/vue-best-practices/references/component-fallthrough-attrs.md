@@ -26,14 +26,14 @@ Hyphenated attribute names preserve their original casing in JavaScript, so dot 
 
 ```vue
 <script setup>
-import { useAttrs } from "vue";
+  import { useAttrs } from 'vue'
 
-const attrs = useAttrs();
+  const attrs = useAttrs()
 
-console.log(attrs.data - testid); // Syntax error
-console.log(attrs.dataTestid); // undefined for data-testid
-console.log(attrs["on-click"]); // undefined
-console.log(attrs["@click"]); // undefined
+  console.log(attrs.data - testid) // Syntax error
+  console.log(attrs.dataTestid) // undefined for data-testid
+  console.log(attrs['on-click']) // undefined
+  console.log(attrs['@click']) // undefined
 </script>
 ```
 
@@ -41,17 +41,17 @@ console.log(attrs["@click"]); // undefined
 
 ```vue
 <script setup>
-import { useAttrs } from "vue";
+  import { useAttrs } from 'vue'
 
-const attrs = useAttrs();
+  const attrs = useAttrs()
 
-console.log(attrs["data-testid"]);
-console.log(attrs["aria-label"]);
-console.log(attrs["foo-bar"]);
+  console.log(attrs['data-testid'])
+  console.log(attrs['aria-label'])
+  console.log(attrs['foo-bar'])
 
-console.log(attrs.onClick);
-console.log(attrs.onCustomEvent);
-console.log(attrs.onMouseEnter);
+  console.log(attrs.onClick)
+  console.log(attrs.onCustomEvent)
+  console.log(attrs.onMouseEnter)
 </script>
 ```
 
@@ -75,20 +75,20 @@ console.log(attrs.onMouseEnter);
 
 ```vue
 <script setup>
-import { watch, watchEffect, useAttrs } from "vue";
+  import { watch, watchEffect, useAttrs } from 'vue'
 
-const attrs = useAttrs();
+  const attrs = useAttrs()
 
-watch(
-  () => attrs.someAttr,
-  (newValue) => {
-    console.log("Changed:", newValue); // Never runs on attr changes
-  },
-);
+  watch(
+    () => attrs.someAttr,
+    (newValue) => {
+      console.log('Changed:', newValue) // Never runs on attr changes
+    }
+  )
 
-watchEffect(() => {
-  console.log(attrs.class); // Runs on setup, not on attr updates
-});
+  watchEffect(() => {
+    console.log(attrs.class) // Runs on setup, not on attr updates
+  })
 </script>
 ```
 
@@ -96,13 +96,13 @@ watchEffect(() => {
 
 ```vue
 <script setup>
-import { onUpdated, useAttrs } from "vue";
+  import { onUpdated, useAttrs } from 'vue'
 
-const attrs = useAttrs();
+  const attrs = useAttrs()
 
-onUpdated(() => {
-  console.log("Latest attrs:", attrs);
-});
+  onUpdated(() => {
+    console.log('Latest attrs:', attrs)
+  })
 </script>
 ```
 
@@ -110,18 +110,18 @@ onUpdated(() => {
 
 ```vue
 <script setup>
-import { watch } from "vue";
+  import { watch } from 'vue'
 
-const props = defineProps({
-  someAttr: String,
-});
+  const props = defineProps({
+    someAttr: String,
+  })
 
-watch(
-  () => props.someAttr,
-  (newValue) => {
-    console.log("Changed:", newValue);
-  },
-);
+  watch(
+    () => props.someAttr,
+    (newValue) => {
+      console.log('Changed:', newValue)
+    }
+  )
 </script>
 ```
 
@@ -131,12 +131,12 @@ watch(
 
 ```vue
 <script setup>
-import { computed, useAttrs } from "vue";
+  import { computed, useAttrs } from 'vue'
 
-const attrs = useAttrs();
+  const attrs = useAttrs()
 
-const hasTestId = computed(() => "data-testid" in attrs);
-const ariaLabel = computed(() => attrs["aria-label"] ?? "Default label");
+  const hasTestId = computed(() => 'data-testid' in attrs)
+  const ariaLabel = computed(() => attrs['aria-label'] ?? 'Default label')
 </script>
 ```
 
@@ -144,16 +144,16 @@ const ariaLabel = computed(() => attrs["aria-label"] ?? "Default label");
 
 ```vue
 <script setup>
-import { useAttrs } from "vue";
+  import { useAttrs } from 'vue'
 
-defineOptions({ inheritAttrs: false });
+  defineOptions({ inheritAttrs: false })
 
-const attrs = useAttrs();
+  const attrs = useAttrs()
 
-function handleClick(event) {
-  console.log("Internal handling first");
-  attrs.onClick?.(event);
-}
+  function handleClick(event) {
+    console.log('Internal handling first')
+    attrs.onClick?.(event)
+  }
 </script>
 
 <template>
@@ -169,11 +169,11 @@ function handleClick(event) {
 
 ```vue
 <script setup lang="ts">
-import { useAttrs } from "vue";
+  import { useAttrs } from 'vue'
 
-const attrs = useAttrs();
+  const attrs = useAttrs()
 
-const testId = attrs["data-testid"] as string | undefined;
-const onClick = attrs.onClick as ((event: MouseEvent) => void) | undefined;
+  const testId = attrs['data-testid'] as string | undefined
+  const onClick = attrs.onClick as ((event: MouseEvent) => void) | undefined
 </script>
 ```

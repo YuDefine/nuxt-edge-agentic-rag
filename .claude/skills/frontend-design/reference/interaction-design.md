@@ -67,8 +67,8 @@ Focus trapping in modals used to require complex JavaScript. Now use the `inert`
 Or use the native `<dialog>` element:
 
 ```javascript
-const dialog = document.querySelector("dialog");
-dialog.showModal(); // Opens with focus trap, closes on Escape
+const dialog = document.querySelector('dialog')
+dialog.showModal() // Opens with focus trap, closes on Escape
 ```
 
 ## The Popover API

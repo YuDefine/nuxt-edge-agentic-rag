@@ -9,11 +9,11 @@ Listen for keyboard keystrokes. By default, listens on `keydown` events on `wind
 ## Usage
 
 ```ts
-import { onKeyStroke } from "@vueuse/core";
+import { onKeyStroke } from '@vueuse/core'
 
-onKeyStroke("ArrowDown", (e) => {
-  e.preventDefault();
-});
+onKeyStroke('ArrowDown', (e) => {
+  e.preventDefault()
+})
 ```
 
 See [this table](https://developer.mozilla.org/en-US/docs/Web/API/KeyboardEvent/key/Key_Values) for all key codes.
@@ -23,28 +23,28 @@ See [this table](https://developer.mozilla.org/en-US/docs/Web/API/KeyboardEvent/
 Returns a stop function to remove the event listener.
 
 ```ts
-const stop = onKeyStroke("Escape", handler);
+const stop = onKeyStroke('Escape', handler)
 
 // Later, stop listening
-stop();
+stop()
 ```
 
 ### Listen To Multiple Keys
 
 ```ts
-import { onKeyStroke } from "@vueuse/core";
+import { onKeyStroke } from '@vueuse/core'
 
-onKeyStroke(["s", "S", "ArrowDown"], (e) => {
-  e.preventDefault();
-});
+onKeyStroke(['s', 'S', 'ArrowDown'], (e) => {
+  e.preventDefault()
+})
 
 // listen to all keys by passing `true` or skipping the key parameter
 onKeyStroke(true, (e) => {
-  e.preventDefault();
-});
+  e.preventDefault()
+})
 onKeyStroke((e) => {
-  e.preventDefault();
-});
+  e.preventDefault()
+})
 ```
 
 ### Custom Key Predicate
@@ -52,28 +52,28 @@ onKeyStroke((e) => {
 You can pass a custom function to determine which keys should trigger the handler.
 
 ```ts
-import { onKeyStroke } from "@vueuse/core";
+import { onKeyStroke } from '@vueuse/core'
 
 onKeyStroke(
-  (e) => e.key === "A" && e.shiftKey,
+  (e) => e.key === 'A' && e.shiftKey,
   (e) => {
-    console.log("Shift+A pressed");
-  },
-);
+    console.log('Shift+A pressed')
+  }
+)
 ```
 
 ### Custom Event Target
 
 ```ts
-import { onKeyStroke } from "@vueuse/core";
+import { onKeyStroke } from '@vueuse/core'
 
 onKeyStroke(
-  "A",
+  'A',
   (e) => {
-    console.log("Key A pressed on document");
+    console.log('Key A pressed on document')
   },
-  { target: document },
-);
+  { target: document }
+)
 ```
 
 ### Ignore Repeated Events
@@ -81,15 +81,15 @@ onKeyStroke(
 The callback will trigger only once when pressing `A` and **holding down**. The `dedupe` option can also be a reactive ref.
 
 ```ts
-import { onKeyStroke } from "@vueuse/core";
+import { onKeyStroke } from '@vueuse/core'
 
 onKeyStroke(
-  "A",
+  'A',
   (e) => {
-    console.log("Key A pressed");
+    console.log('Key A pressed')
   },
-  { dedupe: true },
-);
+  { dedupe: true }
+)
 ```
 
 Reference: [KeyboardEvent.repeat](https://developer.mozilla.org/en-US/docs/Web/API/KeyboardEvent/repeat)
@@ -99,20 +99,20 @@ Reference: [KeyboardEvent.repeat](https://developer.mozilla.org/en-US/docs/Web/A
 Set `passive: true` to use a passive event listener.
 
 ```ts
-import { onKeyStroke } from "@vueuse/core";
+import { onKeyStroke } from '@vueuse/core'
 
-onKeyStroke("A", handler, { passive: true });
+onKeyStroke('A', handler, { passive: true })
 ```
 
 ## Directive Usage
 
 ```vue
 <script setup lang="ts">
-import { vOnKeyStroke } from "@vueuse/components";
+  import { vOnKeyStroke } from '@vueuse/components'
 
-function onUpdate(e: KeyboardEvent) {
-  // impl...
-}
+  function onUpdate(e: KeyboardEvent) {
+    // impl...
+  }
 </script>
 
 <template>
@@ -125,23 +125,23 @@ function onUpdate(e: KeyboardEvent) {
 ### Custom Keyboard Event
 
 ```ts
-import { onKeyStroke } from "@vueuse/core";
+import { onKeyStroke } from '@vueuse/core'
 // ---cut---
 onKeyStroke(
-  "Shift",
+  'Shift',
   (e) => {
-    console.log("Shift key up");
+    console.log('Shift key up')
   },
-  { eventName: "keyup" },
-);
+  { eventName: 'keyup' }
+)
 ```
 
 Or
 
 ```ts
-import { onKeyUp } from "@vueuse/core";
+import { onKeyUp } from '@vueuse/core'
 // ---cut---
-onKeyUp("Shift", () => console.log("Shift key up"));
+onKeyUp('Shift', () => console.log('Shift key up'))
 ```
 
 ## Shorthands
@@ -153,19 +153,19 @@ onKeyUp("Shift", () => console.log("Shift key up"));
 ## Type Declarations
 
 ```ts
-export type KeyPredicate = (event: KeyboardEvent) => boolean;
-export type KeyFilter = true | string | string[] | KeyPredicate;
-export type KeyStrokeEventName = "keydown" | "keypress" | "keyup";
+export type KeyPredicate = (event: KeyboardEvent) => boolean
+export type KeyFilter = true | string | string[] | KeyPredicate
+export type KeyStrokeEventName = 'keydown' | 'keypress' | 'keyup'
 export interface OnKeyStrokeOptions {
-  eventName?: KeyStrokeEventName;
-  target?: MaybeRefOrGetter<EventTarget | null | undefined>;
-  passive?: boolean;
+  eventName?: KeyStrokeEventName
+  target?: MaybeRefOrGetter<EventTarget | null | undefined>
+  passive?: boolean
   /**
    * Set to `true` to ignore repeated events when the key is being held down.
    *
    * @default false
    */
-  dedupe?: MaybeRefOrGetter<boolean>;
+  dedupe?: MaybeRefOrGetter<boolean>
 }
 /**
  * Listen for keyboard keystrokes.
@@ -175,12 +175,12 @@ export interface OnKeyStrokeOptions {
 export declare function onKeyStroke(
   key: KeyFilter,
   handler: (event: KeyboardEvent) => void,
-  options?: OnKeyStrokeOptions,
-): () => void;
+  options?: OnKeyStrokeOptions
+): () => void
 export declare function onKeyStroke(
   handler: (event: KeyboardEvent) => void,
-  options?: OnKeyStrokeOptions,
-): () => void;
+  options?: OnKeyStrokeOptions
+): () => void
 /**
  * Listen to the keydown event of the given key.
  *
@@ -192,8 +192,8 @@ export declare function onKeyStroke(
 export declare function onKeyDown(
   key: KeyFilter,
   handler: (event: KeyboardEvent) => void,
-  options?: Omit<OnKeyStrokeOptions, "eventName">,
-): () => void;
+  options?: Omit<OnKeyStrokeOptions, 'eventName'>
+): () => void
 /**
  * Listen to the keypress event of the given key.
  *
@@ -205,8 +205,8 @@ export declare function onKeyDown(
 export declare function onKeyPressed(
   key: KeyFilter,
   handler: (event: KeyboardEvent) => void,
-  options?: Omit<OnKeyStrokeOptions, "eventName">,
-): () => void;
+  options?: Omit<OnKeyStrokeOptions, 'eventName'>
+): () => void
 /**
  * Listen to the keyup event of the given key.
  *
@@ -218,6 +218,6 @@ export declare function onKeyPressed(
 export declare function onKeyUp(
   key: KeyFilter,
   handler: (event: KeyboardEvent) => void,
-  options?: Omit<OnKeyStrokeOptions, "eventName">,
-): () => void;
+  options?: Omit<OnKeyStrokeOptions, 'eventName'>
+): () => void
 ```

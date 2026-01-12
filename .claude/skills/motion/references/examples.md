@@ -30,10 +30,10 @@ These React/CSS libraries provide patterns easily ported to Motion Vue:
 ```vue
 <!-- Parallax -->
 <script setup>
-import { motion, useScroll, useTransform } from "motion-v";
+  import { motion, useScroll, useTransform } from 'motion-v'
 
-const { scrollYProgress } = useScroll();
-const y = useTransform(scrollYProgress, [0, 1], [0, -200]);
+  const { scrollYProgress } = useScroll()
+  const y = useTransform(scrollYProgress, [0, 1], [0, -200])
 </script>
 
 <motion.div :style="{ y }">Parallax content</motion.div>
@@ -75,21 +75,21 @@ const y = useTransform(scrollYProgress, [0, 1], [0, -200]);
 ```vue
 <!-- Magnetic button -->
 <script setup>
-import { motion, useMotionValue } from 'motion-v'
+  import { motion, useMotionValue } from 'motion-v'
 
-const x = useMotionValue(0)
-const y = useMotionValue(0)
+  const x = useMotionValue(0)
+  const y = useMotionValue(0)
 
-function handleMouse(e: MouseEvent) {
-  const rect = (e.target as HTMLElement).getBoundingClientRect()
-  x.set(e.clientX - rect.left - rect.width / 2)
-  y.set(e.clientY - rect.top - rect.height / 2)
-}
+  function handleMouse(e: MouseEvent) {
+    const rect = (e.target as HTMLElement).getBoundingClientRect()
+    x.set(e.clientX - rect.left - rect.width / 2)
+    y.set(e.clientY - rect.top - rect.height / 2)
+  }
 
-function reset() {
-  x.set(0)
-  y.set(0)
-}
+  function reset() {
+    x.set(0)
+    y.set(0)
+  }
 </script>
 
 <motion.button
@@ -115,9 +115,9 @@ function reset() {
 ```vue
 <!-- Staggered text reveal -->
 <script setup>
-import { motion } from "motion-v";
+  import { motion } from 'motion-v'
 
-const words = text.split(" ");
+  const words = text.split(' ')
 </script>
 
 <template>
@@ -129,7 +129,7 @@ const words = text.split(" ");
     >
       {{ word }}
     </motion.span>
-    {{ " " }}
+    {{ ' ' }}
   </span>
 </template>
 ```
@@ -169,16 +169,16 @@ const words = text.split(" ");
 ```vue
 <!-- Gradient follow cursor -->
 <script setup>
-import { motion, useMotionValue, useMotionTemplate } from 'motion-v'
+  import { motion, useMotionValue, useMotionTemplate } from 'motion-v'
 
-const x = useMotionValue(0)
-const y = useMotionValue(0)
-const background = useMotionTemplate`radial-gradient(circle at ${x}px ${y}px, #3b82f6, transparent 80%)`
+  const x = useMotionValue(0)
+  const y = useMotionValue(0)
+  const background = useMotionTemplate`radial-gradient(circle at ${x}px ${y}px, #3b82f6, transparent 80%)`
 
-function handleMouse(e: MouseEvent) {
-  x.set(e.clientX)
-  y.set(e.clientY)
-}
+  function handleMouse(e: MouseEvent) {
+    x.set(e.clientX)
+    y.set(e.clientY)
+  }
 </script>
 
 <motion.div :style="{ background }" @mousemove="handleMouse" class="fixed inset-0" />

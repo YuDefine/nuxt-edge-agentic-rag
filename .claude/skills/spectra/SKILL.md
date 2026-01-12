@@ -1,6 +1,6 @@
 ---
 name: spectra
-description: "Spectra orchestrator — auto-detect which spectra sub-skill to invoke based on project state and user intent"
+description: 'Spectra orchestrator — auto-detect which spectra sub-skill to invoke based on project state and user intent'
 ---
 
 # Spectra Orchestrator

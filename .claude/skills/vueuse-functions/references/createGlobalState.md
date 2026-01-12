@@ -13,36 +13,36 @@ Keep states in the global scope to be reusable across Vue instances.
 
 ```ts
 // store.ts
-import { createGlobalState } from "@vueuse/core";
-import { shallowRef } from "vue";
+import { createGlobalState } from '@vueuse/core'
+import { shallowRef } from 'vue'
 
 export const useGlobalState = createGlobalState(() => {
-  const count = shallowRef(0);
-  return { count };
-});
+  const count = shallowRef(0)
+  return { count }
+})
 ```
 
 A bigger example:
 
 ```ts
 // store.ts
-import { createGlobalState } from "@vueuse/core";
-import { computed, shallowRef } from "vue";
+import { createGlobalState } from '@vueuse/core'
+import { computed, shallowRef } from 'vue'
 
 export const useGlobalState = createGlobalState(() => {
   // state
-  const count = shallowRef(0);
+  const count = shallowRef(0)
 
   // getters
-  const doubleCount = computed(() => count.value * 2);
+  const doubleCount = computed(() => count.value * 2)
 
   // actions
   function increment() {
-    count.value++;
+    count.value++
   }
 
-  return { count, doubleCount, increment };
-});
+  return { count, doubleCount, increment }
+})
 ```
 
 ### With Persistence
@@ -51,11 +51,11 @@ Store in `localStorage` with `useStorage`:
 
 ```ts twoslash include store
 // store.ts
-import { createGlobalState, useStorage } from "@vueuse/core";
+import { createGlobalState, useStorage } from '@vueuse/core'
 
 export const useGlobalState = createGlobalState(() =>
-  useStorage("vueuse-local-storage", "initialValue"),
-);
+  useStorage('vueuse-local-storage', 'initialValue')
+)
 ```
 
 ```ts
@@ -63,20 +63,20 @@ export const useGlobalState = createGlobalState(() =>
 // @include: store
 // ---cut---
 // component.ts
-import { useGlobalState } from "./store";
+import { useGlobalState } from './store'
 
 export default defineComponent({
   setup() {
-    const state = useGlobalState();
-    return { state };
+    const state = useGlobalState()
+    return { state }
   },
-});
+})
 ```
 
 ## Type Declarations
 
 ```ts
-export type CreateGlobalStateReturn<Fn extends AnyFn = AnyFn> = Fn;
+export type CreateGlobalStateReturn<Fn extends AnyFn = AnyFn> = Fn
 /**
  * Keep states in the global scope to be reusable across Vue instances.
  *
@@ -86,6 +86,6 @@ export type CreateGlobalStateReturn<Fn extends AnyFn = AnyFn> = Fn;
  * @__NO_SIDE_EFFECTS__
  */
 export declare function createGlobalState<Fn extends AnyFn>(
-  stateFactory: Fn,
-): CreateGlobalStateReturn<Fn>;
+  stateFactory: Fn
+): CreateGlobalStateReturn<Fn>
 ```

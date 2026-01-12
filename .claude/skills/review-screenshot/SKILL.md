@@ -1,6 +1,6 @@
 ---
 name: review-screenshot
-description: "截圖、看畫面、確認 UI、看一下頁面、幫我看 UI、review screenshot、跑檢查清單 — 統一截圖入口，派遣 screenshot-review agent（Sonnet）執行。"
+description: '截圖、看畫面、確認 UI、看一下頁面、幫我看 UI、review screenshot、跑檢查清單 — 統一截圖入口，派遣 screenshot-review agent（Sonnet）執行。'
 ---
 
 # 截圖（統一入口）

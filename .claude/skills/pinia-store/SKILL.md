@@ -23,25 +23,25 @@ app/stores/
 使用 Composition API 語法：
 
 ```typescript
-import { defineStore } from "pinia";
+import { defineStore } from 'pinia'
 
-export const useMyStore = defineStore("my-store", () => {
-  const items = ref<Item[]>([]);
-  const isLoading = ref(false);
-  const error = ref<Error | null>(null);
+export const useMyStore = defineStore('my-store', () => {
+  const items = ref<Item[]>([])
+  const isLoading = ref(false)
+  const error = ref<Error | null>(null)
 
-  const itemCount = computed(() => items.value.length);
+  const itemCount = computed(() => items.value.length)
 
   async function loadItems() {
-    isLoading.value = true;
-    error.value = null;
+    isLoading.value = true
+    error.value = null
     try {
-      const data = await $fetch("/api/v1/items");
-      items.value = data;
+      const data = await $fetch('/api/v1/items')
+      items.value = data
     } catch (e) {
-      error.value = e as Error;
+      error.value = e as Error
     } finally {
-      isLoading.value = false;
+      isLoading.value = false
     }
   }
 
@@ -51,8 +51,8 @@ export const useMyStore = defineStore("my-store", () => {
     error: readonly(error),
     itemCount,
     loadItems,
-  };
-});
+  }
+})
 ```
 
 ## 命名規範
@@ -71,11 +71,11 @@ export const userPreferencesStore = defineStore('preferences', ...)
 
 ```vue
 <script setup lang="ts">
-const store = useMyStore();
+  const store = useMyStore()
 
-// 解構保持響應性
-const { items, isLoading } = storeToRefs(store);
-const { loadItems } = store;
+  // 解構保持響應性
+  const { items, isLoading } = storeToRefs(store)
+  const { loadItems } = store
 </script>
 ```
 
