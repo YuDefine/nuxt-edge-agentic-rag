@@ -1,5 +1,5 @@
 ---
-description: "獨立 code review — 從全新視角檢查"
+description: '獨立 code review — 從全新視角檢查'
 ---
 
 # /second-opinion — 獨立 Code Review

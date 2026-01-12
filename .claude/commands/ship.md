@@ -1,5 +1,5 @@
 ---
-description: "自動發布流程：check → push → PR"
+description: '自動發布流程：check → push → PR'
 ---
 
 # /ship — 自動發布

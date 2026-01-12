@@ -1,5 +1,5 @@
 ---
-description: "Sprint 回顧 — 分析最近的開發指標"
+description: 'Sprint 回顧 — 分析最近的開發指標'
 ---
 
 # /retro — Sprint 回顧

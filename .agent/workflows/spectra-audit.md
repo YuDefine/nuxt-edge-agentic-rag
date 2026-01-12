@@ -181,7 +181,7 @@ verify_ssl: fasle # not "false", might be treated as truthy?
 # Dangerous combination
 auth_required: true
 bypass_auth_for_health: true
-health_check_path: "/" # oops, entire site bypasses auth
+health_check_path: '/' # oops, entire site bypasses auth
 ```
 
 #### 5. Silent Failures

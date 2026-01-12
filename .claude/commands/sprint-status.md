@@ -1,5 +1,5 @@
 ---
-description: "顯示當前開發狀態 Dashboard"
+description: '顯示當前開發狀態 Dashboard'
 ---
 
 # /sprint-status — 開發狀態 Dashboard

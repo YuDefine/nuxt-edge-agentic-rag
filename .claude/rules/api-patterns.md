@@ -1,6 +1,6 @@
 ---
 description: Server API 設計規範
-globs: ["server/api/**/*.ts"]
+globs: ['server/api/**/*.ts']
 ---
 
 # API Patterns
