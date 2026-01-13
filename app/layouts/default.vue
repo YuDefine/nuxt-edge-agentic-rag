@@ -1,5 +1,5 @@
 <script setup lang="ts">
-const links = [{ label: "首頁", to: "/" }];
+  const links = [{ label: '首頁', to: '/' }]
 </script>
 
 <template>
@@ -18,7 +18,7 @@ const links = [{ label: "首頁", to: "/" }];
 
     <footer class="border-t py-4">
       <UContainer>
-        <p class="text-center text-sm text-gray-500">Nuxt Edge Agentic RAG</p>
+        <p class="text-center text-sm text-neutral-500">Nuxt Edge Agentic RAG</p>
       </UContainer>
     </footer>
   </div>
