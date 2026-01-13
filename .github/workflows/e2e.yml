@@ -4,7 +4,7 @@ name: E2E Tests
 
 on:
   workflow_run:
-    workflows: ["CI"]
+    workflows: ['CI']
     types: [completed]
     branches: [main]
   workflow_dispatch:
@@ -33,7 +33,7 @@ jobs:
       - name: Setup Vite+ (vp)
         uses: voidzero-dev/setup-vp@v1
         with:
-          node-version: "22"
+          node-version: '22'
           cache: true
 
       - name: Install dependencies

@@ -1,1 +1,11 @@
-pnpm lint-staged
+#!/usr/bin/env sh
+
+# 執行 VitePlus staged checks（format + lint）
+vp staged
+
+# 執行 Nuxt typecheck（專案級命令，不支援 per-file 檢查）
+TS_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.(ts|mts|cts|tsx|vue)$' || true)
+if [ -n "$TS_FILES" ]; then
+  echo "🔍 執行 Nuxt typecheck..."
+  nuxt typecheck
+fi

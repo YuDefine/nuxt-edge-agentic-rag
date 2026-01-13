@@ -127,9 +127,9 @@
       "computedHash": "9952c84ee754979cd340d74a01173be3e39a1297c5c0907de1dc71d902e00901"
     },
     "nuxt": {
-      "source": "onmax/nuxt-skills",
+      "source": "antfu/skills",
       "sourceType": "github",
-      "computedHash": "571d9ea31a6f18b94168894814f20df361773e16de4a6dc675b526aaf6d55a45"
+      "computedHash": "9e8237ec92083db9a6f4c77d5e5bf4b1d9873d670671235bc75455ee1ca39c74"
     },
     "nuxt-better-auth": {
       "source": "onmax/nuxt-skills",
@@ -157,9 +157,9 @@
       "computedHash": "97bc283ac7a8927cac035027f64b67a841933d40bb70709b2e6570984f9da8a9"
     },
     "nuxt-ui": {
-      "source": "onmax/nuxt-skills",
+      "source": "nuxt/ui",
       "sourceType": "github",
-      "computedHash": "c793a5cefc7a23a1e2e9fb637372ab5c4f9d1c26f04a7abba91ffa51c9726485"
+      "computedHash": "d68902b1e5f1435e6904323dc8227f31c42d03306dd0850bcb8491191b985752"
     },
     "nuxthub": {
       "source": "onmax/nuxt-skills",
@@ -214,7 +214,7 @@
     "reka-ui": {
       "source": "onmax/nuxt-skills",
       "sourceType": "github",
-      "computedHash": "fd2b8ae0cd7f30b85def649be6f305403fa2253c31c2cfdb9961f73ae222e569"
+      "computedHash": "c4de68cf105e52e41f068f406cf4846884d6116742e175a02f16b1a5536eb77e"
     },
     "requesting-code-review": {
       "source": "obra/superpowers",
@@ -307,14 +307,14 @@
       "computedHash": "629d8ec4bcbf7cac86c15c3ca5f173933f01729bcb6396c0d74733755a896a41"
     },
     "vitest": {
-      "source": "onmax/nuxt-skills",
+      "source": "antfu/skills",
       "sourceType": "github",
-      "computedHash": "04ed1b09da8ac778d693ad12fab49b1c48aadfe1758fe13eb4d6de3fdcbb22f4"
+      "computedHash": "669c7275f7e1379b06b2bcfa593603aead4c983b951c7e8edbc09640aa38d0a1"
     },
     "vue": {
-      "source": "onmax/nuxt-skills",
+      "source": "antfu/skills",
       "sourceType": "github",
-      "computedHash": "cb120821c275a351b6e3c154d82cf62a9277b6260c2c30b3101f688928a3428b"
+      "computedHash": "9c241141e07e836e4f0537c63e8f929fba3767c2997250be38e699f19b75e3f2"
     },
     "vue-best-practices": {
       "source": "antfu/skills",
@@ -334,7 +334,7 @@
     "vueuse": {
       "source": "onmax/nuxt-skills",
       "sourceType": "github",
-      "computedHash": "a4f2d8e5223ed6598fdc733c491cd94edeb9125e128f7205f169ca9283b9d425"
+      "computedHash": "f6fbd61d5a3fe4882708d89bd822dbfddf890e51609d6cbb80f882f58809e7a9"
     },
     "vueuse-functions": {
       "source": "antfu/skills",

@@ -1,4 +1,4 @@
-import type { PiniaColadaOptions } from "@pinia/colada";
+import type { PiniaColadaOptions } from '@pinia/colada'
 
 /**
  * Pinia Colada 全域設定
@@ -13,4 +13,4 @@ export default {
   // 未使用的快取資料保留時間（毫秒）
   // 超過後會被垃圾回收
   gcTime: 5 * 60_000, // 5 分鐘
-} satisfies PiniaColadaOptions;
+} satisfies PiniaColadaOptions
