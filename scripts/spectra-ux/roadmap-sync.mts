@@ -35,139 +35,139 @@
  * See docs/rules/ux-completeness.md and docs/ROADMAP.md for the workflow.
  */
 
-import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
+import { dirname, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 // ---------------- constants ----------------
 
 const MARKERS = {
-  activeStart: "<!-- SPECTRA-UX:ROADMAP-AUTO:active -->",
-  activeEnd: "<!-- SPECTRA-UX:ROADMAP-AUTO:/active -->",
-  parallelismStart: "<!-- SPECTRA-UX:ROADMAP-AUTO:parallelism -->",
-  parallelismEnd: "<!-- SPECTRA-UX:ROADMAP-AUTO:/parallelism -->",
-  backlogStart: "<!-- SPECTRA-UX:ROADMAP-MANUAL:backlog -->",
-  backlogEnd: "<!-- SPECTRA-UX:ROADMAP-MANUAL:/backlog -->",
-} as const;
+  activeStart: '<!-- SPECTRA-UX:ROADMAP-AUTO:active -->',
+  activeEnd: '<!-- SPECTRA-UX:ROADMAP-AUTO:/active -->',
+  parallelismStart: '<!-- SPECTRA-UX:ROADMAP-AUTO:parallelism -->',
+  parallelismEnd: '<!-- SPECTRA-UX:ROADMAP-AUTO:/parallelism -->',
+  backlogStart: '<!-- SPECTRA-UX:ROADMAP-MANUAL:backlog -->',
+  backlogEnd: '<!-- SPECTRA-UX:ROADMAP-MANUAL:/backlog -->',
+} as const
 
 // Max directory levels to walk upward when finding the project root.
-const MAX_WALK_DEPTH = 8;
+const MAX_WALK_DEPTH = 8
 
 // ---------------- types ----------------
 
-type Stage = "draft" | "wip" | "ready" | "blocked";
+type Stage = 'draft' | 'wip' | 'ready' | 'blocked'
 
 interface Config {
-  openspecDir: string;
-  roadmapPath: string;
-  enabled: boolean;
+  openspecDir: string
+  roadmapPath: string
+  enabled: boolean
 }
 
 interface ChangeInfo {
-  name: string;
-  dir: string;
-  stage: Stage;
-  tasksDone: number;
-  tasksTotal: number;
-  affectedSpecs: string[];
-  dependsOn: string[];
-  blockedReason: string | null;
-  mtime: number;
+  name: string
+  dir: string
+  stage: Stage
+  tasksDone: number
+  tasksTotal: number
+  affectedSpecs: string[]
+  dependsOn: string[]
+  blockedReason: string | null
+  mtime: number
 }
 
 interface ParallelismReport {
-  independent: string[];
-  mutex: Array<{ spec: string; changes: string[] }>;
-  blocked: Array<{ change: string; waitsFor: string[] }>;
+  independent: string[]
+  mutex: Array<{ spec: string; changes: string[] }>
+  blocked: Array<{ change: string; waitsFor: string[] }>
 }
 
 interface SyncReport {
-  changes: ChangeInfo[];
-  parallelism: ParallelismReport;
-  roadmapPath: string;
-  wrote: boolean;
-  skipped: "mtime" | "check-only" | null;
+  changes: ChangeInfo[]
+  parallelism: ParallelismReport
+  roadmapPath: string
+  wrote: boolean
+  skipped: 'mtime' | 'check-only' | null
 }
 
 interface CliOptions {
-  check: boolean;
-  force: boolean;
-  json: boolean;
+  check: boolean
+  force: boolean
+  json: boolean
 }
 
 // ---------------- cli ----------------
 
 function parseArgs(argv: string[]): CliOptions {
-  const opts: CliOptions = { check: false, force: false, json: false };
+  const opts: CliOptions = { check: false, force: false, json: false }
   for (const arg of argv.slice(2)) {
-    if (arg === "--check") opts.check = true;
-    else if (arg === "--force") opts.force = true;
-    else if (arg === "--json") opts.json = true;
-    else if (arg === "--help" || arg === "-h") {
+    if (arg === '--check') opts.check = true
+    else if (arg === '--force') opts.force = true
+    else if (arg === '--json') opts.json = true
+    else if (arg === '--help' || arg === '-h') {
       console.log(
-        "Usage: roadmap-sync.mts [--check] [--force] [--json]\n" +
-          "  --check   Validate only; do not write. Exit 1 if roadmap is stale.\n" +
-          "  --force   Skip mtime fast path and regenerate unconditionally.\n" +
-          "  --json    Emit report as JSON instead of the normal summary.",
-      );
-      process.exit(0);
+        'Usage: roadmap-sync.mts [--check] [--force] [--json]\n' +
+          '  --check   Validate only; do not write. Exit 1 if roadmap is stale.\n' +
+          '  --force   Skip mtime fast path and regenerate unconditionally.\n' +
+          '  --json    Emit report as JSON instead of the normal summary.'
+      )
+      process.exit(0)
     } else {
-      console.error(`roadmap-sync: unknown flag ${arg}`);
-      process.exit(2);
+      console.error(`roadmap-sync: unknown flag ${arg}`)
+      process.exit(2)
     }
   }
-  return opts;
+  return opts
 }
 
-const cli = parseArgs(process.argv);
+const cli = parseArgs(process.argv)
 
 // ---------------- repo root + config ----------------
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = dirname(__filename)
 
 function findRepoRoot(): string {
   // Prefer spectra-ux.config.json as the canonical anchor. Fallback to .git
   // for installs without config, final fallback is script dir's grandparent.
-  let dir = __dirname;
+  let dir = __dirname
   for (let i = 0; i < MAX_WALK_DEPTH; i++) {
-    if (existsSync(resolve(dir, "spectra-ux.config.json"))) return dir;
-    const parent = dirname(dir);
-    if (parent === dir) break;
-    dir = parent;
+    if (existsSync(resolve(dir, 'spectra-ux.config.json'))) return dir
+    const parent = dirname(dir)
+    if (parent === dir) break
+    dir = parent
   }
-  dir = __dirname;
+  dir = __dirname
   for (let i = 0; i < MAX_WALK_DEPTH; i++) {
-    if (existsSync(resolve(dir, ".git"))) return dir;
-    const parent = dirname(dir);
-    if (parent === dir) break;
-    dir = parent;
+    if (existsSync(resolve(dir, '.git'))) return dir
+    const parent = dirname(dir)
+    if (parent === dir) break
+    dir = parent
   }
-  return resolve(__dirname, "..");
+  return resolve(__dirname, '..')
 }
 
-const repoRoot = findRepoRoot();
+const repoRoot = findRepoRoot()
 
 function loadConfig(): Config {
-  const configPath = resolve(repoRoot, "spectra-ux.config.json");
+  const configPath = resolve(repoRoot, 'spectra-ux.config.json')
   const defaults: Config = {
-    openspecDir: "openspec",
-    roadmapPath: "openspec/ROADMAP.md",
+    openspecDir: 'openspec',
+    roadmapPath: 'openspec/ROADMAP.md',
     enabled: true,
-  };
-  if (!existsSync(configPath)) return defaults;
+  }
+  if (!existsSync(configPath)) return defaults
   try {
-    const raw = JSON.parse(readFileSync(configPath, "utf-8")) as {
-      paths?: { openspec?: string };
-      roadmap?: { enabled?: boolean; path?: string };
-    };
-    const openspecDir = raw.paths?.openspec ?? defaults.openspecDir;
-    const roadmapPath = raw.roadmap?.path ?? `${openspecDir.replace(/\/$/, "")}/ROADMAP.md`;
-    const enabled = raw.roadmap?.enabled ?? true;
-    return { openspecDir, roadmapPath, enabled };
+    const raw = JSON.parse(readFileSync(configPath, 'utf-8')) as {
+      paths?: { openspec?: string }
+      roadmap?: { enabled?: boolean; path?: string }
+    }
+    const openspecDir = raw.paths?.openspec ?? defaults.openspecDir
+    const roadmapPath = raw.roadmap?.path ?? `${openspecDir.replace(/\/$/, '')}/ROADMAP.md`
+    const enabled = raw.roadmap?.enabled ?? true
+    return { openspecDir, roadmapPath, enabled }
   } catch (err) {
-    console.error(`roadmap-sync: failed to read spectra-ux.config.json: ${err}`);
-    return defaults;
+    console.error(`roadmap-sync: failed to read spectra-ux.config.json: ${err}`)
+    return defaults
   }
 }
 
@@ -175,40 +175,40 @@ function loadConfig(): Config {
 
 function readSafe(path: string): string {
   try {
-    return readFileSync(path, "utf-8");
+    return readFileSync(path, 'utf-8')
   } catch {
-    return "";
+    return ''
   }
 }
 
 function statMtime(path: string): number {
   try {
-    return statSync(path).mtimeMs;
+    return statSync(path).mtimeMs
   } catch {
-    return 0;
+    return 0
   }
 }
 
 function listValidSpecs(openspecDir: string): Set<string> {
-  const specsDir = resolve(repoRoot, openspecDir, "specs");
-  if (!existsSync(specsDir)) return new Set();
+  const specsDir = resolve(repoRoot, openspecDir, 'specs')
+  if (!existsSync(specsDir)) return new Set()
   try {
-    const entries = readdirSync(specsDir, { withFileTypes: true });
-    return new Set(entries.filter((e) => e.isDirectory()).map((e) => e.name));
+    const entries = readdirSync(specsDir, { withFileTypes: true })
+    return new Set(entries.filter((e) => e.isDirectory()).map((e) => e.name))
   } catch {
-    return new Set();
+    return new Set()
   }
 }
 
 function listActiveChangeDirs(openspecDir: string): string[] {
-  const changesDir = resolve(repoRoot, openspecDir, "changes");
-  if (!existsSync(changesDir)) return [];
+  const changesDir = resolve(repoRoot, openspecDir, 'changes')
+  if (!existsSync(changesDir)) return []
   try {
     return readdirSync(changesDir, { withFileTypes: true })
-      .filter((e) => e.isDirectory() && e.name !== "archive" && !e.name.startsWith("."))
-      .map((e) => resolve(changesDir, e.name));
+      .filter((e) => e.isDirectory() && e.name !== 'archive' && !e.name.startsWith('.'))
+      .map((e) => resolve(changesDir, e.name))
   } catch {
-    return [];
+    return []
   }
 }
 
@@ -218,15 +218,15 @@ function listActiveChangeDirs(openspecDir: string): string[] {
  * task headings (`## 1. Foo`) are not counted — only actual checkboxes.
  */
 function parseTasks(content: string): { done: number; total: number } {
-  let done = 0;
-  let total = 0;
-  const re = /^\s*[-*]\s*\[([ xX])\]/gm;
-  let match: RegExpExecArray | null;
+  let done = 0
+  let total = 0
+  const re = /^\s*[-*]\s*\[([ xX])\]/gm
+  let match: RegExpExecArray | null
   while ((match = re.exec(content)) !== null) {
-    total += 1;
-    if (match[1] !== " ") done += 1;
+    total += 1
+    if (match[1] !== ' ') done += 1
   }
-  return { done, total };
+  return { done, total }
 }
 
 /**
@@ -239,22 +239,22 @@ function parseTasks(content: string): { done: number; total: number } {
  * while still catching the canonical ways spectra proposals cite specs.
  */
 function extractAffectedSpecs(content: string, validSpecs: Set<string>): string[] {
-  const sections: string[] = [];
-  for (const name of ["Capabilities", "Impact", "Affected specs"]) {
-    const section = extractMarkdownSection(content, name);
-    if (section) sections.push(section);
+  const sections: string[] = []
+  for (const name of ['Capabilities', 'Impact', 'Affected specs']) {
+    const section = extractMarkdownSection(content, name)
+    if (section) sections.push(section)
   }
-  if (sections.length === 0) return [];
+  if (sections.length === 0) return []
 
-  const joined = sections.join("\n");
-  const hits = new Set<string>();
-  const re = /`([a-z][a-z0-9-]*[a-z0-9])`/g;
-  let match: RegExpExecArray | null;
+  const joined = sections.join('\n')
+  const hits = new Set<string>()
+  const re = /`([a-z][a-z0-9-]*[a-z0-9])`/g
+  let match: RegExpExecArray | null
   while ((match = re.exec(joined)) !== null) {
-    const name = match[1]!;
-    if (validSpecs.has(name)) hits.add(name);
+    const name = match[1]!
+    if (validSpecs.has(name)) hits.add(name)
   }
-  return [...hits].toSorted();
+  return [...hits].toSorted()
 }
 
 /**
@@ -262,25 +262,25 @@ function extractAffectedSpecs(content: string, validSpecs: Set<string>): string[
  * `## ` heading of the same level. Case-insensitive heading match.
  */
 function extractMarkdownSection(content: string, heading: string): string | null {
-  const lines = content.split("\n");
-  const target = heading.toLowerCase();
-  let start = -1;
+  const lines = content.split('\n')
+  const target = heading.toLowerCase()
+  let start = -1
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]!;
+    const line = lines[i]!
     if (/^##\s+/.test(line) && line.slice(3).trim().toLowerCase() === target) {
-      start = i + 1;
-      break;
+      start = i + 1
+      break
     }
   }
-  if (start === -1) return null;
-  let end = lines.length;
+  if (start === -1) return null
+  let end = lines.length
   for (let i = start; i < lines.length; i++) {
     if (/^##\s+/.test(lines[i]!)) {
-      end = i;
-      break;
+      end = i
+      break
     }
   }
-  return lines.slice(start, end).join("\n");
+  return lines.slice(start, end).join('\n')
 }
 
 /**
@@ -288,56 +288,56 @@ function extractMarkdownSection(content: string, heading: string): string | null
  * from proposal.md. Multiple markers are unioned.
  */
 function extractDependencies(content: string): string[] {
-  const deps = new Set<string>();
-  const re = /<!--\s*depends:\s*([^>]+?)\s*-->/gi;
-  let match: RegExpExecArray | null;
+  const deps = new Set<string>()
+  const re = /<!--\s*depends:\s*([^>]+?)\s*-->/gi
+  let match: RegExpExecArray | null
   while ((match = re.exec(content)) !== null) {
-    for (const raw of match[1]!.split(",")) {
-      const name = raw.trim();
-      if (name) deps.add(name);
+    for (const raw of match[1]!.split(',')) {
+      const name = raw.trim()
+      if (name) deps.add(name)
     }
   }
-  return [...deps].toSorted();
+  return [...deps].toSorted()
 }
 
 /**
  * Parse `<!-- blocked: reason -->` marker — presence forces stage=blocked.
  */
 function extractBlockedReason(content: string): string | null {
-  const match = /<!--\s*blocked:\s*([^>]+?)\s*-->/i.exec(content);
-  return match ? match[1]!.trim() : null;
+  const match = /<!--\s*blocked:\s*([^>]+?)\s*-->/i.exec(content)
+  return match ? match[1]!.trim() : null
 }
 
 function classifyStage(
   tasks: { done: number; total: number },
   hasTasksFile: boolean,
-  blockedReason: string | null,
+  blockedReason: string | null
 ): Stage {
-  if (blockedReason) return "blocked";
-  if (!hasTasksFile || tasks.total === 0) return "draft";
-  if (tasks.done === 0) return "draft";
-  if (tasks.done === tasks.total) return "ready";
-  return "wip";
+  if (blockedReason) return 'blocked'
+  if (!hasTasksFile || tasks.total === 0) return 'draft'
+  if (tasks.done === 0) return 'draft'
+  if (tasks.done === tasks.total) return 'ready'
+  return 'wip'
 }
 
 function scanChanges(openspecDir: string): ChangeInfo[] {
-  const validSpecs = listValidSpecs(openspecDir);
-  const dirs = listActiveChangeDirs(openspecDir);
-  const changes: ChangeInfo[] = [];
+  const validSpecs = listValidSpecs(openspecDir)
+  const dirs = listActiveChangeDirs(openspecDir)
+  const changes: ChangeInfo[] = []
 
   for (const dir of dirs) {
-    const proposalPath = join(dir, "proposal.md");
-    const tasksPath = join(dir, "tasks.md");
-    if (!existsSync(proposalPath)) continue;
+    const proposalPath = join(dir, 'proposal.md')
+    const tasksPath = join(dir, 'tasks.md')
+    if (!existsSync(proposalPath)) continue
 
-    const proposalContent = readSafe(proposalPath);
-    const tasksContent = existsSync(tasksPath) ? readSafe(tasksPath) : "";
-    const tasks = parseTasks(tasksContent);
+    const proposalContent = readSafe(proposalPath)
+    const tasksContent = existsSync(tasksPath) ? readSafe(tasksPath) : ''
+    const tasks = parseTasks(tasksContent)
     const blockedReason =
-      extractBlockedReason(proposalContent) || extractBlockedReason(tasksContent);
+      extractBlockedReason(proposalContent) || extractBlockedReason(tasksContent)
 
     const info: ChangeInfo = {
-      name: dir.split("/").pop() ?? dir,
+      name: dir.split('/').pop() ?? dir,
       dir,
       stage: classifyStage(tasks, existsSync(tasksPath), blockedReason),
       tasksDone: tasks.done,
@@ -346,12 +346,12 @@ function scanChanges(openspecDir: string): ChangeInfo[] {
       dependsOn: extractDependencies(proposalContent),
       blockedReason,
       mtime: Math.max(statMtime(proposalPath), statMtime(tasksPath)),
-    };
-    changes.push(info);
+    }
+    changes.push(info)
   }
 
-  changes.sort((a, b) => a.name.localeCompare(b.name));
-  return changes;
+  changes.sort((a, b) => a.name.localeCompare(b.name))
+  return changes
 }
 
 // ---------------- parallelism ----------------
@@ -360,148 +360,148 @@ function analyzeParallelism(changes: ChangeInfo[]): ParallelismReport {
   // Mutex detection runs across ALL non-archived changes (including ready
   // and blocked) so users see spec collisions even right before archive.
   // Independent/blocked lists are narrowed to "next-to-start" scope below.
-  const specToChanges = new Map<string, string[]>();
+  const specToChanges = new Map<string, string[]>()
   for (const c of changes) {
     for (const spec of c.affectedSpecs) {
-      const list = specToChanges.get(spec) ?? [];
-      list.push(c.name);
-      specToChanges.set(spec, list);
+      const list = specToChanges.get(spec) ?? []
+      list.push(c.name)
+      specToChanges.set(spec, list)
     }
   }
 
-  const mutex: ParallelismReport["mutex"] = [];
-  const mutexChanges = new Set<string>();
+  const mutex: ParallelismReport['mutex'] = []
+  const mutexChanges = new Set<string>()
   for (const [spec, names] of specToChanges) {
     if (names.length > 1) {
-      mutex.push({ spec, changes: [...names].toSorted() });
-      for (const n of names) mutexChanges.add(n);
+      mutex.push({ spec, changes: [...names].toSorted() })
+      for (const n of names) mutexChanges.add(n)
     }
   }
-  mutex.sort((a, b) => a.spec.localeCompare(b.spec));
+  mutex.sort((a, b) => a.spec.localeCompare(b.spec))
 
   // Independent / blocked only consider "next to start" changes — wip + draft.
   // Ready changes are waiting for archive, not waiting for parallel work.
-  const candidates = changes.filter((c) => c.stage === "wip" || c.stage === "draft");
-  const allActiveNames = new Set(changes.map((c) => c.name));
+  const candidates = changes.filter((c) => c.stage === 'wip' || c.stage === 'draft')
+  const allActiveNames = new Set(changes.map((c) => c.name))
 
-  const blocked: ParallelismReport["blocked"] = [];
-  const blockedNames = new Set<string>();
+  const blocked: ParallelismReport['blocked'] = []
+  const blockedNames = new Set<string>()
   for (const c of candidates) {
-    if (c.dependsOn.length === 0) continue;
+    if (c.dependsOn.length === 0) continue
     // A dependency blocks only if it's still in-flight. If the dep is
     // already archived (not in changes/) or not found at all, we treat it
     // as satisfied — the user either finished it or typoed the name.
     const waiting = c.dependsOn.filter((d) => {
-      if (!allActiveNames.has(d)) return false;
-      const depChange = changes.find((x) => x.name === d);
-      return depChange?.stage !== "ready";
-    });
+      if (!allActiveNames.has(d)) return false
+      const depChange = changes.find((x) => x.name === d)
+      return depChange?.stage !== 'ready'
+    })
     if (waiting.length > 0) {
-      blocked.push({ change: c.name, waitsFor: waiting.toSorted() });
-      blockedNames.add(c.name);
+      blocked.push({ change: c.name, waitsFor: waiting.toSorted() })
+      blockedNames.add(c.name)
     }
   }
-  blocked.sort((a, b) => a.change.localeCompare(b.change));
+  blocked.sort((a, b) => a.change.localeCompare(b.change))
 
   // Independent = candidates not in mutex nor blocked
   const independent = candidates
     .filter((c) => !mutexChanges.has(c.name) && !blockedNames.has(c.name))
     .map((c) => c.name)
-    .toSorted();
+    .toSorted()
 
-  return { independent, mutex, blocked };
+  return { independent, mutex, blocked }
 }
 
 // ---------------- rendering ----------------
 
 function fmtPercent(done: number, total: number): string {
-  if (total === 0) return "—";
-  return `${Math.round((done / total) * 100)}%`;
+  if (total === 0) return '—'
+  return `${Math.round((done / total) * 100)}%`
 }
 
 function fmtChangeLine(c: ChangeInfo): string {
   const progress =
     c.tasksTotal > 0
       ? `${c.tasksDone}/${c.tasksTotal} tasks (${fmtPercent(c.tasksDone, c.tasksTotal)})`
-      : "proposal only";
+      : 'proposal only'
   const specs =
     c.affectedSpecs.length > 0
-      ? `\n  - Specs: ${c.affectedSpecs.map((s) => `\`${s}\``).join(", ")}`
-      : "";
-  const deps = c.dependsOn.length > 0 ? `\n  - Depends on: ${c.dependsOn.join(", ")}` : "";
-  const blocked = c.blockedReason ? `\n  - Blocked: ${c.blockedReason}` : "";
-  return `- **${c.name}** — ${progress}${specs}${deps}${blocked}`;
+      ? `\n  - Specs: ${c.affectedSpecs.map((s) => `\`${s}\``).join(', ')}`
+      : ''
+  const deps = c.dependsOn.length > 0 ? `\n  - Depends on: ${c.dependsOn.join(', ')}` : ''
+  const blocked = c.blockedReason ? `\n  - Blocked: ${c.blockedReason}` : ''
+  return `- **${c.name}** — ${progress}${specs}${deps}${blocked}`
 }
 
 function renderActiveBlock(changes: ChangeInfo[], now: Date): string {
-  const ts = now.toISOString();
-  const ready = changes.filter((c) => c.stage === "ready");
-  const wip = changes.filter((c) => c.stage === "wip");
-  const draft = changes.filter((c) => c.stage === "draft");
-  const blocked = changes.filter((c) => c.stage === "blocked");
+  const ts = now.toISOString()
+  const ready = changes.filter((c) => c.stage === 'ready')
+  const wip = changes.filter((c) => c.stage === 'wip')
+  const draft = changes.filter((c) => c.stage === 'draft')
+  const blocked = changes.filter((c) => c.stage === 'blocked')
 
   const section = (title: string, items: ChangeInfo[]): string => {
-    if (items.length === 0) return `### ${title}\n\n_(none)_\n`;
-    return `### ${title}\n\n${items.map(fmtChangeLine).join("\n")}\n`;
-  };
+    if (items.length === 0) return `### ${title}\n\n_(none)_\n`
+    return `### ${title}\n\n${items.map(fmtChangeLine).join('\n')}\n`
+  }
 
-  const total = changes.length;
+  const total = changes.length
   const summary =
     total === 0
-      ? "_No active changes._"
-      : `${total} active change${total === 1 ? "" : "s"} (${ready.length} ready · ${wip.length} in progress · ${draft.length} draft · ${blocked.length} blocked)`;
+      ? '_No active changes._'
+      : `${total} active change${total === 1 ? '' : 's'} (${ready.length} ready · ${wip.length} in progress · ${draft.length} draft · ${blocked.length} blocked)`
 
   return [
-    "## Active Changes",
-    "",
+    '## Active Changes',
+    '',
     `_last synced: ${ts}_`,
-    "",
+    '',
     summary,
-    "",
-    section("Ready to apply", ready),
-    section("In progress", wip),
-    section("Draft", draft),
-    section("Blocked", blocked),
+    '',
+    section('Ready to apply', ready),
+    section('In progress', wip),
+    section('Draft', draft),
+    section('Blocked', blocked),
   ]
-    .join("\n")
-    .trimEnd();
+    .join('\n')
+    .trimEnd()
 }
 
 function renderParallelismBlock(report: ParallelismReport): string {
   const section = (title: string, body: string): string => {
-    return `### ${title}\n\n${body || "_(none)_"}\n`;
-  };
+    return `### ${title}\n\n${body || '_(none)_'}\n`
+  }
 
   const indepBody = report.independent.length
-    ? report.independent.map((n) => `- \`${n}\``).join("\n")
-    : "";
+    ? report.independent.map((n) => `- \`${n}\``).join('\n')
+    : ''
 
   const mutexBody = report.mutex.length
     ? report.mutex
         .map(
           (m) =>
-            `- **${m.spec}** — conflict between: ${m.changes.map((c) => `\`${c}\``).join(", ")}`,
+            `- **${m.spec}** — conflict between: ${m.changes.map((c) => `\`${c}\``).join(', ')}`
         )
-        .join("\n")
-    : "";
+        .join('\n')
+    : ''
 
   const blockedBody = report.blocked.length
     ? report.blocked
-        .map((b) => `- \`${b.change}\` waits for: ${b.waitsFor.map((w) => `\`${w}\``).join(", ")}`)
-        .join("\n")
-    : "";
+        .map((b) => `- \`${b.change}\` waits for: ${b.waitsFor.map((w) => `\`${w}\``).join(', ')}`)
+        .join('\n')
+    : ''
 
   return [
-    "## Parallel Tracks",
-    "",
-    "> Which active changes can be worked on **simultaneously** without stepping on each other.",
-    "",
-    section("Independent (can run in parallel)", indepBody),
-    section("Mutex (same spec touched)", mutexBody),
-    section("Blocked by dependency", blockedBody),
+    '## Parallel Tracks',
+    '',
+    '> Which active changes can be worked on **simultaneously** without stepping on each other.',
+    '',
+    section('Independent (can run in parallel)', indepBody),
+    section('Mutex (same spec touched)', mutexBody),
+    section('Blocked by dependency', blockedBody),
   ]
-    .join("\n")
-    .trimEnd();
+    .join('\n')
+    .trimEnd()
 }
 
 // ---------------- writing ----------------
@@ -515,84 +515,84 @@ function replaceBetween(
   content: string,
   startMarker: string,
   endMarker: string,
-  body: string,
+  body: string
 ): string {
-  const startIdx = content.indexOf(startMarker);
-  const endIdx = content.indexOf(endMarker);
-  const block = `${startMarker}\n\n${body}\n\n${endMarker}`;
+  const startIdx = content.indexOf(startMarker)
+  const endIdx = content.indexOf(endMarker)
+  const block = `${startMarker}\n\n${body}\n\n${endMarker}`
 
   if (startIdx === -1 || endIdx === -1 || endIdx < startIdx) {
     // Append a new block; ensure single trailing newline
-    const sep = content.endsWith("\n") ? "\n" : "\n\n";
-    return `${content}${sep}${block}\n`;
+    const sep = content.endsWith('\n') ? '\n' : '\n\n'
+    return `${content}${sep}${block}\n`
   }
 
-  const before = content.slice(0, startIdx);
-  const after = content.slice(endIdx + endMarker.length);
-  return `${before}${block}${after}`;
+  const before = content.slice(0, startIdx)
+  const after = content.slice(endIdx + endMarker.length)
+  return `${before}${block}${after}`
 }
 
 function scaffoldRoadmap(): string {
   return [
-    "# OpenSpec Roadmap",
-    "",
-    "> Maintained by spectra-ux. AUTO blocks are regenerated by `spectra:roadmap`;",
-    "> the MANUAL backlog is curated by you and your AI agent during /spectra-discuss.",
-    "",
+    '# OpenSpec Roadmap',
+    '',
+    '> Maintained by spectra-ux. AUTO blocks are regenerated by `spectra:roadmap`;',
+    '> the MANUAL backlog is curated by you and your AI agent during /spectra-discuss.',
+    '',
     MARKERS.activeStart,
     MARKERS.activeEnd,
-    "",
+    '',
     MARKERS.parallelismStart,
     MARKERS.parallelismEnd,
-    "",
+    '',
     MARKERS.backlogStart,
-    "",
-    "## Next Moves",
-    "",
-    "> 由你與 AI agent 在 `/spectra-discuss` / `/spectra-propose` 結束時維護。",
-    "> 格式：`- [priority] 描述 — 依賴：xxx / 獨立 / 互斥：yyy`",
-    "> priority: `high` / `mid` / `low`",
-    "",
-    "### 近期",
-    "",
-    "_(尚未累積)_",
-    "",
-    "### 中期",
-    "",
-    "_(尚未累積)_",
-    "",
-    "### 長期",
-    "",
-    "_(尚未累積)_",
-    "",
+    '',
+    '## Next Moves',
+    '',
+    '> 由你與 AI agent 在 `/spectra-discuss` / `/spectra-propose` 結束時維護。',
+    '> 格式：`- [priority] 描述 — 依賴：xxx / 獨立 / 互斥：yyy`',
+    '> priority: `high` / `mid` / `low`',
+    '',
+    '### 近期',
+    '',
+    '_(尚未累積)_',
+    '',
+    '### 中期',
+    '',
+    '_(尚未累積)_',
+    '',
+    '### 長期',
+    '',
+    '_(尚未累積)_',
+    '',
     MARKERS.backlogEnd,
-    "",
-  ].join("\n");
+    '',
+  ].join('\n')
 }
 
 function readOrScaffoldRoadmap(roadmapPath: string): string {
-  if (existsSync(roadmapPath)) return readFileSync(roadmapPath, "utf-8");
-  return scaffoldRoadmap();
+  if (existsSync(roadmapPath)) return readFileSync(roadmapPath, 'utf-8')
+  return scaffoldRoadmap()
 }
 
 function mtimeFastPath(roadmapPath: string, changes: ChangeInfo[]): boolean {
-  if (!existsSync(roadmapPath)) return false;
-  const roadmapMtime = statMtime(roadmapPath);
-  if (roadmapMtime === 0) return false;
-  const latestChangeMtime = changes.reduce((max, c) => Math.max(max, c.mtime), 0);
+  if (!existsSync(roadmapPath)) return false
+  const roadmapMtime = statMtime(roadmapPath)
+  if (roadmapMtime === 0) return false
+  const latestChangeMtime = changes.reduce((max, c) => Math.max(max, c.mtime), 0)
   // Give a small epsilon (1s) so filesystems with second-resolution don't
   // cause false-negative "stale" detection right after a sync.
-  return roadmapMtime >= latestChangeMtime - 1;
+  return roadmapMtime >= latestChangeMtime - 1
 }
 
 // ---------------- main ----------------
 
 function syncRoadmap(): SyncReport {
-  const config = loadConfig();
-  const roadmapPath = resolve(repoRoot, config.roadmapPath);
+  const config = loadConfig()
+  const roadmapPath = resolve(repoRoot, config.roadmapPath)
 
-  const changes = scanChanges(config.openspecDir);
-  const parallelism = analyzeParallelism(changes);
+  const changes = scanChanges(config.openspecDir)
+  const parallelism = analyzeParallelism(changes)
 
   const report: SyncReport = {
     changes,
@@ -600,55 +600,55 @@ function syncRoadmap(): SyncReport {
     roadmapPath,
     wrote: false,
     skipped: null,
-  };
+  }
 
   if (!config.enabled) {
-    report.skipped = "check-only";
-    return report;
+    report.skipped = 'check-only'
+    return report
   }
 
   // Fast path: skip regeneration when nothing's changed.
   if (!cli.force && mtimeFastPath(roadmapPath, changes)) {
-    report.skipped = "mtime";
-    return report;
+    report.skipped = 'mtime'
+    return report
   }
 
-  const now = new Date();
-  const activeBody = renderActiveBlock(changes, now);
-  const parallelismBody = renderParallelismBlock(parallelism);
+  const now = new Date()
+  const activeBody = renderActiveBlock(changes, now)
+  const parallelismBody = renderParallelismBlock(parallelism)
 
-  let content = readOrScaffoldRoadmap(roadmapPath);
-  content = replaceBetween(content, MARKERS.activeStart, MARKERS.activeEnd, activeBody);
+  let content = readOrScaffoldRoadmap(roadmapPath)
+  content = replaceBetween(content, MARKERS.activeStart, MARKERS.activeEnd, activeBody)
   content = replaceBetween(
     content,
     MARKERS.parallelismStart,
     MARKERS.parallelismEnd,
-    parallelismBody,
-  );
+    parallelismBody
+  )
 
   // Ensure the manual block exists so users/agents have somewhere to write.
   if (!content.includes(MARKERS.backlogStart)) {
-    const sep = content.endsWith("\n") ? "\n" : "\n\n";
-    content = `${content}${sep}${MARKERS.backlogStart}\n\n## Next Moves\n\n_(尚未累積)_\n\n${MARKERS.backlogEnd}\n`;
+    const sep = content.endsWith('\n') ? '\n' : '\n\n'
+    content = `${content}${sep}${MARKERS.backlogStart}\n\n## Next Moves\n\n_(尚未累積)_\n\n${MARKERS.backlogEnd}\n`
   }
 
   if (cli.check) {
-    const existing = existsSync(roadmapPath) ? readFileSync(roadmapPath, "utf-8") : "";
-    report.skipped = "check-only";
+    const existing = existsSync(roadmapPath) ? readFileSync(roadmapPath, 'utf-8') : ''
+    report.skipped = 'check-only'
     if (existing !== content) {
-      return { ...report, wrote: false };
+      return { ...report, wrote: false }
     }
-    return { ...report, wrote: true };
+    return { ...report, wrote: true }
   }
 
   // Only write if content actually differs — avoids churning mtime on no-ops
-  const existing = existsSync(roadmapPath) ? readFileSync(roadmapPath, "utf-8") : "";
+  const existing = existsSync(roadmapPath) ? readFileSync(roadmapPath, 'utf-8') : ''
   if (existing !== content) {
-    writeFileSync(roadmapPath, content, "utf-8");
-    report.wrote = true;
+    writeFileSync(roadmapPath, content, 'utf-8')
+    report.wrote = true
   }
 
-  return report;
+  return report
 }
 
 function emitJson(report: SyncReport): void {
@@ -670,57 +670,57 @@ function emitJson(report: SyncReport): void {
         parallelism: report.parallelism,
       },
       null,
-      2,
-    ),
-  );
+      2
+    )
+  )
 }
 
 function emitText(report: SyncReport): void {
-  if (report.skipped === "mtime") {
-    console.log("◦ roadmap-sync: up to date (mtime fast path)");
-    return;
+  if (report.skipped === 'mtime') {
+    console.log('◦ roadmap-sync: up to date (mtime fast path)')
+    return
   }
-  if (report.skipped === "check-only") {
+  if (report.skipped === 'check-only') {
     if (report.wrote) {
-      console.log("✓ roadmap-sync: check passed");
+      console.log('✓ roadmap-sync: check passed')
     } else {
-      console.log("✗ roadmap-sync: ROADMAP.md is stale — re-run without --check");
+      console.log('✗ roadmap-sync: ROADMAP.md is stale — re-run without --check')
     }
-    return;
+    return
   }
 
-  const active = report.changes.length;
-  const ready = report.changes.filter((c) => c.stage === "ready").length;
-  const wip = report.changes.filter((c) => c.stage === "wip").length;
-  const draft = report.changes.filter((c) => c.stage === "draft").length;
-  const blocked = report.changes.filter((c) => c.stage === "blocked").length;
-  const mutex = report.parallelism.mutex.length;
+  const active = report.changes.length
+  const ready = report.changes.filter((c) => c.stage === 'ready').length
+  const wip = report.changes.filter((c) => c.stage === 'wip').length
+  const draft = report.changes.filter((c) => c.stage === 'draft').length
+  const blocked = report.changes.filter((c) => c.stage === 'blocked').length
+  const mutex = report.parallelism.mutex.length
 
-  const verb = report.wrote ? "updated" : "already current";
+  const verb = report.wrote ? 'updated' : 'already current'
   console.log(
-    `✓ roadmap-sync: ${verb} (${active} change${active === 1 ? "" : "s"}: ${ready} ready · ${wip} wip · ${draft} draft · ${blocked} blocked)`,
-  );
+    `✓ roadmap-sync: ${verb} (${active} change${active === 1 ? '' : 's'}: ${ready} ready · ${wip} wip · ${draft} draft · ${blocked} blocked)`
+  )
   if (mutex > 0) {
-    console.log(`  ⚠ ${mutex} spec collision${mutex === 1 ? "" : "s"} — check Parallel Tracks`);
+    console.log(`  ⚠ ${mutex} spec collision${mutex === 1 ? '' : 's'} — check Parallel Tracks`)
   }
 }
 
 function main(): void {
   try {
-    const report = syncRoadmap();
+    const report = syncRoadmap()
     if (cli.json) {
-      emitJson(report);
+      emitJson(report)
     } else {
-      emitText(report);
+      emitText(report)
     }
-    if (cli.check && report.skipped === "check-only" && !report.wrote) {
-      process.exit(1);
+    if (cli.check && report.skipped === 'check-only' && !report.wrote) {
+      process.exit(1)
     }
-    process.exit(0);
+    process.exit(0)
   } catch (err) {
-    console.error("roadmap-sync script error:", err);
-    process.exit(2);
+    console.error('roadmap-sync script error:', err)
+    process.exit(2)
   }
 }
 
-main();
+main()
