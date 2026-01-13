@@ -75,9 +75,9 @@ Day 7: 驗收
 
 ## Active Changes
 
-_last synced: 2026-04-15T16:02:56.133Z_
+_last synced: 2026-04-16T04:46:41.323Z_
 
-1 active change (0 ready · 0 in progress · 1 draft · 0 blocked)
+1 active change (0 ready · 1 in progress · 0 draft · 0 blocked)
 
 ### Ready to apply
 
@@ -85,11 +85,11 @@ _(none)_
 
 ### In progress
 
-_(none)_
+- **bootstrap-v1-core-from-report** — 14/26 tasks (54%)
 
 ### Draft
 
-- **bootstrap-v1-core-from-report** — 0/26 tasks (0%)
+_(none)_
 
 ### Blocked
 
