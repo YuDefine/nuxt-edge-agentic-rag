@@ -8,11 +8,11 @@
 // app/queries/useXxxQuery.ts
 export function useXxxQuery() {
   return useQuery({
-    key: ["xxx"],
-    query: () => $fetch("/api/v1/xxx"),
+    key: ['xxx'],
+    query: () => $fetch('/api/v1/xxx'),
     staleTime: 30_000, // 30 秒內視為新鮮
     gcTime: 5 * 60_000, // 5 分鐘後回收
-  });
+  })
 }
 ```
 
@@ -34,8 +34,8 @@ export default cachedEventHandler(
   {
     maxAge: 60, // 60 秒快取
     swr: true, // Stale-While-Revalidate
-  },
-);
+  }
+)
 ```
 
 ## SWR（Stale-While-Revalidate）
@@ -49,6 +49,6 @@ export default cachedEventHandler(
 Mutation 後手動失效：
 
 ```typescript
-const queryCache = useQueryCache();
-queryCache.invalidateQueries({ key: ["xxx"] });
+const queryCache = useQueryCache()
+queryCache.invalidateQueries({ key: ['xxx'] })
 ```

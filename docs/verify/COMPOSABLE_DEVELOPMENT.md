@@ -11,27 +11,27 @@
 ```typescript
 export function useXxx(options?: XxxOptions) {
   // 1. Reactive state
-  const data = ref<XxxData | null>(null);
-  const loading = ref(false);
-  const error = ref<Error | null>(null);
+  const data = ref<XxxData | null>(null)
+  const loading = ref(false)
+  const error = ref<Error | null>(null)
 
   // 2. Computed
-  const isEmpty = computed(() => !data.value);
+  const isEmpty = computed(() => !data.value)
 
   // 3. Methods
   async function fetch() {
-    loading.value = true;
+    loading.value = true
     try {
-      data.value = await $fetch("/api/v1/xxx");
+      data.value = await $fetch('/api/v1/xxx')
     } catch (e) {
-      error.value = e as Error;
+      error.value = e as Error
     } finally {
-      loading.value = false;
+      loading.value = false
     }
   }
 
   // 4. Lifecycle
-  onMounted(fetch);
+  onMounted(fetch)
 
   // 5. Return（明確列出，不用 spread）
   return {
@@ -40,7 +40,7 @@ export function useXxx(options?: XxxOptions) {
     error: readonly(error),
     isEmpty,
     fetch,
-  };
+  }
 }
 ```
 
