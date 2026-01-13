@@ -5,27 +5,27 @@ name: CI
 on:
   pull_request:
     paths:
-      - "app/**"
-      - "server/**"
-      - "shared/**"
-      - "layers/**"
-      - "nuxt.config.ts"
-      - "package.json"
-      - "pnpm-lock.yaml"
-      - "tsconfig*.json"
-      - ".github/workflows/ci.yml"
+      - 'app/**'
+      - 'server/**'
+      - 'shared/**'
+      - 'layers/**'
+      - 'nuxt.config.ts'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'tsconfig*.json'
+      - '.github/workflows/ci.yml'
   push:
     branches: [main]
     paths:
-      - "app/**"
-      - "server/**"
-      - "shared/**"
-      - "layers/**"
-      - "nuxt.config.ts"
-      - "package.json"
-      - "pnpm-lock.yaml"
-      - "tsconfig*.json"
-      - ".github/workflows/ci.yml"
+      - 'app/**'
+      - 'server/**'
+      - 'shared/**'
+      - 'layers/**'
+      - 'nuxt.config.ts'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'tsconfig*.json'
+      - '.github/workflows/ci.yml'
   workflow_dispatch:
 
 permissions:
@@ -47,7 +47,7 @@ jobs:
       - name: Setup Vite+ (vp)
         uses: voidzero-dev/setup-vp@v1
         with:
-          node-version: "22"
+          node-version: '22'
           cache: true
 
       - name: Install dependencies

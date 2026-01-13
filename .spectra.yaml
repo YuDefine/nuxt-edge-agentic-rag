@@ -21,25 +21,25 @@ claude_effort:
 design:
   # Tasks touching these paths trigger Design Review
   ui_paths:
-    - "app/pages/**"
-    - "app/components/**"
-    - "app/layouts/**"
-    - "**/*.vue"
+    - 'app/pages/**'
+    - 'app/components/**'
+    - 'app/layouts/**'
+    - '**/*.vue'
 
   # Design Review checkpoints (injected into tasks when ui_paths touched)
   review_steps:
-    - check_impeccable: "/teach-impeccable if .impeccable.md missing"
-    - design_improve: "/design improve [affected files]"
-    - fix_drift: "Fidelity Score must reach 8/8, max 2 rounds"
-    - targeted_skills: "Execute /design plan in canonical order"
-    - audit: "/audit — Critical must be 0"
-    - screenshot: "/review-screenshot — visual QA"
+    - check_impeccable: '/teach-impeccable if .impeccable.md missing'
+    - design_improve: '/design improve [affected files]'
+    - fix_drift: 'Fidelity Score must reach 8/8, max 2 rounds'
+    - targeted_skills: 'Execute /design plan in canonical order'
+    - audit: '/audit — Critical must be 0'
+    - screenshot: '/review-screenshot — visual QA'
 
   # Trigger points (after which task group to run Design Review)
   trigger_after:
-    - pattern: "Auth|Login|Callback"
-      scope: "app/pages/auth/**"
-    - pattern: "Upload|Document|Publish"
-      scope: "app/pages/admin/**"
-    - pattern: "Chat|Answer|Query"
-      scope: "app/pages/chat/**"
+    - pattern: 'Auth|Login|Callback'
+      scope: 'app/pages/auth/**'
+    - pattern: 'Upload|Document|Publish'
+      scope: 'app/pages/admin/**'
+    - pattern: 'Chat|Answer|Query'
+      scope: 'app/pages/chat/**'
