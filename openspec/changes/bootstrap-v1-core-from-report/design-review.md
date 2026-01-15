@@ -42,24 +42,24 @@ Auth Pages & Layouts:
 
 ## Functional Improvements
 
-| Issue                                   | Resolution                                  |
-| --------------------------------------- | ------------------------------------------- |
-| `callback.vue` 缺 loading spinner       | Added `UIcon` with `animate-spin`           |
-| `callback.vue` 缺 error state           | Added `UAlert` for error display            |
-| `callback.vue` 缺 layout                | Added `layout: 'auth'`                      |
-| Mixed `ref`/`shallowRef` usage          | Unified to `shallowRef` for primitives      |
-| `forgot-password.vue` UAlert 缺 variant | Added `variant="subtle"`                    |
+| Issue                                   | Resolution                             |
+| --------------------------------------- | -------------------------------------- |
+| `callback.vue` 缺 loading spinner       | Added `UIcon` with `animate-spin`      |
+| `callback.vue` 缺 error state           | Added `UAlert` for error display       |
+| `callback.vue` 缺 layout                | Added `layout: 'auth'`                 |
+| Mixed `ref`/`shallowRef` usage          | Unified to `shallowRef` for primitives |
+| `forgot-password.vue` UAlert 缺 variant | Added `variant="subtle"`               |
 
 ---
 
 ## Audit Improvements (Round 2)
 
-| Severity | Issue                          | Resolution                                       |
-| -------- | ------------------------------ | ------------------------------------------------ |
-| Medium   | Google 按鈕缺 icon             | Added `icon="i-simple-icons-google"`             |
-| Medium   | callback error 未捕獲          | Added `onMounted` to capture URL error param     |
-| Low      | NuxtLink 缺 focus 樣式         | Added `focus:underline` to all auth links        |
-| Low      | callback 缺 aria-live          | Added `aria-live="polite"` to loading container  |
+| Severity | Issue                  | Resolution                                      |
+| -------- | ---------------------- | ----------------------------------------------- |
+| Medium   | Google 按鈕缺 icon     | Added `icon="i-simple-icons-google"`            |
+| Medium   | callback error 未捕獲  | Added `onMounted` to capture URL error param    |
+| Low      | NuxtLink 缺 focus 樣式 | Added `focus:underline` to all auth links       |
+| Low      | callback 缺 aria-live  | Added `aria-live="polite"` to loading container |
 
 ---
 
@@ -84,6 +84,6 @@ Auth Pages & Layouts:
 
 ## Remaining Known Issue
 
-| Severity | Issue                              | Notes                                |
-| -------- | ---------------------------------- | ------------------------------------ |
-| High     | `forgot-password.vue` 無實際 API   | 功能問題，非 design review 範圍      |
+| Severity | Issue                            | Notes                           |
+| -------- | -------------------------------- | ------------------------------- |
+| High     | `forgot-password.vue` 無實際 API | 功能問題，非 design review 範圍 |
