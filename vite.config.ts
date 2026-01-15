@@ -1,0 +1,82 @@
+import { defineConfig } from 'vite-plus'
+
+export default defineConfig({
+  test: {
+    globals: true,
+    exclude: ['e2e/**', 'node_modules/**', '.nuxt/**', '.output/**'],
+    coverage: {
+      provider: 'v8',
+    },
+  },
+  lint: {
+    categories: {
+      correctness: 'error',
+      suspicious: 'warn',
+      pedantic: 'off',
+      perf: 'warn',
+      style: 'off',
+      restriction: 'off',
+      nursery: 'off',
+    },
+    rules: {
+      'no-console': 'warn',
+      'no-debugger': 'warn',
+      'no-alert': 'error',
+      'no-undef': 'off',
+      '@typescript-eslint/no-unused-vars': 'warn',
+      eqeqeq: ['error', 'always'],
+      'no-await-in-loop': 'off',
+      'import/no-named-as-default': 'off',
+      'unicorn/no-thenable': 'off',
+    },
+    plugins: ['typescript', 'unicorn', 'import', 'promise'],
+    env: {
+      browser: true,
+      node: true,
+      es2024: true,
+    },
+    ignorePatterns: [
+      'node_modules/',
+      '.nuxt/',
+      '.output/',
+      'dist/',
+      'coverage/',
+      '.claude/skills/',
+      '*.d.ts',
+    ],
+  },
+  fmt: {
+    semi: false,
+    singleQuote: true,
+    printWidth: 100,
+    tabWidth: 2,
+    useTabs: false,
+    trailingComma: 'es5',
+    quoteProps: 'as-needed',
+    arrowParens: 'always',
+    endOfLine: 'lf',
+    htmlWhitespaceSensitivity: 'css',
+    vueIndentScriptAndStyle: true,
+    experimentalTailwindcss: {
+      stylesheet: './app/assets/css/main.css',
+      attributes: ['class'],
+      functions: [],
+      preserveDuplicates: false,
+      preserveWhitespace: false,
+    },
+    experimentalSortPackageJson: {
+      sortScripts: true,
+    },
+    ignorePatterns: [
+      'coverage/**',
+      '.nuxt/**',
+      '.output/**',
+      'dist/**',
+      'node_modules/**',
+      'pnpm-lock.yaml',
+    ],
+  },
+  staged: {
+    '*.{js,ts,vue}': ['vp lint --fix', 'vp fmt'],
+  },
+})
