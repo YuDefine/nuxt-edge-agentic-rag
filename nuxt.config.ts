@@ -5,9 +5,9 @@ const knowledgeRuntimeConfig = createKnowledgeRuntimeConfig({
   adminEmailAllowlist: process.env.ADMIN_EMAIL_ALLOWLIST,
   bindings: {
     aiSearchIndex: process.env.NUXT_KNOWLEDGE_AI_SEARCH_INDEX,
-    d1Database: process.env.NUXT_KNOWLEDGE_D1_DATABASE,
-    documentsBucket: process.env.NUXT_KNOWLEDGE_DOCUMENTS_BUCKET,
-    rateLimitKv: process.env.NUXT_KNOWLEDGE_RATE_LIMIT_KV,
+    d1Database: process.env.NUXT_KNOWLEDGE_D1_DATABASE || 'DB',
+    documentsBucket: process.env.NUXT_KNOWLEDGE_DOCUMENTS_BUCKET || 'BLOB',
+    rateLimitKv: process.env.NUXT_KNOWLEDGE_RATE_LIMIT_KV || 'KV',
   },
   environment: process.env.NUXT_KNOWLEDGE_ENVIRONMENT,
   features: {
@@ -32,6 +32,7 @@ export default defineNuxtConfig({
   ssr: false,
 
   modules: [
+    '@nuxthub/core', // NuxtHub must be first for better-auth to receive D1 binding
     '@onmax/nuxt-better-auth',
     '@nuxt/ui',
     'nuxt-security',
@@ -45,12 +46,36 @@ export default defineNuxtConfig({
     'evlog/nuxt',
   ],
 
+  // NuxtHub D1/KV/R2 bindings - IDs from wrangler.jsonc
+  hub: {
+    db: {
+      dialect: 'sqlite',
+      driver: 'd1',
+      connection: { databaseId: '3036df7f-d54b-4d36-a33d-ecbb551fc278' },
+    },
+    kv: {
+      driver: 'cloudflare-kv-binding',
+      binding: 'KV',
+      namespaceId: '661ea98dad0743be86acc9ebeaf464f4',
+    },
+    blob: {
+      driver: 'cloudflare-r2',
+      binding: 'BLOB',
+      bucketName: 'agentic-rag-documents',
+    },
+  },
+
+  // Enable KV for better-auth session caching
+  auth: {
+    secondaryStorage: true,
+  },
+
   css: ['~/assets/css/main.css'],
 
   components: [
     {
       path: '~/components',
-      pathPrefix: false,
+      pathPrefix: true,
     },
   ],
 
@@ -64,10 +89,6 @@ export default defineNuxtConfig({
       google: {
         clientId: process.env.NUXT_OAUTH_GOOGLE_CLIENT_ID,
         clientSecret: process.env.NUXT_OAUTH_GOOGLE_CLIENT_SECRET,
-      },
-      github: {
-        clientId: process.env.NUXT_OAUTH_GITHUB_CLIENT_ID,
-        clientSecret: process.env.NUXT_OAUTH_GITHUB_CLIENT_SECRET,
       },
     },
     session: {
@@ -112,6 +133,8 @@ export default defineNuxtConfig({
     '/api/setup/**': { csurf: false },
     // MCP 是無狀態 API，使用 Bearer token 認證，不需要 CSRF
     '/api/mcp/**': { csurf: false },
+    // dev endpoints 僅在 local 環境啟用，不需要 CSRF
+    '/api/_dev/**': { csurf: false },
   },
   sentry: {
     org: process.env.SENTRY_ORG,
