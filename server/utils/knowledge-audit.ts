@@ -104,7 +104,7 @@ export function createKnowledgeAuditStore(database: D1DatabaseLike) {
     async createQueryLog(input: {
       allowedAccessLevels: string[]
       channel: KnowledgeChannel
-      configSnapshotVersion?: string
+      configSnapshotVersion: string
       environment: string
       mcpTokenId?: string | null
       now?: Date
@@ -134,7 +134,7 @@ export function createKnowledgeAuditStore(database: D1DatabaseLike) {
           JSON.stringify(audit.riskFlags),
           JSON.stringify(input.allowedAccessLevels),
           audit.redactionApplied ? 1 : 0,
-          input.configSnapshotVersion ?? 'v1',
+          input.configSnapshotVersion,
           input.status,
           now
         )

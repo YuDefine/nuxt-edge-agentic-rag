@@ -1,3 +1,4 @@
+import type { KnowledgeGovernanceConfig } from '../../shared/schemas/knowledge-runtime'
 import { answerKnowledgeQuery } from './knowledge-answering'
 import { auditKnowledgeText } from './knowledge-audit'
 import { getAllowedAccessLevels } from './knowledge-runtime'
@@ -49,6 +50,7 @@ export async function chatWithKnowledge(
       isAdmin: boolean
       userId: string
     }
+    governance: KnowledgeGovernanceConfig
     environment: string
     now?: number
     query: string
@@ -72,7 +74,7 @@ export async function chatWithKnowledge(
       createQueryLog(input: {
         allowedAccessLevels: string[]
         channel: 'mcp' | 'web'
-        configSnapshotVersion?: string
+        configSnapshotVersion: string
         environment: string
         mcpTokenId?: string | null
         now?: Date
@@ -136,6 +138,7 @@ export async function chatWithKnowledge(
       const queryLogId = await options.auditStore.createQueryLog({
         allowedAccessLevels,
         channel: 'web',
+        configSnapshotVersion: input.governance.configSnapshotVersion,
         environment: input.environment,
         queryText: input.query,
         status: 'blocked',
@@ -163,6 +166,7 @@ export async function chatWithKnowledge(
     ? await options.auditStore.createQueryLog({
         allowedAccessLevels,
         channel: 'web',
+        configSnapshotVersion: input.governance.configSnapshotVersion,
         environment: input.environment,
         now: typeof input.now === 'number' ? new Date(input.now) : undefined,
         queryText: input.query,
@@ -189,6 +193,10 @@ export async function chatWithKnowledge(
     },
     {
       answer: options.answer,
+      governance: {
+        models: input.governance.models,
+        thresholds: input.governance.thresholds,
+      },
       judge: options.judge,
       persistCitations: options.persistCitations ?? (async () => []),
       retrieve: options.retrieve,

@@ -1,3 +1,5 @@
+import type { KnowledgeGovernanceConfig } from '../../shared/schemas/knowledge-runtime'
+
 export interface KnowledgeSearchCandidate {
   accessLevel: string
   citationLocator: string
@@ -89,6 +91,7 @@ export async function retrieveVerifiedEvidence(
     query: string
   },
   options: {
+    governance: Pick<KnowledgeGovernanceConfig, 'retrieval'>
     search: SearchKnowledgeClient['search']
     store: ResolveCurrentEvidenceStore
   }
@@ -102,10 +105,10 @@ export async function retrieveVerifiedEvidence(
       allowedAccessLevels: input.allowedAccessLevels,
       categoryHints: normalized.categoryHints,
     }),
-    max_num_results: input.maxResults ?? 8,
+    max_num_results: input.maxResults ?? options.governance.retrieval.maxResults,
     query: normalized.normalizedQuery,
     ranking_options: {
-      score_threshold: 0.2,
+      score_threshold: options.governance.retrieval.minScore,
     },
     rewrite_query: false,
   })

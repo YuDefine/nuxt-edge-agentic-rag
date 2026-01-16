@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
+import { createKnowledgeRuntimeConfig } from '../../shared/schemas/knowledge-runtime'
 import {
   ChatRateLimitExceededError,
   chatWithKnowledge,
@@ -8,6 +9,9 @@ import {
 
 describe('web chat', () => {
   it('consumes a per-user chat rate limit and reuses the knowledge answering core', async () => {
+    const governance = createKnowledgeRuntimeConfig({
+      environment: 'staging',
+    }).governance
     const kv = {
       get: vi.fn().mockResolvedValue(JSON.stringify({ count: 1, windowStart: 0 })),
       put: vi.fn().mockResolvedValue(undefined),
@@ -19,6 +23,7 @@ describe('web chat', () => {
           isAdmin: true,
           userId: 'user-1',
         },
+        governance,
         environment: 'staging',
         now: 60_000,
         query: 'Summarize the restricted launch plan.',
@@ -63,6 +68,9 @@ describe('web chat', () => {
   })
 
   it('returns 429 before retrieval when the user exceeds the active chat window', async () => {
+    const governance = createKnowledgeRuntimeConfig({
+      environment: 'local',
+    }).governance
     const kv = {
       get: vi.fn().mockResolvedValue(JSON.stringify({ count: 30, windowStart: 0 })),
       put: vi.fn(),
@@ -76,6 +84,7 @@ describe('web chat', () => {
             isAdmin: false,
             userId: 'user-2',
           },
+          governance,
           environment: 'local',
           now: 60_000,
           query: 'What changed in revenue guidance?',
@@ -95,6 +104,9 @@ describe('web chat', () => {
   })
 
   it('blocks credential-bearing chat input before retrieval and persists only redacted audit metadata', async () => {
+    const governance = createKnowledgeRuntimeConfig({
+      environment: 'local',
+    }).governance
     const retrieve = vi.fn()
     const auditStore = {
       createMessage: vi.fn().mockResolvedValue('message-2'),
@@ -107,6 +119,7 @@ describe('web chat', () => {
           isAdmin: false,
           userId: 'user-3',
         },
+        governance,
         environment: 'local',
         now: 60_000,
         query: 'password=hunter2',
@@ -126,6 +139,7 @@ describe('web chat', () => {
     expect(auditStore.createQueryLog).toHaveBeenCalledWith({
       allowedAccessLevels: ['internal'],
       channel: 'web',
+      configSnapshotVersion: expect.any(String),
       environment: 'local',
       queryText: 'password=hunter2',
       status: 'blocked',
@@ -144,6 +158,66 @@ describe('web chat', () => {
       citations: [],
       refused: true,
       retrievalScore: 0,
+    })
+  })
+
+  it('stamps accepted web query logs with the shared config snapshot version', async () => {
+    const governance = createKnowledgeRuntimeConfig({
+      environment: 'staging',
+    }).governance
+    const auditStore = {
+      createMessage: vi.fn().mockResolvedValue('message-9'),
+      createQueryLog: vi.fn().mockResolvedValue('query-log-accepted'),
+    }
+
+    await chatWithKnowledge(
+      {
+        auth: {
+          isAdmin: false,
+          userId: 'user-9',
+        },
+        governance,
+        environment: 'staging',
+        query: 'What changed in revenue guidance?',
+      },
+      {
+        answer: vi.fn().mockResolvedValue('Revenue guidance was updated.'),
+        auditStore,
+        judge: vi.fn(),
+        rateLimitStore: createChatKvRateLimitStore({
+          get: vi.fn().mockResolvedValue(null),
+          put: vi.fn().mockResolvedValue(undefined),
+        }),
+        retrieve: vi.fn().mockResolvedValue({
+          evidence: [
+            {
+              accessLevel: 'internal',
+              categorySlug: 'finance',
+              chunkText: 'Revenue guidance was updated.',
+              citationLocator: 'lines 2-4',
+              documentId: 'doc-2',
+              documentTitle: 'Quarterly Report',
+              documentVersionId: 'ver-2',
+              excerpt: 'Revenue guidance was updated.',
+              score: 0.91,
+              sourceChunkId: 'chunk-2',
+              title: 'Quarterly Report',
+            },
+          ],
+          normalizedQuery: 'what changed in revenue guidance',
+        }),
+      }
+    )
+
+    expect(auditStore.createQueryLog).toHaveBeenCalledWith({
+      allowedAccessLevels: ['internal'],
+      channel: 'web',
+      configSnapshotVersion: governance.configSnapshotVersion,
+      environment: 'staging',
+      now: undefined,
+      queryText: 'What changed in revenue guidance?',
+      status: 'accepted',
+      userProfileId: 'user-9',
     })
   })
 })

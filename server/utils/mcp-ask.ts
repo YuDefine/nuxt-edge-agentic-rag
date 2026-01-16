@@ -1,3 +1,4 @@
+import type { KnowledgeGovernanceConfig } from '../../shared/schemas/knowledge-runtime'
 import { answerKnowledgeQuery } from './knowledge-answering'
 import { auditKnowledgeText } from './knowledge-audit'
 import { getAllowedAccessLevels } from './knowledge-runtime'
@@ -58,7 +59,7 @@ interface McpAskDependencies {
     createQueryLog(input: {
       allowedAccessLevels: string[]
       channel: 'mcp' | 'web'
-      configSnapshotVersion?: string
+      configSnapshotVersion: string
       environment: string
       mcpTokenId?: string | null
       now?: Date
@@ -103,6 +104,7 @@ interface McpAskDependencies {
   queryLogStore: {
     createAcceptedQueryLog(input: {
       allowedAccessLevels: string[]
+      configSnapshotVersion: string
       environment: string
       now?: Date
       queryText: string
@@ -132,6 +134,7 @@ export async function askKnowledge(
   input: {
     auth: McpAskAuthContext
     environment?: string
+    governance: KnowledgeGovernanceConfig
     now?: Date
     query: string
     retentionDays?: number
@@ -150,6 +153,7 @@ export async function askKnowledge(
       const queryLogId = await options.auditStore.createQueryLog({
         allowedAccessLevels,
         channel: 'mcp',
+        configSnapshotVersion: input.governance.configSnapshotVersion,
         environment: input.environment ?? 'local',
         mcpTokenId: input.auth.tokenId,
         queryText: input.query,
@@ -176,6 +180,7 @@ export async function askKnowledge(
     ? await options.auditStore.createQueryLog({
         allowedAccessLevels,
         channel: 'mcp',
+        configSnapshotVersion: input.governance.configSnapshotVersion,
         environment: input.environment ?? 'local',
         mcpTokenId: input.auth.tokenId,
         now: input.now,
@@ -185,6 +190,7 @@ export async function askKnowledge(
       })
     : await options.queryLogStore.createAcceptedQueryLog({
         allowedAccessLevels,
+        configSnapshotVersion: input.governance.configSnapshotVersion,
         environment: input.environment ?? 'local',
         now: input.now,
         queryText: input.query,
@@ -210,6 +216,10 @@ export async function askKnowledge(
     },
     {
       answer: options.answer,
+      governance: {
+        models: input.governance.models,
+        thresholds: input.governance.thresholds,
+      },
       judge: options.judge,
       persistCitations: async (citations) => {
         const payload: {
@@ -279,6 +289,7 @@ export function createMcpQueryLogStore(database: D1DatabaseLike) {
   return {
     async createAcceptedQueryLog(input: {
       allowedAccessLevels: string[]
+      configSnapshotVersion: string
       environment: string
       now?: Date
       queryText: string
@@ -306,7 +317,7 @@ export function createMcpQueryLogStore(database: D1DatabaseLike) {
           '[]',
           JSON.stringify(input.allowedAccessLevels),
           0,
-          'v1',
+          input.configSnapshotVersion,
           input.status,
           now
         )

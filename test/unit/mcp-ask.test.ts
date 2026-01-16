@@ -1,15 +1,20 @@
 import { describe, expect, it, vi } from 'vitest'
 
+import { createKnowledgeRuntimeConfig } from '../../shared/schemas/knowledge-runtime'
 import { askKnowledge } from '../../server/utils/mcp-ask'
 
 describe('mcp ask', () => {
   it('returns a business refusal result instead of translating it into an auth error', async () => {
+    const governance = createKnowledgeRuntimeConfig({
+      environment: 'local',
+    }).governance
     const result = await askKnowledge(
       {
         auth: {
           scopes: ['knowledge.ask'],
           tokenId: 'token-1',
         },
+        governance,
         query: 'What is the payroll exception policy?',
       },
       {
@@ -35,6 +40,9 @@ describe('mcp ask', () => {
   })
 
   it('blocks credential-bearing queries before retrieval and writes only redacted audit records', async () => {
+    const governance = createKnowledgeRuntimeConfig({
+      environment: 'production',
+    }).governance
     const retrieve = vi.fn()
     const auditStore = {
       createMessage: vi.fn().mockResolvedValue('message-1'),
@@ -48,6 +56,7 @@ describe('mcp ask', () => {
           tokenId: 'token-3',
         },
         environment: 'production',
+        governance,
         query: 'api_key=super-secret-value',
       },
       {
@@ -67,6 +76,7 @@ describe('mcp ask', () => {
     expect(auditStore.createQueryLog).toHaveBeenCalledWith({
       allowedAccessLevels: ['internal'],
       channel: 'mcp',
+      configSnapshotVersion: governance.configSnapshotVersion,
       environment: 'production',
       mcpTokenId: 'token-3',
       queryText: 'api_key=super-secret-value',
@@ -88,6 +98,9 @@ describe('mcp ask', () => {
   })
 
   it('reuses the knowledge answering core and persists citations against the created query log', async () => {
+    const governance = createKnowledgeRuntimeConfig({
+      environment: 'local',
+    }).governance
     const queryLogStore = {
       createAcceptedQueryLog: vi.fn().mockResolvedValue('query-log-7'),
     }
@@ -106,6 +119,7 @@ describe('mcp ask', () => {
           scopes: ['knowledge.ask', 'knowledge.restricted.read'],
           tokenId: 'token-2',
         },
+        governance,
         query: 'Summarize the restricted launch plan.',
       },
       {
@@ -136,6 +150,7 @@ describe('mcp ask', () => {
 
     expect(queryLogStore.createAcceptedQueryLog).toHaveBeenCalledWith({
       allowedAccessLevels: ['internal', 'restricted'],
+      configSnapshotVersion: governance.configSnapshotVersion,
       environment: 'local',
       queryText: 'Summarize the restricted launch plan.',
       status: 'accepted',

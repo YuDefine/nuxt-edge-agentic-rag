@@ -70,6 +70,7 @@ export default defineEventHandler(async function searchKnowledgeHandler(event) {
       {
         retrieve: (input) =>
           retrieveVerifiedEvidence(input, {
+            governance: runtimeConfig.governance,
             search: createCloudflareAiSearchClient({
               aiBinding,
               indexName: runtimeConfig.bindings.aiSearchIndex,
