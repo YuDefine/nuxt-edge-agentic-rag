@@ -104,6 +104,15 @@ export default defineNuxtConfig({
     },
     csrf: true,
   },
+
+  routeRules: {
+    // better-auth 有自己的 CSRF 保護，關閉 nuxt-security 的 CSRF 避免衝突
+    '/api/auth/**': { csurf: false },
+    // setup endpoint 用 secret token 保護，不需要 CSRF
+    '/api/setup/**': { csurf: false },
+    // MCP 是無狀態 API，使用 Bearer token 認證，不需要 CSRF
+    '/api/mcp/**': { csurf: false },
+  },
   sentry: {
     org: process.env.SENTRY_ORG,
     project: process.env.SENTRY_PROJECT,
