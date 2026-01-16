@@ -1,0 +1,17 @@
+{
+  "version": "v1.0.0",
+  "dataset": "dev-calibration",
+  "policy": {
+    "mutableExpectations": true,
+    "purpose": "Prompt and threshold calibration fixtures kept separate from frozen acceptance scoring."
+  },
+  "cases": [
+    {
+      "caseId": "calibration-tc-04",
+      "registryId": "TC-04",
+      "channel": "mcp",
+      "prompt": "上個月的報表怎麼看？",
+      "expectedOutcome": "self_corrected"
+    }
+  ]
+}
