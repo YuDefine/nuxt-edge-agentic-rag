@@ -1,0 +1,24 @@
+{
+  "version": "v1.0.0",
+  "dataset": "seed",
+  "policy": {
+    "mutableExpectations": true,
+    "purpose": "Dry-run minimal fixtures for schema and logging sanity checks."
+  },
+  "cases": [
+    {
+      "caseId": "seed-tc-01",
+      "registryId": "TC-01",
+      "channel": "web",
+      "prompt": "PO 和 PR 有什麼差別？",
+      "expectedOutcome": "direct"
+    },
+    {
+      "caseId": "seed-ev-01",
+      "registryId": "EV-01",
+      "channel": "shared",
+      "prompt": "核心閉環 smoke dry run",
+      "expectedOutcome": "smoke_evidence"
+    }
+  ]
+}
