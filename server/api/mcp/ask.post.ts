@@ -67,16 +67,18 @@ export default defineEventHandler(async (event) => {
       {
         auth,
         environment: runtimeConfig.environment,
+        governance: runtimeConfig.governance,
         query: body.query,
       },
       {
         answer: createFallbackAnswer,
         auditStore: createKnowledgeAuditStore(database),
         citationStore: createCitationStore(database),
-        judge: createFallbackJudge,
+        judge: createFallbackJudge(runtimeConfig.governance.thresholds.answerMin),
         queryLogStore: createMcpQueryLogStore(database),
         retrieve: (input) =>
           retrieveVerifiedEvidence(input, {
+            governance: runtimeConfig.governance,
             search: aiSearchClient.search,
             store: evidenceStore,
           }),
@@ -133,16 +135,18 @@ async function createFallbackAnswer(input: {
   return uniqueSnippets.join('\n\n')
 }
 
-async function createFallbackJudge(input: {
-  evidence: Array<unknown>
-  query: string
-  retrievalScore: number
-}): Promise<{
-  reformulatedQuery?: string
-  shouldAnswer: boolean
-}> {
-  return {
-    shouldAnswer: input.evidence.length > 0 && input.retrievalScore >= 0.55,
+function createFallbackJudge(answerMin: number) {
+  return async function fallbackJudge(input: {
+    evidence: Array<unknown>
+    query: string
+    retrievalScore: number
+  }): Promise<{
+    reformulatedQuery?: string
+    shouldAnswer: boolean
+  }> {
+    return {
+      shouldAnswer: input.evidence.length > 0 && input.retrievalScore >= answerMin,
+    }
   }
 }
 

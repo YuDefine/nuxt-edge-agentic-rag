@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { createKnowledgeRuntimeConfig } from '../../shared/schemas/knowledge-runtime'
 import { createRouteEvent, installNuxtRouteTestGlobals } from './helpers/nuxt-route'
 
 const mcpRouteMocks = vi.hoisted(() => {
@@ -50,14 +51,7 @@ const mcpRouteMocks = vi.hoisted(() => {
     createMcpReplayStore: vi.fn().mockReturnValue({}),
     createMcpTokenStore: vi.fn().mockReturnValue({}),
     getDocumentChunk: vi.fn(),
-    getKnowledgeRuntimeConfig: vi.fn().mockReturnValue({
-      bindings: {
-        aiSearchIndex: 'knowledge-index',
-        d1Database: 'DB',
-        rateLimitKv: 'RATE_LIMITS',
-      },
-      environment: 'local',
-    }),
+    getKnowledgeRuntimeConfig: vi.fn(),
     getRequiredD1Binding: vi.fn().mockReturnValue({}),
     getRequiredKvBinding: vi.fn().mockReturnValue({ get: vi.fn(), put: vi.fn() }),
     getValidatedQuery: vi.fn(),
@@ -168,6 +162,16 @@ describe('mcp route handlers', () => {
     vi.stubGlobal('getValidatedQuery', mcpRouteMocks.getValidatedQuery)
     vi.stubGlobal('readValidatedBody', mcpRouteMocks.readValidatedBody)
 
+    mcpRouteMocks.getKnowledgeRuntimeConfig.mockReturnValue(
+      createKnowledgeRuntimeConfig({
+        bindings: {
+          aiSearchIndex: 'knowledge-index',
+          d1Database: 'DB',
+          rateLimitKv: 'RATE_LIMITS',
+        },
+        environment: 'local',
+      })
+    )
     mcpRouteMocks.askKnowledge.mockResolvedValue({
       answer: 'Launch moved to Tuesday.',
       citations: [{ citationId: 'citation-1', sourceChunkId: 'chunk-1' }],

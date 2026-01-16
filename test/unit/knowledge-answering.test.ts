@@ -1,9 +1,13 @@
 import { describe, expect, it, vi } from 'vitest'
 
+import { createKnowledgeRuntimeConfig } from '../../shared/schemas/knowledge-runtime'
 import { answerKnowledgeQuery } from '../../server/utils/knowledge-answering'
 
 describe('knowledge answering', () => {
   it('bypasses judge for high-confidence evidence and persists citations', async () => {
+    const governance = createKnowledgeRuntimeConfig({
+      environment: 'local',
+    }).governance
     const retrieve = vi.fn().mockResolvedValue({
       evidence: [
         {
@@ -49,6 +53,7 @@ describe('knowledge answering', () => {
       },
       {
         answer,
+        governance,
         judge,
         persistCitations,
         retrieve,
@@ -83,6 +88,9 @@ describe('knowledge answering', () => {
   })
 
   it('judges mid-confidence evidence, retries once, and refuses if confidence stays weak', async () => {
+    const governance = createKnowledgeRuntimeConfig({
+      environment: 'local',
+    }).governance
     const retrieve = vi
       .fn()
       .mockResolvedValueOnce({
@@ -135,6 +143,7 @@ describe('knowledge answering', () => {
       },
       {
         answer,
+        governance,
         judge,
         persistCitations,
         retrieve,

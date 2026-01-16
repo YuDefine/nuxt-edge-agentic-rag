@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
+import { createKnowledgeRuntimeConfig } from '../../shared/schemas/knowledge-runtime'
 import { auditKnowledgeText, createKnowledgeAuditStore } from '../../server/utils/knowledge-audit'
 
 describe('knowledge audit', () => {
@@ -15,6 +16,9 @@ describe('knowledge audit', () => {
   })
 
   it('stores only redacted query_logs and messages content', async () => {
+    const governance = createKnowledgeRuntimeConfig({
+      environment: 'staging',
+    }).governance
     const run = vi.fn().mockResolvedValue(undefined)
     const database = {
       prepare: vi.fn().mockReturnValue({
@@ -28,6 +32,7 @@ describe('knowledge audit', () => {
     const queryLogId = await auditStore.createQueryLog({
       allowedAccessLevels: ['internal'],
       channel: 'web',
+      configSnapshotVersion: governance.configSnapshotVersion,
       environment: 'staging',
       queryText: 'Contact me at alice@example.com',
       status: 'accepted',
@@ -62,7 +67,7 @@ describe('knowledge audit', () => {
       '["pii:email"]',
       '["internal"]',
       1,
-      'v1',
+      governance.configSnapshotVersion,
       'accepted',
       expect.any(String)
     )

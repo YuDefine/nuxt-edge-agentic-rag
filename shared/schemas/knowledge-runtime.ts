@@ -17,6 +17,36 @@ export const MCP_TOKEN_SCOPE_VALUES = [
   'knowledge.restricted.read',
 ] as const
 
+export interface KnowledgeRetrievalConfig {
+  maxResults: number
+  minScore: number
+}
+
+export interface KnowledgeDecisionThresholds {
+  answerMin: number
+  directAnswerMin: number
+  judgeMin: number
+}
+
+export interface KnowledgeExecutionConfig {
+  maxSelfCorrectionRetry: number
+}
+
+export interface KnowledgeModelRoles {
+  agentJudge: string
+  defaultAnswer: string
+}
+
+export interface KnowledgeGovernanceConfig {
+  configSnapshotVersion: string
+  environment: string
+  execution: KnowledgeExecutionConfig
+  features: KnowledgeFeatureFlags
+  models: KnowledgeModelRoles
+  retrieval: KnowledgeRetrievalConfig
+  thresholds: KnowledgeDecisionThresholds
+}
+
 export interface KnowledgeBindingsConfig {
   aiSearchIndex: string
   d1Database: string
@@ -44,7 +74,15 @@ export interface KnowledgeRuntimeConfig {
   bindings: KnowledgeBindingsConfig
   environment: string
   features: KnowledgeFeatureFlags
+  governance: KnowledgeGovernanceConfig
   uploads: KnowledgeUploadsConfig
+}
+
+export interface KnowledgeGovernanceInput {
+  execution?: Partial<KnowledgeExecutionConfig>
+  models?: Partial<KnowledgeModelRoles>
+  retrieval?: Partial<KnowledgeRetrievalConfig>
+  thresholds?: Partial<KnowledgeDecisionThresholds>
 }
 
 export interface KnowledgeRuntimeConfigInput {
@@ -54,6 +92,7 @@ export interface KnowledgeRuntimeConfigInput {
   features?: Partial<
     Record<(typeof KNOWLEDGE_FEATURE_FLAG_VALUES)[number], boolean | string | undefined>
   >
+  governance?: KnowledgeGovernanceInput
   uploads?: Partial<KnowledgeUploadsConfig> & {
     presignExpiresSeconds?: number | string
   }
@@ -81,6 +120,32 @@ const knowledgeRuntimeConfigSchema = z.object({
     mcpSession: z.boolean(),
     passkey: z.boolean(),
   }),
+  governance: z.object({
+    configSnapshotVersion: z.string().min(1),
+    environment: z.enum(KNOWLEDGE_ENVIRONMENT_VALUES),
+    execution: z.object({
+      maxSelfCorrectionRetry: z.number().int().min(0),
+    }),
+    features: z.object({
+      adminDashboard: z.boolean(),
+      cloudFallback: z.boolean(),
+      mcpSession: z.boolean(),
+      passkey: z.boolean(),
+    }),
+    models: z.object({
+      agentJudge: z.string().min(1),
+      defaultAnswer: z.string().min(1),
+    }),
+    retrieval: z.object({
+      maxResults: z.number().int().min(1),
+      minScore: z.number().min(0).max(1),
+    }),
+    thresholds: z.object({
+      answerMin: z.number().min(0).max(1),
+      directAnswerMin: z.number().min(0).max(1),
+      judgeMin: z.number().min(0).max(1),
+    }),
+  }),
   uploads: z.object({
     accountId: z.string(),
     accessKeyId: z.string(),
@@ -88,6 +153,31 @@ const knowledgeRuntimeConfigSchema = z.object({
     presignExpiresSeconds: z.number().int().min(1).max(604800),
     secretAccessKey: z.string(),
   }),
+})
+
+export const DEFAULT_KNOWLEDGE_RETRIEVAL_CONFIG: Readonly<KnowledgeRetrievalConfig> = Object.freeze(
+  {
+    maxResults: 8,
+    minScore: 0.2,
+  }
+)
+
+export const DEFAULT_KNOWLEDGE_DECISION_THRESHOLDS: Readonly<KnowledgeDecisionThresholds> =
+  Object.freeze({
+    answerMin: 0.55,
+    directAnswerMin: 0.7,
+    judgeMin: 0.45,
+  })
+
+export const DEFAULT_KNOWLEDGE_EXECUTION_CONFIG: Readonly<KnowledgeExecutionConfig> = Object.freeze(
+  {
+    maxSelfCorrectionRetry: 1,
+  }
+)
+
+export const DEFAULT_KNOWLEDGE_MODEL_ROLES: Readonly<KnowledgeModelRoles> = Object.freeze({
+  agentJudge: 'agentJudge',
+  defaultAnswer: 'defaultAnswer',
 })
 
 function parseBooleanFlag(value: boolean | string | undefined): boolean {
@@ -144,9 +234,88 @@ export function createKnowledgeFeatureFlags(
   }
 }
 
+export function buildKnowledgeConfigSnapshotVersion(input: {
+  environment: string
+  execution: KnowledgeExecutionConfig
+  features: KnowledgeFeatureFlags
+  models: KnowledgeModelRoles
+  retrieval: KnowledgeRetrievalConfig
+  thresholds: KnowledgeDecisionThresholds
+}): string {
+  return [
+    'kgov-v1',
+    `env=${input.environment}`,
+    `retrieval.maxResults=${input.retrieval.maxResults}`,
+    `retrieval.minScore=${formatGovernedNumber(input.retrieval.minScore)}`,
+    `thresholds.directAnswerMin=${formatGovernedNumber(input.thresholds.directAnswerMin)}`,
+    `thresholds.judgeMin=${formatGovernedNumber(input.thresholds.judgeMin)}`,
+    `thresholds.answerMin=${formatGovernedNumber(input.thresholds.answerMin)}`,
+    `execution.maxSelfCorrectionRetry=${input.execution.maxSelfCorrectionRetry}`,
+    `models.defaultAnswer=${input.models.defaultAnswer}`,
+    `models.agentJudge=${input.models.agentJudge}`,
+    ...KNOWLEDGE_FEATURE_FLAG_VALUES.map(
+      (featureName) => `features.${featureName}=${input.features[featureName] ? 'on' : 'off'}`
+    ),
+  ].join(';')
+}
+
+export function createKnowledgeGovernanceConfig(input: {
+  environment: string
+  features: KnowledgeFeatureFlags
+  governance?: KnowledgeGovernanceInput
+}): KnowledgeGovernanceConfig {
+  const retrieval = {
+    maxResults:
+      input.governance?.retrieval?.maxResults ?? DEFAULT_KNOWLEDGE_RETRIEVAL_CONFIG.maxResults,
+    minScore: input.governance?.retrieval?.minScore ?? DEFAULT_KNOWLEDGE_RETRIEVAL_CONFIG.minScore,
+  }
+  const thresholds = {
+    answerMin:
+      input.governance?.thresholds?.answerMin ?? DEFAULT_KNOWLEDGE_DECISION_THRESHOLDS.answerMin,
+    directAnswerMin:
+      input.governance?.thresholds?.directAnswerMin ??
+      DEFAULT_KNOWLEDGE_DECISION_THRESHOLDS.directAnswerMin,
+    judgeMin:
+      input.governance?.thresholds?.judgeMin ?? DEFAULT_KNOWLEDGE_DECISION_THRESHOLDS.judgeMin,
+  }
+  const execution = {
+    maxSelfCorrectionRetry:
+      input.governance?.execution?.maxSelfCorrectionRetry ??
+      DEFAULT_KNOWLEDGE_EXECUTION_CONFIG.maxSelfCorrectionRetry,
+  }
+  const models = {
+    agentJudge: input.governance?.models?.agentJudge ?? DEFAULT_KNOWLEDGE_MODEL_ROLES.agentJudge,
+    defaultAnswer:
+      input.governance?.models?.defaultAnswer ?? DEFAULT_KNOWLEDGE_MODEL_ROLES.defaultAnswer,
+  }
+
+  return {
+    configSnapshotVersion: buildKnowledgeConfigSnapshotVersion({
+      environment: input.environment,
+      execution,
+      features: input.features,
+      models,
+      retrieval,
+      thresholds,
+    }),
+    environment: input.environment,
+    execution,
+    features: input.features,
+    models,
+    retrieval,
+    thresholds,
+  }
+}
+
 export function createKnowledgeRuntimeConfig(
   input: KnowledgeRuntimeConfigInput = {}
 ): KnowledgeRuntimeConfig {
+  const environment = z
+    .enum(KNOWLEDGE_ENVIRONMENT_VALUES)
+    .catch('local')
+    .parse(input.environment ?? 'local')
+  const features = createKnowledgeFeatureFlags(input.features)
+
   return knowledgeRuntimeConfigSchema.parse({
     adminEmailAllowlist: parseAdminEmailAllowlist(input.adminEmailAllowlist),
     bindings: {
@@ -155,11 +324,13 @@ export function createKnowledgeRuntimeConfig(
       documentsBucket: input.bindings?.documentsBucket ?? '',
       rateLimitKv: input.bindings?.rateLimitKv ?? '',
     },
-    environment: z
-      .enum(KNOWLEDGE_ENVIRONMENT_VALUES)
-      .catch('local')
-      .parse(input.environment ?? 'local'),
-    features: createKnowledgeFeatureFlags(input.features),
+    environment,
+    features,
+    governance: createKnowledgeGovernanceConfig({
+      environment,
+      features,
+      governance: input.governance,
+    }),
     uploads: {
       accountId: input.uploads?.accountId ?? '',
       accessKeyId: input.uploads?.accessKeyId ?? '',
@@ -197,4 +368,8 @@ export function isAdminEmailAllowlisted(
   }
 
   return allowlist.includes(normalizeEmailAddress(email))
+}
+
+function formatGovernedNumber(value: number): string {
+  return `${Number(value.toFixed(2))}`
 }

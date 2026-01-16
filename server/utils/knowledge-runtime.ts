@@ -10,6 +10,10 @@ export function getKnowledgeRuntimeConfig() {
   return createKnowledgeRuntimeConfig(runtimeConfig.knowledge)
 }
 
+export function getKnowledgeGovernanceConfig() {
+  return getKnowledgeRuntimeConfig().governance
+}
+
 export function getKnowledgeUploadConfig() {
   return getKnowledgeRuntimeConfig().uploads
 }

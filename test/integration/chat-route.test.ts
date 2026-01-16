@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { createKnowledgeRuntimeConfig } from '../../shared/schemas/knowledge-runtime'
 import { createRouteEvent, installNuxtRouteTestGlobals } from './helpers/nuxt-route'
 
 const chatRouteMocks = vi.hoisted(() => {
@@ -21,14 +22,7 @@ const chatRouteMocks = vi.hoisted(() => {
     createCloudflareAiSearchClient: vi.fn().mockReturnValue({ search: vi.fn() }),
     createKnowledgeAuditStore: vi.fn().mockReturnValue({}),
     createKnowledgeEvidenceStore: vi.fn().mockReturnValue({}),
-    getKnowledgeRuntimeConfig: vi.fn().mockReturnValue({
-      bindings: {
-        aiSearchIndex: 'knowledge-index',
-        d1Database: 'DB',
-        rateLimitKv: 'RATE_LIMITS',
-      },
-      environment: 'staging',
-    }),
+    getKnowledgeRuntimeConfig: vi.fn(),
     getRequiredD1Binding: vi.fn().mockReturnValue({}),
     getRequiredKvBinding: vi.fn().mockReturnValue({ get: vi.fn(), put: vi.fn() }),
     getRuntimeAdminAccess: vi.fn().mockReturnValue(false),
@@ -88,6 +82,16 @@ describe('/api/chat route', () => {
     vi.stubGlobal('readValidatedBody', chatRouteMocks.readValidatedBody)
     vi.stubGlobal('requireUserSession', chatRouteMocks.requireUserSession)
 
+    chatRouteMocks.getKnowledgeRuntimeConfig.mockReturnValue(
+      createKnowledgeRuntimeConfig({
+        bindings: {
+          aiSearchIndex: 'knowledge-index',
+          d1Database: 'DB',
+          rateLimitKv: 'RATE_LIMITS',
+        },
+        environment: 'staging',
+      })
+    )
     chatRouteMocks.readValidatedBody.mockResolvedValue({ query: 'What changed?' })
     chatRouteMocks.requireUserSession.mockResolvedValue({
       user: {

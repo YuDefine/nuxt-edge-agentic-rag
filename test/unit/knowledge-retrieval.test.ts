@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
+import { createKnowledgeRuntimeConfig } from '../../shared/schemas/knowledge-runtime'
 import {
   normalizeKnowledgeQuery,
   retrieveVerifiedEvidence,
@@ -14,6 +15,9 @@ describe('knowledge retrieval', () => {
   })
 
   it('applies retrieval filters and drops stale evidence after D1 verification', async () => {
+    const governance = createKnowledgeRuntimeConfig({
+      environment: 'local',
+    }).governance
     const search = vi.fn().mockResolvedValue([
       {
         accessLevel: 'internal',
@@ -58,6 +62,7 @@ describe('knowledge retrieval', () => {
         query: 'category:finance FAQ for 2026/04/16',
       },
       {
+        governance,
         search,
         store,
       }
@@ -73,7 +78,7 @@ describe('knowledge retrieval', () => {
       max_num_results: 8,
       query: 'frequently asked questions for 2026-04-16',
       ranking_options: {
-        score_threshold: 0.2,
+        score_threshold: governance.retrieval.minScore,
       },
       rewrite_query: false,
     })

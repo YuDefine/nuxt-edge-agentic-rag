@@ -18,9 +18,9 @@ describe('knowledge runtime bootstrap', () => {
       adminEmailAllowlist: [],
       bindings: {
         aiSearchIndex: '',
-        d1Database: '',
-        documentsBucket: '',
-        rateLimitKv: '',
+        d1Database: 'DB',
+        documentsBucket: 'BLOB',
+        rateLimitKv: 'KV',
       },
       uploads: {
         accountId: '',
@@ -34,6 +34,32 @@ describe('knowledge runtime bootstrap', () => {
         cloudFallback: false,
         mcpSession: false,
         passkey: false,
+      },
+      governance: {
+        configSnapshotVersion: expect.any(String),
+        environment: 'local',
+        execution: {
+          maxSelfCorrectionRetry: 1,
+        },
+        features: {
+          adminDashboard: false,
+          cloudFallback: false,
+          mcpSession: false,
+          passkey: false,
+        },
+        models: {
+          agentJudge: 'agentJudge',
+          defaultAnswer: 'defaultAnswer',
+        },
+        retrieval: {
+          maxResults: 8,
+          minScore: 0.2,
+        },
+        thresholds: {
+          answerMin: 0.55,
+          directAnswerMin: 0.7,
+          judgeMin: 0.45,
+        },
       },
     })
   })

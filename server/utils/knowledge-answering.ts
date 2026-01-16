@@ -1,7 +1,5 @@
+import type { KnowledgeGovernanceConfig } from '../../shared/schemas/knowledge-runtime'
 import type { VerifiedKnowledgeEvidence } from './knowledge-retrieval'
-
-const ANSWER_THRESHOLD = 0.7
-const JUDGE_THRESHOLD = 0.45
 
 export async function answerKnowledgeQuery(
   input: {
@@ -31,6 +29,7 @@ export async function answerKnowledgeQuery(
         sourceChunkId: string
       }>
     ) => Promise<Array<{ citationId: string; sourceChunkId: string }>>
+    governance: Pick<KnowledgeGovernanceConfig, 'models' | 'thresholds'>
     retrieve: (input: { allowedAccessLevels: string[]; query: string }) => Promise<{
       evidence: VerifiedKnowledgeEvidence[]
       normalizedQuery: string
@@ -48,17 +47,18 @@ export async function answerKnowledgeQuery(
   })
   const initialScore = computeRetrievalScore(firstPass.evidence)
 
-  if (initialScore >= ANSWER_THRESHOLD) {
+  if (initialScore >= options.governance.thresholds.directAnswerMin) {
     return answerWithCitations(
       firstPass.evidence,
       input.query,
       initialScore,
+      options.governance,
       options.answer,
       options.persistCitations
     )
   }
 
-  if (initialScore < JUDGE_THRESHOLD) {
+  if (initialScore < options.governance.thresholds.judgeMin) {
     return refuse(initialScore)
   }
 
@@ -73,6 +73,7 @@ export async function answerKnowledgeQuery(
       firstPass.evidence,
       input.query,
       initialScore,
+      options.governance,
       options.answer,
       options.persistCitations
     )
@@ -88,11 +89,12 @@ export async function answerKnowledgeQuery(
   })
   const retryScore = computeRetrievalScore(retryPass.evidence)
 
-  if (retryScore >= ANSWER_THRESHOLD) {
+  if (retryScore >= options.governance.thresholds.directAnswerMin) {
     return answerWithCitations(
       retryPass.evidence,
       judgment.reformulatedQuery,
       retryScore,
+      options.governance,
       options.answer,
       options.persistCitations
     )
@@ -119,6 +121,7 @@ async function answerWithCitations(
   evidence: VerifiedKnowledgeEvidence[],
   query: string,
   retrievalScore: number,
+  governance: Pick<KnowledgeGovernanceConfig, 'models'>,
   answer: (input: {
     evidence: VerifiedKnowledgeEvidence[]
     modelRole: string
@@ -141,7 +144,7 @@ async function answerWithCitations(
 }> {
   const responseText = await answer({
     evidence,
-    modelRole: selectAnswerModelRole(evidence),
+    modelRole: selectAnswerModelRole(evidence, governance.models),
     query,
     retrievalScore,
   })
@@ -176,8 +179,11 @@ function refuse(retrievalScore: number): {
   }
 }
 
-function selectAnswerModelRole(evidence: VerifiedKnowledgeEvidence[]): string {
+function selectAnswerModelRole(
+  evidence: VerifiedKnowledgeEvidence[],
+  modelRoles: KnowledgeGovernanceConfig['models']
+): string {
   const distinctDocuments = new Set(evidence.map((item) => item.documentId))
 
-  return distinctDocuments.size <= 1 ? 'defaultAnswer' : 'agentJudge'
+  return distinctDocuments.size <= 1 ? modelRoles.defaultAnswer : modelRoles.agentJudge
 }
