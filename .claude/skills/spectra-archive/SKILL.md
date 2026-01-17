@@ -1,6 +1,6 @@
 ---
 name: spectra-archive
-description: 'Archive a completed change'
+description: 'Archive a completed change after all tasks and reviews are done. Use when finishing a feature, completing implementation, marking done, or when the user says "archive", "done", "finish", "complete", or "ship it".'
 license: MIT
 compatibility: Requires spectra CLI.
 metadata:

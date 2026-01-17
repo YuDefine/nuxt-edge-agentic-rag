@@ -84,7 +84,7 @@ defineConfig({
   test: {
     environmentOptions: {
       jsdom: {
-        url: 'http://localhost:3000',
+        url: 'http://localhost:3010',
         html: '<!DOCTYPE html><html><body></body></html>',
         userAgent: 'custom-agent',
         resources: 'usable',

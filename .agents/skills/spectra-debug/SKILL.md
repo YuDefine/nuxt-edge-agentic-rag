@@ -1,6 +1,6 @@
 ---
 name: spectra-debug
-description: 'Systematically debug a problem using a four-phase workflow'
+description: 'Systematically debug a problem using a four-phase workflow. Use when encountering bugs, errors, test failures, unexpected behavior, or when the user says "debug", "fix this error", "why is this failing", "investigate", or "troubleshoot".'
 license: MIT
 compatibility: Requires spectra CLI.
 metadata:
@@ -13,11 +13,11 @@ Systematically debug a problem using a four-phase workflow.
 
 **This skill enforces debugging discipline.** No guessing, no random changes, no "let me try this." Every step is deliberate and evidence-based.
 
-**Input**: The argument after `/spectra-debug` describes the bug or unexpected behavior. Examples:
+**Input**: The argument after `$spectra-debug` describes the bug or unexpected behavior. Examples:
 
-- `/spectra-debug the search returns duplicate results`
-- `/spectra-debug crash on startup after upgrading`
-- `/spectra-debug file watcher misses rename events`
+- `$spectra-debug the search returns duplicate results`
+- `$spectra-debug crash on startup after upgrading`
+- `$spectra-debug file watcher misses rename events`
 
 ---
 

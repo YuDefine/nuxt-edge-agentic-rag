@@ -1,6 +1,13 @@
 ---
+applyTo: '**'
+description: ---
+---
+
+---
+
 description: Server API 設計規範
 globs: ['server/api/**/*.ts']
+
 ---
 
 # API Patterns

@@ -1,6 +1,6 @@
 ---
 name: spectra-apply
-description: 'Implement or resume tasks from a Spectra change'
+description: 'Implement or resume tasks from a Spectra change. Use when ready to start coding, implement features, continue implementation, work on tasks, or when the user says "apply", "implement", "start working", "continue", or "resume".'
 license: MIT
 compatibility: Requires spectra CLI.
 metadata:

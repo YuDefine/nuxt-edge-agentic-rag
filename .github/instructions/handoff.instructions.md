@@ -1,3 +1,8 @@
+---
+applyTo: '**'
+description: Handoff
+---
+
 # Handoff
 
 ## 什麼時候建 HANDOFF.md

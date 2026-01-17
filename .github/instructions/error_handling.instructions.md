@@ -1,6 +1,13 @@
 ---
+applyTo: '**'
+description: ---
+---
+
+---
+
 description: 錯誤處理規範（Server 驗證 + Client 顯示）
 globs: ['app/**/*.{vue,ts}', 'server/**/*.ts']
+
 ---
 
 # Error Handling

@@ -1,6 +1,13 @@
 ---
+applyTo: '**'
+description: ---
+---
+
+---
+
 description: 遠端 MCP 使用限制
 globs: ['server/**/*.ts']
+
 ---
 
 # MCP Remote Database

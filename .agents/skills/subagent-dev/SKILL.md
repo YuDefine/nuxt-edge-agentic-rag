@@ -13,7 +13,7 @@ Execute plan by dispatching fresh subagent per task, with two-stage review after
 
 ## When to Use
 
-- Have an implementation plan (from Spectra `/spectra-propose` or manual planning)?
+- Have an implementation plan (from Spectra `$spectra-propose` or manual planning)?
 - Tasks mostly independent?
 - Want to stay in current session?
 
@@ -27,7 +27,7 @@ If tasks are tightly coupled → manual execution or break down further.
 
 1. Read plan, extract ALL tasks with full text
 2. Note context for each task (where it fits, dependencies, architecture)
-3. Create task tracking with `update_plan` for each task
+3. Create task tracking with `TaskCreate` for each task
 
 ### Per Task Loop
 
@@ -38,7 +38,7 @@ If tasks are tightly coupled → manual execution or break down further.
 5. **If spec issues found** → implementer fixes → spec reviewer re-reviews
 6. **Dispatch code quality reviewer** (using TDMS `code-review` agent)
 7. **If quality issues found** → implementer fixes → quality reviewer re-reviews
-8. **Mark task complete** with `update_plan`
+8. **Mark task complete** with `TaskUpdate`
 9. → Next task
 
 ### After All Tasks
@@ -89,7 +89,7 @@ Implementer subagents report one of four statuses:
 
 ### Stage 2: Code Quality Review
 
-- Dispatch code quality review using TDMS `code-review` agent (`.codex/agents/code-review.md`)
+- Dispatch code quality review using TDMS `code-review` agent (`.claude/agents$code-review.md`)
 - Pass review scope via git diff:
   ```bash
   BASE_SHA=$(git rev-parse HEAD~N)  # commits before this task
@@ -115,7 +115,7 @@ You: I'm using Subagent-Driven Development to execute this plan.
 
 [Read plan from openspec/changes/ or docs/]
 [Extract all 5 tasks with full text and context]
-[update_plan for each task]
+[TaskCreate for each task]
 
 Task 1: Add new API endpoint
 
@@ -139,7 +139,7 @@ Spec reviewer: ✅ Spec compliant - all requirements met
 [Dispatch code quality reviewer via code-review agent]
 Code reviewer: Strengths: Good test coverage. Issues: None. Approved.
 
-[update_plan: Task 1 completed]
+[TaskUpdate: Task 1 completed]
 
 Task 2: Add UI component
 [Continue...]
@@ -181,8 +181,8 @@ Task 2: Add UI component
 
 **Works with:**
 
-- **Spectra SDD workflow** — `/spectra-propose` creates the plan, this skill executes it
-- **TDMS code-review agent** (`.codex/agents/code-review.md`) — used for code quality review stage
+- **Spectra SDD workflow** — `$spectra-propose` creates the plan, this skill executes it
+- **TDMS code-review agent** (`.claude/agents$code-review.md`) — used for code quality review stage
 - **test-driven-development skill** — subagents follow TDD for each task
 - **testing-anti-patterns rule** — auto-loaded when editing test files
 

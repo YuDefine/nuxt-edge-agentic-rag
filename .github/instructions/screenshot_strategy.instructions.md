@@ -1,3 +1,8 @@
+---
+applyTo: '**'
+description: Screenshot Strategy
+---
+
 # Screenshot Strategy
 
 截圖工具選擇規則。所有截圖工作由 `review-screenshot` skill 派遣 `screenshot-review` agent 執行，agent 依本規則挑工具。

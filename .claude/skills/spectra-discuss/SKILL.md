@@ -1,6 +1,6 @@
 ---
 name: spectra-discuss
-description: 'Have a focused discussion about a topic and reach a conclusion'
+description: 'Have a focused discussion about a topic and reach a conclusion without implementing. Use when requirements are unclear, need to brainstorm, explore options, clarify scope, or when the user says "discuss", "let''s think about", "what do you think", "explore", or "clarify".'
 disallowedTools: [Edit, Write]
 license: MIT
 compatibility: Requires spectra CLI.
