@@ -21,7 +21,7 @@ Note what you've learned and what remains unclear.
 
 ## Step 2: Ask UX-Focused Questions
 
-STOP and call the request_user_input 工具 to clarify. Focus only on what you couldn't infer from the codebase:
+STOP and call the AskUserQuestion tool to clarify. Focus only on what you couldn't infer from the codebase:
 
 ### Users & Purpose
 
@@ -74,6 +74,6 @@ Synthesize your findings and the user's answers into a `## Design Context` secti
 
 Write this section to `.impeccable.md` in the project root. If the file already exists, update the Design Context section in place.
 
-Then STOP and call the request_user_input 工具 to clarify. whether they'd also like the Design Context appended to AGENTS.md. If yes, append or update the section there as well.
+Then STOP and call the AskUserQuestion tool to clarify. whether they'd also like the Design Context appended to CLAUDE.md. If yes, append or update the section there as well.
 
 Confirm completion and summarize the key design principles that will now guide all future work.

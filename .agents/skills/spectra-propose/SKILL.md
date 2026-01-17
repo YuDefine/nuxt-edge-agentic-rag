@@ -1,6 +1,6 @@
 ---
 name: spectra-propose
-description: 'Create a change proposal with all required artifacts'
+description: 'Create a change proposal with all required artifacts. Use when planning a new feature, designing a change, creating a proposal, or when the user says "propose", "plan", "design", "create a change", "new feature", or "add feature".'
 license: MIT
 compatibility: Requires spectra CLI.
 metadata:
@@ -11,11 +11,11 @@ metadata:
 
 Create a complete Spectra change proposal — from requirement to validated artifacts — in a single workflow.
 
-**Input**: The argument after `/spectra-propose` is the requirement description. Examples:
+**Input**: The argument after `$spectra-propose` is the requirement description. Examples:
 
-- `/spectra-propose add dark mode`
-- `/spectra-propose fix the login page crash`
-- `/spectra-propose improve search performance`
+- `$spectra-propose add dark mode`
+- `$spectra-propose fix the login page crash`
+- `$spectra-propose improve search performance`
 
 If no argument is provided, the workflow will extract requirements from conversation context or ask.
 
@@ -30,7 +30,7 @@ If no argument is provided, the workflow will extract requirements from conversa
    b. **Plan file available**:
    - Check if the conversation context mentions a plan file path (plan mode system messages include the path like `~/.claude/plans/<name>.md`)
    - If found, check if the file exists at `~/.claude/plans/`
-   - If a plan file is found, use the **request_user_input 工具** to ask:
+   - If a plan file is found, use the **AskUserQuestion tool** to ask:
      - Option 1: Use the plan file
      - Option 2: Use conversation context
    - If conversation context has no relevant discussion, mention this when presenting the choice
@@ -42,7 +42,7 @@ If no argument is provided, the workflow will extract requirements from conversa
    - If the user picks conversation context → fall through to (c)
 
    c. **Conversation context** → attempt to extract requirements from conversation history
-   - If context is insufficient, use the **request_user_input 工具** to ask what they want to build
+   - If context is insufficient, use the **AskUserQuestion tool** to ask what they want to build
 
    From the resolved description, derive a kebab-case change name (e.g., "add dark mode" → `add-dark-mode`).
 
@@ -218,7 +218,7 @@ If no argument is provided, the workflow will extract requirements from conversa
    - Stop when all `applyRequires` artifacts are done
 
    c. **If an artifact requires user input** (unclear context):
-   - Use **request_user_input 工具** to clarify
+   - Use **AskUserQuestion tool** to clarify
    - Then continue with creation
 
 8. **Inline Self-Review** (before CLI analysis)
@@ -294,13 +294,13 @@ If no argument is provided, the workflow will extract requirements from conversa
     - List of artifacts created
     - Validation result
 
-    Use **request_user_input 工具** to ask what to do next. This ensures the workflow stops even when auto-accept is enabled. Provide exactly these options:
-    - **First option (will be auto-selected)**: "Park" — Execute `spectra park "<name>"` to park the change, then inform the user they can run `/spectra-apply <change-name>` when ready (which will auto-unpark).
-    - **Second option**: "Apply" — Invoke `/spectra-apply <change-name>` to start implementation.
+    Use **AskUserQuestion tool** to ask what to do next. This ensures the workflow stops even when auto-accept is enabled. Provide exactly these options:
+    - **First option (will be auto-selected)**: "Park" — Execute `spectra park "<name>"` to park the change, then inform the user they can run `$spectra-apply <change-name>` when ready (which will auto-unpark).
+    - **Second option**: "Apply" — Invoke `$spectra-apply <change-name>` to start implementation.
 
-    If **request_user_input 工具** is not available, execute `spectra park "<name>"` and inform the user to run `/spectra-apply <change-name>` when ready. Then STOP — do not continue.
+    If **AskUserQuestion tool** is not available, execute `spectra park "<name>"` and inform the user to run `$spectra-apply <change-name>` when ready. Then STOP — do not continue.
 
-    **After the user responds**, if they chose "Park", execute `spectra park "<name>"` and the workflow is OVER. If they chose "Apply", invoke `/spectra-apply <change-name>` to begin implementation.
+    **After the user responds**, if they chose "Park", execute `spectra park "<name>"` and the workflow is OVER. If they chose "Apply", invoke `$spectra-apply <change-name>` to begin implementation.
 
 **Artifact Creation Guidelines**
 
@@ -322,5 +322,5 @@ If no argument is provided, the workflow will extract requirements from conversa
 - **NEVER** write application code or implement features during this workflow
 - **NEVER** skip the artifact workflow to write code directly
 - **NEVER** reinterpret requirements by ignoring the proposal file
-- **NEVER** invoke `/spectra-apply` — this workflow ends after artifact creation. The user decides when to start implementation
-- If **request_user_input 工具** is not available, ask the same questions as plain text and wait for the user's response
+- **NEVER** invoke `$spectra-apply` — this workflow ends after artifact creation. The user decides when to start implementation
+- If **AskUserQuestion tool** is not available, ask the same questions as plain text and wait for the user's response

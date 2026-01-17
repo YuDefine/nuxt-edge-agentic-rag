@@ -1,6 +1,6 @@
 ---
 name: spectra-propose
-description: 'Create a change proposal with all required artifacts'
+description: 'Create a change proposal with all required artifacts. Use when planning a new feature, designing a change, creating a proposal, or when the user says "propose", "plan", "design", "create a change", "new feature", or "add feature".'
 license: MIT
 compatibility: Requires spectra CLI.
 metadata:

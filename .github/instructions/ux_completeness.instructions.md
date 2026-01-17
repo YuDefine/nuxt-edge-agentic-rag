@@ -1,6 +1,13 @@
 ---
+applyTo: '**'
+description: ---
+---
+
+---
+
 description: UX 完整性規則——定義 "feature complete"、強制列舉 user-facing surface、防止 DB+API 完成但 UI 缺失
 globs: ['openspec/changes/**', 'app/**/*.vue', 'shared/types/**/*.ts', 'supabase/migrations/**']
+
 ---
 
 # UX Completeness
@@ -164,7 +171,7 @@ function getStatusLabel(status: PostStatus): string {
 | Before `spectra-archive`            | `bash scripts/spectra-ux/archive-gate.sh <change>`       | 驗證 journey URL touch、schema drift、exhaustiveness |
 | **Session start / after `/assign`** | `pnpm spectra:roadmap`                                   | 重算 `openspec/ROADMAP.md`（儀表板）                 |
 
-**AI Agent 使用者**：上述由 `.codex/hooks/` 自動觸發。
+**Claude Code 使用者**：上述由 `.claude/hooks/` 自動觸發。
 **Codex / Copilot / Cursor 使用者**：必須在對應 spectra 階段手動呼叫這些腳本。session 開始時也必須手動跑一次 `pnpm spectra:roadmap`。
 
 ## 必禁事項

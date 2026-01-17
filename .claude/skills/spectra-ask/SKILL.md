@@ -1,6 +1,6 @@
 ---
 name: spectra-ask
-description: 'Query openspec/documents and answer questions'
+description: 'Query specs and documents to answer questions without making changes. Use when looking up how something works, checking existing specs, understanding requirements, or when the user says "how does", "what is", "show me the spec", or "look up".'
 disallowedTools: [Edit, Write]
 license: MIT
 compatibility: Requires spectra CLI.

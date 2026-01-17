@@ -1,6 +1,6 @@
 ---
 name: spectra-ingest
-description: 'Update an existing Spectra change from external context'
+description: 'Update an existing Spectra change from external context or new information. Use when specs changed, requirements updated, adding new context mid-implementation, or when the user says "update the spec", "incorporate", "add to the change", or "ingest".'
 license: MIT
 compatibility: Requires spectra CLI.
 metadata:

@@ -2,7 +2,7 @@
 description: '自動發布流程：check → push → PR'
 ---
 
-# /ship — 自動發布
+# $ship — 自動發布
 
 ## Pre-flight 檢查
 
@@ -47,7 +47,7 @@ gh pr create --title "PR title" --body "$(cat <<'EOF'
 ## Test plan
 - [ ] checklist
 
-🤖 Generated with [AI Agent](https://github.com)
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
 EOF
 )"
 ```

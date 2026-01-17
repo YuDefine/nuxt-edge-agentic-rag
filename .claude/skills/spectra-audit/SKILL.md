@@ -1,6 +1,6 @@
 ---
 name: spectra-audit
-description: 'Audit changed code for security sharp edges — dangerous defaults, type confusion, and silent failures'
+description: 'Audit changed code for security issues, dangerous defaults, type confusion, and silent failures. Use before committing important changes, reviewing security, checking for vulnerabilities, or when the user says "audit", "security check", "review for issues", or "check the code".'
 license: MIT
 compatibility: Requires spectra CLI.
 metadata:

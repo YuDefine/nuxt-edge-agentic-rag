@@ -32,11 +32,11 @@ model: sonnet
 ps aux | grep nuxt | grep "$(basename "$PWD")" | grep -v grep
 ```
 
-- 有找到 → 從 process 取得 port（無 `--port` 則預設 3000）
+- 有找到 → 從 process 取得 port（無 `--port` 則預設 3010）
 - 沒找到 → 自動啟動：
 
 ```bash
-for port in 3000 3001 3002 3003 3004; do
+for port in 3010 3011 3012 3013 3014; do
   lsof -iTCP:$port -sTCP:LISTEN -P >/dev/null 2>&1 || { echo $port; break; }
 done
 pnpm dev --port <port>
@@ -202,7 +202,7 @@ const BREAKPOINTS = [
 for (const bp of BREAKPOINTS) {
   test(`<topic> @ ${bp.name}`, async ({ page }) => {
     await page.setViewportSize({ width: bp.width, height: bp.height })
-    await page.goto('http://localhost:3000/auth/_dev-login?redirect=/target')
+    await page.goto('http://localhost:3010/auth/_dev-login?redirect=/target')
     await page.waitForSelector('text=目標文字')
     await page.screenshot({
       path: `screenshots/local/<folder>/${bp.name}-<desc>.png`,

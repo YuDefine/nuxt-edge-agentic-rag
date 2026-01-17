@@ -8,7 +8,7 @@ description: 依功能分類變更並逐步完成 commit，遵循 commitlint 規
 $ARGUMENTS
 ```
 
-政策、禁止事項、commit 類型表見 `.github/instructions/commit.md`。本檔只定義執行流程。
+政策、禁止事項、commit 類型表見 `.claude/rules$commit.md`。本檔只定義執行流程。
 
 ## Step 0: 品質檢查
 
@@ -17,7 +17,7 @@ $ARGUMENTS
 **在同一訊息內**平行派兩個 subagent，等兩者都回報：
 
 1. **general-purpose agent** — 於 agent 內透過 Skill tool 呼叫 `simplify` skill，審查重用性、品質、效率
-2. **code-review agent**（`agent_type: code-review`）— 審查邏輯與安全
+2. **code-review agent**（`subagent_type: code-review`）— 審查邏輯與安全
 
 **所有回報的問題必須修正**。完成後明確輸出：
 

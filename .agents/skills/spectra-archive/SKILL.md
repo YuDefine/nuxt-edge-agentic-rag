@@ -1,6 +1,6 @@
 ---
 name: spectra-archive
-description: 'Archive a completed change'
+description: 'Archive a completed change after all tasks and reviews are done. Use when finishing a feature, completing implementation, marking done, or when the user says "archive", "done", "finish", "complete", or "ship it".'
 license: MIT
 compatibility: Requires spectra CLI.
 metadata:
@@ -11,7 +11,7 @@ metadata:
 
 Archive a completed change.
 
-**Input**: Optionally specify a change name after `/spectra-archive` (e.g., `/spectra-archive add-auth`). If omitted, check if it can be inferred from conversation context. If vague or ambiguous you MUST prompt for available changes.
+**Input**: Optionally specify a change name after `$spectra-archive` (e.g., `$spectra-archive add-auth`). If omitted, check if it can be inferred from conversation context. If vague or ambiguous you MUST prompt for available changes.
 
 **Prerequisites**: This skill requires the `spectra` CLI. If any `spectra` command fails with "command not found" or similar, report the error and STOP.
 
@@ -19,7 +19,7 @@ Archive a completed change.
 
 1. **If no change name provided, prompt for selection**
 
-   Run `spectra list --json` to get available changes. Use the **request_user_input 工具** to let the user select.
+   Run `spectra list --json` to get available changes. Use the **AskUserQuestion tool** to let the user select.
 
    Show only active changes (not already archived).
    Include the schema used for each change if available.
@@ -65,7 +65,7 @@ Archive a completed change.
    - If changes needed: "Sync now (recommended)", "Archive without syncing"
    - If already synced: "Archive now", "Sync anyway", "Cancel"
 
-   If user chooses sync, use Task tool (agent_type: "general-purpose", prompt: "Use Skill tool to invoke spectra-sync-specs for change '<name>'. Delta spec analysis: <include the analyzed delta spec summary>"). Proceed to archive regardless of choice.
+   If user chooses sync, use Task tool (subagent_type: "general-purpose", prompt: "Use Skill tool to invoke spectra-sync-specs for change '<name>'. Delta spec analysis: <include the analyzed delta spec summary>"). Proceed to archive regardless of choice.
 
 5. **Perform the archive**
 
@@ -161,4 +161,4 @@ Target archive directory already exists.
 - Show clear summary of what happened
 - If sync is requested, use the Skill tool to invoke `spectra-sync-specs` (agent-driven)
 - If delta specs exist, always run the sync assessment and show the combined summary before prompting
-- If **request_user_input 工具** is not available, ask the same questions as plain text and wait for the user's response
+- If **AskUserQuestion tool** is not available, ask the same questions as plain text and wait for the user's response

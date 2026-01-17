@@ -1,6 +1,13 @@
 ---
+applyTo: '**'
+description: ---
+---
+
+---
+
 description: Testing anti-patterns to avoid — mock 濫用、test-only production methods、不完整 mock
 globs: ['test/**/*.ts']
+
 ---
 
 # Testing Anti-Patterns

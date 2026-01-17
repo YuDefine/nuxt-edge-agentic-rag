@@ -17,7 +17,7 @@ For component API details (props, slots, events, full documentation, examples), 
 { "mcpServers": { "nuxt-ui": { "type": "http", "url": "https://ui.nuxt.com/mcp" } } }
 ```
 
-**AI Agent**:
+**Claude Code**:
 
 ```bash
 claude mcp add --transport http nuxt-ui https://ui.nuxt.com/mcp

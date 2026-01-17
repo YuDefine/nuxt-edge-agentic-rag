@@ -28,7 +28,7 @@ Use the frontend-design skill — it contains design principles, anti-patterns, 
 This skill has the highest potential to misfire. Do NOT jump straight into implementation. You MUST:
 
 1. **Think through 2-3 different directions** — consider different techniques, levels of ambition, and aesthetic approaches. For each direction, briefly describe what the result would look and feel like.
-2. **STOP and call the request_user_input 工具 to clarify.** to present these directions and get the user's pick before writing any code. Explain trade-offs (browser support, performance cost, complexity).
+2. **STOP and call the AskUserQuestion tool to clarify.** to present these directions and get the user's pick before writing any code. Explain trade-offs (browser support, performance cost, complexity).
 3. Only proceed with the direction the user confirms.
 
 Skipping this step risks building something embarrassing that needs to be thrown away.
