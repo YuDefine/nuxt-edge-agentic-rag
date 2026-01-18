@@ -46,23 +46,14 @@ export default defineNuxtConfig({
     'evlog/nuxt',
   ],
 
-  // NuxtHub D1/KV/R2 bindings - IDs from wrangler.jsonc
+  // NuxtHub D1/KV/R2 - simplified config for local dev + production
+  // Local dev uses .data/db/sqlite.db automatically
+  // Production uses wrangler.jsonc bindings (D1, KV, R2)
   hub: {
-    db: {
-      dialect: 'sqlite',
-      driver: 'd1',
-      connection: { databaseId: '3036df7f-d54b-4d36-a33d-ecbb551fc278' },
-    },
-    kv: {
-      driver: 'cloudflare-kv-binding',
-      binding: 'KV',
-      namespaceId: '661ea98dad0743be86acc9ebeaf464f4',
-    },
-    blob: {
-      driver: 'cloudflare-r2',
-      binding: 'BLOB',
-      bucketName: 'agentic-rag-documents',
-    },
+    db: 'sqlite',
+    kv: true,
+    blob: true,
+    dir: '.data',
   },
 
   // Enable KV for better-auth session caching

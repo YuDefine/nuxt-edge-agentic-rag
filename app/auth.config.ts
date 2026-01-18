@@ -1,9 +1,6 @@
 import { defineClientAuth } from '@onmax/nuxt-better-auth/config'
+import { adminClient } from 'better-auth/client/plugins'
 
 export default defineClientAuth({
-  // 可在此加入 client-side plugins，例如：
-  // plugins: [
-  //   twoFactorClient(),
-  //   passkeyClient(),
-  // ]
+  plugins: [adminClient()],
 })
