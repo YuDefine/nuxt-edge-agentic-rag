@@ -32,5 +32,12 @@
 ## Impact
 
 - Affected specs: `knowledge-access-control`, `document-ingestion-and-publishing`, `web-agentic-answering`, `mcp-knowledge-tools`, `governance-and-observability`
-- Affected code: `openspec/config.yaml`, `nuxt.config.ts`, `.env.example`, `app/pages/**`, `app/middleware/**`, `server/**`, future `server/api/**`, `test/**`, `docs/manual-review-checklist.md`, `docs/manual-review-archive.md`
+- Affected code: `openspec/config.yaml`, `nuxt.config.ts`, `wrangler.jsonc`, `server/db/schema.ts`, `.env.example`, `app/pages/**`, `app/middleware/**`, `server/**`, future `server/api/**`, `test/**`, `docs/manual-review-checklist.md`, `docs/manual-review-archive.md`
 - Affected systems: Google OAuth, D1, R2, KV, Cloudflare AI Search, Workers AI, Nuxt MCP Toolkit, runtime config / Wrangler environment bindings
+
+## 2026-04-16 補充：NuxtHub 整合
+
+報告規格明確要求使用 NuxtHub 整合 D1/R2/KV，但目前 `nuxt.config.ts` 沒有安裝 `@nuxthub/core`，也沒有 `server/db/schema.ts`。原 1.1 任務只完成了 runtime config，DB schema 尚未建立。已將 1.1 拆分為：
+
+- 1.1a Runtime Config（已完成）
+- 1.1b NuxtHub & Drizzle Schema（新增，blocker 級任務）

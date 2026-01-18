@@ -31,3 +31,19 @@ The system SHALL derive `allowed_access_levels` before the first retrieval step 
 - **WHEN** an active MCP token includes `knowledge.restricted.read`
 - **THEN** the derived `allowed_access_levels` include both `internal` and `restricted`
 - **AND** downstream retrieval and replay checks use that expanded visibility set
+
+### Requirement: Google OAuth Only Interactive Login
+
+For `v1.0.0`, the Web interactive sign-in surface SHALL expose Google OAuth as the only user login path. Email/password login, GitHub OAuth, and Passkey SHALL NOT be presented or enabled in runtime config, auth handlers, or the login page for the core release.
+
+#### Scenario: Login page only offers Google sign-in
+
+- **WHEN** an unauthenticated user opens the Web login page in `v1.0.0`
+- **THEN** the page presents Google OAuth as the primary sign-in action
+- **AND** the page explains that role assignment depends on the signed-in Google account and runtime allowlist
+
+#### Scenario: Non-report auth providers stay disabled
+
+- **WHEN** the server boots with `v1.0.0` auth configuration
+- **THEN** email/password, GitHub OAuth, and Passkey are not enabled as interactive login providers
+- **AND** runtime auth behavior stays aligned with the report-defined Google OAuth scope

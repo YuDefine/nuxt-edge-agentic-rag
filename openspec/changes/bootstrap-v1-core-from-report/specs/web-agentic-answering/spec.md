@@ -47,3 +47,19 @@ The system SHALL assemble citations only from prebuilt `source_chunks`, SHALL tr
 - **WHEN** the previous assistant response no longer revalidates to one current document
 - **THEN** the next Web follow-up is reclassified as ambiguous or cross-document
 - **AND** the system does not reuse the single-document follow-up route
+
+### Requirement: Neutral Project Shell
+
+Before the full product experience is complete, the Web shell SHALL remain a neutral knowledge-project frame aligned with the report scope. The authenticated landing page and shared layout SHALL NOT use generic starter welcome copy, SHALL NOT imply a finished vertical product, and SHALL keep role context and sign-out affordances without overstating delivered capabilities.
+
+#### Scenario: Authenticated landing stays neutral
+
+- **WHEN** an authenticated user lands on the root page before later feature surfaces are filled in
+- **THEN** the page presents a neutral project shell with current user context
+- **AND** the page does not use generic starter welcome messaging or vendor-specific claims
+
+#### Scenario: Shared layout avoids misleading product framing
+
+- **WHEN** the default application layout renders navigation or footer copy
+- **THEN** the copy stays consistent with a `v1.0.0` knowledge-project shell
+- **AND** the layout does not imply the repo is already a fully delivered end-user product
