@@ -467,11 +467,11 @@ function renderActiveBlock(changes: ChangeInfo[], now: Date): string {
     .trimEnd()
 }
 
-function renderParallelismBlock(report: ParallelismReport): string {
-  const section = (title: string, body: string): string => {
-    return `### ${title}\n\n${body || '_(none)_'}\n`
-  }
+function parallelismSection(title: string, body: string): string {
+  return `### ${title}\n\n${body || '_(none)_'}\n`
+}
 
+function renderParallelismBlock(report: ParallelismReport): string {
   const indepBody = report.independent.length
     ? report.independent.map((n) => `- \`${n}\``).join('\n')
     : ''
@@ -496,9 +496,9 @@ function renderParallelismBlock(report: ParallelismReport): string {
     '',
     '> Which active changes can be worked on **simultaneously** without stepping on each other.',
     '',
-    section('Independent (can run in parallel)', indepBody),
-    section('Mutex (same spec touched)', mutexBody),
-    section('Blocked by dependency', blockedBody),
+    parallelismSection('Independent (can run in parallel)', indepBody),
+    parallelismSection('Mutex (same spec touched)', mutexBody),
+    parallelismSection('Blocked by dependency', blockedBody),
   ]
     .join('\n')
     .trimEnd()

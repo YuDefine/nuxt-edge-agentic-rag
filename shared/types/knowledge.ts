@@ -1,3 +1,27 @@
+/**
+ * Document with current version info for list display.
+ * Used by both client (DocumentListTable) and server (document-list-store).
+ */
+export interface DocumentWithCurrentVersion {
+  id: string
+  title: string
+  slug: string
+  categorySlug: string
+  accessLevel: 'internal' | 'restricted'
+  status: 'draft' | 'active' | 'archived'
+  currentVersionId: string | null
+  createdAt: string
+  updatedAt: string
+  archivedAt: string | null
+  currentVersion: {
+    id: string
+    versionNumber: number
+    syncStatus: 'pending' | 'running' | 'synced' | 'failed'
+    indexStatus: 'pending' | 'preprocessing' | 'indexing' | 'indexed' | 'failed'
+    publishedAt: string | null
+  } | null
+}
+
 export interface DocumentRecord {
   accessLevel: string
   archivedAt: string | null

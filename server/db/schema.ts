@@ -1,0 +1,164 @@
+import { index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
+import { sql } from 'drizzle-orm'
+
+const timestampNow = sql`CURRENT_TIMESTAMP`
+
+export const userProfiles = sqliteTable('user_profiles', {
+  id: text('id').primaryKey(),
+  emailNormalized: text('email_normalized').notNull().unique(),
+  displayName: text('display_name'),
+  roleSnapshot: text('role_snapshot').notNull().default('user'),
+  adminSource: text('admin_source').notNull().default('none'),
+  createdAt: text('created_at').notNull().default(timestampNow),
+  updatedAt: text('updated_at').notNull().default(timestampNow),
+})
+
+export const documents = sqliteTable('documents', {
+  id: text('id').primaryKey(),
+  slug: text('slug').notNull().unique(),
+  title: text('title').notNull(),
+  categorySlug: text('category_slug').notNull().default(''),
+  accessLevel: text('access_level').notNull().default('internal'),
+  status: text('status').notNull().default('draft'),
+  currentVersionId: text('current_version_id'),
+  createdByUserId: text('created_by_user_id').references(() => userProfiles.id),
+  createdAt: text('created_at').notNull().default(timestampNow),
+  updatedAt: text('updated_at').notNull().default(timestampNow),
+  archivedAt: text('archived_at'),
+})
+
+export const documentVersions = sqliteTable(
+  'document_versions',
+  {
+    id: text('id').primaryKey(),
+    documentId: text('document_id')
+      .notNull()
+      .references(() => documents.id, { onDelete: 'cascade' }),
+    versionNumber: integer('version_number').notNull(),
+    sourceR2Key: text('source_r2_key').notNull(),
+    normalizedTextR2Key: text('normalized_text_r2_key'),
+    metadataJson: text('metadata_json').notNull().default('{}'),
+    smokeTestQueriesJson: text('smoke_test_queries_json').notNull().default('[]'),
+    indexStatus: text('index_status').notNull().default('upload_pending'),
+    syncStatus: text('sync_status').notNull().default('pending'),
+    isCurrent: integer('is_current', { mode: 'boolean' }).notNull().default(false),
+    publishedAt: text('published_at'),
+    createdAt: text('created_at').notNull().default(timestampNow),
+    updatedAt: text('updated_at').notNull().default(timestampNow),
+  },
+  (table) => [
+    uniqueIndex('document_versions_document_version_unique').on(
+      table.documentId,
+      table.versionNumber
+    ),
+    index('document_versions_document_current_idx').on(table.documentId, table.isCurrent),
+  ]
+)
+
+export const sourceChunks = sqliteTable(
+  'source_chunks',
+  {
+    id: text('id').primaryKey(),
+    documentVersionId: text('document_version_id')
+      .notNull()
+      .references(() => documentVersions.id, { onDelete: 'cascade' }),
+    chunkIndex: integer('chunk_index').notNull(),
+    chunkHash: text('chunk_hash').notNull(),
+    chunkText: text('chunk_text').notNull(),
+    citationLocator: text('citation_locator').notNull(),
+    accessLevel: text('access_level').notNull().default('internal'),
+    metadataJson: text('metadata_json').notNull().default('{}'),
+    createdAt: text('created_at').notNull().default(timestampNow),
+  },
+  (table) => [
+    uniqueIndex('source_chunks_version_chunk_unique').on(table.documentVersionId, table.chunkIndex),
+    index('source_chunks_version_locator_idx').on(table.documentVersionId, table.citationLocator),
+  ]
+)
+
+export const conversations = sqliteTable(
+  'conversations',
+  {
+    id: text('id').primaryKey(),
+    userProfileId: text('user_profile_id').references(() => userProfiles.id),
+    accessLevel: text('access_level').notNull().default('internal'),
+    title: text('title').notNull().default('New conversation'),
+    createdAt: text('created_at').notNull().default(timestampNow),
+    updatedAt: text('updated_at').notNull().default(timestampNow),
+    deletedAt: text('deleted_at'),
+  },
+  (table) => [index('conversations_user_created_idx').on(table.userProfileId, table.createdAt)]
+)
+
+export const mcpTokens = sqliteTable('mcp_tokens', {
+  id: text('id').primaryKey(),
+  tokenHash: text('token_hash').notNull().unique(),
+  name: text('name').notNull(),
+  scopesJson: text('scopes_json').notNull().default('[]'),
+  environment: text('environment').notNull(),
+  status: text('status').notNull().default('active'),
+  expiresAt: text('expires_at'),
+  lastUsedAt: text('last_used_at'),
+  revokedAt: text('revoked_at'),
+  revokedReason: text('revoked_reason'),
+  createdAt: text('created_at').notNull().default(timestampNow),
+})
+
+export const queryLogs = sqliteTable(
+  'query_logs',
+  {
+    id: text('id').primaryKey(),
+    channel: text('channel').notNull(),
+    userProfileId: text('user_profile_id').references(() => userProfiles.id),
+    mcpTokenId: text('mcp_token_id').references(() => mcpTokens.id),
+    environment: text('environment').notNull(),
+    queryRedactedText: text('query_redacted_text').notNull(),
+    riskFlagsJson: text('risk_flags_json').notNull().default('[]'),
+    allowedAccessLevelsJson: text('allowed_access_levels_json').notNull().default('["internal"]'),
+    redactionApplied: integer('redaction_applied', { mode: 'boolean' }).notNull().default(false),
+    configSnapshotVersion: text('config_snapshot_version').notNull().default('v1'),
+    status: text('status').notNull().default('accepted'),
+    createdAt: text('created_at').notNull().default(timestampNow),
+  },
+  (table) => [index('query_logs_channel_created_idx').on(table.channel, table.createdAt)]
+)
+
+export const messages = sqliteTable(
+  'messages',
+  {
+    id: text('id').primaryKey(),
+    queryLogId: text('query_log_id').references(() => queryLogs.id, { onDelete: 'set null' }),
+    userProfileId: text('user_profile_id').references(() => userProfiles.id),
+    channel: text('channel').notNull(),
+    role: text('role').notNull(),
+    contentRedacted: text('content_redacted').notNull(),
+    riskFlagsJson: text('risk_flags_json').notNull().default('[]'),
+    redactionApplied: integer('redaction_applied', { mode: 'boolean' }).notNull().default(false),
+    createdAt: text('created_at').notNull().default(timestampNow),
+  },
+  (table) => [index('messages_query_log_idx').on(table.queryLogId)]
+)
+
+export const citationRecords = sqliteTable(
+  'citation_records',
+  {
+    id: text('id').primaryKey(),
+    queryLogId: text('query_log_id')
+      .notNull()
+      .references(() => queryLogs.id, { onDelete: 'cascade' }),
+    documentVersionId: text('document_version_id')
+      .notNull()
+      .references(() => documentVersions.id),
+    sourceChunkId: text('source_chunk_id')
+      .notNull()
+      .references(() => sourceChunks.id),
+    citationLocator: text('citation_locator').notNull(),
+    chunkTextSnapshot: text('chunk_text_snapshot').notNull(),
+    createdAt: text('created_at').notNull().default(timestampNow),
+    expiresAt: text('expires_at').notNull(),
+  },
+  (table) => [
+    index('citation_records_query_log_idx').on(table.queryLogId),
+    index('citation_records_expires_idx').on(table.expiresAt),
+  ]
+)
