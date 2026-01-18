@@ -12,7 +12,7 @@
 
 | 環境       | URI                                           |
 | ---------- | --------------------------------------------- |
-| 本地開發   | `http://localhost:3000/auth/google`           |
+| 本地開發   | `http://localhost:3010/auth/google`           |
 | Staging    | `https://staging.your-domain.com/auth/google` |
 | Production | `https://your-domain.com/auth/google`         |
 
@@ -45,7 +45,7 @@ NUXT_OAUTH_LINE_CLIENT_SECRET=your-channel-secret
 ## 注意事項
 
 - Redirect URI 必須完全匹配（包含 protocol 和 port）
-- 本地開發使用 `http://localhost:3000`，不要用 `127.0.0.1`
+- 本地開發使用 `http://localhost:3010`，不要用 `127.0.0.1`
 - 新增 OAuth provider 後，需同時更新：
   1. `.env` / `.env.example`
   2. `nuxt.config.ts` runtimeConfig

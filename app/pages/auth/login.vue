@@ -3,13 +3,9 @@
 
   const { signIn } = useUserSession()
   const { parseAuthError } = useAuthError()
-  const email = shallowRef('')
-  const password = shallowRef('')
-  const loading = shallowRef(false)
+  const route = useRoute()
   const socialLoading = shallowRef(false)
   const errorMessage = shallowRef('')
-
-  const route = useRoute()
 
   const safeRedirect = computed(() => {
     const redirect = route.query.redirect
@@ -24,19 +20,6 @@
 
     return redirect
   })
-
-  async function handleLogin() {
-    loading.value = true
-    errorMessage.value = ''
-    try {
-      await signIn.email({ email: email.value, password: password.value })
-      await navigateTo(safeRedirect.value)
-    } catch (e: unknown) {
-      errorMessage.value = parseAuthError(e)
-    } finally {
-      loading.value = false
-    }
-  }
 
   async function handleGoogleLogin() {
     socialLoading.value = true
@@ -53,48 +36,32 @@
 </script>
 
 <template>
-  <div class="flex flex-col gap-6">
-    <div class="text-center">
-      <h1 class="text-2xl font-bold">登入</h1>
-    </div>
+  <UCard class="w-full">
+    <template #header>
+      <div class="text-center">
+        <h1 class="text-xl font-semibold text-default">登入</h1>
+        <p class="mt-1 text-sm text-muted">請使用 Google 帳號登入</p>
+      </div>
+    </template>
 
-    <UAlert v-if="errorMessage" color="error" variant="subtle" :title="errorMessage" />
+    <div class="flex flex-col gap-4">
+      <UAlert v-if="errorMessage" color="error" variant="subtle" :title="errorMessage" />
 
-    <UButton
-      block
-      color="neutral"
-      variant="outline"
-      size="lg"
-      icon="i-simple-icons-google"
-      :loading="socialLoading"
-      @click="handleGoogleLogin"
-    >
-      使用 Google 登入
-    </UButton>
-
-    <UDivider label="或使用 Email" />
-
-    <form class="flex flex-col gap-4" @submit.prevent="handleLogin">
-      <UFormField label="Email">
-        <UInput v-model="email" type="email" required placeholder="you@example.com" />
-      </UFormField>
-      <UFormField label="密碼">
-        <UInput v-model="password" type="password" required placeholder="••••••••" />
-      </UFormField>
-      <UButton block color="neutral" variant="solid" size="lg" type="submit" :loading="loading">
-        登入
+      <UButton
+        block
+        color="neutral"
+        variant="outline"
+        size="lg"
+        icon="i-simple-icons-google"
+        :loading="socialLoading"
+        @click="handleGoogleLogin"
+      >
+        使用 Google 登入
       </UButton>
-    </form>
 
-    <div class="flex items-center justify-between text-sm">
-      <NuxtLink
-        to="/auth/register"
-        class="font-medium text-neutral-900 hover:underline focus:underline"
-        >還沒有帳號？註冊</NuxtLink
-      >
-      <NuxtLink to="/auth/forgot-password" class="text-neutral-600 hover:underline focus:underline"
-        >忘記密碼</NuxtLink
-      >
+      <p class="text-center text-sm text-muted">
+        首次登入後，系統會依 Google 帳號與部署 allowlist 決定角色。
+      </p>
     </div>
-  </div>
+  </UCard>
 </template>

@@ -1,21 +1,27 @@
 import { defineServerAuth } from '@onmax/nuxt-better-auth/config'
+import { admin } from 'better-auth/plugins'
 
-export default defineServerAuth(({ runtimeConfig }) => {
-  const hasGoogleOAuth = Boolean(
-    runtimeConfig.oauth.google.clientId && runtimeConfig.oauth.google.clientSecret
-  )
-
-  return {
-    emailAndPassword: { enabled: true },
-    ...(hasGoogleOAuth
+export default defineServerAuth(({ db, runtimeConfig }) => {
+  const googleOAuth = runtimeConfig.oauth?.google
+  const socialProviders =
+    googleOAuth?.clientId && googleOAuth?.clientSecret
       ? {
-          socialProviders: {
-            google: {
-              clientId: runtimeConfig.oauth.google.clientId,
-              clientSecret: runtimeConfig.oauth.google.clientSecret,
-            },
+          google: {
+            clientId: googleOAuth.clientId,
+            clientSecret: googleOAuth.clientSecret,
           },
         }
-      : {}),
+      : undefined
+
+  // v1.0.0 spec: Google OAuth is the only interactive login path.
+  // emailAndPassword is only enabled in local environment for setup endpoint.
+  const knowledgeEnv = runtimeConfig.knowledge?.environment ?? 'local'
+  const enableEmailAndPassword = knowledgeEnv === 'local'
+
+  return {
+    database: db,
+    emailAndPassword: { enabled: enableEmailAndPassword },
+    plugins: [admin()],
+    ...(socialProviders ? { socialProviders } : {}),
   }
 })

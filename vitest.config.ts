@@ -26,6 +26,7 @@ const nodeProjectConfig = {
 
 const sharedTestConfig = {
   globals: true,
+  setupFiles: ['./test/setup-env.ts'],
   exclude: ['e2e/**', 'node_modules/**'],
 }
 
