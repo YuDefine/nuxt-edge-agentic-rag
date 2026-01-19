@@ -46,9 +46,9 @@ export default defineNuxtConfig({
     'evlog/nuxt',
   ],
 
-  // NuxtHub D1/KV/R2 - simplified config for local dev + production
-  // Local dev uses .data/db/sqlite.db automatically
-  // Production uses wrangler.jsonc bindings (D1, KV, R2)
+  // NuxtHub - auto-detects environment:
+  // - Local: SQLite file + fs-based KV/blob in .data/
+  // - Production: D1 + KV + R2 via wrangler.jsonc bindings
   hub: {
     db: 'sqlite',
     kv: true,
