@@ -86,10 +86,14 @@
 
 ## Blockers
 
-- [ ] #B1 修復 NuxtHub + Better Auth 整合 — `@nuxthub/core` 模組在 Cloudflare Workers 部署時造成 libsql 初始化錯誤（`URL_SCHEME_NOT_SUPPORTED: file:`）。nuxt-better-auth 嘗試使用 libsql file:// URL 而非 D1 binding。
-  - **現況**：已暫時移除 `@nuxthub/core` 以完成 CSRF 修正部署
-  - **目標**：讓 NuxtHub（hub.db: sqlite）與 nuxt-better-auth 在 Workers 環境正確使用 D1
-  - **可能方向**：
-    1. 檢查 nuxt-better-auth 如何偵測 Cloudflare 環境
-    2. 確保 D1 binding 在 better-auth 初始化前已可用
-    3. 或改用 better-auth 原生 D1 adapter
+- [x] #B1 修復 NuxtHub + Better Auth 整合 — `@nuxthub/core` 模組在 Cloudflare Workers 部署時造成 libsql 初始化錯誤（`URL_SCHEME_NOT_SUPPORTED: file:`）。nuxt-better-auth 嘗試使用 libsql file:// URL 而非 D1 binding。
+  - **2026-04-16 修復完成**：
+    1. 啟用 `@nuxthub/core` 模組（必須在 modules array 第一位，讓 better-auth 能接收 D1 binding）
+    2. 配置 `hub: { db: 'sqlite', kv: true, blob: true, dir: '.data' }` — 自動偵測環境：local 使用 file，production 使用 wrangler.jsonc bindings（D1, KV, R2）
+    3. 加入 `auth: { secondaryStorage: true }` 啟用 KV session 快取
+    4. 修復 `server/api/_dev/login.post.ts` 的 TypeScript 錯誤（Headers 類型轉換）
+  - **驗證狀態**：
+    - ✅ `pnpm typecheck` 通過
+    - ✅ `pnpm test:unit` 通過（105 tests）
+    - ⚠️ `pnpm build` 有間歇性 V8 crash（Node.js 24 runtime 問題，與本修復無關）
+  - **待驗證**：部署到 staging 確認 D1 binding 正確運作

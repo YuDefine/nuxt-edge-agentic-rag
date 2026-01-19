@@ -163,7 +163,7 @@ spectra unpark observability-and-debug
 
 ## Active Changes
 
-_last synced: 2026-04-16T12:20:24.310Z_
+_last synced: 2026-04-16T12:49:33.135Z_
 
 6 active changes (0 ready · 4 in progress · 2 draft · 0 blocked)
 
@@ -173,8 +173,8 @@ _(none)_
 
 ### In progress
 
-- **add-v1-core-ui** — 28/34 tasks (82%)
-- **bootstrap-v1-core-from-report** — 27/34 tasks (79%)
+- **add-v1-core-ui** — 31/34 tasks (91%)
+- **bootstrap-v1-core-from-report** — 28/34 tasks (82%)
 - **governance-refinements** — 4/17 tasks (24%)
 - **test-coverage-and-automation** — 5/43 tasks (12%)
 
