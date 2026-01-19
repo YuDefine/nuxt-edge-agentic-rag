@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { eq } from 'drizzle-orm'
 import { getRuntimeAdminAccess } from '../../utils/knowledge-runtime'
 
 /**
@@ -21,6 +22,15 @@ import { getRuntimeAdminAccess } from '../../utils/knowledge-runtime'
  *     -H "Content-Type: application/json" \
  *     -d '{"email":"user@test.local","password":"testpass123"}'
  */
+
+/**
+ * Update user role directly in database.
+ * Used to sync role with admin allowlist after login/signup.
+ */
+async function updateUserRole(userId: string, role: string): Promise<void> {
+  const { db, schema } = await import('hub:db')
+  await db.update(schema.user).set({ role }).where(eq(schema.user.id, userId))
+}
 
 const bodySchema = z.object({
   email: z.string().email('Invalid email'),
@@ -62,19 +72,9 @@ export default defineEventHandler(async (event) => {
     if (signInResponse.ok) {
       const data = await signInResponse.json()
 
-      // Update role if it doesn't match expected role
+      // Sync role with admin allowlist if needed
       if (data.user && data.user.role !== role) {
-        const headers = new Headers()
-        for (const [key, value] of Object.entries(getHeaders(event))) {
-          if (value) headers.set(key, value)
-        }
-        await auth.api.setRole({
-          headers,
-          body: {
-            userId: data.user.id,
-            role,
-          },
-        })
+        await updateUserRole(data.user.id, role)
       }
 
       // Copy session cookies to response
@@ -119,19 +119,9 @@ export default defineEventHandler(async (event) => {
 
     const data = await signUpResponse.json()
 
-    // Set role based on admin allowlist
+    // Sync role with admin allowlist
     if (data.user) {
-      const headers = new Headers()
-      for (const [key, value] of Object.entries(getHeaders(event))) {
-        if (value) headers.set(key, value)
-      }
-      await auth.api.setRole({
-        headers,
-        body: {
-          userId: data.user.id,
-          role,
-        },
-      })
+      await updateUserRole(data.user.id, role)
     }
 
     // Copy session cookies to response
