@@ -102,6 +102,110 @@ npx wrangler deploy
 - [ ] 以 allowlist 中的 email 登入，確認顯示「管理員」
 - [ ] 訪問 `/api/health`（如有），確認 200 回應
 
+## 人工驗收命令（6.2 Manual Acceptance）
+
+> 以下命令用於驗收 #1-#5 人工檢查項目
+
+### 環境變數設定
+
+```bash
+# 設定 staging URL
+export BASE_URL="https://agentic.yudefine.com.tw"
+
+# 從瀏覽器開發者工具取得登入後的 session cookie
+export SESSION_COOKIE="better-auth.session_token=xxx"
+```
+
+### #1 登入與角色驗證
+
+```bash
+# 取得目前登入使用者資訊
+curl -s "$BASE_URL/api/auth/session" \
+  -H "Cookie: $SESSION_COOKIE" | jq .
+
+# 預期：admin 帳號應看到 role: "admin"
+```
+
+### #2 文件上傳流程（presign → finalize → sync → publish）
+
+```bash
+# Step 1: Presign
+curl -s -X POST "$BASE_URL/api/uploads/presign" \
+  -H "Cookie: $SESSION_COOKIE" \
+  -H "Content-Type: application/json" \
+  -d '{"filename":"test.md","contentType":"text/markdown","sizeBytes":100}' | jq .
+
+# Step 2: 使用回傳的 presignedUrl 上傳檔案
+# curl -X PUT "<presignedUrl>" -H "Content-Type: text/markdown" --data-binary "@test.md"
+
+# Step 3: Finalize
+curl -s -X POST "$BASE_URL/api/uploads/finalize" \
+  -H "Cookie: $SESSION_COOKIE" \
+  -H "Content-Type: application/json" \
+  -d '{"uploadId":"<uploadId>","checksum":"<checksum>"}' | jq .
+
+# Step 4: Sync (觸發 AI Search 索引)
+curl -s -X POST "$BASE_URL/api/documents/sync" \
+  -H "Cookie: $SESSION_COOKIE" \
+  -H "Content-Type: application/json" \
+  -d '{"documentId":"<documentId>"}' | jq .
+
+# Step 5: Publish
+curl -s -X POST "$BASE_URL/api/documents/<documentId>/versions/<versionId>/publish" \
+  -H "Cookie: $SESSION_COOKIE" | jq .
+```
+
+### #3 版本切換驗證
+
+```bash
+# 上傳新版本後，確認問答只引用當前版本
+curl -s -X POST "$BASE_URL/api/chat" \
+  -H "Cookie: $SESSION_COOKIE" \
+  -H "Content-Type: application/json" \
+  -d '{"message":"<關於文件內容的問題>"}' | jq .
+
+# 確認回應中的 citations 都指向當前版本的 versionId
+```
+
+### #4 MCP Token 權限驗證
+
+```bash
+# 建立測試用 MCP Token（需要 admin 權限）
+# 1. 不含 knowledge.restricted.read scope
+export MCP_TOKEN_LIMITED="<token without restricted scope>"
+
+# 2. 含 knowledge.restricted.read scope
+export MCP_TOKEN_FULL="<token with restricted scope>"
+
+# 測試 searchKnowledge（應對 restricted 文件做 existence-hiding）
+curl -s -X POST "$BASE_URL/api/mcp/search" \
+  -H "Authorization: Bearer $MCP_TOKEN_LIMITED" \
+  -H "Content-Type: application/json" \
+  -d '{"query":"restricted content"}' | jq .
+# 預期：不應看到 restricted 文件
+
+# 測試 getDocumentChunk（無權限應回 403）
+curl -s "$BASE_URL/api/mcp/chunks/<restricted-citation-id>" \
+  -H "Authorization: Bearer $MCP_TOKEN_LIMITED"
+# 預期：403 Forbidden
+```
+
+### #5 Audit Log 與 Rate Limit 驗證
+
+```bash
+# 查詢 query_logs（需要 D1 console 或 admin API）
+# 確認 queryRedactedText 有正確遮罩
+
+# 測試 rate limit（連續發送超過限制）
+for i in {1..20}; do
+  curl -s -X POST "$BASE_URL/api/chat" \
+    -H "Cookie: $SESSION_COOKIE" \
+    -H "Content-Type: application/json" \
+    -d '{"message":"test"}' -o /dev/null -w "%{http_code}\n"
+done
+# 預期：超過限制後回傳 429
+```
+
 ## Troubleshooting
 
 ### 常見問題
