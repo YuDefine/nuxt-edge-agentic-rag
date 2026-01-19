@@ -1,0 +1,39 @@
+{
+  "$comment": "Auto-generated from .claude/settings.json hooks — GitHub Copilot format",
+  "hooks": {
+    "sessionStart": [
+      {
+        "command": ".claude/hooks/init-code-graph.sh",
+        "timeout": 120
+      },
+      {
+        "command": ".claude/hooks/session-start-roadmap-sync.sh",
+        "timeout": 10
+      }
+    ],
+    "preToolUse": [
+      {
+        "command": ".claude/hooks/knowledge-search-reminder.sh",
+        "matcher": "Edit|Write",
+        "timeout": 5
+      },
+      {
+        "command": ".claude/hooks/pre-commit-review.sh",
+        "matcher": "Bash",
+        "timeout": 10
+      }
+    ],
+    "postToolUse": [
+      {
+        "command": ".claude/hooks/post-edit-typecheck.sh",
+        "matcher": "Edit|Write",
+        "timeout": 90
+      },
+      {
+        "command": ".claude/hooks/post-bash-error-debug.sh",
+        "matcher": "Bash",
+        "timeout": 5
+      }
+    ]
+  }
+}

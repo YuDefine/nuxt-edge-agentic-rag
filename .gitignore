@@ -28,3 +28,16 @@ logs
 app/types/database.types.ts
 supabase/.branches/
 supabase/.temp/
+
+# Wrangler build artifacts
+.wrangler/
+
+# Test artifacts
+test-results/
+playwright-report/
+
+# Temporary files
+temp/
+
+# Screenshots (review artifacts)
+screenshots/
