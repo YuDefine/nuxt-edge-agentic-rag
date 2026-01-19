@@ -40,12 +40,12 @@
 - [x] 5.2 驗證核心 UI 可支撐 manual acceptance #1 ~ #4 的主要操作路徑。
 - [x] 5.3 執行 `/design improve` 與 targeted design skills，覆蓋 `app/pages/chat/**`、`app/pages/admin/documents/**`、相關 components。
 - [x] 5.4 執行 `/audit` 並修正 Critical issues。
-- [ ] 5.5 執行 `/review-screenshot` 驗證核心 chat / documents pages 視覺 QA。
+- [x] 5.5 執行 `/review-screenshot` 驗證核心 chat / documents pages 視覺 QA。
 
 ## 人工檢查
 
-- [ ] #1 Admin 可由首頁進入 `/admin/documents`，一般使用者不可見或不可進入。
-- [ ] #2 Admin 可透過 UI 完成 presign → upload → finalize → sync → publish。
-- [ ] #3 一般使用者可由首頁進入 `/chat` 並成功提問。
-- [ ] #4 Chat 成功回答時可顯示 citation，點擊後可回放引用片段。
-- [ ] #5 問題被拒答時，UI 以明確拒答狀態顯示且不出現 citation。
+- [x] #1 Admin 可由首頁進入 `/admin/documents`，一般使用者不可見或不可進入。
+- [ ] #2 Admin 可透過 UI 完成 presign → upload → finalize → sync → publish。（需後端 R2/D1 服務就緒）
+- [ ] #3 一般使用者可由首頁進入 `/chat` 並成功提問。（UI 可用，需手動驗證完整流程）
+- [ ] #4 Chat 成功回答時可顯示 citation，點擊後可回放引用片段。（需後端 AI 服務就緒）
+- [x] #5 問題被拒答時，UI 以明確拒答狀態顯示且不出現 citation。
