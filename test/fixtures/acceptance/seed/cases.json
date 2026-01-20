@@ -14,6 +14,41 @@
       "expectedOutcome": "direct"
     },
     {
+      "caseId": "seed-tc-01-mcp",
+      "registryId": "TC-01",
+      "channel": "mcp",
+      "prompt": "PO 和 PR 有什麼差別？",
+      "expectedOutcome": "direct"
+    },
+    {
+      "caseId": "seed-tc-02",
+      "registryId": "TC-02",
+      "channel": "web",
+      "prompt": "庫存不足時該怎麼處理？",
+      "expectedOutcome": "direct"
+    },
+    {
+      "caseId": "seed-tc-02-mcp",
+      "registryId": "TC-02",
+      "channel": "mcp",
+      "prompt": "庫存不足時該怎麼處理？",
+      "expectedOutcome": "direct"
+    },
+    {
+      "caseId": "seed-tc-03",
+      "registryId": "TC-03",
+      "channel": "web",
+      "prompt": "月結報表中的未結案金額代表什麼？",
+      "expectedOutcome": "direct"
+    },
+    {
+      "caseId": "seed-tc-03-mcp",
+      "registryId": "TC-03",
+      "channel": "mcp",
+      "prompt": "月結報表中的未結案金額代表什麼？",
+      "expectedOutcome": "direct"
+    },
+    {
       "caseId": "seed-ev-01",
       "registryId": "EV-01",
       "channel": "shared",
