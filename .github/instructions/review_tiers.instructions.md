@@ -1,6 +1,6 @@
 ---
 applyTo: '**'
-description: ---
+description: Review Tier 定義
 ---
 
 ---

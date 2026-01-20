@@ -1,6 +1,6 @@
 ---
 applyTo: '**'
-description: ---
+description: UX Completeness
 ---
 
 ---
