@@ -1,6 +1,6 @@
 ---
 applyTo: '**'
-description: ---
+description: Testing Anti-Patterns
 ---
 
 ---
