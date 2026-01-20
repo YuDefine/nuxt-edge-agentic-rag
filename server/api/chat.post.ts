@@ -7,6 +7,7 @@ import {
   getRequiredD1Binding,
   getRequiredKvBinding,
 } from '../utils/cloudflare-bindings'
+import { createCitationStore } from '../utils/citation-store'
 import { createKnowledgeAuditStore } from '../utils/knowledge-audit'
 import { createKnowledgeEvidenceStore } from '../utils/knowledge-evidence-store'
 import { retrieveVerifiedEvidence } from '../utils/knowledge-retrieval'
@@ -54,6 +55,7 @@ export default defineEventHandler(async function chatHandler(event) {
       },
       {
         answer: createFallbackAnswer,
+        persistCitations: createCitationStore(database).persistCitations,
         auditStore: createKnowledgeAuditStore(database),
         judge: createFallbackJudge(runtimeConfig.governance.thresholds.answerMin),
         rateLimitStore: createChatKvRateLimitStore(

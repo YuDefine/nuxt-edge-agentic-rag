@@ -220,4 +220,85 @@ describe('web chat', () => {
       userProfileId: 'user-9',
     })
   })
+
+  it('persists citations against the accepted web query log when evidence is answered directly', async () => {
+    const governance = createKnowledgeRuntimeConfig({
+      environment: 'staging',
+    }).governance
+    const auditStore = {
+      createMessage: vi.fn().mockResolvedValue('message-10'),
+      createQueryLog: vi.fn().mockResolvedValue('query-log-10'),
+    }
+    const persistCitations = vi.fn().mockResolvedValue([
+      {
+        citationId: 'citation-10',
+        sourceChunkId: 'chunk-10',
+      },
+    ])
+
+    const result = await chatWithKnowledge(
+      {
+        auth: {
+          isAdmin: false,
+          userId: 'user-10',
+        },
+        governance,
+        environment: 'staging',
+        now: 60_000,
+        query: 'PO 和 PR 有什麼差別？',
+      },
+      {
+        answer: vi.fn().mockResolvedValue('PO 是採購訂單，PR 是請購需求。'),
+        auditStore,
+        judge: vi.fn(),
+        persistCitations,
+        rateLimitStore: createChatKvRateLimitStore({
+          get: vi.fn().mockResolvedValue(null),
+          put: vi.fn().mockResolvedValue(undefined),
+        }),
+        retrieve: vi.fn().mockResolvedValue({
+          evidence: [
+            {
+              accessLevel: 'internal',
+              categorySlug: 'procurement',
+              chunkText: 'PO 是採購訂單，PR 是請購需求。',
+              citationLocator: 'lines 3-5',
+              documentId: 'doc-10',
+              documentTitle: '採購流程',
+              documentVersionId: 'ver-10',
+              excerpt: 'PO 是採購訂單，PR 是請購需求。',
+              score: 0.9,
+              sourceChunkId: 'chunk-10',
+              title: '採購流程',
+            },
+          ],
+          normalizedQuery: 'po 和 pr 有什麼差別',
+        }),
+      }
+    )
+
+    expect(persistCitations).toHaveBeenCalledWith({
+      citations: [
+        {
+          chunkTextSnapshot: 'PO 是採購訂單，PR 是請購需求。',
+          citationLocator: 'lines 3-5',
+          documentVersionId: 'ver-10',
+          queryLogId: 'query-log-10',
+          sourceChunkId: 'chunk-10',
+        },
+      ],
+      now: new Date(60_000),
+    })
+    expect(result).toEqual({
+      answer: 'PO 是採購訂單，PR 是請購需求。',
+      citations: [
+        {
+          citationId: 'citation-10',
+          sourceChunkId: 'chunk-10',
+        },
+      ],
+      refused: false,
+      retrievalScore: 0.9,
+    })
+  })
 })

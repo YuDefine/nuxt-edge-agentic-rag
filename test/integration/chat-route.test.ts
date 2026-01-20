@@ -18,6 +18,9 @@ const chatRouteMocks = vi.hoisted(() => {
   return {
     MockChatRateLimitExceededError,
     chatWithKnowledge: vi.fn(),
+    createCitationStore: vi.fn().mockReturnValue({
+      persistCitations: vi.fn().mockResolvedValue([]),
+    }),
     createChatKvRateLimitStore: vi.fn().mockReturnValue({}),
     createCloudflareAiSearchClient: vi.fn().mockReturnValue({ search: vi.fn() }),
     createKnowledgeAuditStore: vi.fn().mockReturnValue({}),
@@ -50,6 +53,10 @@ vi.mock('../../server/utils/cloudflare-bindings', () => ({
   }),
   getRequiredD1Binding: chatRouteMocks.getRequiredD1Binding,
   getRequiredKvBinding: chatRouteMocks.getRequiredKvBinding,
+}))
+
+vi.mock('../../server/utils/citation-store', () => ({
+  createCitationStore: chatRouteMocks.createCitationStore,
 }))
 
 vi.mock('../../server/utils/knowledge-audit', () => ({
@@ -135,6 +142,55 @@ describe('/api/chat route', () => {
     await expect(handler(createRouteEvent())).rejects.toMatchObject({
       message: 'Rate limit exceeded for /api/chat',
       statusCode: 429,
+    })
+  })
+
+  it('injects citation persistence into the web chat orchestration', async () => {
+    chatRouteMocks.chatWithKnowledge.mockImplementationOnce(async (_input, options) => {
+      expect(options.persistCitations).toBeTypeOf('function')
+
+      return {
+        answer: 'Launch moved to Tuesday.',
+        citations: await options.persistCitations({
+          citations: [
+            {
+              chunkTextSnapshot: 'Launch moved to Tuesday.',
+              citationLocator: 'lines 1-3',
+              documentVersionId: 'ver-1',
+              sourceChunkId: 'chunk-1',
+            },
+          ],
+          queryLogId: 'query-log-1',
+        }),
+        refused: false,
+      }
+    })
+
+    const { default: handler } = await import('../../server/api/chat.post')
+    const result = await handler(createRouteEvent())
+
+    const citationStore = chatRouteMocks.createCitationStore.mock.results[0]?.value as {
+      persistCitations: ReturnType<typeof vi.fn>
+    }
+
+    expect(chatRouteMocks.createCitationStore).toHaveBeenCalledTimes(1)
+    expect(citationStore.persistCitations).toHaveBeenCalledWith({
+      citations: [
+        {
+          chunkTextSnapshot: 'Launch moved to Tuesday.',
+          citationLocator: 'lines 1-3',
+          documentVersionId: 'ver-1',
+          sourceChunkId: 'chunk-1',
+        },
+      ],
+      queryLogId: 'query-log-1',
+    })
+    expect(result).toEqual({
+      data: {
+        answer: 'Launch moved to Tuesday.',
+        citations: [],
+        refused: false,
+      },
     })
   })
 })
