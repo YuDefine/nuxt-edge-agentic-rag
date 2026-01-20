@@ -20,6 +20,17 @@ export class ChatRateLimitExceededError extends Error {
   }
 }
 
+interface WebCitationPersistenceInput {
+  citations: Array<{
+    chunkTextSnapshot: string
+    citationLocator: string
+    documentVersionId: string
+    queryLogId: string
+    sourceChunkId: string
+  }>
+  now?: Date
+}
+
 interface KvLike {
   get(key: string): Promise<string | null>
   put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void>
@@ -92,12 +103,7 @@ export async function chatWithKnowledge(
       shouldAnswer: boolean
     }>
     persistCitations?: (
-      citations: Array<{
-        chunkTextSnapshot: string
-        citationLocator: string
-        documentVersionId: string
-        sourceChunkId: string
-      }>
+      input: WebCitationPersistenceInput
     ) => Promise<Array<{ citationId: string; sourceChunkId: string }>>
     rateLimitStore: FixedWindowRateLimitStore
     retrieve: (input: { allowedAccessLevels: string[]; query: string }) => Promise<{
@@ -198,7 +204,24 @@ export async function chatWithKnowledge(
         thresholds: input.governance.thresholds,
       },
       judge: options.judge,
-      persistCitations: options.persistCitations ?? (async () => []),
+      persistCitations: async (citations) => {
+        if (!options.persistCitations || !queryLogId) {
+          return []
+        }
+
+        const payload: WebCitationPersistenceInput = {
+          citations: citations.map((citation) => ({
+            ...citation,
+            queryLogId,
+          })),
+        }
+
+        if (typeof input.now === 'number') {
+          payload.now = new Date(input.now)
+        }
+
+        return options.persistCitations(payload)
+      },
       retrieve: options.retrieve,
     }
   )
