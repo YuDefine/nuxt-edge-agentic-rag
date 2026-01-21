@@ -20,6 +20,19 @@ interface Tc01TestState {
   runtimeConfig: ReturnType<typeof createKnowledgeRuntimeConfig> | null
 }
 
+interface AcceptanceCaseScenario {
+  answerFragments: string[]
+  categorySlug: string
+  chunkText: string
+  citationLocator: string
+  documentId: string
+  documentTitle: string
+  documentVersionId: string
+  registryId: 'TC-01' | 'TC-02' | 'TC-03'
+  sourceChunkId: string
+  title: string
+}
+
 const tc01Mocks = vi.hoisted(
   (): Tc01TestState => ({
     actor: null,
@@ -60,14 +73,13 @@ vi.mock('../../server/utils/read-zod-body', () => ({
 installNuxtRouteTestGlobals()
 
 describe('TC-01 acceptance automation', () => {
-  const registryEntry = getAcceptanceRegistryEntry('TC-01')
-  const cases = loadAcceptanceFixtureDataset('seed').cases.filter(
-    (entry) => entry.registryId === 'TC-01'
+  const cases = loadAcceptanceFixtureDataset('seed').cases.filter((entry) =>
+    ['TC-01', 'TC-02', 'TC-03'].includes(entry.registryId)
   )
 
   beforeEach(() => {
     tc01Mocks.actor = createAcceptanceActorFixture('user')
-    tc01Mocks.bindings = createTc01Bindings(tc01Mocks.actor)
+    tc01Mocks.bindings = null
     tc01Mocks.readBody.mockReset()
     tc01Mocks.readZodBody.mockReset()
     tc01Mocks.runtimeConfig = createKnowledgeRuntimeConfig({
@@ -85,6 +97,17 @@ describe('TC-01 acceptance automation', () => {
   })
 
   it.each(cases)('answers %s directly with a persisted citation', async (fixture) => {
+    const registryEntry = getAcceptanceRegistryEntry(fixture.registryId) as {
+      expectedHttpStatus: string
+      id: string
+      primaryOutcome: string
+    } | null
+    const scenario = getScenarioForCase(fixture.registryId as AcceptanceCaseScenario['registryId'])
+
+    tc01Mocks.bindings = createTc01Bindings(
+      tc01Mocks.actor as ReturnType<typeof createAcceptanceActorFixture>,
+      scenario
+    )
     tc01Mocks.readBody.mockResolvedValue({ query: fixture.prompt })
     tc01Mocks.readZodBody.mockResolvedValue({ query: fixture.prompt })
 
@@ -98,7 +121,7 @@ describe('TC-01 acceptance automation', () => {
 
     expect(registryEntry).toMatchObject({
       expectedHttpStatus: '200',
-      id: 'TC-01',
+      id: fixture.registryId,
       primaryOutcome: 'direct',
     })
     expect(fixture.expectedOutcome).toBe('direct')
@@ -111,16 +134,19 @@ describe('TC-01 acceptance automation', () => {
     })
     expect(result).toEqual({
       data: {
-        answer: expect.stringContaining('PO'),
+        answer: expect.any(String),
         citations: [
           {
             citationId: expect.any(String),
-            sourceChunkId: 'chunk-procurement-1',
+            sourceChunkId: scenario.sourceChunkId,
           },
         ],
         refused: false,
       },
     })
+    for (const fragment of scenario.answerFragments) {
+      expect(result.data.answer).toContain(fragment)
+    }
 
     const queryLogInsert = d1.calls.find((call) => call.query.includes('INSERT INTO query_logs'))
     const citationInsert = d1.calls.find((call) =>
@@ -136,10 +162,10 @@ describe('TC-01 acceptance automation', () => {
     )
     expect(citationInsert?.values).toEqual(
       expect.arrayContaining([
-        'ver-procurement-current',
-        'chunk-procurement-1',
-        'lines 3-5',
-        'PR 是請購需求，PO 是核准後建立的採購訂單。',
+        scenario.documentVersionId,
+        scenario.sourceChunkId,
+        scenario.citationLocator,
+        scenario.chunkText,
       ])
     )
 
@@ -168,7 +194,10 @@ async function runMcpCase(authorizationHeader: string) {
   )
 }
 
-function createTc01Bindings(actor: ReturnType<typeof createAcceptanceActorFixture>) {
+function createTc01Bindings(
+  actor: ReturnType<typeof createAcceptanceActorFixture>,
+  scenario: AcceptanceCaseScenario
+) {
   const d1 = createD1BindingFake({
     responders: [
       {
@@ -197,13 +226,13 @@ function createTc01Bindings(actor: ReturnType<typeof createAcceptanceActorFixtur
         resolve: () => ({
           first: {
             access_level: 'internal',
-            category_slug: 'procurement',
-            chunk_text: 'PR 是請購需求，PO 是核准後建立的採購訂單。',
-            citation_locator: 'lines 3-5',
-            document_id: 'doc-procurement',
-            document_title: '採購流程 current',
-            document_version_id: 'ver-procurement-current',
-            source_chunk_id: 'chunk-procurement-1',
+            category_slug: scenario.categorySlug,
+            chunk_text: scenario.chunkText,
+            citation_locator: scenario.citationLocator,
+            document_id: scenario.documentId,
+            document_title: scenario.documentTitle,
+            document_version_id: scenario.documentVersionId,
+            source_chunk_id: scenario.sourceChunkId,
           },
         }),
       },
@@ -223,18 +252,18 @@ function createTc01Bindings(actor: ReturnType<typeof createAcceptanceActorFixtur
           attributes: {
             file: {
               access_level: 'internal',
-              citation_locator: 'lines 3-5',
-              document_version_id: 'ver-procurement-current',
-              title: '採購流程 current',
+              citation_locator: scenario.citationLocator,
+              document_version_id: scenario.documentVersionId,
+              title: scenario.title,
             },
           },
           content: [
             {
-              text: 'PR 是請購需求，PO 是核准後建立的採購訂單。',
+              text: scenario.chunkText,
               type: 'text',
             },
           ],
-          filename: 'procurement-flow-current.md',
+          filename: `${scenario.registryId.toLowerCase()}.md`,
           score: 0.91,
         },
       ],
@@ -246,4 +275,52 @@ function createTc01Bindings(actor: ReturnType<typeof createAcceptanceActorFixtur
     d1,
     kv,
   })
+}
+
+function getScenarioForCase(
+  registryId: AcceptanceCaseScenario['registryId']
+): AcceptanceCaseScenario {
+  switch (registryId) {
+    case 'TC-01':
+      return {
+        answerFragments: ['PO', 'PR'],
+        categorySlug: 'procurement',
+        chunkText: 'PR 是請購需求，PO 是核准後建立的採購訂單。',
+        citationLocator: 'lines 3-5',
+        documentId: 'doc-procurement',
+        documentTitle: '採購流程 current',
+        documentVersionId: 'ver-procurement-current',
+        registryId,
+        sourceChunkId: 'chunk-procurement-1',
+        title: '採購流程 current',
+      }
+    case 'TC-02':
+      return {
+        answerFragments: ['通知採購', '補貨'],
+        categorySlug: 'inventory',
+        chunkText: '庫存不足時應先通知採購並確認補貨責任人，再依 SOP 申請補貨。',
+        citationLocator: 'lines 8-11',
+        documentId: 'doc-inventory-sop',
+        documentTitle: '庫存不足 SOP current',
+        documentVersionId: 'ver-inventory-current',
+        registryId,
+        sourceChunkId: 'chunk-inventory-1',
+        title: '庫存不足 SOP current',
+      }
+    case 'TC-03':
+      return {
+        answerFragments: ['未結案金額', '尚未結案'],
+        categorySlug: 'reporting',
+        chunkText: '未結案金額代表月結報表中尚未結案案件的累計金額。',
+        citationLocator: 'lines 2-4',
+        documentId: 'doc-reporting-fields',
+        documentTitle: '報表欄位說明 current',
+        documentVersionId: 'ver-reporting-current',
+        registryId,
+        sourceChunkId: 'chunk-reporting-1',
+        title: '報表欄位說明 current',
+      }
+    default:
+      throw new Error(`Unsupported acceptance registry id: ${registryId}`)
+  }
 }
