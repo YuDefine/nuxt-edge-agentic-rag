@@ -72,7 +72,7 @@ vi.mock('../../server/utils/read-zod-body', () => ({
 
 installNuxtRouteTestGlobals()
 
-describe('TC-01 acceptance automation', () => {
+describe('acceptance direct-answer automation', () => {
   const cases = loadAcceptanceFixtureDataset('seed').cases.filter((entry) =>
     ['TC-01', 'TC-02', 'TC-03'].includes(entry.registryId)
   )
