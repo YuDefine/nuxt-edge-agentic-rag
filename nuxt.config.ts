@@ -42,7 +42,6 @@ export default defineNuxtConfig({
     '@pinia/nuxt',
     '@pinia/colada-nuxt',
     '@nuxt/test-utils/module',
-    '@sentry/nuxt/module',
     'evlog/nuxt',
   ],
 
@@ -86,11 +85,7 @@ export default defineNuxtConfig({
       maxAge: 60 * 60 * 24 * 7,
       password: process.env.NUXT_SESSION_PASSWORD || '',
     },
-    public: {
-      sentry: {
-        dsn: process.env.NUXT_PUBLIC_SENTRY_DSN || '',
-      },
-    },
+    public: {},
   },
 
   image: {
@@ -126,11 +121,6 @@ export default defineNuxtConfig({
     '/api/mcp/**': { csurf: false },
     // dev endpoints 僅在 local 環境啟用，不需要 CSRF
     '/api/_dev/**': { csurf: false },
-  },
-  sentry: {
-    org: process.env.SENTRY_ORG,
-    project: process.env.SENTRY_PROJECT,
-    authToken: process.env.SENTRY_AUTH_TOKEN,
   },
   sourcemap: {
     client: 'hidden',

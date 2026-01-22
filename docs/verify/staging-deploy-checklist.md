@@ -22,7 +22,6 @@
 | `NUXT_KNOWLEDGE_UPLOADS_ACCESS_KEY_ID`     | R2 API Token Access Key ID       | Cloudflare R2 > Manage R2 API Tokens |
 | `NUXT_KNOWLEDGE_UPLOADS_SECRET_ACCESS_KEY` | R2 API Token Secret              | Cloudflare R2 > Manage R2 API Tokens |
 | `NUXT_PUBLIC_SITE_URL`                     | Staging site URL                 | 例：`https://staging.example.com`    |
-| `NUXT_PUBLIC_SENTRY_DSN`                   | Sentry DSN（可選）               | Sentry Dashboard                     |
 
 ### 2. 更新 deploy-staging.yml
 
