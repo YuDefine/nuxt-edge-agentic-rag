@@ -9,8 +9,8 @@
 ## 2. Case Automation — TC-01 到 TC-10
 
 - [x] 2.1 自動化 `TC-01` 一般定義題，驗證 direct answer + valid citation。
-- [ ] 2.2 自動化 `TC-02` SOP 程序題，驗證程序步驟與責任角色引用正確。
-- [ ] 2.3 自動化 `TC-03` 欄位定義題，驗證欄位語境與 citation support。
+- [x] 2.2 自動化 `TC-02` SOP 程序題，驗證程序步驟與責任角色引用正確。
+- [x] 2.3 自動化 `TC-03` 欄位定義題，驗證欄位語境與 citation support。
 - [ ] 2.4 自動化 `TC-04` 模糊查詢，驗證 Self-Correction 觸發與第二輪成功條件。
 - [ ] 2.5 自動化 `TC-05` Web 多輪追問，驗證 `conversationId` 上下文延續與 stale 保護。
 - [ ] 2.6 自動化 `TC-06` 跨文件比較，驗證至少兩份不同文件引用與 judge / reformulation 路徑。
