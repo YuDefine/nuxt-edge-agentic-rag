@@ -56,3 +56,59 @@ Workers 無法使用 TCP 長連線。
 
 - 優先考慮 Cloudflare Hyperdrive
 - 或改走 HTTP 型 API / server-side proxy
+
+## 本地開發與 Cloudflare Bindings
+
+**重要**：`pnpm dev` 使用 Nuxt 內建的 dev server，**不會**載入 Cloudflare bindings（D1、KV、R2、AI 等）。
+
+### NuxtHub 本地模擬
+
+NuxtHub 會在本地模擬部分 bindings：
+
+| Binding | 本地模擬                    | 備註                         |
+| ------- | --------------------------- | ---------------------------- |
+| D1      | ✅ SQLite (`.data/hub/d1/`) | 自動模擬                     |
+| KV      | ✅ fs-lite (`.data/kv/`)    | 需在 nuxt.config.ts 配置     |
+| R2/Blob | ✅ fs (`.data/hub/blob/`)   | 自動模擬                     |
+| AI      | ❌ 不可用                   | 需要 Cloudflare Workers 環境 |
+| Cache   | ✅ memory                   | 自動模擬                     |
+
+### 使用真正的 Cloudflare Bindings
+
+如果需要在本地使用真正的 Cloudflare bindings（例如 AI），必須用 wrangler 運行：
+
+```bash
+# 方法 1：wrangler pages dev（推薦）
+pnpm build
+npx wrangler pages dev .output/public --compatibility-date=2025-05-15
+
+# 方法 2：wrangler dev
+pnpm build
+npx wrangler dev
+```
+
+**注意事項**：
+
+- 需要先 `pnpm build`，wrangler 運行的是 build 產物
+- 會連接到 `wrangler.jsonc` 中配置的真實 Cloudflare 資源
+- 本地 D1 資料與生產環境分開（除非用 `--remote`）
+
+### AI Binding 配置
+
+確保 `wrangler.jsonc` 有 AI binding：
+
+```jsonc
+{
+  "ai": {
+    "binding": "AI",
+  },
+}
+```
+
+### 常見錯誤
+
+**錯誤**：`Cloudflare AI binding "AI" is not available`
+
+**原因**：用 `pnpm dev` 運行，沒有 Cloudflare Workers 環境
+
+**解法**：改用 `pnpm build && npx wrangler pages dev .output/public`

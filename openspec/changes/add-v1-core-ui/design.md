@@ -1,104 +1,225 @@
 ## Context
 
-報告要求 `v1.0.0` 核心閉環至少可透過 Web 完成登入、文件上傳與發布、提問、引用回放，以及 current-version-only 與 restricted 邊界驗證。但 bootstrap change 目前以後端與治理契約為主，只補了 neutral shell 與 design review gate，沒有把核心操作頁面拆成獨立 UI workstream。
+bootstrap-v1-core-from-report 已建立完整的後端 API 與資料庫 schema。目前 UI 層只有：
 
-這個 change 的定位是「核心 UI 補完」，不是 admin 後置營運工具。它必須與 `admin-ui-post-core` 明確分界：
+- 登入頁面（Google OAuth）
+- 中性首頁（無功能入口）
+- 基本 layout（無 navigation）
 
-- 本 change：chat、對話歷史、citation replay、文件管理、上傳、sync、publish。
-- `admin-ui-post-core`：token 管理、query logs、dashboard、運營摘要。
+本 change 補齊核心 UI，讓人工驗收（#1-#5）可以透過實際頁面操作進行。
+
+### 現有 API Surface
+
+| 類別          | Endpoints                                                                          |
+| ------------- | ---------------------------------------------------------------------------------- |
+| Auth          | `/api/auth/*`（better-auth）                                                       |
+| Conversations | `GET/POST /api/conversations`, `GET /api/conversations/[id]/messages`              |
+| Chat          | `POST /api/chat`（streaming）                                                      |
+| Citations     | `GET /api/citations/[id]`                                                          |
+| Documents     | `GET /api/admin/documents`, `GET/PATCH /api/admin/documents/[id]`                  |
+| Upload        | `POST /api/uploads/presign`, `POST /api/uploads/finalize`                          |
+| Sync/Publish  | `POST /api/documents/[id]/sync`, `POST /api/documents/[id]/versions/[vid]/publish` |
 
 ## Goals / Non-Goals
 
 **Goals:**
 
-- 讓 Web User 能在 `/chat` 實際提問、看到串流回答、查看引用與對話歷史。
-- 讓 Admin 能在 `/admin/documents` 完成文件列表、上傳、同步與發布流程。
-- 讓首頁與導航可依角色導到核心可用頁面，而不是停留在空 shell。
-- 使用既有後端契約與 shared governance helpers，不重寫第二套邏輯。
+1. 實作 `/chat` 頁面，讓 Web User 能提問並看到 streaming 回答
+2. 實作 `/admin/documents` 頁面，讓 Admin 能看到文件列表與狀態
+3. 實作上傳 wizard，讓 Admin 能完成 presign → upload → finalize → sync → publish 流程
+4. 實作 citation replay modal，讓使用者點擊引用標記能看到原文
+5. 提供 role-aware navigation，Admin 看到管理入口，User 只看到 Chat
 
 **Non-Goals:**
 
-- 不在本 change 建立 token 管理、query logs、dashboard 或 debug 面板。
-- 不改變回答路由、current-version-only、redaction 或 scope 真相來源。
-- 不新增不在報告中的新體驗，如 batch upload、inline editing、rich document preview。
+- Token 管理 UI（`admin-ui-post-core`）
+- Query Logs 檢視（`admin-ui-post-core`）
+- Dashboard 統計（`admin-ui-post-core`）
+- Debug 分數面板（`observability-and-debug`）
+- 批次上傳、多格式預覽
 
 ## Decisions
 
-### Core UI Lives On Explicit Routes
+### Navigation Shell 架構
 
-核心路由固定為：
+**決定**：在 `default.vue` layout 加入 `<AppSidebar>` 元件，根據 `useUserRole()` 條件渲染 navigation items。
 
-- `/`：首頁/導航
-- `/chat`：所有已登入使用者可用的 Web 問答頁
-- `/admin/documents`：Admin 文件列表與版本狀態頁
-- `/admin/documents/upload`：Admin staged upload 與 publish 流程頁
+**理由**：
 
-這讓 middleware 與 manual acceptance 有清楚的 URL 目標，也避免把核心功能藏在 modal-only flow。
+- 中央集中 navigation 定義，避免散落各頁面
+- role-aware 邏輯封裝在 composable，頁面不需知道 allowlist 細節
 
-### Chat Uses Persisted Web Conversation Semantics
+**替代方案考量**：
 
-Chat UI 不是 session-only playground。它必須對齊報告中的 Web 對話持久化語意，至少整合：
+- ❌ 在每個頁面重複判斷 — 不可維護
+- ❌ 用 middleware 控制 — 這是 navigation visibility，不是 access control
 
-- 對話歷史列表
-- 當前 conversation message list
-- 問答串流顯示
-- 拒答呈現
-- 引用回放
+### Chat 元件拆分
 
-若對話刪除、stale follow-up 或 visibility recalculation 已由 governance helpers 提供，UI 只能消費這些正式邏輯，不得自行推斷。
+**決定**：拆分為以下元件：
 
-### Citation Replay Uses A Dedicated App Surface
+```
+app/components/chat/
+├── ChatSidebar.vue        # 對話歷史列表
+├── ChatMessageList.vue    # 訊息清單（含 streaming）
+├── ChatInput.vue          # 提問輸入區
+├── ChatMessage.vue        # 單則訊息（user/assistant）
+├── CitationMarker.vue     # 引用標記
+└── CitationReplayModal.vue # 引用回放 Modal
+```
 
-前端不直接呼叫 MCP transport；應使用 app 內部 server route 或等價 wrapper，重用 `getDocumentChunk` 核心邏輯，回傳 UI 所需資料。這樣可以保留相同的授權與 retention 規則，又不把 MCP 對外契約硬綁到瀏覽器實作細節。
+**理由**：
 
-### Document Management Prioritizes State Clarity
+- 關注點分離：sidebar 管對話切換，message list 管顯示，input 管提問
+- CitationReplayModal 獨立，因為它有自己的 fetch 邏輯與 error handling
 
-文件管理 UI 的首要目標是讓 Admin 看懂目前文件與版本處在什麼狀態，而不是追求複雜表格功能。因此頁面優先順序是：
+### Chat Streaming 實作
 
-1. list / empty / loading / error states
-2. staged upload wizard
-3. sync / publish 操作與回饋
-4. 版本狀態與 current 標示
+**決定**：使用 `@ai-sdk/vue` 的 `useChat` composable，配合 `/api/chat` 的 Vercel AI SDK streaming response。
 
-### Design And UX Boundaries
+**理由**：
 
-核心 UI 要求可以完成驗收，不等於可以偷做成工程內頁。頁面仍需遵守 design checkpoint，但不追求 post-core 的 debug density 或運營 dashboard。關鍵是：
+- `useChat` 內建 streaming 狀態管理、message append、error handling
+- 與後端 `streamText` 完美配合，無需手寫 EventSource 邏輯
 
-- Chat 頁資訊階層清楚
-- Citation 清楚可點、可回放
-- Admin 文件狀態明確
-- Unauthorized / empty / error / loading 四態完整
+**技術細節**：
+
+- `useChat({ api: '/api/chat', body: { conversationId } })`
+- streaming 時 `isLoading = true`，顯示 typing indicator
+- refusal 回應透過 message content 判斷，套用不同樣式
+
+### Citation Replay 流程
+
+**決定**：
+
+1. 訊息中的引用以 `[1]` 格式顯示，渲染為 `<CitationMarker>` 元件
+2. 點擊 marker 開啟 `<CitationReplayModal>`
+3. Modal 呼叫 `GET /api/citations/[citationId]` 取得原文
+
+**理由**：
+
+- 延遲載入：只在使用者點擊時 fetch，不預載所有 citation
+- 集中 error handling：expired/unavailable citation 在 modal 內顯示錯誤狀態
+
+### Upload Wizard 狀態機
+
+**決定**：以 `useUploadWizard()` composable 封裝多步驟流程，使用有限狀態機模式：
+
+```typescript
+type UploadStep =
+  | 'select'
+  | 'uploading'
+  | 'finalizing'
+  | 'syncing'
+  | 'publishing'
+  | 'done'
+  | 'error'
+```
+
+**理由**：
+
+- 清楚的狀態轉換，每個步驟有明確的 entry/exit 條件
+- UI 可根據 `currentStep` 顯示對應的進度與按鈕狀態
+- error 狀態可攜帶 `errorStep` 資訊，讓使用者知道哪一步失敗
+
+**流程**：
+
+1. `select` → 使用者選檔案，驗證 type/size
+2. `uploading` → presign → direct upload to R2
+3. `finalizing` → POST /api/uploads/finalize
+4. `syncing` → POST /api/documents/[id]/sync，polling 等待 indexed
+5. `publishing` → POST /api/documents/[id]/versions/[vid]/publish
+6. `done` → 顯示成功，導回列表
+
+### 文件列表 DataTable
+
+**決定**：使用 `<UTable>` 配合 server-side pagination/sorting。
+
+**欄位定義**：
+| 欄位 | 來源 | 說明 |
+|------|------|------|
+| Title | `documents.title` | 可點擊進入詳情 |
+| Category | `documents.category` | Badge 顯示 |
+| Access Level | `documents.access_level` | Badge 顯示（public/restricted） |
+| Status | `documents.status` | Badge（draft/active/archived） |
+| Version | `document_versions.version_number` | 只顯示 current version |
+| Index Status | `document_versions.index_status` | Badge（queued/syncing/indexed/failed） |
+| Updated | `documents.updated_at` | relative time |
+| Actions | — | 上傳新版、發布、刪除 |
+
+**理由**：
+
+- Server-side pagination 避免一次載入過多資料
+- 多 Badge 讓 Admin 快速掃描狀態
+
+### 共用 StatusBadge 元件
+
+**決定**：建立 `<StatusBadge>` 元件，根據 status type 自動選擇顏色與 icon：
+
+```vue
+<StatusBadge type="document" value="active" />
+<StatusBadge type="version" value="indexed" />
+<StatusBadge type="accessLevel" value="restricted" />
+```
+
+**Mapping**：
+| Type | Value | Color | Icon |
+|------|-------|-------|------|
+| document | draft | gray | — |
+| document | active | green | check |
+| document | archived | yellow | archive |
+| version | queued | gray | clock |
+| version | syncing | blue | spinner |
+| version | indexed | green | check |
+| version | failed | red | x |
+| accessLevel | public | blue | globe |
+| accessLevel | restricted | orange | lock |
+
+**理由**：
+
+- 一致的視覺語言，避免各頁面自定義顏色
+- 集中維護，新增 status 時只改一處
 
 ## Risks / Trade-offs
 
-- [與 bootstrap 重疊]：bootstrap 已有 UI design gate，但沒有具體 UI deliverables。此 change 必須只吃 UI surface，不重做後端 orchestration。
-- [與 admin-ui-post-core 重疊]：需嚴格排除 token、query logs、dashboard。
-- [前端自行判權]：UI guards 只能改善 UX，真正授權仍靠 runtime allowlist 與 server checks。
-- [引用回放端點不明確]：若沒有 app wrapper，前端容易直接依賴 MCP transport 細節。
+### Risk: Streaming 中斷處理
 
-## Migration Plan
+**風險**：網路中斷時 streaming response 可能不完整
+**緩解**：
 
-1. 先補頁面 guards 與最小資料來源，如 documents list API 與 citation replay app route。
-2. 建立 documents 與 chat 共用元件，先補完整 state coverage。
-3. 整合首頁導航與 role-aware entry。
-4. 跑 design review、audit 與 screenshot review，完成核心 UI 視覺驗收。
+- `useChat` 的 `onError` callback 處理錯誤
+- 顯示「回答中斷，請重試」提示
+- 保留已收到的部分內容
 
-## Execution Strategy
+### Risk: Upload 中途失敗
 
-### Work Breakdown
+**風險**：presign 成功但 upload 失敗時，R2 留下 orphan file
+**緩解**：
 
-| 區塊       | 內容                                                                                                 |
-| ---------- | ---------------------------------------------------------------------------------------------------- |
-| Chat       | `/chat` page, message list, input, streaming state, refusal UI, citation modal, conversation history |
-| Admin Docs | list page, upload page, staged upload wizard, status badges, sync/publish actions                    |
-| Navigation | home entry, role-aware links, unauthorized redirects                                                 |
+- finalize endpoint 會檢查 R2 object 是否存在
+- 未 finalize 的 upload 不會被系統使用
+- 可透過 R2 lifecycle rule 清理（v1.0.0 後）
 
-### Dependency Notes
+### Risk: 並發編輯衝突
 
-- documents list API 與 citation replay wrapper 若缺失，需在本 change 一併補齊最小 server surface。
-- governance change 若後續補上 stale/delete helpers，UI 應消費 shared helper，而非自行保留平行邏輯。
+**風險**：兩個 Admin 同時編輯同一文件
+**緩解**：
+
+- v1.0.0 不處理（假設單一 Admin 操作）
+- PATCH 使用 optimistic concurrency 時加 `updated_at` 檢查（未來工作）
+
+### Trade-off: 上傳進度顯示
+
+**取捨**：direct upload to R2 無法取得精確進度百分比
+**決定**：顯示 indeterminate progress bar + 步驟文字
 
 ## Open Questions
 
-- citation replay 的 app route 最終命名應沿用 `/api/citations/:citationId` 或其他 wrapper path，需依現有 server API 命名慣例決定。
-- 文件列表是否需要首版即支援搜尋與篩選，或只保留排序與狀態顯示，需依時程決定。
+1. **Chat 輸入框位置**：固定在底部還是跟隨 message list 捲動？
+   - 暫定：固定在底部（sticky），與主流 chat app 一致
+
+2. **對話重新命名**：是否允許使用者重新命名對話？
+   - 暫定：v1.0.0 不支援，對話以第一則訊息為標題
+
+3. **Citation 過期處理**：顯示錯誤後是否提供「查看原文件」連結？
+   - 暫定：只顯示錯誤訊息，因為原文件可能也已更新
