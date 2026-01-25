@@ -42,3 +42,6 @@ temp/
 # Screenshots (review artifacts)
 screenshots/
 coverage/
+
+# Spectra cache
+.spectra/spectra.db
