@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { getRequiredD1Binding } from '../../../utils/cloudflare-bindings'
+import { getD1Database } from '../../../utils/database'
 import { buildProvisionedMcpToken, createMcpTokenStore } from '../../../utils/mcp-token-store'
 import { requireRuntimeAdminSession } from '../../../utils/admin-session'
 
@@ -37,7 +37,7 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const database = getRequiredD1Binding(event, runtimeConfig.knowledge.bindings.d1Database)
+  const database = await getD1Database()
   const tokenStore = createMcpTokenStore(database)
 
   const environment = runtimeConfig.knowledge.environment ?? 'production'

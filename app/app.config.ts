@@ -3,5 +3,16 @@ export default defineAppConfig({
     colors: {
       neutral: 'neutral',
     },
+
+    select: {
+      slots: {
+        content: 'min-w-fit',
+      },
+    },
+    selectMenu: {
+      slots: {
+        content: 'min-w-fit',
+      },
+    },
   },
 })

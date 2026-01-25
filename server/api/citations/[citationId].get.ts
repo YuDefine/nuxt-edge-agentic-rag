@@ -1,5 +1,6 @@
 import { useLogger } from 'evlog'
 
+import { getD1Database } from '../../utils/database'
 import { createMcpReplayStore } from '../../utils/mcp-replay'
 
 export default defineEventHandler(async function getCitationHandler(event) {
@@ -17,8 +18,7 @@ export default defineEventHandler(async function getCitationHandler(event) {
       })
     }
 
-    const runtimeConfig = getKnowledgeRuntimeConfig()
-    const database = getRequiredD1Binding(event, runtimeConfig.bindings.d1Database)
+    const database = await getD1Database()
     const replayStore = createMcpReplayStore(database)
 
     const citation = await replayStore.findReplayableCitationById(citationId)

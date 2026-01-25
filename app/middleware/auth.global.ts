@@ -4,8 +4,8 @@ export default defineNuxtRouteMiddleware((to) => {
   // Pages with auth: false are public
   if (to.meta.auth === false) return
 
-  // Redirect to login if not authenticated, preserving the intended destination
+  // Redirect to home (login) if not authenticated
   if (!loggedIn.value) {
-    return navigateTo(`/auth/login?redirect=${encodeURIComponent(to.fullPath)}`)
+    return navigateTo('/')
   }
 })

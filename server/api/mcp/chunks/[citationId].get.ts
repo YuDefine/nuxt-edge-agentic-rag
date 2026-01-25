@@ -1,7 +1,8 @@
 import { useLogger } from 'evlog'
 import { z } from 'zod'
 
-import { getRequiredD1Binding, getRequiredKvBinding } from '../../../utils/cloudflare-bindings'
+import { getRequiredKvBinding } from '../../../utils/cloudflare-bindings'
+import { getD1Database } from '../../../utils/database'
 import { getKnowledgeRuntimeConfig } from '../../../utils/knowledge-runtime'
 import { McpAuthError, requireMcpBearerToken, requireMcpScope } from '../../../utils/mcp-auth'
 import {
@@ -22,7 +23,7 @@ export default defineEventHandler(async (event) => {
 
   try {
     const runtimeConfig = getKnowledgeRuntimeConfig()
-    const database = getRequiredD1Binding(event, runtimeConfig.bindings.d1Database)
+    const database = await getD1Database()
     const tokenStore = createMcpTokenStore(database)
     const auth = await requireMcpBearerToken(
       {

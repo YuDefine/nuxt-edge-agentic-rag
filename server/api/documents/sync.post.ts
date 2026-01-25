@@ -1,5 +1,6 @@
 import { z } from 'zod'
 
+import { getD1Database } from '../../utils/database'
 import { createDocumentSyncStore } from '../../utils/document-store'
 import { syncDocumentVersionSnapshot } from '../../utils/document-sync'
 
@@ -20,7 +21,7 @@ export default defineEventHandler(async (event) => {
   const body = await readZodBody(event, syncDocumentSchema)
   const runtimeConfig = getKnowledgeRuntimeConfig()
   const bucket = getRequiredR2BucketBinding(event, runtimeConfig.bindings.documentsBucket)
-  const database = getRequiredD1Binding(event, runtimeConfig.bindings.d1Database)
+  const database = await getD1Database()
   const store = createDocumentSyncStore(database)
 
   const result = await syncDocumentVersionSnapshot(

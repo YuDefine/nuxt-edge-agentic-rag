@@ -1,97 +1,213 @@
+import { eq, desc } from 'drizzle-orm'
 import type { DocumentWithCurrentVersion } from '../../shared/types/knowledge'
 
 export type { DocumentWithCurrentVersion } from '../../shared/types/knowledge'
 
-interface D1PreparedStatementLike {
-  bind(...values: unknown[]): D1PreparedStatementLike
-  all<T>(): Promise<{ results?: T[] }>
-}
-
-interface D1DatabaseLike {
-  prepare(query: string): D1PreparedStatementLike
-}
-
-interface DocumentWithVersionRow {
-  access_level: string
-  archived_at: string | null
-  category_slug: string
-  created_at: string
-  current_version_id: string | null
-  cv_id: string | null
-  cv_index_status: string | null
-  cv_published_at: string | null
-  cv_sync_status: string | null
-  cv_version_number: number | null
+export interface DocumentVersion {
   id: string
-  slug: string
-  status: string
-  title: string
-  updated_at: string
+  versionNumber: number
+  syncStatus: 'pending' | 'running' | 'synced' | 'failed'
+  indexStatus: 'pending' | 'preprocessing' | 'indexing' | 'indexed' | 'failed'
+  publishedAt: string | null
+  isCurrent: boolean
+  createdAt: string
+  updatedAt: string
 }
 
-function fromDocumentWithVersionRow(row: DocumentWithVersionRow): DocumentWithCurrentVersion {
-  return {
-    id: row.id,
-    title: row.title,
-    slug: row.slug,
-    categorySlug: row.category_slug,
-    accessLevel: row.access_level as 'internal' | 'restricted',
-    status: row.status as 'draft' | 'active' | 'archived',
-    currentVersionId: row.current_version_id,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-    archivedAt: row.archived_at,
-    currentVersion: row.cv_id
-      ? {
-          id: row.cv_id,
-          versionNumber: row.cv_version_number ?? 0,
-          syncStatus: (row.cv_sync_status ?? 'pending') as
-            | 'pending'
-            | 'running'
-            | 'synced'
-            | 'failed',
-          indexStatus: (row.cv_index_status ?? 'pending') as
-            | 'pending'
-            | 'preprocessing'
-            | 'indexing'
-            | 'indexed'
-            | 'failed',
-          publishedAt: row.cv_published_at,
-        }
-      : null,
+export interface DocumentWithAllVersions extends DocumentWithCurrentVersion {
+  versions: DocumentVersion[]
+}
+
+// DB schema CHECK 允許的值比 UI enum 多（歷史遺留）。
+// 這裡把 DB 值正規化到 UI 可處理的 enum，避免 assertNever 在未預期值上 crash。
+function normalizeSyncStatus(value: string | null | undefined): DocumentVersion['syncStatus'] {
+  switch (value) {
+    case 'pending':
+    case 'running':
+    case 'synced':
+    case 'failed':
+      return value
+    case 'completed':
+      return 'synced'
+    default:
+      return 'pending'
   }
 }
 
-export function createDocumentListStore(database: D1DatabaseLike) {
+function normalizeIndexStatus(value: string | null | undefined): DocumentVersion['indexStatus'] {
+  switch (value) {
+    case 'pending':
+    case 'preprocessing':
+    case 'indexing':
+    case 'indexed':
+    case 'failed':
+      return value
+    case 'upload_pending':
+      return 'pending'
+    case 'smoke_pending':
+      return 'indexing'
+    default:
+      return 'pending'
+  }
+}
+
+function normalizeAccessLevel(value: string): 'internal' | 'restricted' {
+  return value === 'restricted' ? 'restricted' : 'internal'
+}
+
+function normalizeDocumentStatus(value: string): 'draft' | 'active' | 'archived' {
+  switch (value) {
+    case 'draft':
+    case 'active':
+    case 'archived':
+      return value
+    default:
+      return 'draft'
+  }
+}
+
+/**
+ * Document list store using Drizzle ORM (hub:db)
+ */
+export function createDocumentListStore() {
   return {
     async listDocumentsWithCurrentVersion(): Promise<DocumentWithCurrentVersion[]> {
-      const response = await database
-        .prepare(
-          [
-            'SELECT',
-            '  d.id,',
-            '  d.slug,',
-            '  d.title,',
-            '  d.category_slug,',
-            '  d.access_level,',
-            '  d.status,',
-            '  d.current_version_id,',
-            '  d.created_at,',
-            '  d.updated_at,',
-            '  d.archived_at,',
-            '  cv.id AS cv_id,',
-            '  cv.version_number AS cv_version_number,',
-            '  cv.sync_status AS cv_sync_status,',
-            '  cv.index_status AS cv_index_status,',
-            '  cv.published_at AS cv_published_at',
-            'FROM documents d',
-            'LEFT JOIN document_versions cv ON d.current_version_id = cv.id',
-            'ORDER BY d.updated_at DESC',
-          ].join('\n')
-        )
-        .all<DocumentWithVersionRow>()
+      const { db, schema } = await import('hub:db')
 
-      return (response.results ?? []).map(fromDocumentWithVersionRow)
+      // Get all documents with LEFT JOIN to current version
+      const rows = await db
+        .select({
+          id: schema.documents.id,
+          slug: schema.documents.slug,
+          title: schema.documents.title,
+          categorySlug: schema.documents.categorySlug,
+          accessLevel: schema.documents.accessLevel,
+          status: schema.documents.status,
+          currentVersionId: schema.documents.currentVersionId,
+          createdAt: schema.documents.createdAt,
+          updatedAt: schema.documents.updatedAt,
+          archivedAt: schema.documents.archivedAt,
+          cvId: schema.documentVersions.id,
+          cvVersionNumber: schema.documentVersions.versionNumber,
+          cvSyncStatus: schema.documentVersions.syncStatus,
+          cvIndexStatus: schema.documentVersions.indexStatus,
+          cvPublishedAt: schema.documentVersions.publishedAt,
+        })
+        .from(schema.documents)
+        .leftJoin(
+          schema.documentVersions,
+          eq(schema.documents.currentVersionId, schema.documentVersions.id)
+        )
+        .orderBy(desc(schema.documents.updatedAt))
+
+      return rows.map((row) => ({
+        id: row.id,
+        title: row.title,
+        slug: row.slug,
+        categorySlug: row.categorySlug,
+        accessLevel: normalizeAccessLevel(row.accessLevel),
+        status: normalizeDocumentStatus(row.status),
+        currentVersionId: row.currentVersionId,
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+        archivedAt: row.archivedAt,
+        currentVersion: row.cvId
+          ? {
+              id: row.cvId,
+              versionNumber: row.cvVersionNumber ?? 0,
+              syncStatus: normalizeSyncStatus(row.cvSyncStatus),
+              indexStatus: normalizeIndexStatus(row.cvIndexStatus),
+              publishedAt: row.cvPublishedAt,
+            }
+          : null,
+      }))
+    },
+
+    async getDocumentWithVersions(documentId: string): Promise<DocumentWithAllVersions | null> {
+      const { db, schema } = await import('hub:db')
+
+      // Fetch document with current version
+      const [docRow] = await db
+        .select({
+          id: schema.documents.id,
+          slug: schema.documents.slug,
+          title: schema.documents.title,
+          categorySlug: schema.documents.categorySlug,
+          accessLevel: schema.documents.accessLevel,
+          status: schema.documents.status,
+          currentVersionId: schema.documents.currentVersionId,
+          createdAt: schema.documents.createdAt,
+          updatedAt: schema.documents.updatedAt,
+          archivedAt: schema.documents.archivedAt,
+          cvId: schema.documentVersions.id,
+          cvVersionNumber: schema.documentVersions.versionNumber,
+          cvSyncStatus: schema.documentVersions.syncStatus,
+          cvIndexStatus: schema.documentVersions.indexStatus,
+          cvPublishedAt: schema.documentVersions.publishedAt,
+        })
+        .from(schema.documents)
+        .leftJoin(
+          schema.documentVersions,
+          eq(schema.documents.currentVersionId, schema.documentVersions.id)
+        )
+        .where(eq(schema.documents.id, documentId))
+        .limit(1)
+
+      if (!docRow) return null
+
+      // Fetch all versions
+      const versionRows = await db
+        .select({
+          id: schema.documentVersions.id,
+          versionNumber: schema.documentVersions.versionNumber,
+          syncStatus: schema.documentVersions.syncStatus,
+          indexStatus: schema.documentVersions.indexStatus,
+          publishedAt: schema.documentVersions.publishedAt,
+          isCurrent: schema.documentVersions.isCurrent,
+          createdAt: schema.documentVersions.createdAt,
+          updatedAt: schema.documentVersions.updatedAt,
+        })
+        .from(schema.documentVersions)
+        .where(eq(schema.documentVersions.documentId, documentId))
+        .orderBy(desc(schema.documentVersions.versionNumber))
+
+      const document: DocumentWithCurrentVersion = {
+        id: docRow.id,
+        title: docRow.title,
+        slug: docRow.slug,
+        categorySlug: docRow.categorySlug,
+        accessLevel: normalizeAccessLevel(docRow.accessLevel),
+        status: normalizeDocumentStatus(docRow.status),
+        currentVersionId: docRow.currentVersionId,
+        createdAt: docRow.createdAt,
+        updatedAt: docRow.updatedAt,
+        archivedAt: docRow.archivedAt,
+        currentVersion: docRow.cvId
+          ? {
+              id: docRow.cvId,
+              versionNumber: docRow.cvVersionNumber ?? 0,
+              syncStatus: normalizeSyncStatus(docRow.cvSyncStatus),
+              indexStatus: normalizeIndexStatus(docRow.cvIndexStatus),
+              publishedAt: docRow.cvPublishedAt,
+            }
+          : null,
+      }
+
+      const versions: DocumentVersion[] = versionRows.map((row) => ({
+        id: row.id,
+        versionNumber: row.versionNumber,
+        syncStatus: normalizeSyncStatus(row.syncStatus),
+        indexStatus: normalizeIndexStatus(row.indexStatus),
+        publishedAt: row.publishedAt,
+        isCurrent: Boolean(row.isCurrent),
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+      }))
+
+      return {
+        ...document,
+        versions,
+      }
     },
   }
 }

@@ -53,8 +53,10 @@
     streamingContent.value = ''
     streamingError.value = null
 
+    const { $csrfFetch } = useNuxtApp()
+
     try {
-      const response = await $fetch<{ data: ChatResponse }>('/api/chat', {
+      const response = await $csrfFetch<{ data: ChatResponse }>('/api/chat', {
         method: 'POST',
         body: { query },
       })
@@ -109,17 +111,29 @@
   function getErrorMessage(error: unknown): string {
     if (error && typeof error === 'object' && 'statusCode' in error) {
       const statusCode = (error as { statusCode: number }).statusCode
-      if (statusCode === 429) {
-        return '請求過於頻繁，請稍後再試'
-      }
-      if (statusCode === 401) {
-        return '請先登入後再提問'
+      switch (statusCode) {
+        case 429:
+          return '請求過於頻繁，請稍候幾秒再試'
+        case 401:
+          return '登入已過期，請重新登入'
+        case 403:
+          return '您沒有權限執行此操作'
+        case 404:
+          return '找不到相關資料，請嘗試其他問法'
+        case 500:
+        case 502:
+        case 503:
+          return '系統暫時無法處理，請稍後再試'
+        default:
+          return '發生錯誤，請稍後再試'
       }
     }
-    if (error instanceof Error) {
-      return error.message
-    }
-    return '發生未知錯誤，請稍後再試'
+    // 避免洩漏技術細節，使用通用訊息
+    return '發生錯誤，請稍後再試'
+  }
+
+  function handleSuggestionSubmit(query: string) {
+    handleSubmit(query)
   }
 
   function handleCitationClick(citationId: string) {
@@ -146,7 +160,11 @@
   <div class="flex h-full flex-col">
     <!-- Messages area -->
     <div ref="messagesContainer" class="flex-1 overflow-y-auto p-4">
-      <ChatMessageList :messages="messages" @citation-click="handleCitationClick" />
+      <ChatMessageList
+        :messages="messages"
+        @citation-click="handleCitationClick"
+        @submit-suggestion="handleSuggestionSubmit"
+      />
 
       <!-- Streaming message -->
       <div v-if="isStreaming" class="mt-4">
@@ -158,19 +176,27 @@
       </div>
     </div>
 
-    <!-- Error alert -->
-    <div v-if="submitError && !isStreaming" class="px-4">
-      <UAlert
-        color="error"
-        variant="subtle"
-        :title="submitError"
-        :close-button="{ icon: 'i-lucide-x', color: 'error', variant: 'link' }"
-        @close="submitError = null"
-      />
+    <!-- Error alert with retry action -->
+    <div v-if="submitError && !isStreaming" class="px-4 pb-2">
+      <UAlert color="error" variant="subtle" icon="i-lucide-alert-circle">
+        <template #title>{{ submitError }}</template>
+        <template #description>
+          <span class="text-sm">如問題持續發生，請聯繫管理員。</span>
+        </template>
+        <template #actions>
+          <UButton
+            color="error"
+            variant="ghost"
+            size="xs"
+            icon="i-lucide-x"
+            @click="submitError = null"
+          />
+        </template>
+      </UAlert>
     </div>
 
     <!-- Input area -->
-    <div class="border-t border-neutral-200 p-4 dark:border-neutral-800">
+    <div class="border-t border-default p-4">
       <ChatMessageInput
         :disabled="isSubmitting"
         :loading="isStreaming"

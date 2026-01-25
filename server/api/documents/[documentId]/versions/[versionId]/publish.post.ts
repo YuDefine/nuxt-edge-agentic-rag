@@ -1,3 +1,4 @@
+import { getD1Database } from '../../../../../utils/database'
 import {
   publishDocumentVersion,
   DocumentPublishStateError,
@@ -7,8 +8,7 @@ import { createDocumentSyncStore } from '../../../../../utils/document-store'
 export default defineEventHandler(async (event) => {
   await requireRuntimeAdminSession(event)
 
-  const runtimeConfig = getKnowledgeRuntimeConfig()
-  const database = getRequiredD1Binding(event, runtimeConfig.bindings.d1Database)
+  const database = await getD1Database()
   const documentId = getRouterParam(event, 'documentId')
   const versionId = getRouterParam(event, 'versionId')
 

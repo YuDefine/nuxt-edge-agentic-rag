@@ -36,8 +36,13 @@
 <template>
   <UTable :columns="columns as any" :rows="documents" :loading="loading">
     <template #title-cell="{ row }">
-      <div class="font-medium text-default">{{ getRow(row).title }}</div>
-      <div class="text-sm text-muted">{{ getRow(row).slug }}</div>
+      <NuxtLink
+        :to="`/admin/documents/${getRow(row).id}`"
+        class="block transition-colors hover:text-primary"
+      >
+        <div class="font-medium text-default">{{ getRow(row).title }}</div>
+        <div class="text-sm text-muted">{{ getRow(row).slug }}</div>
+      </NuxtLink>
     </template>
 
     <template #categorySlug-cell="{ row }">
@@ -71,7 +76,7 @@
       <span class="text-sm text-muted">{{ formatDate(getRow(row).updatedAt) }}</span>
     </template>
 
-    <template #actions-cell>
+    <template #actions-cell="{ row }">
       <div class="flex justify-end gap-1">
         <UButton
           color="neutral"
@@ -79,6 +84,7 @@
           size="xs"
           icon="i-lucide-eye"
           aria-label="檢視文件"
+          :to="`/admin/documents/${getRow(row).id}`"
         />
       </div>
     </template>

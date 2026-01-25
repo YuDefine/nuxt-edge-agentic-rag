@@ -1,13 +1,8 @@
 <script setup lang="ts">
-  const { loggedIn } = useUserSession()
   const { isAdmin } = useUserRole()
 
   const links = computed(() => {
-    const items = [{ label: '首頁', to: '/' }]
-
-    if (loggedIn.value) {
-      items.push({ label: '問答', to: '/chat' })
-    }
+    const items = [{ label: '問答', to: '/' }]
 
     if (isAdmin.value) {
       items.push({ label: '文件管理', to: '/admin/documents' })
@@ -18,8 +13,8 @@
 </script>
 
 <template>
-  <div class="flex min-h-screen flex-col">
-    <header class="border-b">
+  <div class="flex min-h-screen flex-col bg-default">
+    <header class="border-b border-default">
       <UContainer>
         <div class="flex items-center justify-between py-3">
           <UNavigationMenu :items="links" />
@@ -34,9 +29,9 @@
       </UContainer>
     </main>
 
-    <footer class="border-t py-4">
+    <footer class="border-t border-default py-4">
       <UContainer>
-        <p class="text-center text-sm text-muted">© 2026 知識問答系統</p>
+        <p class="text-center text-xs text-dimmed">© 2026 知識問答系統</p>
       </UContainer>
     </footer>
   </div>

@@ -2,11 +2,8 @@ import { useLogger } from 'evlog'
 import { z } from 'zod'
 
 import { createCloudflareAiSearchClient, type CloudflareAiBindingLike } from '../utils/ai-search'
-import {
-  getCloudflareEnv,
-  getRequiredD1Binding,
-  getRequiredKvBinding,
-} from '../utils/cloudflare-bindings'
+import { getCloudflareEnv, getRequiredKvBinding } from '../utils/cloudflare-bindings'
+import { getD1Database } from '../utils/database'
 import { createCitationStore } from '../utils/citation-store'
 import { createKnowledgeAuditStore } from '../utils/knowledge-audit'
 import { createKnowledgeEvidenceStore } from '../utils/knowledge-evidence-store'
@@ -38,7 +35,7 @@ export default defineEventHandler(async function chatHandler(event) {
 
     const body = await readValidatedBody(event, chatBodySchema.parse)
     const runtimeConfig = getKnowledgeRuntimeConfig()
-    const database = getRequiredD1Binding(event, runtimeConfig.bindings.d1Database)
+    const database = await getD1Database()
     const aiSearchClient = createCloudflareAiSearchClient({
       aiBinding: getRequiredAiBinding(event),
       indexName: getRequiredAiSearchIndex(runtimeConfig.bindings.aiSearchIndex),
