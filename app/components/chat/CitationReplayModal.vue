@@ -124,7 +124,7 @@
           <!-- Source metadata -->
           <div
             v-if="parseLocator(citationData.citationLocator).title"
-            class="flex items-center gap-2 rounded-lg bg-neutral-50 p-3 dark:bg-neutral-900"
+            class="flex items-center gap-2 rounded-lg bg-muted p-3"
           >
             <UIcon name="i-lucide-file-text" class="size-4 text-muted" />
             <div class="flex-1">
@@ -138,9 +138,7 @@
           </div>
 
           <!-- Chunk text -->
-          <div
-            class="rounded-lg border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-950"
-          >
+          <div class="rounded-lg border border-default bg-elevated p-4">
             <p class="text-sm leading-relaxed whitespace-pre-wrap text-default">
               {{ citationData.chunkText }}
             </p>

@@ -1,7 +1,8 @@
 import { useLogger } from 'evlog'
 import { z } from 'zod'
 
-import { getRequiredD1Binding, getRequiredKvBinding } from '../../utils/cloudflare-bindings'
+import { getRequiredKvBinding } from '../../utils/cloudflare-bindings'
+import { getD1Database } from '../../utils/database'
 import { getAllowedAccessLevels, getKnowledgeRuntimeConfig } from '../../utils/knowledge-runtime'
 import { createMcpCategoryStore, listCategories } from '../../utils/mcp-categories'
 import { McpAuthError, requireMcpBearerToken, requireMcpScope } from '../../utils/mcp-auth'
@@ -26,7 +27,7 @@ export default defineEventHandler(async function listCategoriesHandler(event) {
   try {
     const query = await getValidatedQuery(event, listCategoriesQuerySchema.parse)
     const runtimeConfig = getKnowledgeRuntimeConfig()
-    const database = getRequiredD1Binding(event, runtimeConfig.bindings.d1Database)
+    const database = await getD1Database()
     const auth = await requireMcpBearerToken(
       {
         headers: getRequestHeaders(event),

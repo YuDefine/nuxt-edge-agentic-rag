@@ -11,21 +11,23 @@
 </script>
 
 <template>
-  <div class="flex flex-col items-center justify-center py-12 text-center">
-    <div class="mb-4 rounded-full bg-neutral-100 p-4 dark:bg-neutral-800">
-      <UIcon name="i-lucide-file-text" class="size-8 text-muted" />
+  <div class="flex flex-col items-center justify-center py-16 text-center">
+    <div class="mx-auto mb-4 flex size-16 items-center justify-center rounded-full bg-muted">
+      <UIcon name="i-lucide-file-plus" class="size-8 text-default" />
     </div>
-    <h3 class="mb-2 text-lg font-medium text-default">尚無文件</h3>
-    <p class="mb-6 max-w-sm text-sm text-muted">目前沒有任何文件。上傳文件後即可在此管理。</p>
+    <h3 class="mb-2 text-lg font-semibold text-default">開始建立知識庫</h3>
+    <p class="mb-6 max-w-sm text-sm text-muted">
+      上傳文件後，系統會自動分析並建立索引，讓使用者可以透過問答查詢相關內容。
+    </p>
     <UButton
       v-if="showUploadAction"
-      color="primary"
+      color="neutral"
       variant="solid"
       size="md"
       icon="i-lucide-upload"
       @click="emit('upload')"
     >
-      上傳文件
+      上傳第一份文件
     </UButton>
   </div>
 </template>

@@ -17,7 +17,7 @@
 <template>
   <button
     type="button"
-    class="inline-flex items-center gap-1 rounded bg-primary-100 px-1.5 py-0.5 text-xs font-medium text-primary transition-colors hover:bg-primary-200 dark:bg-primary-900 dark:hover:bg-primary-800"
+    class="inline-flex items-center gap-1 rounded border border-default bg-accented px-1.5 py-0.5 text-xs font-medium text-default transition-colors hover:bg-muted"
     @click="emit('click', citationId)"
   >
     <UIcon name="i-lucide-file-text" class="size-3" />

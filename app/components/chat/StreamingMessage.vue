@@ -66,27 +66,24 @@
 </script>
 
 <template>
-  <div
-    ref="messageContainer"
-    class="rounded-lg border border-neutral-200 bg-neutral-50 px-4 py-3 dark:border-neutral-800 dark:bg-neutral-900"
-  >
+  <div ref="messageContainer" class="rounded-lg border border-default bg-muted px-4 py-3">
     <div class="mb-1 flex items-center gap-2">
       <span class="text-xs font-medium text-muted">助理</span>
-      <UBadge v-if="streamingState === 'streaming'" color="info" variant="subtle" size="xs">
+      <UBadge v-if="streamingState === 'streaming'" color="neutral" variant="subtle" size="xs">
         回答中
       </UBadge>
     </div>
 
     <!-- Waiting state: show loader -->
     <div v-if="showLoader" class="flex items-center gap-2 py-2">
-      <UIcon name="i-lucide-loader-2" class="size-4 animate-spin text-primary" />
+      <UIcon name="i-lucide-loader-2" class="size-4 animate-spin text-muted" />
       <span class="text-sm text-muted">正在思考...</span>
     </div>
 
     <!-- Content display -->
     <div v-if="showContent" class="text-sm whitespace-pre-wrap text-default">
       {{ content
-      }}<span v-if="showCursor" class="inline-block h-4 w-0.5 animate-pulse bg-primary" />
+      }}<span v-if="showCursor" class="inline-block h-4 w-0.5 animate-pulse bg-inverted" />
     </div>
 
     <!-- Error state -->
@@ -94,7 +91,8 @@
       v-if="streamingState === 'error'"
       color="error"
       variant="subtle"
-      :title="error || '回答過程發生錯誤'"
+      icon="i-lucide-alert-circle"
+      :title="error || '回答過程發生錯誤，請重試'"
       class="mt-2"
     />
   </div>

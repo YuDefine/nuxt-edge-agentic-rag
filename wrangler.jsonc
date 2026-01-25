@@ -21,6 +21,9 @@
       "id": "661ea98dad0743be86acc9ebeaf464f4",
     },
   ],
+  "ai": {
+    "binding": "AI",
+  },
   "r2_buckets": [
     {
       "binding": "BLOB",

@@ -15,15 +15,16 @@
  * ⚠️ This is a UX improvement only. Real authorization happens server-side.
  * The admin API endpoints verify admin access using runtime allowlist.
  */
-export default defineNuxtRouteMiddleware((to) => {
+export default defineNuxtRouteMiddleware(() => {
   const { loggedIn } = useUserSession()
   const { isAdmin } = useUserRole()
 
   if (!loggedIn.value) {
-    return navigateTo(`/auth/login?redirect=${encodeURIComponent(to.fullPath)}`)
+    return navigateTo('/')
   }
 
   if (!isAdmin.value) {
-    return navigateTo('/?unauthorized=admin')
+    // Show toast on client side instead of query param
+    return navigateTo('/')
   }
 })

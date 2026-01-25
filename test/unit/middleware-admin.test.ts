@@ -18,7 +18,7 @@ describe('admin middleware', () => {
     vi.clearAllMocks()
   })
 
-  it('redirects unauthenticated users to login with redirect param', async () => {
+  it('redirects unauthenticated users to home', async () => {
     middlewareMocks.useUserSession.mockReturnValue({
       loggedIn: { value: false },
     })
@@ -31,13 +31,11 @@ describe('admin middleware', () => {
     const to = { fullPath: '/admin/documents' }
     const result = middleware(to as never)
 
-    expect(middlewareMocks.navigateTo).toHaveBeenCalledWith(
-      '/auth/login?redirect=%2Fadmin%2Fdocuments'
-    )
-    expect(result).toEqual({ path: '/auth/login?redirect=%2Fadmin%2Fdocuments' })
+    expect(middlewareMocks.navigateTo).toHaveBeenCalledWith('/')
+    expect(result).toEqual({ path: '/' })
   })
 
-  it('redirects authenticated non-admin users to home with unauthorized param', async () => {
+  it('redirects authenticated non-admin users to home', async () => {
     middlewareMocks.useUserSession.mockReturnValue({
       loggedIn: { value: true },
     })
@@ -50,8 +48,8 @@ describe('admin middleware', () => {
     const to = { fullPath: '/admin/documents' }
     const result = middleware(to as never)
 
-    expect(middlewareMocks.navigateTo).toHaveBeenCalledWith('/?unauthorized=admin')
-    expect(result).toEqual({ path: '/?unauthorized=admin' })
+    expect(middlewareMocks.navigateTo).toHaveBeenCalledWith('/')
+    expect(result).toEqual({ path: '/' })
   })
 
   it('allows authenticated admin users to proceed', async () => {

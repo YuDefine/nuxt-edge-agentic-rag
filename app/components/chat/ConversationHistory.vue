@@ -12,20 +12,18 @@
 </script>
 
 <template>
-  <div class="flex flex-col gap-2 p-4">
-    <h2 class="text-sm font-medium text-muted">對話記錄</h2>
+  <div class="flex h-full flex-col p-4">
+    <h2 class="mb-3 text-xs font-semibold tracking-wider text-dimmed uppercase">對話記錄</h2>
 
-    <div class="flex flex-col gap-1">
-      <div
-        class="cursor-pointer rounded-lg border border-primary bg-primary-50 p-3 dark:bg-primary-950"
-      >
+    <div class="flex-1">
+      <div class="rounded-lg border-2 border-default bg-accented p-3">
         <div class="flex items-center gap-2">
-          <UIcon name="i-lucide-message-square" class="size-4 text-primary" />
+          <UIcon name="i-lucide-message-square" class="size-4 text-default" />
           <span class="text-sm font-medium text-default">目前對話</span>
         </div>
       </div>
     </div>
 
-    <p class="mt-2 text-xs text-muted">v1.0 僅支援當前對話。歷史記錄將在未來版本提供。</p>
+    <p class="mt-4 text-xs text-dimmed">歷史記錄將在未來版本提供</p>
   </div>
 </template>

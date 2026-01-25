@@ -1,7 +1,6 @@
 import { useLogger } from 'evlog'
 
-import { getRequiredD1Binding } from '../../../utils/cloudflare-bindings'
-import { getKnowledgeRuntimeConfig } from '../../../utils/knowledge-runtime'
+import { getD1Database } from '../../../utils/database'
 import { pruneKnowledgeRetentionWindow } from '../../../utils/knowledge-retention'
 
 export default defineEventHandler(async function pruneRetentionHandler(event) {
@@ -16,10 +15,8 @@ export default defineEventHandler(async function pruneRetentionHandler(event) {
       },
     })
 
-    const runtimeConfig = getKnowledgeRuntimeConfig()
-
     await pruneKnowledgeRetentionWindow({
-      database: getRequiredD1Binding(event, runtimeConfig.bindings.d1Database),
+      database: await getD1Database(),
     })
 
     log.set({

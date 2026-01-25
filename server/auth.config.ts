@@ -23,5 +23,8 @@ export default defineServerAuth(({ db, runtimeConfig }) => {
     emailAndPassword: { enabled: enableEmailAndPassword },
     plugins: [admin()],
     ...(socialProviders ? { socialProviders } : {}),
+    // Admin role is managed via DB directly:
+    // - Local dev: use seed script or /api/_dev/login
+    // - Production: use /api/setup/create-admin for bootstrap
   }
 })

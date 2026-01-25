@@ -29,7 +29,7 @@
       <template v-if="error">
         <UAlert color="error" variant="subtle" :title="error" class="w-full" />
         <NuxtLink
-          to="/auth/login"
+          to="/"
           class="text-sm font-medium text-highlighted hover:underline focus:underline focus:outline-none"
         >
           返回登入
@@ -41,7 +41,7 @@
         <p v-if="isTimeout" class="text-sm text-muted">
           處理時間較長，請稍候或
           <NuxtLink
-            to="/auth/login"
+            to="/"
             class="font-medium text-highlighted hover:underline focus:underline focus:outline-none"
           >
             返回重試

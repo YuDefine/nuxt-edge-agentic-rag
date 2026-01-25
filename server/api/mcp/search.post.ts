@@ -2,11 +2,8 @@ import { useLogger } from 'evlog'
 import { z } from 'zod'
 
 import { createCloudflareAiSearchClient } from '../../utils/ai-search'
-import {
-  getCloudflareEnv,
-  getRequiredD1Binding,
-  getRequiredKvBinding,
-} from '../../utils/cloudflare-bindings'
+import { getCloudflareEnv, getRequiredKvBinding } from '../../utils/cloudflare-bindings'
+import { getD1Database } from '../../utils/database'
 import { createKnowledgeEvidenceStore } from '../../utils/knowledge-evidence-store'
 import { retrieveVerifiedEvidence } from '../../utils/knowledge-retrieval'
 import { getAllowedAccessLevels, getKnowledgeRuntimeConfig } from '../../utils/knowledge-runtime'
@@ -33,7 +30,7 @@ export default defineEventHandler(async function searchKnowledgeHandler(event) {
   try {
     const body = await readValidatedBody(event, searchKnowledgeBodySchema.parse)
     const runtimeConfig = getKnowledgeRuntimeConfig()
-    const database = getRequiredD1Binding(event, runtimeConfig.bindings.d1Database)
+    const database = await getD1Database()
     const auth = await requireMcpBearerToken(
       {
         headers: getRequestHeaders(event),

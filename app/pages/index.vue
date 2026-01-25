@@ -1,117 +1,94 @@
 <script setup lang="ts">
   /**
-   * Home page - public, shows different content based on auth state.
+   * Home page - shows login when signed out, chat when signed in.
    */
   definePageMeta({
-    auth: false, // Public page
+    auth: false, // Public page, handles its own auth state
+    layout: false, // Manually handle layout switching
   })
 
-  const { loggedIn, user, signOut } = useUserSession()
-  const { isAdmin } = useUserRole()
+  const { loggedIn, signIn } = useUserSession()
+  const { parseAuthError } = useAuthError()
 
-  async function handleSignOut() {
-    await signOut()
-    await navigateTo('/auth/login')
+  const socialLoading = shallowRef(false)
+  const errorMessage = shallowRef('')
+
+  // In v1.0 MVP, we only track the current session
+  const currentSessionId = ref<string | undefined>(undefined)
+
+  async function handleGoogleLogin() {
+    socialLoading.value = true
+    errorMessage.value = ''
+
+    try {
+      await signIn.social({ provider: 'google' })
+    } catch (e: unknown) {
+      errorMessage.value = parseAuthError(e)
+    } finally {
+      socialLoading.value = false
+    }
   }
 </script>
 
 <template>
-  <div class="flex min-h-[calc(100vh-12rem)] items-center justify-center">
-    <!-- Signed-out state -->
-    <UCard v-if="!loggedIn" class="w-full max-w-md">
+  <!-- Signed-out: Login -->
+  <NuxtLayout v-if="!loggedIn" name="auth">
+    <UCard class="w-full">
       <template #header>
-        <div class="flex items-center gap-2">
-          <UIcon name="i-lucide-brain" class="size-6 text-primary" />
-          <h1 class="text-lg font-semibold text-default">知識問答系統</h1>
+        <div class="text-center">
+          <div class="mx-auto mb-4 flex size-12 items-center justify-center rounded-full bg-muted">
+            <UIcon name="i-lucide-sparkles" class="size-6 text-default" />
+          </div>
+          <h1 class="text-2xl font-bold text-default">知識問答系統</h1>
+          <p class="mt-2 text-sm text-muted">使用公司帳號登入系統</p>
         </div>
       </template>
 
-      <div class="flex flex-col gap-4">
-        <p class="text-sm text-muted">
-          歡迎使用知識問答系統。登入後即可向知識庫提問，獲取準確的答案與引用來源。
-        </p>
+      <div class="flex flex-col gap-5">
+        <UAlert
+          v-if="errorMessage"
+          color="error"
+          variant="subtle"
+          icon="i-lucide-alert-circle"
+          :title="errorMessage"
+        />
 
-        <div class="rounded-lg bg-neutral-50 p-4 dark:bg-neutral-900">
-          <h3 class="mb-2 text-sm font-medium text-default">系統功能</h3>
-          <ul class="space-y-2 text-sm text-muted">
-            <li class="flex items-center gap-2">
-              <UIcon name="i-lucide-message-square" class="size-4 text-primary" />
-              智能問答 — 自然語言查詢知識庫
-            </li>
-            <li class="flex items-center gap-2">
-              <UIcon name="i-lucide-file-text" class="size-4 text-primary" />
-              引用追蹤 — 查看答案來源文件
-            </li>
-            <li class="flex items-center gap-2">
-              <UIcon name="i-lucide-shield-check" class="size-4 text-primary" />
-              安全存取 — 基於角色的內容控制
-            </li>
-          </ul>
-        </div>
+        <UButton
+          block
+          color="neutral"
+          variant="solid"
+          size="lg"
+          icon="i-simple-icons-google"
+          :loading="socialLoading"
+          @click="handleGoogleLogin"
+        >
+          使用 Google 帳號登入
+        </UButton>
+
+        <p class="text-center text-xs text-dimmed">首次登入後，系統會根據帳號設定自動指派角色。</p>
       </div>
-
-      <template #footer>
-        <div class="flex justify-end">
-          <UButton color="primary" variant="solid" size="md" to="/auth/login"> 登入系統 </UButton>
-        </div>
-      </template>
     </UCard>
+  </NuxtLayout>
 
-    <!-- Signed-in state -->
-    <UCard v-else class="w-full max-w-md">
-      <template #header>
-        <div class="flex items-center justify-between">
-          <h1 class="text-lg font-semibold text-default">知識問答系統</h1>
-          <UBadge v-if="isAdmin" color="success" variant="subtle" size="sm">管理員</UBadge>
-          <UBadge v-else color="neutral" variant="subtle" size="sm">使用者</UBadge>
-        </div>
-      </template>
+  <!-- Signed-in: Chat -->
+  <NuxtLayout v-else name="chat">
+    <div class="flex h-[calc(100vh-4rem)] gap-0">
+      <!-- Sidebar: Conversation History -->
+      <aside class="hidden w-64 flex-shrink-0 border-r border-default lg:block">
+        <ChatConversationHistory :current-session-id="currentSessionId" />
+      </aside>
 
-      <div class="flex flex-col gap-4">
-        <div class="flex items-center gap-3">
-          <UAvatar :alt="user?.name || user?.email || '使用者'" size="md" />
-          <div class="min-w-0 flex-1">
-            <p class="truncate font-medium text-default">{{ user?.name || '使用者' }}</p>
-            <p class="truncate text-sm text-muted">{{ user?.email }}</p>
+      <!-- Main chat area -->
+      <main class="flex flex-1 flex-col overflow-hidden">
+        <div class="flex items-center justify-between border-b border-default px-4 py-3">
+          <div>
+            <h1 class="text-lg font-semibold text-default">知識庫問答</h1>
+            <p class="text-xs text-muted">向知識庫提問，獲取準確的答案與引用來源</p>
           </div>
         </div>
 
-        <USeparator />
-
-        <!-- Navigation actions -->
-        <div class="flex flex-col gap-2">
-          <UButton
-            color="primary"
-            variant="solid"
-            size="md"
-            icon="i-lucide-message-square"
-            to="/chat"
-            block
-          >
-            開始問答
-          </UButton>
-
-          <UButton
-            v-if="isAdmin"
-            color="neutral"
-            variant="outline"
-            size="md"
-            icon="i-lucide-file-text"
-            to="/admin/documents"
-            block
-          >
-            文件管理
-          </UButton>
-        </div>
-
-        <p class="mt-4 text-xs text-muted">向知識庫提問，獲取準確的答案與引用來源。</p>
-      </div>
-
-      <template #footer>
-        <div class="flex justify-end">
-          <UButton color="neutral" variant="ghost" size="sm" @click="handleSignOut">登出</UButton>
-        </div>
-      </template>
-    </UCard>
-  </div>
+        <ChatContainer class="flex-1" />
+      </main>
+    </div>
+  </NuxtLayout>
 </template>

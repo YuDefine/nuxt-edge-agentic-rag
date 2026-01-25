@@ -10,7 +10,11 @@
 
   const emit = defineEmits<{
     citationClick: [citationId: string]
+    submitSuggestion: [query: string]
   }>()
+
+  // 示例問題，讓使用者快速開始
+  const suggestionQueries = ['公司請假流程是什麼？', '如何申請報帳？', '專案管理的最佳實踐有哪些？']
 
   function getMessageRoleConfig(role: MessageRole): {
     alignment: 'left' | 'right'
@@ -21,18 +25,22 @@
       case 'user':
         return {
           alignment: 'right',
-          bgClass: 'bg-primary-50 dark:bg-primary-950',
+          bgClass: 'bg-accented',
           label: '您',
         }
       case 'assistant':
         return {
           alignment: 'left',
-          bgClass: 'bg-neutral-50 dark:bg-neutral-900',
+          bgClass: 'bg-muted',
           label: '助理',
         }
       default:
         return assertNever(role, 'getMessageRoleConfig')
     }
+  }
+
+  function handleSuggestionClick(query: string) {
+    emit('submitSuggestion', query)
   }
 
   function isRefusalMessage(message: ChatMessage): boolean {
@@ -75,7 +83,7 @@
       <!-- Regular messages (user or successful assistant) -->
       <div
         v-else
-        class="max-w-[80%] rounded-lg border border-neutral-200 px-4 py-3 dark:border-neutral-800"
+        class="max-w-[80%] rounded-lg border border-default px-4 py-3"
         :class="getMessageRoleConfig(message.role).bgClass"
       >
         <div class="mb-1 flex items-center gap-2">
@@ -109,12 +117,41 @@
       </div>
     </div>
 
-    <div
-      v-if="messages.length === 0"
-      class="flex flex-col items-center justify-center py-12 text-center"
-    >
-      <UIcon name="i-lucide-message-square" class="mb-4 size-12 text-muted" />
-      <p class="text-sm text-muted">尚無訊息。開始提問吧！</p>
+    <!-- Empty state with onboarding -->
+    <div v-if="messages.length === 0" class="flex h-full flex-col items-center justify-center py-8">
+      <div class="w-full max-w-md space-y-6 text-center">
+        <!-- Welcome -->
+        <div>
+          <div class="mx-auto mb-4 flex size-16 items-center justify-center rounded-full bg-muted">
+            <UIcon name="i-lucide-sparkles" class="size-8 text-default" />
+          </div>
+          <h2 class="text-xl font-semibold text-default">開始探索知識庫</h2>
+          <p class="mt-2 text-sm text-muted">
+            輸入問題或點擊下方示例，我會從知識庫中找到最相關的答案。
+          </p>
+        </div>
+
+        <!-- Suggestion queries -->
+        <div class="space-y-2">
+          <p class="text-xs font-medium text-dimmed">試試這些問題</p>
+          <div class="flex flex-col gap-2">
+            <button
+              v-for="query in suggestionQueries"
+              :key="query"
+              class="w-full rounded-lg border border-default bg-elevated px-4 py-3 text-left text-sm text-default transition-colors hover:bg-accented"
+              @click="handleSuggestionClick(query)"
+            >
+              <span class="flex items-center gap-2">
+                <UIcon name="i-lucide-message-circle" class="size-4 text-muted" />
+                {{ query }}
+              </span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Tips -->
+        <p class="text-xs text-dimmed">回答會標註引用來源，點擊可查看原文</p>
+      </div>
     </div>
   </div>
 </template>

@@ -50,7 +50,7 @@ export default defineNuxtConfig({
   // - Production: D1 + KV + R2 via wrangler.jsonc bindings
   hub: {
     db: 'sqlite',
-    kv: true,
+    kv: process.env.NODE_ENV === 'development' ? { driver: 'fs-lite', base: '.data/kv' } : true,
     blob: true,
     dir: '.data',
   },

@@ -4,11 +4,8 @@ import { z } from 'zod'
 import { createCloudflareAiSearchClient, type CloudflareAiBindingLike } from '../../utils/ai-search'
 import { createKnowledgeAuditStore } from '../../utils/knowledge-audit'
 import { createCitationStore } from '../../utils/citation-store'
-import {
-  getCloudflareEnv,
-  getRequiredD1Binding,
-  getRequiredKvBinding,
-} from '../../utils/cloudflare-bindings'
+import { getCloudflareEnv, getRequiredKvBinding } from '../../utils/cloudflare-bindings'
+import { getD1Database } from '../../utils/database'
 import { createKnowledgeEvidenceStore } from '../../utils/knowledge-evidence-store'
 import { retrieveVerifiedEvidence } from '../../utils/knowledge-retrieval'
 import { getKnowledgeRuntimeConfig } from '../../utils/knowledge-runtime'
@@ -34,7 +31,7 @@ export default defineEventHandler(async (event) => {
 
   try {
     const runtimeConfig = getKnowledgeRuntimeConfig()
-    const database = getRequiredD1Binding(event, runtimeConfig.bindings.d1Database)
+    const database = await getD1Database()
     const tokenStore = createMcpTokenStore(database)
     const auth = await requireMcpBearerToken(
       {
