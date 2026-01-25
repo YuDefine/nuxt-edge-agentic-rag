@@ -1,35 +1,81 @@
 ## Why
 
-`v1.0.0` 的後端核心流程已經具備 upload、sync、publish、chat 與 MCP 契約，但目前前端仍缺少足以完成六步最小閉環的核心 UI。沒有 Admin 文件管理頁、Web 問答頁、對話歷史與引用回放介面，就算後端功能存在，也無法完成報告要求的可部署、可驗證、可答辯閉環。
-
-此外，這個 change 的 scope 必須與 `admin-ui-post-core` 分開：本 change 只處理核心驗收所需 UI；token 管理、query logs 檢視、dashboard 與進階營運視圖仍屬同版後置。
+bootstrap-v1-core-from-report 已完成後端 API（Auth、Document Lifecycle、Web Answering、MCP、Governance），但目前 UI 層只有登入頁與中性首頁。要完成六步最小閉環的人工驗收（#1-#5），需要實作 Web Chat 介面與 Admin 文件管理介面，讓驗收人員能透過實際頁面操作而非 curl 命令。
 
 ## What Changes
 
-- 新增核心 Web Chat UI，覆蓋提問、串流顯示、拒答顯示、對話歷史與引用回放。
-- 新增 Admin 文件管理 UI，覆蓋文件列表、上傳、同步、發布與版本狀態顯示。
-- 更新首頁與導覽結構，依使用者角色顯示 chat 與 admin 入口。
-- 補齊核心 UI 所需的最小前端整合層，包含引用回放 server wrapper、documents list data source 與 admin page guards。
+### Chat 介面（Web User / Web Admin）
+
+- `/chat` 頁面：對話歷史側欄、訊息清單、提問輸入區
+- Streaming 回答顯示：loading skeleton、逐 token 渲染、refusal 樣式
+- Citation Replay：引用標記點擊 → 開啟 Modal 顯示原文段落
+- 對話管理：新建對話、切換對話、對話列表
+
+### 文件管理介面（Admin Only）
+
+- `/admin/documents` 頁面：文件列表 DataTable（title、category、access_level、status、version、updated_at）
+- 上傳 Wizard：presign → direct upload → finalize → sync → publish 分步驟 UI
+- 版本狀態 Badge：draft/active/archived、queued/syncing/indexed/failed
+- 文件詳情/編輯：metadata 編輯、版本歷史、重新索引
+
+### 共用 UI 元件
+
+- `StatusBadge`：文件狀態、版本狀態、access level 視覺化
+- `DataTable`：分頁、排序、篩選的共用表格元件
+- Navigation Shell：role-aware 導航，Admin 看到管理入口，User 只看到 Chat
 
 ## Non-Goals
 
-- MCP token 管理 UI、Query Logs UI、Dashboard 卡片與統計摘要。
-- Debug 分數面板、延遲視覺化與 decision path 顯示。
-- 多文件批次操作、線上文件編輯器、rich format 預覽。
-- Passkey、MCP session 與 Cloud fallback 相關前端入口。
+- MCP Token 管理 UI（屬於 `admin-ui-post-core` change）
+- Query Logs 檢視 UI（屬於 `admin-ui-post-core` change）
+- Dashboard 統計卡片（屬於 `admin-ui-post-core` change）
+- Debug 分數面板（屬於 `observability-and-debug` change）
+- 多格式文件支援（PDF、DOCX 預覽）— v1.0.0 後
+- 批次上傳 — v1.0.0 後
 
 ## Capabilities
 
 ### New Capabilities
 
-- `web-chat-ui`: 核心問答介面，包含訊息輸入、串流回應、拒答狀態、對話歷史與 citation replay。
-- `admin-document-management-ui`: Admin 文件管理介面，包含列表、狀態徽章、staged upload、sync / publish 操作與版本狀態回饋。
+（無）
 
 ### Modified Capabilities
 
-(none)
+（無 — 本 change 純實作既有 requirements，無需建立 delta specs）
 
 ## Impact
 
-- Affected specs: `web-chat-ui`, `admin-document-management-ui`
-- Affected code: `app/pages/index.vue`, `app/pages/chat/**`, `app/pages/admin/documents/**`, `app/components/chat/**`, `app/components/documents/**`, `app/middleware/**`, `server/api/documents/**`, `server/api/citations/**`
+### 影響的程式碼
+
+- `app/pages/chat.vue`（新建）
+- `app/pages/chat/[id].vue`（新建）
+- `app/pages/admin/documents/index.vue`（新建）
+- `app/pages/admin/documents/[id].vue`（新建）
+- `app/pages/admin/documents/upload.vue`（新建）
+- `app/components/chat/`（新建目錄）
+- `app/components/admin/documents/`（新建目錄）
+- `app/components/ui/StatusBadge.vue`（新建）
+- `app/layouts/default.vue`（修改 — 加入 navigation）
+- `app/composables/useChat.ts`（新建）
+- `app/composables/useDocuments.ts`（新建）
+
+### 依賴的 API（來自 bootstrap）
+
+| API                                               | 用途            |
+| ------------------------------------------------- | --------------- |
+| `GET /api/conversations`                          | 對話列表        |
+| `POST /api/conversations`                         | 新建對話        |
+| `GET /api/conversations/[id]/messages`            | 訊息列表        |
+| `POST /api/chat`                                  | Streaming 問答  |
+| `GET /api/citations/[id]`                         | Citation Replay |
+| `GET /api/admin/documents`                        | 文件列表        |
+| `POST /api/uploads/presign`                       | 上傳預簽名      |
+| `POST /api/uploads/finalize`                      | 上傳完成        |
+| `POST /api/documents/[id]/sync`                   | 觸發同步        |
+| `POST /api/documents/[id]/versions/[vid]/publish` | 發布版本        |
+
+### 環境依賴
+
+- 無新增環境變數
+- 無新增 Cloudflare bindings
+- 依賴 bootstrap 已建立的 D1 schema、Auth session
