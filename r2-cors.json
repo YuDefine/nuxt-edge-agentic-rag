@@ -1,0 +1,13 @@
+{
+  "rules": [
+    {
+      "allowed": {
+        "origins": ["http://localhost:3010", "https://agentic.yudefine.com.tw"],
+        "methods": ["PUT", "GET", "HEAD"],
+        "headers": ["content-type", "content-length", "x-amz-checksum-sha256"]
+      },
+      "exposeHeaders": ["ETag"],
+      "maxAgeSeconds": 3600
+    }
+  ]
+}

@@ -19,8 +19,8 @@ const syncDocumentSchema = z.object({
 export default defineEventHandler(async (event) => {
   const { user } = await requireRuntimeAdminSession(event)
   const body = await readZodBody(event, syncDocumentSchema)
-  const runtimeConfig = getKnowledgeRuntimeConfig()
-  const bucket = getRequiredR2BucketBinding(event, runtimeConfig.bindings.documentsBucket)
+  const uploadConfig = loadKnowledgeUploadsConfig()
+  const bucket = await createR2ObjectAccess(uploadConfig)
   const database = await getD1Database()
   const store = createDocumentSyncStore(database)
 
@@ -30,7 +30,7 @@ export default defineEventHandler(async (event) => {
       adminUserId: user.id,
       categorySlug: body.categorySlug,
       checksumSha256: body.checksumSha256,
-      environment: runtimeConfig.environment,
+      environment: uploadConfig.environment,
       mimeType: body.mimeType,
       objectKey: body.objectKey,
       size: body.size,
@@ -40,9 +40,9 @@ export default defineEventHandler(async (event) => {
     },
     {
       loadSourceText: async (objectKey) => {
-        const object = await bucket.get(objectKey)
+        const text = await bucket.getText(objectKey)
 
-        if (!object) {
+        if (text === null) {
           throw createError({
             statusCode: 404,
             statusMessage: 'Not Found',
@@ -50,11 +50,11 @@ export default defineEventHandler(async (event) => {
           })
         }
 
-        return object.text()
+        return text
       },
       store,
       writeNormalizedText: async (objectKey, normalizedText) => {
-        await bucket.put(objectKey, normalizedText)
+        await bucket.put(objectKey, normalizedText, 'text/plain; charset=utf-8')
       },
     }
   )
