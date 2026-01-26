@@ -130,7 +130,6 @@ export async function signR2UploadUrl(input: {
     ChecksumSHA256: input.checksumSha256,
     ContentLength: input.size,
     ContentType: input.mimeType,
-    IfNoneMatch: '*',
   })
 
   return getSignedUrl(client, command, {

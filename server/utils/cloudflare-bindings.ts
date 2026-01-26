@@ -1,17 +1,9 @@
-import type { UploadedObjectMetadata } from './staged-upload'
-
 type CloudflareBoundEvent = {
   context: Record<string, unknown> & {
     cloudflare?: {
       env?: Record<string, unknown>
     }
   }
-}
-
-interface R2BucketLike {
-  head(key: string): Promise<UploadedObjectMetadata | null>
-  get(key: string): Promise<{ text(): Promise<string> } | null>
-  put(key: string, value: string): Promise<unknown>
 }
 
 interface D1PreparedStatementLike {
@@ -37,24 +29,6 @@ export function getCloudflareEnv(event: CloudflareBoundEvent) {
     (globalThis as { __env__?: Record<string, unknown> }).__env__ ??
     {}
   )
-}
-
-export function getRequiredR2BucketBinding(
-  event: CloudflareBoundEvent,
-  bindingName: string
-): R2BucketLike {
-  const env = getCloudflareEnv(event)
-  const binding = env[bindingName]
-
-  if (!binding || typeof (binding as { head?: unknown }).head !== 'function') {
-    throw createError({
-      statusCode: 503,
-      statusMessage: 'Service Unavailable',
-      message: `Cloudflare R2 binding "${bindingName}" is not available`,
-    })
-  }
-
-  return binding as R2BucketLike
 }
 
 export function getRequiredD1Binding(

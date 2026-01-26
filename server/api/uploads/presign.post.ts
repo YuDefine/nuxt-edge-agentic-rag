@@ -7,32 +7,10 @@ const presignRequestSchema = z.object({
   size: z.number().int().positive('size must be a positive integer'),
 })
 
-function getConfiguredUploadSigning() {
-  const runtimeConfig = getKnowledgeRuntimeConfig()
-  const uploadConfig = runtimeConfig.uploads
-  const missing = [
-    ['bindings.documentsBucket', runtimeConfig.bindings.documentsBucket],
-    ['uploads.accountId', uploadConfig.accountId],
-    ['uploads.accessKeyId', uploadConfig.accessKeyId],
-    ['uploads.bucketName', uploadConfig.bucketName],
-    ['uploads.secretAccessKey', uploadConfig.secretAccessKey],
-  ].filter(([, value]) => !value)
-
-  if (missing.length > 0) {
-    throw createError({
-      statusCode: 503,
-      statusMessage: 'Service Unavailable',
-      message: `Knowledge uploads are not configured: ${missing.map(([key]) => key).join(', ')}`,
-    })
-  }
-
-  return uploadConfig
-}
-
 export default defineEventHandler(async (event) => {
   const { user } = await requireRuntimeAdminSession(event)
   const body = await readZodBody(event, presignRequestSchema)
-  const uploadConfig = getConfiguredUploadSigning()
+  const uploadConfig = loadKnowledgeUploadsConfig()
 
   return createStagedUploadTarget(
     {
@@ -40,7 +18,7 @@ export default defineEventHandler(async (event) => {
       adminUserId: user.id,
       bucketName: uploadConfig.bucketName,
       checksumSha256: body.checksumSha256,
-      environment: getKnowledgeRuntimeConfig().environment,
+      environment: uploadConfig.environment,
       expiresInSeconds: uploadConfig.presignExpiresSeconds,
       filename: body.filename,
       mimeType: body.mimeType,
