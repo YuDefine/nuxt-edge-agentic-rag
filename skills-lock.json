@@ -21,11 +21,6 @@
       "sourceType": "github",
       "computedHash": "6935586ef3ab02e18747a4477d396e692bc96e8f28b0d95b374ffc37fce74cda"
     },
-    "arrange": {
-      "source": "pbakaus/impeccable",
-      "sourceType": "github",
-      "computedHash": "33747d3fd02fe501209cff6d4ff4b3779e5f11575e255bce5442c89db8e58502"
-    },
     "audit": {
       "source": "pbakaus/impeccable",
       "sourceType": "github",
@@ -96,20 +91,10 @@
       "sourceType": "github",
       "computedHash": "2f709d1a2c7564f8ce6a9bb707e7f5451117ba80f8e8e2302662c29bc61246a6"
     },
-    "extract": {
-      "source": "pbakaus/impeccable",
-      "sourceType": "github",
-      "computedHash": "b01b8be227a2a094e4b65f340c5a767bdbfd27d8bf2ccee4f75c203e44a5a592"
-    },
     "finishing-a-development-branch": {
       "source": "obra/superpowers",
       "sourceType": "github",
       "computedHash": "9edba9a38684c060fdc38290f640e1dc0c37de286723ac9be73bacacf7cd6f3d"
-    },
-    "frontend-design": {
-      "source": "pbakaus/impeccable",
-      "sourceType": "github",
-      "computedHash": "b7146ef043e1d612023eadc58f0984cbb76f2beabba787d3189e53810b96ccc9"
     },
     "harden": {
       "source": "pbakaus/impeccable",
@@ -120,11 +105,6 @@
       "source": "onmax/nuxt-skills",
       "sourceType": "github",
       "computedHash": "45d0803ea76f82fa40af91858472fb4528a8ce4c2a9a710b785e796cd5b3fe98"
-    },
-    "normalize": {
-      "source": "pbakaus/impeccable",
-      "sourceType": "github",
-      "computedHash": "9952c84ee754979cd340d74a01173be3e39a1297c5c0907de1dc71d902e00901"
     },
     "nuxt": {
       "source": "antfu/skills",
@@ -165,11 +145,6 @@
       "source": "onmax/nuxt-skills",
       "sourceType": "github",
       "computedHash": "09691e4e19e41f40e01fe8a5efaa9d08cf54b06cc80cf430808a9f056d20b1df"
-    },
-    "onboard": {
-      "source": "pbakaus/impeccable",
-      "sourceType": "github",
-      "computedHash": "3f75cbca1d47d54e1cc988ff3b7d6fe23c117f2369cfa5d361ea522812417945"
     },
     "optimize": {
       "source": "pbakaus/impeccable",
@@ -240,11 +215,6 @@
       "source": "obra/superpowers",
       "sourceType": "github",
       "computedHash": "72e9ab72627e4fd8ed26a582e82309a98ecdc4f6e1c99418430ac05682c9e91d"
-    },
-    "teach-impeccable": {
-      "source": "pbakaus/impeccable",
-      "sourceType": "github",
-      "computedHash": "90b126d03395f5159f8463e7d402fe1580d93b514adb83f9d0c3774ae40e7c9e"
     },
     "test-driven-development": {
       "source": "obra/superpowers",

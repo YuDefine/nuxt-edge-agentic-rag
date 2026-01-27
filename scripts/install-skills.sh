@@ -50,7 +50,7 @@ echo ""
 
 # Impeccable Design Skills（pbakaus/impeccable）
 echo "📦 Impeccable Design Skills..."
-for skill in adapt animate arrange audit bolder clarify colorize critique delight distill extract frontend-design harden normalize onboard optimize overdrive polish quieter teach-impeccable typeset; do
+for skill in impeccable adapt animate audit bolder clarify colorize critique delight distill harden layout optimize overdrive polish quieter shape typeset; do
   npx skills add pbakaus/impeccable@$skill $COPY_FLAGS
 done
 echo "  ✓ Impeccable Design Skills 完成"
