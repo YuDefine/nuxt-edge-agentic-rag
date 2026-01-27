@@ -74,7 +74,7 @@ For each issue, document:
 - **Impact**: How it affects users
 - **WCAG/Standard**: Which standard it violates (if applicable)
 - **Recommendation**: How to fix it
-- **Suggested command**: Which command to use (prefer: /animate, /quieter, /optimize, /adapt, /clarify, /distill, /delight, /onboard, /normalize, /audit, /harden, /polish, /extract, /bolder, /arrange, /typeset, /critique, /colorize, /overdrive — or other installed skills you're sure exist)
+- **Suggested command**: Which command to use (prefer: /animate, /quieter, /optimize, /adapt, /clarify, /distill, /delight, /harden, /polish, /audit, /harden, /polish, /impeccable extract, /bolder, /layout, /typeset, /critique, /colorize, /overdrive — or other installed skills you're sure exist)
 
 #### Critical Issues
 
@@ -118,11 +118,11 @@ Create actionable plan:
 
 ### Suggested Commands for Fixes
 
-Map issues to available commands. Prefer these: /animate, /quieter, /optimize, /adapt, /clarify, /distill, /delight, /onboard, /normalize, /audit, /harden, /polish, /extract, /bolder, /arrange, /typeset, /critique, /colorize, /overdrive. You may also suggest other installed skills you're sure exist, but never invent commands.
+Map issues to available commands. Prefer these: /animate, /quieter, /optimize, /adapt, /clarify, /distill, /delight, /harden, /polish, /audit, /harden, /polish, /impeccable extract, /bolder, /layout, /typeset, /critique, /colorize, /overdrive. You may also suggest other installed skills you're sure exist, but never invent commands.
 
 Examples:
 
-- "Use `/normalize` to align with design system (addresses N theming issues)"
+- "Use `/polish` to align with design system (addresses N theming issues)"
 - "Use `/optimize` to improve performance (addresses N performance issues)"
 - "Use `/harden` to improve resilience (addresses N edge cases)"
 

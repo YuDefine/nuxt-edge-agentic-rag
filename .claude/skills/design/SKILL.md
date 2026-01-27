@@ -42,7 +42,7 @@ Auto-detection logic:
 
 Before any diagnosis or planning, always check:
 
-- `.impeccable.md` exists? → If no, plan MUST start with `/teach-impeccable`
+- `.impeccable.md` exists? → If no, plan MUST start with `/impeccable teach`
 - Design system exists? (`design-system/MASTER.md` or equivalent tokens/variables file)
 - **Tech stack** — detect and lock (see Tech Stack Detection below)
 
@@ -74,7 +74,7 @@ Detect the project's UI tech stack to ensure all design skills produce compatibl
      - If `@nuxt/ui` in `package.json` dependencies → Stack = **Nuxt UI** (use `<UButton>`, `<UCard>`, etc.)
      - If no `@nuxt/ui` → Stack = **Tailwind CSS** (with Vue/Nuxt conventions)
    - Otherwise → Stack = **Tailwind CSS** (default)
-3. **Propagate to all skills** — when the plan references `/frontend-design`, `/colorize`, `/typeset`, etc., include the detected stack so output uses the correct component library and conventions
+3. **Propagate to all skills** — when the plan references `/impeccable craft`, `/colorize`, `/typeset`, etc., include the detected stack so output uses the correct component library and conventions
 
 | Detected Stack   | Component Style                         | Color System                                    | Skill Integration                                                       |
 | ---------------- | --------------------------------------- | ----------------------------------------------- | ----------------------------------------------------------------------- |
@@ -84,8 +84,8 @@ Detect the project's UI tech stack to ensure all design skills produce compatibl
 **When Nuxt UI is detected:**
 
 - `/colorize` and `/typeset` recommendations must map to Nuxt UI's theme system (`app.config.ts` → `ui` key), not raw CSS
-- `/normalize` checks against Nuxt UI component conventions, not just design tokens
-- `/frontend-design` produces `<UComponent>` markup, not raw HTML+Tailwind
+- `/polish` checks against Nuxt UI component conventions, not just design tokens
+- `/impeccable craft` produces `<UComponent>` markup, not raw HTML+Tailwind
 - Include `/nuxt-ui` skill knowledge when building or reviewing components
 
 ---
@@ -105,7 +105,7 @@ Ask if not already clear:
 
 ### 2. Establish Design System (if none exists)
 
-Use `/teach-impeccable` to gather design context, then define the design system directly:
+Use `/impeccable teach` to gather design context, then define the design system directly:
 
 - Style direction (minimal, bold, editorial, etc.)
 - Color palette (primary, neutral, semantic colors)
@@ -122,7 +122,7 @@ Output a phased plan:
 ## Design Plan: [project name]
 
 ### Phase 1 — Foundation
-□ /teach-impeccable                          ← establish design context & design system
+□ /impeccable teach                          ← establish design context & design system
 
 ### Phase 2 — Build
 □ Implement using frontend-design principles
@@ -140,12 +140,12 @@ Output a phased plan:
 
 | Project Type      | Priority Skills                                     |
 | ----------------- | --------------------------------------------------- |
-| Data dashboard    | `/arrange` → `/typeset` → `/colorize`               |
-| Consumer app      | `/animate` → `/delight` → `/onboard`                |
+| Data dashboard    | `/layout` → `/typeset` → `/colorize`                |
+| Consumer app      | `/animate` → `/delight` → `/harden`                 |
 | Developer tool    | `/clarify` → `/distill` → `/typeset`                |
 | Marketing/landing | `/bolder` → `/colorize` → `/animate` → `/overdrive` |
-| Internal tool     | `/clarify` → `/arrange` → `/harden`                 |
-| E-commerce        | `/colorize` → `/animate` → `/onboard` → `/adapt`    |
+| Internal tool     | `/clarify` → `/layout` → `/harden`                  |
+| E-commerce        | `/colorize` → `/animate` → `/harden` → `/adapt`     |
 
 Phase 2 should list expected component names so the user has a build checklist.
 
@@ -298,8 +298,8 @@ Ask if not clear:
 
 **Distinguish two types of drift:**
 
-- **Accidental drift:** New code uses hard-coded values instead of existing tokens → `/normalize`
-- **Intentional expansion:** New features need tokens that don't exist yet (e.g., notification badge color) → First update MASTER.md with new tokens, THEN `/normalize`
+- **Accidental drift:** New code uses hard-coded values instead of existing tokens → `/polish`
+- **Intentional expansion:** New features need tokens that don't exist yet (e.g., notification badge color) → First update MASTER.md with new tokens, THEN `/polish`
 
 ### 3. Assess Scoped Area Only
 
@@ -316,7 +316,7 @@ Recommend running `/audit` on the scoped area for a systematic diagnostic. Alter
 
 ### Alignment Check
 - Design system compliance: [OK / drifting (N violations) / missing]
-- Drift type: [accidental → /normalize | expansion needed → update MASTER.md first]
+- Drift type: [accidental → /polish | expansion needed → update MASTER.md first]
 - Consistency with shipped phases: [OK / diverging — specify where]
 
 ### This Phase (3-6 skills)
@@ -377,19 +377,19 @@ After the user completes this phase, suggest writing the Carry-Forward section t
 When multiple skills are needed, follow this sequence (skip what's not needed):
 
 ```
-/teach-impeccable               ← foundation & design system (if no .impeccable.md)
+/impeccable teach               ← foundation & design system (if no .impeccable.md)
   ↓
-/normalize                      ← align with system (if drifting)
+/polish                      ← align with system (if drifting)
 /distill                        ← simplify first (if cluttered)
   ↓
-/arrange                        ← structure & layout
+/layout                        ← structure & layout
 /typeset                        ← typography
 /colorize | /bolder | /quieter  ← color & intensity (pick one direction)
   ↓
 /animate                        ← motion
 /clarify                        ← copy & messaging
 /delight                        ← personality & joy
-/onboard                        ← first-time UX (if applicable)
+/harden                        ← first-time UX (if applicable)
   ↓
 /harden                         ← resilience & edge cases
 /optimize                       ← performance
