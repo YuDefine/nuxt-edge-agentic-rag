@@ -6,6 +6,7 @@
     "NUXT_KNOWLEDGE_D1_DATABASE": "DB",
     "NUXT_KNOWLEDGE_DOCUMENTS_BUCKET": "BLOB",
     "NUXT_KNOWLEDGE_RATE_LIMIT_KV": "KV",
+    "NUXT_KNOWLEDGE_ENVIRONMENT": "production",
   },
   "routes": [{ "pattern": "agentic.yudefine.com.tw", "custom_domain": true }],
   "d1_databases": [
@@ -13,6 +14,7 @@
       "binding": "DB",
       "database_name": "agentic-rag-db",
       "database_id": "3036df7f-d54b-4d36-a33d-ecbb551fc278",
+      "migrations_dir": "server/database/migrations",
     },
   ],
   "kv_namespaces": [
