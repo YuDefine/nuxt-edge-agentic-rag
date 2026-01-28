@@ -46,6 +46,6 @@
 
 ### 執行的 Skills
 
-1. `/normalize` — 修復 10 處 design system 違規
+1. `/polish` — 修復 10 處 design system 違規
 2. `/harden` — 略過（狀態處理已完整）
 3. `/polish` — 待執行

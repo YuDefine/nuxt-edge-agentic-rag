@@ -75,7 +75,7 @@
 
 > 適用於所有 UI 變更
 
-- [x] 8.1 檢查 `.impeccable.md` 是否存在，若無則執行 `/teach-impeccable`
+- [x] 8.1 檢查 `.impeccable.md` 是否存在，若無則執行 `/impeccable teach`
 - [x] 8.2 執行 `/design improve` 對 `app/pages/**`、`app/components/**`（含 Design Fidelity Report）
 - [x] 8.3 修復所有 DRIFT 項目（Fidelity Score < 8/8 時必做，loop 直到 DRIFT = 0）
 - [x] 8.4 依 `/design` 計劃按 canonical order 執行 targeted skills

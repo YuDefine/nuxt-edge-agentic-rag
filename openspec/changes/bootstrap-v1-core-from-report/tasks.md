@@ -61,7 +61,7 @@
 
 > 適用於所有涉及 UI 的 tasks（1.2 Auth UI、2.x 文件管理 UI、3.x 問答 UI）
 
-- [x] 7.1 檢查 `.impeccable.md` 是否存在，若無則執行 `/teach-impeccable`
+- [x] 7.1 檢查 `.impeccable.md` 是否存在，若無則執行 `/impeccable teach`
 - [x] 7.2 執行 `/design improve` 對 `app/pages/**`、`app/components/**`（含 Design Fidelity Report）
 - [x] 7.3 修復所有 DRIFT 項目（Fidelity Score < 8/8 時必做，loop 直到 DRIFT = 0）
 - [x] 7.4 依 `/design` 計劃按 canonical order 執行 targeted skills

@@ -65,7 +65,7 @@ Auth Pages & Layouts:
 
 ## Skills Executed
 
-1. `/normalize` — Color tokens, button colors, link styles, component props
+1. `/polish` — Color tokens, button colors, link styles, component props
 2. `/harden` — Loading states, error handling, ref consistency, OAuth error capture
 3. `/audit` — Comprehensive quality check
 
