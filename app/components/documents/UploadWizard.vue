@@ -1,9 +1,12 @@
 <script setup lang="ts">
   import { z } from 'zod'
   import type { FormSubmitEvent } from '@nuxt/ui'
+  import type { DocumentWithCurrentVersion } from '~~/shared/types/knowledge'
   import { assertNever } from '~/utils/assert-never'
 
   const { $csrfFetch } = useNuxtApp()
+
+  const UPLOAD_DRAFT_KEY = 'doc-upload-draft-v1'
 
   type WizardStep = 'select' | 'presign' | 'upload' | 'finalize' | 'sync' | 'publish' | 'complete'
   type StepStatus = 'pending' | 'active' | 'completed' | 'error'
@@ -69,11 +72,68 @@
     versionId: string
   } | null>(null)
 
-  const documentMeta = reactive<DocumentMeta>({
-    title: '',
-    slug: '',
-    categorySlug: '',
-    accessLevel: 'internal',
+  function createEmptyDraft(): DocumentMeta {
+    return {
+      title: '',
+      slug: '',
+      categorySlug: '',
+      accessLevel: 'internal',
+    }
+  }
+
+  const documentMeta = reactive<DocumentMeta>(createEmptyDraft())
+
+  const draft = useLocalStorage<DocumentMeta>(UPLOAD_DRAFT_KEY, createEmptyDraft())
+  const hasRestoredDraft = ref(false)
+
+  onMounted(() => {
+    const d = draft.value
+    const hasContent = Boolean(d.title || d.slug || d.categorySlug)
+    if (!hasContent) return
+    hasRestoredDraft.value = true
+    documentMeta.title = d.title
+    documentMeta.slug = d.slug
+    documentMeta.categorySlug = d.categorySlug ?? ''
+    documentMeta.accessLevel = d.accessLevel
+  })
+
+  // watchEffect below syncs documentMeta → draft.value, so clearing draft directly is redundant;
+  // mutating documentMeta triggers the sync.
+  watchEffect(() => {
+    draft.value = {
+      title: documentMeta.title,
+      slug: documentMeta.slug,
+      categorySlug: documentMeta.categorySlug,
+      accessLevel: documentMeta.accessLevel,
+    }
+  })
+
+  function resetDocumentMeta() {
+    Object.assign(documentMeta, createEmptyDraft())
+  }
+
+  function clearDraft() {
+    hasRestoredDraft.value = false
+  }
+
+  function discardDraft() {
+    resetDocumentMeta()
+    clearDraft()
+  }
+
+  const { data: existingDocumentsData } = useFetch<{ data: DocumentWithCurrentVersion[] }>(
+    '/api/admin/documents',
+    { default: () => ({ data: [] }) }
+  )
+
+  const existingSlugs = computed(() => {
+    const docs = existingDocumentsData.value?.data ?? []
+    return new Set(docs.map((d) => d.slug))
+  })
+
+  const slugConflict = computed(() => {
+    const s = documentMeta.slug.trim()
+    return s.length > 0 && existingSlugs.value.has(s)
   })
 
   function getStepStatus(step: WizardStep): StepStatus {
@@ -104,6 +164,14 @@
     }
   }
 
+  const currentStepIndex = computed(() =>
+    Math.max(
+      0,
+      steps.findIndex((s) => s.key === currentStep.value)
+    )
+  )
+  const currentStepConfig = computed(() => steps.find((s) => s.key === currentStep.value))
+
   async function calculateChecksum(file: File): Promise<string> {
     const buffer = await file.arrayBuffer()
     const hashBuffer = await crypto.subtle.digest('SHA-256', buffer)
@@ -117,6 +185,33 @@
   const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
 
   const validationError = ref<string | null>(null)
+  const isDragging = ref(false)
+
+  function handleDragOver(event: DragEvent) {
+    event.preventDefault()
+    isDragging.value = true
+  }
+
+  function handleDragLeave(event: DragEvent) {
+    const related = event.relatedTarget
+    const current = event.currentTarget
+    if (related instanceof Node && current instanceof Node && current.contains(related)) {
+      return
+    }
+    isDragging.value = false
+  }
+
+  function handleDrop(event: DragEvent) {
+    event.preventDefault()
+    isDragging.value = false
+    const files = event.dataTransfer?.files
+    if (!files || files.length === 0) return
+    if (files.length > 1) {
+      validationError.value = '一次只能上傳一個檔案，請分次上傳'
+      return
+    }
+    handleFileSelect(files)
+  }
 
   function validateFile(file: File): { valid: boolean; error?: string } {
     const extension = file.name.toLowerCase().match(/\.[^/.]+$/)?.[0] ?? ''
@@ -180,6 +275,11 @@
 
   async function startUpload(event: FormSubmitEvent<DocumentMeta>) {
     if (!selectedFile.value) return
+
+    if (slugConflict.value) {
+      errorMessage.value = '此文件代碼已被使用，請改用其他代碼'
+      return
+    }
 
     const validated = event.data
 
@@ -274,6 +374,7 @@
       )
 
       currentStep.value = 'complete'
+      clearDraft()
       emit('complete', syncResult.value)
     } catch (error) {
       errorMessage.value = error instanceof Error ? error.message : '發布失敗'
@@ -289,58 +390,47 @@
     fileChecksum.value = ''
     presignResult.value = null
     syncResult.value = null
-    documentMeta.title = ''
-    documentMeta.slug = ''
-    documentMeta.categorySlug = ''
-    documentMeta.accessLevel = 'internal'
+    resetDocumentMeta()
+    clearDraft()
   }
 </script>
 
 <template>
   <div class="flex flex-col gap-6">
-    <div class="flex items-center justify-between gap-2 overflow-x-auto pb-2">
-      <template v-for="(step, index) in steps" :key="step.key">
-        <div class="flex flex-col items-center gap-1">
+    <div v-if="currentStep !== 'complete'" class="flex flex-col gap-2 pb-2">
+      <div class="flex items-center gap-2 overflow-x-auto">
+        <template v-for="(step, index) in steps" :key="step.key">
           <div
-            class="flex size-8 items-center justify-center rounded-full border-2"
+            class="flex size-6 shrink-0 items-center justify-center rounded-full border transition-colors"
             :class="{
               'border-primary bg-primary text-inverted': getStepStatus(step.key) === 'active',
               'border-success bg-success text-inverted': getStepStatus(step.key) === 'completed',
               'border-error bg-error text-inverted': getStepStatus(step.key) === 'error',
-              'border-muted bg-muted text-muted': getStepStatus(step.key) === 'pending',
+              'border-muted bg-default text-dimmed': getStepStatus(step.key) === 'pending',
             }"
           >
             <UIcon
               :name="getStepIcon(getStepStatus(step.key))"
-              class="size-4"
+              class="size-3"
               :class="{
                 'animate-spin': getStepStatus(step.key) === 'active' && isProcessing,
               }"
             />
           </div>
-          <span
-            class="max-w-16 truncate text-center text-xs"
+          <div
+            v-if="index < steps.length - 1"
+            class="h-px flex-1"
             :class="{
-              'font-medium text-default': getStepStatus(step.key) === 'active',
-              'text-muted': getStepStatus(step.key) !== 'active',
+              'bg-success': getStepStatus(step.key) === 'completed',
+              'bg-muted': getStepStatus(step.key) !== 'completed',
             }"
-          >
-            {{ step.label }}
-          </span>
-        </div>
-        <div
-          v-if="index < steps.length - 1"
-          class="mb-5 h-0.5 flex-1"
-          :class="{
-            'bg-success':
-              getStepStatus(steps[index + 1]?.key ?? 'select') === 'completed' ||
-              getStepStatus(step.key) === 'completed',
-            'bg-muted':
-              getStepStatus(steps[index + 1]?.key ?? 'select') !== 'completed' &&
-              getStepStatus(step.key) !== 'completed',
-          }"
-        />
-      </template>
+          />
+        </template>
+      </div>
+      <p class="text-sm text-muted">
+        步驟 {{ currentStepIndex + 1 }} / {{ steps.length }}：
+        <span class="font-medium text-default">{{ currentStepConfig?.label }}</span>
+      </p>
     </div>
 
     <UAlert v-if="errorMessage" color="error" variant="subtle" :title="errorMessage" />
@@ -348,11 +438,36 @@
 
     <div v-if="currentStep === 'select'" class="flex flex-col gap-4">
       <div
-        class="flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-muted p-8"
+        v-if="hasRestoredDraft && !selectedFile"
+        class="flex items-start gap-3 rounded-md border border-default bg-accented p-3"
       >
-        <UIcon name="i-lucide-upload-cloud" class="mb-4 size-12 text-muted" />
-        <p class="mb-2 text-sm text-default">拖放檔案至此，或點擊選擇</p>
-        <p class="mb-4 text-xs text-muted">支援 .txt, .md, .pdf 格式，最大 10 MB</p>
+        <UIcon name="i-lucide-history" class="mt-0.5 size-4 text-default" />
+        <div class="min-w-0 flex-1">
+          <p class="text-sm font-medium text-default">已還原上次未完成的草稿</p>
+          <p class="mt-0.5 text-xs text-muted">
+            標題、文件代碼、分類與存取等級已自動恢復，請重新選擇檔案繼續上傳。
+          </p>
+        </div>
+        <UButton color="neutral" variant="ghost" size="xs" @click="discardDraft">
+          放棄草稿
+        </UButton>
+      </div>
+      <div
+        class="flex flex-col items-center justify-center rounded-lg border-2 border-dashed p-8 transition-colors"
+        :class="isDragging ? 'border-default bg-accented' : 'border-muted'"
+        @dragover="handleDragOver"
+        @dragleave="handleDragLeave"
+        @drop="handleDrop"
+      >
+        <UIcon
+          :name="isDragging ? 'i-lucide-file-down' : 'i-lucide-upload-cloud'"
+          class="mb-4 size-12"
+          :class="isDragging ? 'text-default' : 'text-muted'"
+        />
+        <p class="mb-2 text-sm text-default">
+          {{ isDragging ? '放開以上傳' : '拖放檔案至此，或點擊選擇' }}
+        </p>
+        <p class="mb-4 text-xs text-muted">支援 .txt, .md, .pdf 格式，最大 10 MB（單一檔案）</p>
         <input
           ref="fileInputRef"
           type="file"
@@ -360,7 +475,7 @@
           class="hidden"
           @change="(e) => handleFileSelect((e.target as HTMLInputElement).files)"
         />
-        <UButton color="primary" variant="outline" size="sm" @click="triggerFileSelect">
+        <UButton color="neutral" variant="outline" size="sm" @click="triggerFileSelect">
           選擇檔案
         </UButton>
       </div>
@@ -391,7 +506,16 @@
             <UFormField label="文件標題" name="title" required>
               <UInput v-model="documentMeta.title" placeholder="輸入文件標題" class="w-full" />
             </UFormField>
-            <UFormField label="文件代碼" name="slug" required help="小寫英數字與連字符（-）">
+            <UFormField
+              label="文件代碼"
+              name="slug"
+              required
+              :help="
+                slugConflict
+                  ? '⚠️ 此文件代碼已被其他文件使用，送出會失敗'
+                  : '小寫英數字與連字符（-）'
+              "
+            >
               <UInput v-model="documentMeta.slug" placeholder="document-slug" class="w-full" />
             </UFormField>
             <UFormField label="分類" name="categorySlug" help="選填">
@@ -418,7 +542,7 @@
           <UButton type="button" color="neutral" variant="ghost" @click="emit('cancel')">
             取消
           </UButton>
-          <UButton type="submit" color="primary" :loading="isProcessing">開始上傳</UButton>
+          <UButton type="submit" color="neutral" :loading="isProcessing">開始上傳</UButton>
         </div>
       </UForm>
     </div>
@@ -436,7 +560,7 @@
       </p>
       <div class="flex gap-2">
         <UButton color="neutral" variant="outline" @click="emit('cancel')">稍後發布</UButton>
-        <UButton color="primary" :loading="isProcessing" @click="publishDocument">
+        <UButton color="neutral" variant="solid" :loading="isProcessing" @click="publishDocument">
           立即發布
         </UButton>
       </div>
@@ -453,7 +577,7 @@
       <p class="mb-6 max-w-sm text-sm text-muted">文件已成功發布至知識庫，使用者現在可以查詢。</p>
       <div class="flex gap-2">
         <UButton color="neutral" variant="outline" @click="reset">上傳更多</UButton>
-        <UButton color="primary" @click="emit('cancel')">返回列表</UButton>
+        <UButton color="neutral" variant="solid" @click="emit('cancel')">返回列表</UButton>
       </div>
     </div>
 

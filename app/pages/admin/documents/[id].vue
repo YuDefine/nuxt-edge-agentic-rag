@@ -171,7 +171,7 @@
               <div>
                 <div class="flex items-center gap-2">
                   <span class="font-medium text-default">版本 {{ version.versionNumber }}</span>
-                  <UBadge v-if="version.isCurrent" color="primary" variant="subtle" size="xs">
+                  <UBadge v-if="version.isCurrent" color="neutral" variant="solid" size="xs">
                     目前版本
                   </UBadge>
                 </div>

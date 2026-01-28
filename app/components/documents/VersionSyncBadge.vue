@@ -12,13 +12,29 @@
   function getStatusConfig(status: SyncStatus) {
     switch (status) {
       case 'pending':
-        return { color: 'neutral' as const, label: '待同步' }
+        return {
+          color: 'neutral' as const,
+          label: '待同步',
+          description: '等待同步到儲存空間',
+        }
       case 'running':
-        return { color: 'info' as const, label: '同步中' }
+        return {
+          color: 'info' as const,
+          label: '同步中',
+          description: '正在同步檔案內容至儲存空間',
+        }
       case 'synced':
-        return { color: 'success' as const, label: '已同步' }
+        return {
+          color: 'success' as const,
+          label: '已同步',
+          description: '檔案已同步完成',
+        }
       case 'failed':
-        return { color: 'error' as const, label: '同步失敗' }
+        return {
+          color: 'error' as const,
+          label: '同步失敗',
+          description: '同步過程發生錯誤，需要重試',
+        }
       default:
         return assertNever(status, 'VersionSyncBadge')
     }
@@ -28,7 +44,9 @@
 </script>
 
 <template>
-  <UBadge :color="config.color" variant="subtle" size="sm">
-    {{ config.label }}
-  </UBadge>
+  <UTooltip :text="config.description">
+    <UBadge :color="config.color" variant="subtle" size="sm">
+      {{ config.label }}
+    </UBadge>
+  </UTooltip>
 </template>

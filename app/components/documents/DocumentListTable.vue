@@ -38,7 +38,7 @@
     <template #title-cell="{ row }">
       <NuxtLink
         :to="`/admin/documents/${getRow(row).id}`"
-        class="block transition-colors hover:text-primary"
+        class="block transition-colors hover:underline"
       >
         <div class="font-medium text-default">{{ getRow(row).title }}</div>
         <div class="text-sm text-muted">{{ getRow(row).slug }}</div>
@@ -78,14 +78,16 @@
 
     <template #actions-cell="{ row }">
       <div class="flex justify-end gap-1">
-        <UButton
-          color="neutral"
-          variant="ghost"
-          size="xs"
-          icon="i-lucide-eye"
-          aria-label="檢視文件"
-          :to="`/admin/documents/${getRow(row).id}`"
-        />
+        <UTooltip text="檢視文件詳情">
+          <UButton
+            color="neutral"
+            variant="ghost"
+            size="xs"
+            icon="i-lucide-eye"
+            aria-label="檢視文件"
+            :to="`/admin/documents/${getRow(row).id}`"
+          />
+        </UTooltip>
       </div>
     </template>
   </UTable>
