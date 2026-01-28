@@ -12,9 +12,17 @@
   function getAccessConfig(level: AccessLevel) {
     switch (level) {
       case 'internal':
-        return { color: 'neutral' as const, label: '內部' }
+        return {
+          color: 'neutral' as const,
+          label: '內部',
+          description: '所有已登入使用者皆可於知識庫中查詢此文件',
+        }
       case 'restricted':
-        return { color: 'warning' as const, label: '受限' }
+        return {
+          color: 'warning' as const,
+          label: '受限',
+          description: '僅管理員可於知識庫中查詢此文件',
+        }
       default:
         return assertNever(level, 'AccessLevelBadge')
     }
@@ -24,7 +32,9 @@
 </script>
 
 <template>
-  <UBadge :color="config.color" variant="outline" size="sm">
-    {{ config.label }}
-  </UBadge>
+  <UTooltip :text="config.description">
+    <UBadge :color="config.color" variant="outline" size="sm">
+      {{ config.label }}
+    </UBadge>
+  </UTooltip>
 </template>
