@@ -57,7 +57,7 @@ Task 涉及 UI？
        │
        ├─ 1. 檢查 .impeccable.md
        │     存在？→ 繼續
-       │     不存在？→ 先跑 /teach-impeccable
+       │     不存在？→ 先跑 /impeccable teach
        │
        ├─ 2. 跑 /design improve [affected pages/components]
        │     → 取得診斷報告 + Design Fidelity Report
@@ -80,14 +80,14 @@ Task 涉及 UI？
 
 根據 `/design improve` 的診斷結果選擇，不要盲目全跑：
 
-| UI 類型                | 常見需要的 skill              | 通常不需要          |
-| ---------------------- | ----------------------------- | ------------------- |
-| 表單密集（CRUD、輸入） | /arrange, /clarify, /harden   | /overdrive, /bolder |
-| 資料表格（列表、搜尋） | /arrange, /typeset, /adapt    | /delight, /animate  |
-| 儀表板/圖表            | /colorize, /arrange, /typeset | /quieter, /onboard  |
-| 首次體驗/空狀態        | /onboard, /clarify, /delight  | /optimize           |
-| 複雜互動流程           | /animate, /clarify, /harden   | /bolder             |
-| 登入/認證頁            | /typeset, /colorize           | /extract, /distill  |
+| UI 類型                | 常見需要的 skill             | 通常不需要                    |
+| ---------------------- | ---------------------------- | ----------------------------- |
+| 表單密集（CRUD、輸入） | /layout, /clarify, /harden   | /overdrive, /bolder           |
+| 資料表格（列表、搜尋） | /layout, /typeset, /adapt    | /delight, /animate            |
+| 儀表板/圖表            | /colorize, /layout, /typeset | /quieter, /harden             |
+| 首次體驗/空狀態        | /harden, /clarify, /delight  | /optimize                     |
+| 複雜互動流程           | /animate, /clarify, /harden  | /bolder                       |
+| 登入/認證頁            | /typeset, /colorize          | /impeccable extract, /distill |
 
 ### Mutual Exclusivity
 
@@ -98,19 +98,19 @@ Task 涉及 UI？
 ### Canonical Order（偏離需說明理由）
 
 ```
-/teach-impeccable       ← 專案首次（無 .impeccable.md 時）
+/impeccable teach       ← 專案首次（無 .impeccable.md 時）
   ↓
-/normalize              ← 對齊 design system（若偏移）
+/polish              ← 對齊 design system（若偏移）
 /distill                ← 先簡化（若雜亂）
   ↓
-/arrange                ← 結構與佈局
+/layout                ← 結構與佈局
 /typeset                ← 字型與層次
 /colorize | /bolder | /quieter  ← 色彩與強度（擇一）
   ↓
 /animate                ← 動效
 /clarify                ← 文案與訊息
 /delight                ← 個性與驚喜
-/onboard                ← 首次體驗（如適用）
+/harden                ← 首次體驗（如適用）
   ↓
 /harden                 ← 韌性與邊界情況
 /optimize               ← 效能
@@ -129,7 +129,7 @@ Task 涉及 UI？
 ```markdown
 ## N. Design Review
 
-- [ ] N.1 檢查 .impeccable.md 是否存在，若無則執行 /teach-impeccable
+- [ ] N.1 檢查 .impeccable.md 是否存在，若無則執行 /impeccable teach
 - [ ] N.2 執行 /design improve [affected pages/components]（含 Design Fidelity Report）
 - [ ] N.3 修復所有 DRIFT 項目（Fidelity Score < 8/8 時必做，loop 直到 DRIFT = 0）
 - [ ] N.4 依 /design 計劃按 canonical order 執行 targeted skills
@@ -163,7 +163,7 @@ Design Review 過程中若發現問題過多（例如需要列修正計劃讓使
 
 | #   | 類別    | 問題摘要        | 嚴重度   | 發現來源  |
 | --- | ------- | --------------- | -------- | --------- |
-| 1   | spacing | 卡片間距不一致  | warning  | /arrange  |
+| 1   | spacing | 卡片間距不一致  | warning  | /layout   |
 | 2   | a11y    | 缺少 aria-label | critical | /audit    |
 | 3   | color   | 對比度不足      | critical | /colorize |
 ```
