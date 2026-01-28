@@ -77,13 +77,13 @@
         v-if="isRefusalMessage(message)"
         :content="message.content"
         :created-at="message.createdAt"
-        class="max-w-[80%]"
+        class="max-w-[85%] sm:max-w-2xl"
       />
 
       <!-- Regular messages (user or successful assistant) -->
       <div
         v-else
-        class="max-w-[80%] rounded-lg border border-default px-4 py-3"
+        class="max-w-[85%] rounded-lg border border-default px-4 py-3 sm:max-w-2xl"
         :class="getMessageRoleConfig(message.role).bgClass"
       >
         <div class="mb-1 flex items-center gap-2">

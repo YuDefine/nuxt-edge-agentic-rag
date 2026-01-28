@@ -38,7 +38,16 @@
           <div class="flex items-center gap-2">
             <UColorModeButton />
             <UDropdownMenu :items="userMenuItems">
-              <UAvatar :src="user?.image ?? undefined" :alt="user?.name ?? undefined" size="sm" />
+              <UButton
+                color="neutral"
+                variant="ghost"
+                size="sm"
+                aria-label="帳號選單"
+                class="gap-1.5 px-1.5"
+              >
+                <UAvatar :src="user?.image ?? undefined" :alt="user?.name ?? undefined" size="sm" />
+                <UIcon name="i-lucide-chevron-down" class="size-4 text-muted" />
+              </UButton>
             </UDropdownMenu>
           </div>
         </div>

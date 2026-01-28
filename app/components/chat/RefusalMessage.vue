@@ -25,10 +25,16 @@
     </div>
 
     <div class="mt-3 rounded-md bg-accented p-3">
-      <p class="text-xs text-muted">
-        <UIcon name="i-lucide-lightbulb" class="mr-1 inline size-3" />
-        請嘗試用不同方式重新描述您的問題，或詢問其他相關主題。
+      <p class="mb-2 flex items-center gap-1 text-xs font-medium text-default">
+        <UIcon name="i-lucide-lightbulb" class="size-3.5" />
+        可能的原因
       </p>
+      <ul class="ml-4 list-outside list-disc space-y-1 text-xs text-muted">
+        <li>您詢問的內容可能不在目前知識庫範圍內</li>
+        <li>您的帳號權限可能無法存取相關文件</li>
+        <li>問題敘述可能過於模糊或過於具體</li>
+      </ul>
+      <p class="mt-2 text-xs text-dimmed">請嘗試用不同方式重新描述您的問題，或詢問其他相關主題。</p>
     </div>
 
     <div class="mt-2 text-xs text-dimmed">

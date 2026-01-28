@@ -19,6 +19,7 @@
   const validationError = ref<string | null>(null)
 
   const MAX_LENGTH = 4000
+  const TEXTAREA_ID = 'chat-message-input'
 
   function validateMessageInput(input: string): {
     valid: boolean
@@ -41,6 +42,12 @@
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault()
       handleSubmit()
+      return
+    }
+    if (event.key === 'Escape' && inputValue.value.length > 0) {
+      event.preventDefault()
+      inputValue.value = ''
+      validationError.value = null
     }
     // Shift+Enter allows default behavior (newline)
   }
@@ -61,6 +68,28 @@
     emit('submit', message)
   }
 
+  function isTypingElement(el: Element | null): boolean {
+    if (!el) return false
+    const tag = el.tagName
+    return (
+      tag === 'INPUT' ||
+      tag === 'TEXTAREA' ||
+      tag === 'SELECT' ||
+      el.getAttribute('contenteditable') === 'true'
+    )
+  }
+
+  function handleGlobalSlashKey(event: KeyboardEvent) {
+    if (props.disabled || props.loading) return
+    if (isTypingElement(document.activeElement)) return
+    const target = document.getElementById(TEXTAREA_ID)
+    if (!(target instanceof HTMLTextAreaElement)) return
+    event.preventDefault()
+    target.focus()
+  }
+
+  onKeyStroke('/', handleGlobalSlashKey)
+
   const canSubmit = computed(() => {
     return !props.disabled && !props.loading && inputValue.value.trim().length > 0
   })
@@ -73,6 +102,7 @@
   <div class="flex flex-col gap-2">
     <div class="flex gap-2">
       <UTextarea
+        :id="TEXTAREA_ID"
         v-model="inputValue"
         :placeholder="placeholder"
         :disabled="disabled || loading"
@@ -82,7 +112,7 @@
         @keydown="handleKeyDown"
       />
       <UButton
-        color="primary"
+        color="neutral"
         variant="solid"
         size="md"
         icon="i-lucide-send"
@@ -97,7 +127,7 @@
     <div class="flex items-center justify-between">
       <div class="text-xs text-muted">
         <span v-if="validationError" class="text-error">{{ validationError }}</span>
-        <span v-else>Enter 送出，Shift+Enter 換行</span>
+        <span v-else>按 / 聚焦｜Enter 送出｜Shift+Enter 換行｜Esc 清空</span>
       </div>
       <div class="text-xs" :class="isNearLimit ? 'text-warning' : 'text-muted'">
         {{ characterCount }} / {{ MAX_LENGTH }}
