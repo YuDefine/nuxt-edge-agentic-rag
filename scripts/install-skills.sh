@@ -44,13 +44,13 @@ echo ""
 
 # Evlog
 echo "📦 Evlog Skills..."
-npx skills add hugorcd/evlog@review-logging-patterns $COPY_FLAGS
+npx skills add https://www.evlog.dev $COPY_FLAGS
 echo "  ✓ Evlog Skills 完成"
 echo ""
 
 # Impeccable Design Skills（pbakaus/impeccable）
 echo "📦 Impeccable Design Skills..."
-for skill in impeccable adapt animate audit bolder clarify colorize critique delight distill harden layout optimize overdrive polish quieter shape typeset; do
+for skill in impeccable adapt animate audit bolder clarify colorize critique delight distill layout optimize overdrive polish quieter shape typeset; do
   npx skills add pbakaus/impeccable@$skill $COPY_FLAGS
 done
 echo "  ✓ Impeccable Design Skills 完成"
