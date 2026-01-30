@@ -34,7 +34,7 @@ vitepress dev docs
 | `--force`       | Ignore cache and re-bundle |
 
 ```bash
-vitepress dev docs --port 3010 --open
+vitepress dev docs --port 3000 --open
 ```
 
 ## Production Build

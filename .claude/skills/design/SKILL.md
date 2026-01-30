@@ -123,6 +123,7 @@ Output a phased plan:
 
 ### Phase 1 — Foundation
 □ /impeccable teach                          ← establish design context & design system
+□ /shape                                     ← (optional) requirements gathering before code
 
 ### Phase 2 — Build
 □ Implement using frontend-design principles
@@ -133,6 +134,7 @@ Output a phased plan:
 
 ### Phase 4 — Ship
 □ [1-2 resilience skills if needed]
+□ /audit                                     ← diagnostic verification (Critical = 0)
 □ /polish                                    ← always last
 ```
 
@@ -149,6 +151,24 @@ Output a phased plan:
 
 Phase 2 should list expected component names so the user has a build checklist.
 
+### When to Run `/shape` (判準)
+
+`/shape` does a structured discovery interview then writes a design brief **before** `/impeccable craft`. Run it when:
+
+- ✅ Requirements are fuzzy, open to multiple valid interpretations
+- ✅ Multi-stakeholder feature (cross-role, cross-team)
+- ✅ Scope touches multiple entities / pages / flows — coordination risk
+- ✅ The cost of rework is high (large surface area, production traffic)
+- ❌ Skip when: single implementer, requirements already explicit, tight existing spec, single-component tweak
+
+### Exit Criteria (`new` mode)
+
+- [ ] `.impeccable.md` exists with Design Context
+- [ ] All core components in Phase 2 built and mounted into a reachable page
+- [ ] `/audit` passed with Critical = 0
+- [ ] `/polish` passed — no remaining Medium issues
+- [ ] Design system tokens (`design-system/MASTER.md` or equivalent) committed
+
 ---
 
 ## Mode: `improve` — Fix Existing Interface
@@ -161,6 +181,8 @@ Phase 2 should list expected component names so the user has a build checklist.
 - **Read the actual code.** Never plan without seeing the implementation.
 
 ### 2. Diagnostic Scan
+
+**Consider running `/critique` first** for a high-level UX assessment (hierarchy, IA, emotional resonance, persona-based testing) before the detailed rubric below — it surfaces directional issues that the structural rubric misses. Treat `/critique` output as input to Step 3's skill mapping.
 
 Read `references/diagnosis.md` for the full rubric. Assess these dimensions:
 
@@ -275,6 +297,14 @@ N. `/polish [target]` — final pass
 
 **Be specific.** Not "run /colorize" but "run `/colorize` on the settings panel — the entire page is gray-on-white with no visual hierarchy between sections."
 
+### Exit Criteria (`improve` mode)
+
+- [ ] All skills in Core Plan executed on their specified targets
+- [ ] `/audit [target]` passed with Critical = 0
+- [ ] `/polish [target]` passed — no remaining Medium issues on the scope
+- [ ] Follow-Up items logged (to `openspec/changes/` or `docs/`) if deferred
+- [ ] Excluded skills documented with rationale
+
 ---
 
 ## Mode: `iterate` — Multi-Phase Incremental Improvement
@@ -357,48 +387,72 @@ After the user completes this phase, suggest writing the Carry-Forward section t
 - [WATCH] ...
 ```
 
+### Exit Criteria (`iterate` mode)
+
+- [ ] Design system token violations quantified → 0 (re-scan after fixes)
+- [ ] All Phase Completion Criteria items checked
+- [ ] `/polish` passed on scoped area — no remaining Medium issues
+- [ ] Cross-phase consistency verified (compare to prior phase's shipped patterns)
+- [ ] Carry-Forward section appended to `design-system/PHASE_LOG.md`
+
 ---
 
 ## Output Rules
 
 1. **Always read code first** — never plan blind
 2. **Be specific** — name files, components, line ranges
-3. **3-6 skills per plan** — split overflow into "Follow-up" or "Carry-Forward", never dump all 19
+3. **3-6 skills per plan** — split overflow into "Follow-up" or "Carry-Forward", never dump all 18
 4. **Explain exclusions** — "skipping /animate — this is a data-entry form where motion distracts"
 5. **Check mutual exclusivity** — see `references/skill-map.md` "Mutual Exclusivity" section. Never recommend `/bolder` + `/quieter` together; pick one direction. Run `/distill` before `/bolder`, not alongside.
 6. **Follow canonical order** — deviations need explicit justification
 7. **End with /polish** — it's always the last step
 8. **Respect time** — if 1-2 skills suffice, say so. Don't over-prescribe.
-9. **Proactive plan execution** — After outputting the diagnosis report and action plan, ALWAYS ask the user: "要進入 Plan Mode 逐步執行這些改進嗎？" If the user agrees, enter plan mode and create a structured implementation plan that walks through each skill/step sequentially, waiting for user approval at each phase before proceeding to the next.
+9. **Proactive plan execution** — After outputting the diagnosis report and action plan, ALWAYS ask the user: "要進入 Plan Mode 逐步執行這些改進嗎？" If the user agrees, enter plan mode and create a structured implementation plan that walks through each skill/step sequentially, waiting for user approval at each phase before proceeding to the next. **Skip this prompt** when answering meta/strategy questions that don't match the three canonical modes (e.g. "should we adopt X", "what's the difference between Y and Z") — give a direct answer instead.
 10. **Cite references** — When recommending design systems or patterns, cite specific examples from `references/design-systems.md`. Include industry-specific benchmarks and maturity assessments from `references/diagnosis.md`.
 
-## Canonical Skill Order
+## Diagnostic Skills (assess without changing code)
+
+Two standalone diagnostic tools sit **outside** the production pipeline. Invoke as needed — they are inputs to planning, not steps in execution.
+
+| Tool                 | Produces                                                                                                                  | When to use                                                                                                                                                            |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/critique [target]` | UX evaluation with persona testing: hierarchy, IA, emotional resonance, cognitive load. Qualitative + quantitative score. | **Early** — as part of `improve` mode Step 2 to surface directional issues before the structural rubric. Also useful when you don't trust your own read of the design. |
+| `/audit [target]`    | Severity-rated issue list: a11y, performance, theming drift, responsive. Critical/High/Medium breakdown.                  | **Late** — right before `/polish` to verify readiness. Also as a periodic health check during `iterate`.                                                               |
+
+`/critique` tells you **whether the design works** as an experience. `/audit` tells you **whether the implementation is production-safe**. They rarely substitute for each other.
+
+## Canonical Skill Order (production pipeline)
 
 When multiple skills are needed, follow this sequence (skip what's not needed):
 
 ```
 /impeccable teach               ← foundation & design system (if no .impeccable.md)
+/shape                          ← (optional) requirements gathering before code — see 判準 in `new` mode
   ↓
-/polish                      ← align with system (if drifting)
-/distill                        ← simplify first (if cluttered)
+/impeccable craft               ← main build flow
+/distill                        ← simplify (if cluttered)
   ↓
-/layout                        ← structure & layout
+/layout                         ← structure & layout
 /typeset                        ← typography
 /colorize | /bolder | /quieter  ← color & intensity (pick one direction)
   ↓
 /animate                        ← motion
 /clarify                        ← copy & messaging
 /delight                        ← personality & joy
-/harden                        ← first-time UX (if applicable)
+/overdrive                      ← (optional) ambitious wow-factor — marketing/landing, hero moments
+/harden                         ← resilience, edge cases, first-time UX
   ↓
-/harden                         ← resilience & edge cases
 /optimize                       ← performance
 /adapt                          ← cross-platform (if needed)
+/impeccable extract             ← consolidate patterns into design system (if applicable)
   ↓
-/polish                         ← always last
+/audit                          ← diagnostic verification (Critical must = 0)
+/polish                         ← always last (final pass + design-system alignment)
 ```
 
-**This order is mandatory.** Rationale: fix structure before visuals, visuals before experience, everything before hardening, polish is always final. If you need to deviate, state why in the plan.
+**This order is mandatory.** Rationale: fix structure before visuals, visuals before experience, everything before hardening, audit → polish always final. If you need to deviate, state why in the plan.
+
+> **Legacy v1 names**: if you encounter `/arrange`, `/normalize`, `/onboard`, `/frontend-design`, `/teach-impeccable`, or `/extract` in archived artifacts, see `references/migration.md`.
 
 ## Step 6: Persist Evidence（Spectra 整合）
 
