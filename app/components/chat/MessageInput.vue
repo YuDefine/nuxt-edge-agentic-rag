@@ -39,6 +39,7 @@
   }
 
   function handleKeyDown(event: KeyboardEvent) {
+    if (event.isComposing) return
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault()
       handleSubmit()
@@ -80,6 +81,7 @@
   }
 
   function handleGlobalSlashKey(event: KeyboardEvent) {
+    if (event.isComposing) return
     if (props.disabled || props.loading) return
     if (isTypingElement(document.activeElement)) return
     const target = document.getElementById(TEXTAREA_ID)
