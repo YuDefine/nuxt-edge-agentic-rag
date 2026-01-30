@@ -1,7 +1,6 @@
 <script setup lang="ts">
   import { z } from 'zod'
   import type { FormSubmitEvent } from '@nuxt/ui'
-  import type { DocumentWithCurrentVersion } from '~~/shared/types/knowledge'
   import { assertNever } from '~/utils/assert-never'
 
   const { $csrfFetch } = useNuxtApp()
@@ -121,20 +120,35 @@
     clearDraft()
   }
 
-  const { data: existingDocumentsData } = useFetch<{ data: DocumentWithCurrentVersion[] }>(
-    '/api/admin/documents',
-    { default: () => ({ data: [] }) }
+  const slugConflict = ref(false)
+
+  const debouncedCheckSlug = useDebounceFn(async (slug: string) => {
+    try {
+      const { data } = await $fetch<{ data: { available: boolean } }>(
+        '/api/admin/documents/check-slug',
+        { query: { slug } }
+      )
+      // Race protection: 只在當前輸入仍等於送出查詢的 slug 時才更新
+      if (documentMeta.slug.trim() === slug) {
+        slugConflict.value = !data.available
+      }
+    } catch {
+      // 查詢失敗不阻擋使用者；server 端 unique constraint 仍會在 finalize 時擋下
+      slugConflict.value = false
+    }
+  }, 300)
+
+  watch(
+    () => documentMeta.slug,
+    (value) => {
+      const trimmed = value.trim()
+      if (!trimmed || !/^[a-z0-9-]+$/.test(trimmed)) {
+        slugConflict.value = false
+        return
+      }
+      debouncedCheckSlug(trimmed)
+    }
   )
-
-  const existingSlugs = computed(() => {
-    const docs = existingDocumentsData.value?.data ?? []
-    return new Set(docs.map((d) => d.slug))
-  })
-
-  const slugConflict = computed(() => {
-    const s = documentMeta.slug.trim()
-    return s.length > 0 && existingSlugs.value.has(s)
-  })
 
   function getStepStatus(step: WizardStep): StepStatus {
     const stepIndex = steps.findIndex((s) => s.key === step)
