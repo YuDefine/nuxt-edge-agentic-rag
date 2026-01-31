@@ -24,5 +24,5 @@
 
 ## 4. Verification And Rollout
 
-- [ ] 4.1 更新 `docs/verify/**` 與相關驗收文件，補上 stale、delete purge、retention cleanup、config snapshot 的驗證步驟。
-- [ ] 4.2 產出 rollout checklist，列出 cleanup schedule、retention threshold 與 purge policy 的部署前確認項。
+- [x] 4.1 更新 `docs/verify/**` 與相關驗收文件，補上 stale、delete purge、retention cleanup、config snapshot 的驗證步驟。
+- [x] 4.2 產出 rollout checklist，列出 cleanup schedule、retention threshold 與 purge policy 的部署前確認項。
