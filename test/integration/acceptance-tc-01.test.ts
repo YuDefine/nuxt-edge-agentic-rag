@@ -70,6 +70,11 @@ vi.mock('../../server/utils/read-zod-body', () => ({
   readZodBody: (...args: unknown[]) => tc01Mocks.readZodBody(...args),
 }))
 
+// hub:db 在測試環境中無法 resolve，改成回傳 fake D1 binding
+vi.mock('../../server/utils/database', () => ({
+  getD1Database: async () => (tc01Mocks.bindings ?? {}).DB,
+}))
+
 installNuxtRouteTestGlobals()
 
 describe('acceptance direct-answer automation', () => {
