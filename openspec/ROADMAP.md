@@ -127,9 +127,10 @@ spectra unpark observability-and-debug
 ### 立即可做（無阻塞，今天開工）
 
 - [high] **使用者親跑 staging 驗收**：bootstrap 6.2 #1–#5 + add-v1-core-ui 人工檢查 #1/#3–#8
-- [high] **governance 4.1**：更新 `docs/verify/**` 補 stale/delete purge/retention/config snapshot 驗證步驟
-- [high] **governance 4.2**：產出 rollout checklist（cleanup schedule、retention threshold、purge policy）
-- [mid] **test-coverage 高價值 TC-\***：挑 TC-12（MCP replay）、TC-18（current-version-only）、TC-13（restricted citation）先自動化
+- [mid] **test-coverage 剩餘 TC-\***：TC-04 / TC-06–11 / TC-14 / TC-16–17 / TC-19–20（已完成 TC-12/13/15/18）
+- [mid] **抽 hub:db mock 共用 helper**：將 `vi.mock('../../server/utils/database', ...)` 抽成 `test/integration/helpers/database.ts`，套用到 4 個 pre-existing fail 檔（chat-route / citations-route / mcp-routes / publish-route）— 依賴：無
+- [low] **getDocumentChunk 403 寫 query_logs**：對齊 spec status='blocked'，`server/api/mcp/chunks/[citationId].get.ts` + `server/utils/mcp-replay.ts` 在 403 throw 前加 INSERT — 依賴：無
+- [low] **CREDIT_CARD_PATTERN 加入 CREDENTIAL_PATTERNS**：`shared/utils/knowledge-audit.ts` 對信用卡號改走 `shouldBlock=true` 而非 only-redact — 依賴：無
 
 ### 等驗收通過後
 
@@ -149,7 +150,7 @@ spectra unpark observability-and-debug
 
 ## Active Changes
 
-_last synced: 2026-04-16T20:14:50.059Z_
+_last synced: 2026-04-17T09:53:15.179Z_
 
 6 active changes (0 ready · 4 in progress · 2 draft · 0 blocked)
 
@@ -161,8 +162,8 @@ _(none)_
 
 - **add-v1-core-ui** — 42/49 tasks (86%)
 - **bootstrap-v1-core-from-report** — 28/34 tasks (82%)
-- **governance-refinements** — 4/17 tasks (24%)
-- **test-coverage-and-automation** — 8/43 tasks (19%)
+- **governance-refinements** — 6/17 tasks (35%)
+- **test-coverage-and-automation** — 12/43 tasks (28%)
 
 ### Draft
 
