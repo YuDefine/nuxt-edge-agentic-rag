@@ -1,11 +1,19 @@
-# Acceptance Runbook — bootstrap + add-v1-core-ui
+# Acceptance Runbook — bootstrap + add-v1-core-ui + governance-refinements
 
-> 單一腳本，把 `bootstrap-v1-core-from-report` 6.2 的 #1–#5 與 `add-v1-core-ui` 的 #1, #3–#8 整合成可依序執行的 12 項人工驗收。
+> 單一腳本，把 `bootstrap-v1-core-from-report` 6.2 的 #1–#5、`add-v1-core-ui` 的 #1, #3–#8，以及 `governance-refinements` 的 conversation lifecycle 與 retention cleanup 整合成可依序執行的人工驗收。
 >
 > **前提**：staging 已依 `staging-deploy-checklist.md` 部署完成。
 > **環境**：`https://agentic.yudefine.com.tw`（D1 `agentic-rag-db`、KV `661ea98dad0743be86acc9ebeaf464f4`、R2 `agentic-rag-documents`）
 >
 > **規則**：人工檢查不由 Claude 自行勾選。使用者走完每一項後回報「OK / 問題 / skip」，Claude 才能標 `[x]`。
+>
+> **Governance 分文件**：詳細 step-by-step 分別在：
+>
+> - `CONVERSATION_LIFECYCLE_VERIFICATION.md` — Stale resolver + delete purge
+> - `RETENTION_CLEANUP_VERIFICATION.md` — 180 天 retention cleanup
+> - `CONFIG_SNAPSHOT_VERIFICATION.md` — Config snapshot version 一致性
+>
+> 本 runbook 的 Phase 8 / 9 為 gate checkpoint，實際細節跳到上述文件執行。
 
 ## 0. 前置準備
 
@@ -51,8 +59,14 @@
 | B#4  | bootstrap | restricted existence-hiding + 403                     | 5     |
 | B#5  | bootstrap | query_logs / messages 無敏感、超限 429                | 6     |
 | UI#8 | ui        | empty / loading / error state 正確顯示                | 7     |
+| G#1  | gov 1.1-2 | Stale follow-up 切版後走 fresh retrieval              | 8     |
+| G#2  | gov 1.3-5 | Conversation delete 後 `title` / content 不可回復     | 8     |
+| G#3  | gov 2.3   | Retention 內 `getDocumentChunk` replay 仍成功         | 9     |
+| G#4  | gov 2.1-4 | Backdated 過期後整條 audit chain 被清理               | 9     |
+| G#5  | gov 2.1-2 | MCP token metadata retention 清理                     | 9     |
+| G#6  | gov 3.x   | Config snapshot version 跨 governance 行為一致        | 9     |
 
-**建議執行順序**：Phase 1 → 2 → 3 → 4 → 5 → 6 → 7（後面依賴前面的資料）
+**建議執行順序**：Phase 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9（後面依賴前面的資料）
 
 ---
 
@@ -334,6 +348,124 @@ wrangler d1 execute agentic-rag-db --remote --command \
 
 ---
 
+## Phase 8 — Conversation Lifecycle（G#1 + G#2）
+
+> 完整步驟詳見 [`CONVERSATION_LIFECYCLE_VERIFICATION.md`](./CONVERSATION_LIFECYCLE_VERIFICATION.md)。本 Phase 僅作 gate checkpoint，實際步驟跳到該文件執行。
+
+### Step 8.1 — Stale follow-up 切版後走 fresh retrieval（G#1）
+
+**依賴**：已完成 Phase 2（Doc A 上傳）、Phase 4（Doc A' 切版）。
+
+執行 `CONVERSATION_LIFECYCLE_VERIFICATION.md` §2.2 與 §2.3：
+
+1. 在切版前的對話 C1 對 Doc A 作 same-document follow-up → 快路徑命中、引用版本不變
+2. 對 Doc A 切版到 Doc A' 後，**同一個 C1** 追問只有新版能答的題目
+3. 驗證：回答使用新版、引用 `document_version_id` 為新版、舊 assistant message 的 `citations_json` 不被回寫
+
+**PASS 條件**：
+
+- §2.2 same-document 快路徑命中
+- §2.3 切版後 fresh retrieval 生效，引用全部為新版
+- §2.4（optional）回切後引用跟隨最新 current
+- **G#1 PASS**
+
+### Step 8.2 — Conversation delete 後原文不可回復（G#2）
+
+執行 `CONVERSATION_LIFECYCLE_VERIFICATION.md` §3.1-§3.4：
+
+1. 以 `PURGE-CANARY-<timestamp>` 為可辨識關鍵字建立對話 C_DEL
+2. 刪除 C_DEL，確認列表 / detail API / `/chat/<id>` 路徑全部不可達
+3. D1 查 `conversations.title` 被清成 placeholder / NULL、`messages.content_redacted` 全庫 grep `PURGE-CANARY-` 為 0 hit
+4. 新對話嘗試誘導 model 重現 `PURGE-CANARY-` 字樣 → 必須失敗
+
+**PASS 條件**：
+
+- §3.2 user surfaces 全部消失
+- §3.3 原文欄位不可回復
+- §3.4 audit residue 不洩漏到一般路徑
+- **G#2 PASS**
+
+---
+
+## Phase 9 — Retention Cleanup（G#3 + G#4 + G#5 + G#6）
+
+> 完整步驟詳見 [`RETENTION_CLEANUP_VERIFICATION.md`](./RETENTION_CLEANUP_VERIFICATION.md) 與 [`CONFIG_SNAPSHOT_VERIFICATION.md`](./CONFIG_SNAPSHOT_VERIFICATION.md) §6。本 Phase 僅作 gate checkpoint。
+
+### Step 9.1 — Retention 內 replay 仍成功（G#3）
+
+執行 `RETENTION_CLEANUP_VERIFICATION.md` §3：
+
+1. 取最新 citation 的 `<citation_id>` / `<chunk_id>` / `<query_log_id>`
+2. 觸發 `POST /api/admin/retention/prune`
+3. 再次以 MCP `getDocumentChunk` replay → 應仍 200 + 原文
+4. D1 確認 citation / query_log / source_chunk 全部保留
+
+**PASS 條件**：
+
+- Prune 後 retention 內 citation / query_log / source_chunks.chunk_text 無一被刪
+- Replay 前後結果一致
+- **G#3 PASS**
+
+### Step 9.2 — Backdated 過期後整條 audit chain 被清理（G#4）
+
+**只在 staging 執行**。執行 `RETENTION_CLEANUP_VERIFICATION.md` §4：
+
+1. 以 `backdated-ql-*` / `backdated-cr-*` id 前綴種入 200 天前 SQL 記錄
+2. 觸發 prune
+3. D1 `COUNT(*) WHERE id LIKE 'backdated-%'` 應全為 0
+4. 對已清除的 citation 呼叫 `getDocumentChunk` → 與一般過期回應一致（404 / 410）
+
+**PASS 條件**：
+
+- Backdated 記錄全部刪除，retention 內記錄不受影響
+- 過期 replay 回應不洩漏「曾存在」訊息
+- **G#4 PASS**
+
+### Step 9.3 — MCP token metadata 清理（G#5）
+
+執行 `RETENTION_CLEANUP_VERIFICATION.md` §5：
+
+1. 建 staging MCP token，手動改為 200 天前 revoked
+2. 觸發 prune
+3. D1 查 token：`token_hash` = `redacted:<id>`、`name` = `[redacted]`、`scopes_json` = `[]`
+
+**PASS 條件**：
+
+- Token 三欄位皆被 redact，`revoked_reason` 保留或填 `retention-expired`
+- 其他活躍 token 未受影響
+- **G#5 PASS**
+
+### Step 9.4 — Config snapshot 在 governance 行為下穩定（G#6）
+
+執行 `CONFIG_SNAPSHOT_VERIFICATION.md` §6：
+
+1. §6.1 — Document 切版前後 `config_snapshot_version` 相同（依賴 Step 8.1 的 Q1/Q3 log）
+2. §6.2 — Conversation delete 不改既有 log 的 version 欄位（依賴 Step 8.2 的 C_DEL log）
+3. §6.3 — Prune 不改 retention 內 log 的 version 字串（依賴 Step 9.1 / 9.2）
+4. §6.4 — Backdated 記錄的 version 字串不被用於 prune 判定
+
+**PASS 條件**：
+
+- 四個情境下 `config_snapshot_version` 行為符合預期
+- 無 governance 行為誤寫 / 誤清 version 欄位
+- **G#6 PASS**
+
+### Step 9.5 — Production 配置可見性檢查
+
+**不得**在 production 種 backdated 資料或觸發 prune。執行 `RETENTION_CLEANUP_VERIFICATION.md` §6：
+
+1. 讀取 production `retentionDays` 設定
+2. 查 `query_logs.MIN(created_at)`、`citation_records.MIN(expires_at)`
+3. 確認 cleanup schedule（Cron Trigger / scheduled task）存在且可見
+
+**PASS 條件**：
+
+- Production 與 staging 的 retention 設定一致
+- `query_logs.oldest` 未超過 retention 過多（代表 cleanup 有在跑）
+- Cleanup schedule 已註冊且可查證
+
+---
+
 ## 回報格式
 
 每項完成後，以下列格式回報 Claude（Claude 會代勾 tasks.md）：
@@ -343,13 +475,17 @@ B#1 OK
 UI#1 OK
 UI#7 OK
 B#2 問題: <描述>
+G#1 OK
+G#2 問題: title 被清但 content 仍含原文
+G#3 OK
+G#4 skip（staging 不允許種 backdated）
 ...
 ```
 
 或簡寫：
 
 ```
-全部 PASS，除了 B#5 rate limit 沒試到 429
+全部 PASS，除了 B#5 rate limit 沒試到 429、G#4 staging 不允許種 backdated
 ```
 
 **常見陷阱**：
@@ -359,3 +495,6 @@ B#2 問題: <描述>
 - R2 upload signing secrets 缺 → `/api/uploads/presign` 回 503
 - 上 D1 `wrangler d1 execute` 忘加 `--remote` → 查到空的 local sqlite
 - MCP token 建完沒帶 scope → restricted 測試變「都看不到」無法對照
+- Phase 8 / 9 跑完後忘記清理 `backdated-*` id → 汙染下次驗證
+- Phase 9 直接在 production 觸發 prune → **絕對禁止**，production 只驗配置可見性
+- Phase 8 delete purge 以 same session 測試 → 可能受瀏覽器 cache 影響，建議新 session / 無痕視窗
