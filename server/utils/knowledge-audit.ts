@@ -19,6 +19,8 @@ const CREDENTIAL_PATTERNS = [
   /\bsecret\s*[:=]\s*\S+/i,
   /\btoken\s*[:=]\s*\S+/i,
   /\bsk-[A-Za-z0-9]{10,}\b/,
+  /(?<!\d)(?:4\d{3}|5[1-5]\d{2}|6(?:011|5\d{2}))[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}(?!\d)/,
+  /(?<!\d)3[47]\d{2}[\s-]?\d{6}[\s-]?\d{5}(?!\d)/,
 ]
 
 export function auditKnowledgeText(text: string): {

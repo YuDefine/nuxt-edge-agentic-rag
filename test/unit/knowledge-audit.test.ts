@@ -15,6 +15,26 @@ describe('knowledge audit', () => {
     })
   })
 
+  it.each([
+    ['Visa (spaces)', 'card 4111 1111 1111 1111 leaked'],
+    ['Mastercard (hyphens)', 'mc 5555-5555-5555-4444 here'],
+    ['Discover (compact)', 'disc 6011111111111117 here'],
+    ['Amex (spaces)', 'amex 3782 822463 10005 here'],
+  ])('blocks credit-card numbers (%s)', (_label, input) => {
+    const result = auditKnowledgeText(input)
+
+    expect(result.shouldBlock).toBe(true)
+    expect(result.redactedText).toBe('[BLOCKED:credential]')
+    expect(result.riskFlags).toEqual(['credential'])
+  })
+
+  it('does not match 16-digit prefix inside longer digit runs', () => {
+    const result = auditKnowledgeText('order id 4111111111111111234 shipped')
+
+    expect(result.shouldBlock).toBe(false)
+    expect(result.riskFlags).not.toContain('credential')
+  })
+
   it('stores only redacted query_logs and messages content', async () => {
     const governance = createKnowledgeRuntimeConfig({
       environment: 'staging',
