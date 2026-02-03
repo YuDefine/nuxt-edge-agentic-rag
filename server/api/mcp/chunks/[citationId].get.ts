@@ -3,7 +3,9 @@ import { z } from 'zod'
 
 import { getRequiredKvBinding } from '../../../utils/cloudflare-bindings'
 import { getD1Database } from '../../../utils/database'
-import { getKnowledgeRuntimeConfig } from '../../../utils/knowledge-runtime'
+import { auditKnowledgeText } from '../../../utils/knowledge-audit'
+import { getAllowedAccessLevels, getKnowledgeRuntimeConfig } from '../../../utils/knowledge-runtime'
+import { createMcpQueryLogStore } from '../../../utils/mcp-ask'
 import { McpAuthError, requireMcpBearerToken, requireMcpScope } from '../../../utils/mcp-auth'
 import {
   consumeMcpToolRateLimit,
@@ -47,18 +49,42 @@ export default defineEventHandler(async (event) => {
     })
 
     const params = parseCitationParams(event.context.params ?? {})
-    const result = await getDocumentChunk(
-      {
-        auth,
-        citationId: params.citationId,
-      },
-      {
-        replayStore: createMcpReplayStore(database),
-      }
-    )
 
-    return {
-      data: result,
+    try {
+      const result = await getDocumentChunk(
+        {
+          auth,
+          citationId: params.citationId,
+        },
+        {
+          replayStore: createMcpReplayStore(database),
+        }
+      )
+
+      return {
+        data: result,
+      }
+    } catch (replayError) {
+      if (replayError instanceof McpReplayError && replayError.statusCode === 403) {
+        try {
+          await createMcpQueryLogStore(database).createAcceptedQueryLog({
+            allowedAccessLevels: getAllowedAccessLevels({
+              channel: 'mcp',
+              isAuthenticated: true,
+              tokenScopes: auth.scopes,
+            }),
+            configSnapshotVersion: runtimeConfig.governance.configSnapshotVersion,
+            environment: runtimeConfig.environment,
+            queryText: auditKnowledgeText(`getDocumentChunk:${params.citationId}`).redactedText,
+            status: 'blocked',
+            tokenId: auth.tokenId,
+          })
+        } catch (logError) {
+          log.error(logError as Error, { operation: 'mcp-replay-blocked-log' })
+        }
+      }
+
+      throw replayError
     }
   } catch (error) {
     if (

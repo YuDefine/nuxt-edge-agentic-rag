@@ -142,8 +142,8 @@ describe('acceptance restricted citation scope (TC-13)', () => {
     expect(citationSelect).toBeDefined()
     expect(citationSelect?.values).toEqual(expect.arrayContaining([RESTRICTED_CITATION_ID]))
 
-    // TC-13 目前程式碼在 403 路徑不寫 query_logs（僅阻擋 + throw）
-    // 驗證 restricted chunkText 不會以任何形式寫入 D1（不外洩）
+    // 403 路徑會寫一筆 query_logs { status: 'blocked' }，queryText 經過 auditKnowledgeText 再存。
+    // 無論哪種路徑，restricted chunkText 與文件標題都不得外洩到 D1 的任一筆寫入。
     for (const call of d1.calls) {
       for (const value of call.values) {
         if (typeof value !== 'string') {
