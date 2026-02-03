@@ -95,6 +95,12 @@ admin-ui-post-core
 bootstrap + add-v1-core-ui 驗收
 ```
 
+```
+migrate-mcp-to-toolkit (post-core 第一個 change)
+    ↑ 依賴 bootstrap + add-v1-core-ui archive
+  現有 MCP contract/integration tests 作為 regression net
+```
+
 ## Current Phase Gates
 
 ### Phase A: 核心閉環收尾（目前階段）
@@ -135,6 +141,7 @@ spectra unpark observability-and-debug
 ### 等驗收通過後
 
 - [high] archive bootstrap + add-v1-core-ui
+- [high] **migrate-mcp-to-toolkit**：`/spectra-propose` 建立新 change，將現有 Nitro-native MCP（4 endpoint + 6 util）遷移至 `@nuxtjs/mcp-toolkit` — 依賴：bootstrap + add-v1-core-ui archive；Non-Goals：不動 ask/search/categories/chunks business logic；保留同一組 Bearer scope 行為
 - [mid] governance 1.x conversation lifecycle、2.x retention cleanup
 - [mid] test-coverage 剩餘 TC-\* 與 A01–A13 / EV-01–EV-04 輸出
 - [mid] admin-ui-post-core 全部
@@ -150,7 +157,7 @@ spectra unpark observability-and-debug
 
 ## Active Changes
 
-_last synced: 2026-04-17T09:53:15.179Z_
+_last synced: 2026-04-18T00:38:54.905Z_
 
 6 active changes (0 ready · 4 in progress · 2 draft · 0 blocked)
 
@@ -163,7 +170,7 @@ _(none)_
 - **add-v1-core-ui** — 42/49 tasks (86%)
 - **bootstrap-v1-core-from-report** — 28/34 tasks (82%)
 - **governance-refinements** — 6/17 tasks (35%)
-- **test-coverage-and-automation** — 12/43 tasks (28%)
+- **test-coverage-and-automation** — 14/43 tasks (33%)
 
 ### Draft
 
