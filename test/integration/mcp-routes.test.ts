@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { createKnowledgeRuntimeConfig } from '../../shared/schemas/knowledge-runtime'
+import { createHubDbMock } from './helpers/database'
 import { createRouteEvent, installNuxtRouteTestGlobals } from './helpers/nuxt-route'
 
 const mcpRouteMocks = vi.hoisted(() => {
@@ -80,6 +81,8 @@ vi.mock('evlog', () => ({
   }),
 }))
 
+vi.mock('../../server/utils/database', () => createHubDbMock())
+
 vi.mock('../../server/utils/ai-search', () => ({
   createCloudflareAiSearchClient: mcpRouteMocks.createCloudflareAiSearchClient,
 }))
@@ -98,9 +101,14 @@ vi.mock('../../server/utils/cloudflare-bindings', () => ({
   getRequiredKvBinding: mcpRouteMocks.getRequiredKvBinding,
 }))
 
-vi.mock('../../server/utils/knowledge-audit', () => ({
-  createKnowledgeAuditStore: mcpRouteMocks.createKnowledgeAuditStore,
-}))
+vi.mock('../../server/utils/knowledge-audit', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../server/utils/knowledge-audit')>()
+
+  return {
+    ...actual,
+    createKnowledgeAuditStore: mcpRouteMocks.createKnowledgeAuditStore,
+  }
+})
 
 vi.mock('../../server/utils/knowledge-evidence-store', () => ({
   createKnowledgeEvidenceStore: mcpRouteMocks.createKnowledgeEvidenceStore,
@@ -232,6 +240,39 @@ describe('mcp route handlers', () => {
       message: 'The requested citation requires knowledge.restricted.read',
       statusCode: 403,
     })
+  })
+
+  it('records a blocked query_log when getDocumentChunk returns 403', async () => {
+    const createAcceptedQueryLog = vi.fn().mockResolvedValue('log-1')
+    mcpRouteMocks.createMcpQueryLogStore.mockReturnValueOnce({ createAcceptedQueryLog })
+    mcpRouteMocks.getDocumentChunk.mockRejectedValue(
+      new mcpRouteMocks.MockMcpReplayError(
+        'The requested citation requires knowledge.restricted.read',
+        403
+      )
+    )
+
+    const { default: handler } = await import('../../server/api/mcp/chunks/[citationId].get')
+
+    await expect(
+      handler(
+        createRouteEvent({
+          context: {
+            cloudflare: { env: {} },
+            params: { citationId: 'citation-restricted' },
+          },
+        })
+      )
+    ).rejects.toMatchObject({ statusCode: 403 })
+
+    expect(createAcceptedQueryLog).toHaveBeenCalledTimes(1)
+    expect(createAcceptedQueryLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        queryText: 'getDocumentChunk:citation-restricted',
+        status: 'blocked',
+        tokenId: 'token-1',
+      })
+    )
   })
 
   it('returns filtered search results through the unified response envelope', async () => {
