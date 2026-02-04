@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { createHubDbMock } from './helpers/database'
 import { createRouteEvent, installNuxtRouteTestGlobals } from './helpers/nuxt-route'
 
 const citationMocks = vi.hoisted(() => ({
@@ -25,6 +26,8 @@ vi.mock('evlog', () => ({
     set: vi.fn(),
   }),
 }))
+
+vi.mock('../../server/utils/database', () => createHubDbMock())
 
 vi.mock('../../server/utils/mcp-replay', () => ({
   createMcpReplayStore: citationMocks.createMcpReplayStore,
