@@ -26,11 +26,11 @@
 - [x] 3.3 自動化 `TC-13` restricted citation 越權，驗證 `403` 與零內容洩漏。
 - [ ] 3.4 自動化 `TC-14` Admin Web restricted 讀取，驗證 Admin Web 與 MCP scope 邊界分離。
 - [x] 3.5 自動化 `TC-15` 高風險輸入治理，驗證 `messages.content_text` 與 `query_logs` 只落遮罩資料。
-- [ ] 3.6 自動化 `TC-16` `searchKnowledge` no-hit 契約，驗證 `200` + `results: []`。
+- [x] 3.6 自動化 `TC-16` `searchKnowledge` no-hit 契約，驗證 `200` + `results: []`。
 - [ ] 3.7 自動化 `TC-17` restricted existence-hiding，驗證 `askKnowledge` 拒答與 `searchKnowledge` 空結果。
 - [x] 3.8 自動化 `TC-18` current-version-only 切版案例，驗證舊版引用不再出現在正式回答。
 - [ ] 3.9 自動化 `TC-19` `listCategories` 計數規則，驗證 active + current 去重邏輯。
-- [ ] 3.10 自動化 `TC-20` MCP 契約瘦身，驗證回應不暴露內部診斷欄位。
+- [x] 3.10 自動化 `TC-20` MCP 契約瘦身，驗證回應不暴露內部診斷欄位。
 
 ## 4. Acceptance And Evidence Outputs
 
