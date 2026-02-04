@@ -84,6 +84,20 @@
       "expectedOutcome": "refused_or_new_version_only"
     },
     {
+      "caseId": "seed-tc-16-mcp",
+      "registryId": "TC-16",
+      "channel": "mcp",
+      "prompt": "請問今年台積電的毛利率？",
+      "expectedOutcome": "200_empty"
+    },
+    {
+      "caseId": "seed-tc-20-mcp",
+      "registryId": "TC-20",
+      "channel": "mcp",
+      "prompt": "簡述庫存管理重點",
+      "expectedOutcome": "no_internal_diagnostics"
+    },
+    {
       "caseId": "seed-ev-01",
       "registryId": "EV-01",
       "channel": "shared",
