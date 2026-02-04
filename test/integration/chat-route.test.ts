@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { createKnowledgeRuntimeConfig } from '../../shared/schemas/knowledge-runtime'
+import { createHubDbMock } from './helpers/database'
 import { createRouteEvent, installNuxtRouteTestGlobals } from './helpers/nuxt-route'
 
 const chatRouteMocks = vi.hoisted(() => {
@@ -44,6 +45,8 @@ vi.mock('evlog', () => ({
 vi.mock('../../server/utils/ai-search', () => ({
   createCloudflareAiSearchClient: chatRouteMocks.createCloudflareAiSearchClient,
 }))
+
+vi.mock('../../server/utils/database', () => createHubDbMock())
 
 vi.mock('../../server/utils/cloudflare-bindings', () => ({
   getCloudflareEnv: () => ({

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { createHubDbMock } from './helpers/database'
 import { createRouteEvent, installNuxtRouteTestGlobals } from './helpers/nuxt-route'
 
 const publishRouteMocks = vi.hoisted(() => ({
@@ -24,6 +25,8 @@ class MockDocumentPublishStateError extends Error {
     this.name = 'DocumentPublishStateError'
   }
 }
+
+vi.mock('../../server/utils/database', () => createHubDbMock())
 
 vi.mock('../../server/utils/document-publish', () => ({
   DocumentPublishStateError: MockDocumentPublishStateError,
