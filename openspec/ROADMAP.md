@@ -157,9 +157,9 @@ spectra unpark observability-and-debug
 
 ## Active Changes
 
-_last synced: 2026-04-18T00:38:54.905Z_
+_last synced: 2026-04-18T00:48:06.598Z_
 
-6 active changes (0 ready · 4 in progress · 2 draft · 0 blocked)
+7 active changes (0 ready · 4 in progress · 3 draft · 0 blocked)
 
 ### Ready to apply
 
@@ -175,6 +175,7 @@ _(none)_
 ### Draft
 
 - **admin-ui-post-core** — 0/33 tasks (0%)
+- **migrate-mcp-to-toolkit** — proposal only
 - **observability-and-debug** — 0/21 tasks (0%)
 
 ### Blocked
@@ -195,6 +196,7 @@ _(none)_
 - `admin-ui-post-core`
 - `bootstrap-v1-core-from-report`
 - `governance-refinements`
+- `migrate-mcp-to-toolkit`
 - `observability-and-debug`
 - `test-coverage-and-automation`
 
