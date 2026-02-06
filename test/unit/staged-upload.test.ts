@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import {
   createStagedUploadTarget,
+  signR2UploadUrl,
   StagedUploadValidationError,
   validateStagedUploadMetadata,
 } from '../../server/utils/staged-upload'
@@ -143,6 +144,29 @@ describe('staged upload', () => {
         },
       })
     ).toThrowError(new StagedUploadValidationError('Uploaded file MIME type did not match', 400))
+  })
+
+  it('signs presigned upload URL with checksum header in SignedHeaders (not hoisted to query)', async () => {
+    const url = await signR2UploadUrl({
+      accessKeyId: 'AKIAIOSFODNN7EXAMPLE',
+      accountId: 'abc123',
+      bucketName: 'knowledge-documents',
+      checksumSha256: 'c2hhMjU2LWRpZ2VzdA==',
+      expiresInSeconds: 600,
+      mimeType: 'text/markdown',
+      objectKey: 'staged/local/admin-1/upload-123/report.md',
+      secretAccessKey: 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY',
+      size: 128,
+    })
+
+    const parsed = new URL(url)
+    const signedHeaders = parsed.searchParams.get('X-Amz-SignedHeaders') ?? ''
+
+    expect(signedHeaders.split(';')).toContain('x-amz-checksum-sha256')
+    expect(signedHeaders.split(';')).not.toContain('content-length')
+    expect(parsed.searchParams.has('x-amz-checksum-sha256')).toBe(false)
+    expect(parsed.hostname).toBe('knowledge-documents.abc123.r2.cloudflarestorage.com')
+    expect(parsed.searchParams.get('X-Amz-Signature')).toMatch(/^[a-f0-9]{64}$/)
   })
 
   it('rejects finalize when the uploaded checksum does not match the finalize payload', () => {

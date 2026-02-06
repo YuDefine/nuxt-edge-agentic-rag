@@ -128,13 +128,20 @@ export async function signR2UploadUrl(input: {
     Bucket: input.bucketName,
     Key: input.objectKey,
     ChecksumSHA256: input.checksumSha256,
-    ContentLength: input.size,
     ContentType: input.mimeType,
   })
 
-  return getSignedUrl(client, command, {
-    expiresIn: input.expiresInSeconds,
-  })
+  // Cast via Parameters<>: @smithy/types is duplicated across versions in lockfile
+  // (v4.14.0 + v4.14.1), causing structural type mismatch between S3Client and
+  // getSignedUrl's expected Client<any, InputTypesUnion, ...>. Runtime is unaffected.
+  return getSignedUrl(
+    client as unknown as Parameters<typeof getSignedUrl>[0],
+    command as unknown as Parameters<typeof getSignedUrl>[1],
+    {
+      expiresIn: input.expiresInSeconds,
+      unhoistableHeaders: new Set(['x-amz-checksum-sha256']),
+    }
+  )
 }
 
 export async function createStagedUploadTarget(
