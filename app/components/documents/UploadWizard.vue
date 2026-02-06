@@ -189,8 +189,12 @@
   async function calculateChecksum(file: File): Promise<string> {
     const buffer = await file.arrayBuffer()
     const hashBuffer = await crypto.subtle.digest('SHA-256', buffer)
-    const hashArray = Array.from(new Uint8Array(hashBuffer))
-    return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('')
+    const bytes = new Uint8Array(hashBuffer)
+    let binary = ''
+    for (const byte of bytes) {
+      binary += String.fromCharCode(byte)
+    }
+    return btoa(binary)
   }
 
   const ALLOWED_EXTENSIONS = ['.txt', '.md', '.pdf']
@@ -326,6 +330,7 @@
         body: selectedFile.value,
         headers: {
           'Content-Type': selectedFile.value.type || 'application/octet-stream',
+          'x-amz-checksum-sha256': fileChecksum.value,
         },
       })
 
