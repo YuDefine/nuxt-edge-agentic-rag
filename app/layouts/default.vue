@@ -1,5 +1,6 @@
 <script setup lang="ts">
   const { isAdmin } = useUserRole()
+  const { user, signOut } = useUserSession()
 
   const links = computed(() => {
     const items = [{ label: '問答', to: '/' }]
@@ -10,6 +11,22 @@
 
     return items
   })
+
+  const userMenuItems = computed(() => [
+    [
+      {
+        label: user.value?.name || user.value?.email || '使用者',
+        type: 'label' as const,
+      },
+    ],
+    [
+      {
+        label: '登出',
+        icon: 'i-lucide-log-out',
+        onSelect: () => signOut(),
+      },
+    ],
+  ])
 </script>
 
 <template>
@@ -18,7 +35,21 @@
       <UContainer>
         <div class="flex items-center justify-between py-3">
           <UNavigationMenu :items="links" />
-          <UColorModeButton />
+          <div class="flex items-center gap-2">
+            <UColorModeButton />
+            <UDropdownMenu :items="userMenuItems">
+              <UButton
+                color="neutral"
+                variant="ghost"
+                size="sm"
+                aria-label="帳號選單"
+                class="gap-1.5 px-1.5"
+              >
+                <UAvatar :src="user?.image ?? undefined" :alt="user?.name ?? undefined" size="sm" />
+                <UIcon name="i-lucide-chevron-down" class="size-4 text-muted" />
+              </UButton>
+            </UDropdownMenu>
+          </div>
         </div>
       </UContainer>
     </header>
