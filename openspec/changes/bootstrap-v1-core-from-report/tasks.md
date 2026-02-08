@@ -73,8 +73,9 @@
 
 > 來源：`bootstrap-v1-core-from-report` | Specs: `knowledge-access-control`, `document-ingestion-and-publishing`, `web-agentic-answering`, `mcp-knowledge-tools`, `governance-and-observability`
 
-- [ ] #1 實際以 Web User / Web Admin 走登入與導頁，確認 allowlist、角色與可見範圍符合規格。
+- [x] #1 實際以 Web User / Web Admin 走登入與導頁，確認 allowlist、角色與可見範圍符合規格。
   - 2026-04-16 local partial pass: setup-created admin/user accounts could sign in via /api/auth/sign-in/email; admin reached admin-only guard while user was denied. Google OAuth UI flow still未重跑。
+  - 2026-04-18 production PASS (agentic.yudefine.com.tw)：Web User (非 allowlist Gmail) Google OAuth 登入成功，Navigation 只顯示「問答」；Web Admin (charles.yudefine@gmail.com) 登入成功，Navigation 顯示「問答」+「文件管理」，可進入 `/admin/documents`。截圖：temp/phase1/step1.1.png、step1.2.png。
 - [ ] #2 以 `md` 或 `txt` 文件完成 presign → finalize → sync → publish → Web 問答 → 引用回放 的最小閉環。
   - Blocked locally by missing upload signing secrets and Cloudflare DB / AI bindings required by downstream routes.
 - [ ] #3 將同一文件切到新版後重新提問，確認正式回答不再使用舊版內容，且舊 citation 在保留期限內仍可回放。
