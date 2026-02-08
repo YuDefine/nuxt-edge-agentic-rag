@@ -5,17 +5,17 @@
         "matcher": "Edit|Write",
         "hooks": [
           {
-            "command": "./.claude/hooks/post-edit-typecheck.sh",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/post-edit-typecheck.sh",
             "timeout": 90,
             "type": "command"
           },
           {
-            "command": "./.claude/hooks/post-edit-ui-qa.sh",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/post-edit-ui-qa.sh",
             "timeout": 5,
             "type": "command"
           },
           {
-            "command": "./.claude/hooks/post-edit-roadmap-sync.sh",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/post-edit-roadmap-sync.sh",
             "timeout": 10,
             "type": "command"
           }
@@ -31,7 +31,7 @@
             "type": "command"
           },
           {
-            "command": "./.claude/hooks/post-bash-error-debug.sh",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/post-bash-error-debug.sh",
             "timeout": 5,
             "type": "command"
           }
@@ -41,12 +41,12 @@
         "matcher": "Skill",
         "hooks": [
           {
-            "command": "./.claude/hooks/post-propose-design-inject.sh",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/post-propose-design-inject.sh",
             "timeout": 10,
             "type": "command"
           },
           {
-            "command": "./.claude/hooks/post-propose-journey-check.sh",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/post-propose-journey-check.sh",
             "timeout": 10,
             "type": "command"
           }
@@ -58,7 +58,7 @@
         "matcher": "Edit|Write",
         "hooks": [
           {
-            "command": "./.claude/hooks/knowledge-search-reminder.sh",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/knowledge-search-reminder.sh",
             "timeout": 5,
             "type": "command"
           }
@@ -68,7 +68,7 @@
         "matcher": "Edit|Write",
         "hooks": [
           {
-            "command": "node ./.claude/scripts/guard-check.mjs",
+            "command": "node $CLAUDE_PROJECT_DIR/.claude/scripts/guard-check.mjs",
             "type": "command"
           }
         ]
@@ -77,7 +77,7 @@
         "matcher": "Bash",
         "hooks": [
           {
-            "command": "./.claude/hooks/pre-commit-review.sh",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/pre-commit-review.sh",
             "timeout": 10,
             "type": "command",
             "statusMessage": "Checking commit authorization..."
@@ -88,22 +88,22 @@
         "matcher": "Skill",
         "hooks": [
           {
-            "command": "./.claude/hooks/pre-propose-ux-scan.sh",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/pre-propose-ux-scan.sh",
             "timeout": 10,
             "type": "command"
           },
           {
-            "command": "./.claude/hooks/pre-apply-journey-brief.sh",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/pre-apply-journey-brief.sh",
             "timeout": 10,
             "type": "command"
           },
           {
-            "command": "./.claude/hooks/pre-archive-design-gate.sh",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/pre-archive-design-gate.sh",
             "timeout": 10,
             "type": "command"
           },
           {
-            "command": "./.claude/hooks/pre-archive-ux-gate.sh",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/pre-archive-ux-gate.sh",
             "timeout": 10,
             "type": "command"
           }
@@ -114,13 +114,13 @@
       {
         "hooks": [
           {
-            "command": "./.claude/hooks/init-code-graph.sh",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/init-code-graph.sh",
             "timeout": 120,
             "type": "command",
             "statusMessage": "Initializing code knowledge graph..."
           },
           {
-            "command": "./.claude/hooks/session-start-roadmap-sync.sh",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/session-start-roadmap-sync.sh",
             "timeout": 10,
             "type": "command",
             "statusMessage": "Syncing Spectra roadmap..."
@@ -132,7 +132,7 @@
       {
         "hooks": [
           {
-            "command": "./.claude/hooks/stop-accumulate.sh",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/stop-accumulate.sh",
             "timeout": 5,
             "type": "command"
           }
