@@ -92,6 +92,13 @@ export default defineNuxtConfig({
     quality: 80,
     format: ['webp', 'jpg', 'png'],
   },
+
+  icon: {
+    clientBundle: {
+      scan: true,
+      sizeLimitKb: 256,
+    },
+  },
   security: {
     rateLimiter: false,
     headers: {
