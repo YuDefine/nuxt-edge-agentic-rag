@@ -100,6 +100,7 @@
 ### Q4 — File-based discovery 與現有目錄對接：⚠️ 需搬檔 + 統一端點
 
 預設 `server/mcp/{tools,resources,prompts}/`，`dir` option 可改 base，`mcp:definitions:paths` hook 可 push 額外路徑。**Export 格式**：必須 `export default defineMcpTool({...})`（只認 default export），name 可省略由 filename 自動產生，子目錄自動變 `group`。現有 `server/api/mcp/*.ts` **不能直接沿用** — 要：
+
 1. 每個 tool 拆成一檔丟進 `server/mcp/tools/`
 2. `server/mcp/index.ts` 以 `defineMcpHandler({ middleware })` 集中掛 auth + rate-limit
 3. `server/utils/mcp-*.ts` 不動，middleware / tool handler 直接 import
@@ -109,8 +110,26 @@
 
 ## Remaining Open Questions（需在 apply 前處理）
 
-- [ ] 既有 MCP client（若已分發給外部 AI client）是否綁定 `/api/mcp/*` URL？決定是否需加 alias
-- [ ] Workers bundle 實測增量（須在 apply 前 `wrangler deploy --dry-run` 驗證）
+### Q5 — URL 綁定盤點：✅ 無外部契約，URL 變更屬內部重構
+
+2026-04-18 盤點 repo：
+
+- **無外部契約文件**：`.env.example` / `README.md` / `wrangler.jsonc` 皆無 `/api/mcp/*` 提及
+- **無 MCP client config**：repo 無 `.mcp.json` / `claude_desktop_config.*` 等外部 client 綁定檔
+- **所有提及點皆為內部可控**：
+  - `scripts/create-mcp-token.ts:147` — console.log 提示，隨遷移更新
+  - `test/integration/acceptance-tc-{01,12,13,16,18,20}.test.ts` + `mcp-routes.test.ts` — 測試檔，隨契約更新
+  - `docs/verify/{rollout,staging-deploy}-checklist.md` — 部署驗收指令，隨 URL 更新 curl 範例
+  - `template/HANDOFF.md:18` — 交接文件，可覆寫
+  - 舊版 `main-v0.0.3{6,7,8}.md` 報告 — 凍結歷史不動，新版 `main-v0.0.39.md` 同步決策
+
+**結論**：不需加 `/api/mcp/*` alias。URL 統一為 `/mcp` 視為內部重構。
+
+**Source**: Grep across repo 2026-04-18；`codebase-memory-mcp search_code` 18 hits 全部人工 review
+
+### Q6 — Workers bundle 實測
+
+- [ ] `wrangler deploy --dry-run` 於 apply 開始前驗證 bundle 增量（預估 150–300 KB gzipped，1 MB 上限）
 
 ## Rollout Plan
 

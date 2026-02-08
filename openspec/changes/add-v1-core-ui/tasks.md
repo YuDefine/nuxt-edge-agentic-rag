@@ -87,13 +87,15 @@
 
 > 來源：`add-v1-core-ui` | Specs: `web-chat-ui`, `admin-document-management-ui`
 
-- [ ] #1 以 Web User 登入後，從首頁進入 `/chat`，確認 Navigation 正確顯示（無 Admin 入口）
+- [x] #1 以 Web User 登入後，從首頁進入 `/chat`，確認 Navigation 正確顯示（無 Admin 入口）
+  - 2026-04-18 production PASS：Web User (非 allowlist Gmail) 在 `https://agentic.yudefine.com.tw/` 登入後停在首頁「開始探索知識庫」，Navigation 只顯示「問答」，無「文件管理」。截圖：temp/phase1/step1.1.png。
 - [x] #2 以 Web Admin 登入後，確認 Navigation 顯示 Chat + Documents 入口
 - [ ] #3 在 Chat 頁面提問，確認 streaming 回答逐字顯示，refusal 有不同樣式
 - [ ] #4 點擊引用標記，確認 Citation Replay Modal 正確顯示原文段落
 - [ ] #5 以 Admin 進入 `/admin/documents`，確認文件列表顯示所有欄位與狀態 Badge
 - [ ] #6 執行完整上傳流程（select → upload → finalize → sync → publish），確認每步驟狀態正確
-- [ ] #7 以非 Admin 訪問 `/admin/documents`，確認被阻擋（403 或 redirect）
+- [x] #7 以非 Admin 訪問 `/admin/documents`，確認被阻擋（403 或 redirect）
+  - 2026-04-18 production PASS：Web User session 直接訪問 `/admin/documents` 被 redirect 到 `/`（首頁），不可見文件列表。Observation: redirect 目標為 `/` 而非 Runbook 原本預期的 `/chat` 或 `/login`；已由使用者確認接受現況。
 - [ ] #8 測試 empty state、loading state、error state 是否正確顯示
 
 ## Affected Entity Matrix
