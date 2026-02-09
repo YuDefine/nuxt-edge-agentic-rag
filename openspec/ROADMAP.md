@@ -157,9 +157,9 @@ spectra unpark observability-and-debug
 
 ## Active Changes
 
-_last synced: 2026-04-18T01:57:50.009Z_
+_last synced: 2026-04-18T03:10:40.136Z_
 
-7 active changes (0 ready · 4 in progress · 3 draft · 0 blocked)
+8 active changes (0 ready · 4 in progress · 4 draft · 0 blocked)
 
 ### Ready to apply
 
@@ -174,6 +174,7 @@ _(none)_
 
 ### Draft
 
+- **add-ai-gateway-usage-tracking** — 0/48 tasks (0%)
 - **admin-ui-post-core** — 0/33 tasks (0%)
 - **migrate-mcp-to-toolkit** — 0/32 tasks (0%)
 - **observability-and-debug** — 0/21 tasks (0%)
@@ -192,6 +193,7 @@ _(none)_
 
 ### Independent (can run in parallel)
 
+- `add-ai-gateway-usage-tracking`
 - `add-v1-core-ui`
 - `admin-ui-post-core`
 - `bootstrap-v1-core-from-report`
