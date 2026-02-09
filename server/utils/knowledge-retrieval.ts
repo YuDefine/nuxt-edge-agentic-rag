@@ -139,14 +139,31 @@ export async function retrieveVerifiedEvidence(
   }
 }
 
+// Cloudflare AutoRAG (legacy `env.AI.autorag()`) filter schema:
+//   { type: 'eq'|'ne'|'gt'|'gte'|'lt'|'lte', key, value }
+//   { type: 'and', filters: [...] }
+// No 'or' / 'in' operators — multi-value filters are deferred to the
+// post-search verification step in `resolveCurrentEvidence`.
+type AutoRagFilter =
+  | { key: string; type: 'eq' | 'ne' | 'gt' | 'gte' | 'lt' | 'lte'; value: unknown }
+  | { filters: AutoRagFilter[]; type: 'and' }
+
 function buildKnowledgeSearchFilters(input: {
   allowedAccessLevels: string[]
   categoryHints: string[]
-}): Record<string, unknown> {
-  return {
-    access_level: { $in: input.allowedAccessLevels },
-    ...(input.categoryHints.length > 0 ? { category_slug: { $in: input.categoryHints } } : {}),
-    status: 'active',
-    version_state: 'current',
+}): AutoRagFilter | Record<string, never> {
+  const filters: AutoRagFilter[] = [
+    { key: 'status', type: 'eq', value: 'active' },
+    { key: 'version_state', type: 'eq', value: 'current' },
+  ]
+
+  if (input.allowedAccessLevels.length === 1) {
+    filters.push({ key: 'access_level', type: 'eq', value: input.allowedAccessLevels[0] })
   }
+
+  if (input.categoryHints.length === 1) {
+    filters.push({ key: 'category_slug', type: 'eq', value: input.categoryHints[0] })
+  }
+
+  return filters.length === 1 ? filters[0]! : { filters, type: 'and' }
 }
