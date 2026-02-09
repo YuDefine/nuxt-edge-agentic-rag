@@ -1,5 +1,8 @@
 import { Buffer } from 'node:buffer'
 
+import type { H3Event } from 'h3'
+
+import { getRequiredR2Binding } from './cloudflare-bindings'
 import type { UploadedObjectMetadata } from './staged-upload'
 
 export interface KnowledgeUploadsS3Config {
@@ -46,82 +49,37 @@ export interface R2ObjectAccess {
   put(key: string, value: string, contentType: string): Promise<void>
 }
 
-export type R2ObjectAccessConfig = Pick<
-  KnowledgeUploadsS3Config,
-  'accessKeyId' | 'accountId' | 'bucketName' | 'secretAccessKey'
->
-
-let s3ModulePromise: Promise<typeof import('@aws-sdk/client-s3')> | null = null
-
-function loadS3Module() {
-  s3ModulePromise ??= import('@aws-sdk/client-s3')
-  return s3ModulePromise
-}
-
-export async function createR2ObjectAccess(config: R2ObjectAccessConfig): Promise<R2ObjectAccess> {
-  const { GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client } = await loadS3Module()
-
-  const client = new S3Client({
-    credentials: {
-      accessKeyId: config.accessKeyId,
-      secretAccessKey: config.secretAccessKey,
-    },
-    endpoint: `https://${config.accountId}.r2.cloudflarestorage.com`,
-    region: 'auto',
-  })
+export function createR2ObjectAccess(event: H3Event): R2ObjectAccess {
+  const bindingName = getKnowledgeRuntimeConfig().bindings.documentsBucket
+  const bucket = getRequiredR2Binding(event, bindingName)
 
   return {
     async getText(key) {
-      try {
-        const response = await client.send(
-          new GetObjectCommand({ Bucket: config.bucketName, Key: key })
-        )
+      const obj = await bucket.get(key)
+      if (!obj) return null
 
-        return (await response.Body?.transformToString()) ?? ''
-      } catch (error) {
-        if (isNotFoundError(error)) return null
-        throw error
-      }
+      return obj.text()
     },
     async head(key) {
-      try {
-        const response = await client.send(
-          new HeadObjectCommand({
-            Bucket: config.bucketName,
-            ChecksumMode: 'ENABLED',
-            Key: key,
-          })
-        )
+      const obj = await bucket.head(key)
+      if (!obj) return null
 
-        const metadata: UploadedObjectMetadata = {
-          httpMetadata: {
-            contentType: response.ContentType ?? null,
-          },
-          key,
-          size: response.ContentLength ?? 0,
-        }
-
-        if (response.ChecksumSHA256) {
-          metadata.checksums = {
-            sha256: decodeBase64ToArrayBuffer(response.ChecksumSHA256),
-          }
-        }
-
-        return metadata
-      } catch (error) {
-        if (isNotFoundError(error)) return null
-        throw error
+      const metadata: UploadedObjectMetadata = {
+        httpMetadata: {
+          contentType: obj.httpMetadata?.contentType ?? null,
+        },
+        key,
+        size: obj.size,
       }
+
+      if (obj.checksums?.sha256) {
+        metadata.checksums = { sha256: obj.checksums.sha256 }
+      }
+
+      return metadata
     },
     async put(key, value, contentType) {
-      await client.send(
-        new PutObjectCommand({
-          Body: value,
-          Bucket: config.bucketName,
-          ContentType: contentType,
-          Key: key,
-        })
-      )
+      await bucket.put(key, value, { httpMetadata: { contentType } })
     },
   }
 }
