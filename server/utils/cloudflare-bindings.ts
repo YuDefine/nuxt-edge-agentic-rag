@@ -23,6 +23,20 @@ interface KvBindingLike {
   put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void>
 }
 
+export interface R2BucketLike {
+  get(key: string): Promise<{ text(): Promise<string> } | null>
+  head(key: string): Promise<{
+    checksums?: { sha256?: ArrayBuffer | null }
+    httpMetadata?: { contentType?: string | null }
+    size: number
+  } | null>
+  put(
+    key: string,
+    value: string,
+    options?: { httpMetadata?: { contentType?: string } }
+  ): Promise<unknown>
+}
+
 export function getCloudflareEnv(event: CloudflareBoundEvent) {
   return (
     event.context.cloudflare?.env ??
@@ -47,6 +61,29 @@ export function getRequiredD1Binding(
   }
 
   return binding as D1DatabaseLike
+}
+
+export function getRequiredR2Binding(
+  event: CloudflareBoundEvent,
+  bindingName: string
+): R2BucketLike {
+  const env = getCloudflareEnv(event)
+  const binding = env[bindingName]
+
+  if (
+    !binding ||
+    typeof (binding as { get?: unknown }).get !== 'function' ||
+    typeof (binding as { head?: unknown }).head !== 'function' ||
+    typeof (binding as { put?: unknown }).put !== 'function'
+  ) {
+    throw createError({
+      statusCode: 503,
+      statusMessage: 'Service Unavailable',
+      message: `Cloudflare R2 binding "${bindingName}" is not available`,
+    })
+  }
+
+  return binding as R2BucketLike
 }
 
 export function getRequiredKvBinding(

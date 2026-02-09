@@ -19,8 +19,8 @@ const syncDocumentSchema = z.object({
 export default defineEventHandler(async (event) => {
   const { user } = await requireRuntimeAdminSession(event)
   const body = await readZodBody(event, syncDocumentSchema)
-  const uploadConfig = loadKnowledgeUploadsConfig()
-  const bucket = await createR2ObjectAccess(uploadConfig)
+  const environment = getKnowledgeRuntimeConfig().environment
+  const bucket = createR2ObjectAccess(event)
   const database = await getD1Database()
   const store = createDocumentSyncStore(database)
 
@@ -30,7 +30,7 @@ export default defineEventHandler(async (event) => {
       adminUserId: user.id,
       categorySlug: body.categorySlug,
       checksumSha256: body.checksumSha256,
-      environment: uploadConfig.environment,
+      environment,
       mimeType: body.mimeType,
       objectKey: body.objectKey,
       size: body.size,

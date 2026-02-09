@@ -12,8 +12,7 @@ export default defineEventHandler(async (event) => {
   await requireRuntimeAdminSession(event)
 
   const body = await readZodBody(event, finalizeRequestSchema)
-  const uploadConfig = loadKnowledgeUploadsConfig()
-  const bucket = await createR2ObjectAccess(uploadConfig)
+  const bucket = createR2ObjectAccess(event)
 
   try {
     const finalizedUpload = validateStagedUploadMetadata({
