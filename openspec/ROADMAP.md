@@ -157,9 +157,9 @@ spectra unpark observability-and-debug
 
 ## Active Changes
 
-_last synced: 2026-04-18T03:10:40.136Z_
+_last synced: 2026-04-18T03:39:18.453Z_
 
-8 active changes (0 ready · 4 in progress · 4 draft · 0 blocked)
+9 active changes (0 ready · 5 in progress · 4 draft · 0 blocked)
 
 ### Ready to apply
 
@@ -171,11 +171,14 @@ _(none)_
 - **bootstrap-v1-core-from-report** — 29/34 tasks (85%)
 - **governance-refinements** — 6/17 tasks (35%)
 - **test-coverage-and-automation** — 14/43 tasks (33%)
+- **use-nuxt-aliases** — 2/25 tasks (8%)
+  - Specs: `admin-document-management-ui`, `web-chat-ui`
 
 ### Draft
 
-- **add-ai-gateway-usage-tracking** — 0/48 tasks (0%)
 - **admin-ui-post-core** — 0/33 tasks (0%)
+- **fix-document-publish-draft-to-active** — 0/25 tasks (0%)
+  - Specs: `admin-document-management-ui`
 - **migrate-mcp-to-toolkit** — 0/32 tasks (0%)
 - **observability-and-debug** — 0/21 tasks (0%)
 
@@ -193,7 +196,6 @@ _(none)_
 
 ### Independent (can run in parallel)
 
-- `add-ai-gateway-usage-tracking`
 - `add-v1-core-ui`
 - `admin-ui-post-core`
 - `bootstrap-v1-core-from-report`
@@ -204,7 +206,7 @@ _(none)_
 
 ### Mutex (same spec touched)
 
-_(none)_
+- **admin-document-management-ui** — conflict between: `fix-document-publish-draft-to-active`, `use-nuxt-aliases`
 
 ### Blocked by dependency
 
