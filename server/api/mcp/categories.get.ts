@@ -1,17 +1,17 @@
 import { useLogger } from 'evlog'
 import { z } from 'zod'
 
-import { getRequiredKvBinding } from '../../utils/cloudflare-bindings'
-import { getD1Database } from '../../utils/database'
-import { getAllowedAccessLevels, getKnowledgeRuntimeConfig } from '../../utils/knowledge-runtime'
-import { createMcpCategoryStore, listCategories } from '../../utils/mcp-categories'
-import { McpAuthError, requireMcpBearerToken, requireMcpScope } from '../../utils/mcp-auth'
+import { getRequiredKvBinding } from '#server/utils/cloudflare-bindings'
+import { getD1Database } from '#server/utils/database'
+import { getAllowedAccessLevels, getKnowledgeRuntimeConfig } from '#server/utils/knowledge-runtime'
+import { createMcpCategoryStore, listCategories } from '#server/utils/mcp-categories'
+import { McpAuthError, requireMcpBearerToken, requireMcpScope } from '#server/utils/mcp-auth'
 import {
   consumeMcpToolRateLimit,
   createKvRateLimitStore,
   McpRateLimitExceededError,
-} from '../../utils/mcp-rate-limit'
-import { createMcpTokenStore } from '../../utils/mcp-token-store'
+} from '#server/utils/mcp-rate-limit'
+import { createMcpTokenStore } from '#server/utils/mcp-token-store'
 
 const listCategoriesQuerySchema = z.object({
   includeCounts: z.preprocess((value) => {

@@ -1,6 +1,7 @@
 import { defineServerAuth } from '@onmax/nuxt-better-auth/config'
 import { admin } from 'better-auth/plugins'
 import { eq } from 'drizzle-orm'
+// nuxt-better-auth 透過 jiti 載入本檔，jiti 不解析 `#shared` 虛擬 alias，只能用相對路徑
 import {
   createKnowledgeRuntimeConfig,
   isAdminEmailAllowlisted,

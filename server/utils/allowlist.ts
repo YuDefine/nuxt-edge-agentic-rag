@@ -2,7 +2,7 @@ import {
   isAdminEmailAllowlisted,
   normalizeEmailAddress,
   parseAdminEmailAllowlist,
-} from '../../shared/schemas/knowledge-runtime'
+} from '#shared/schemas/knowledge-runtime'
 
 export function normalizeAllowlistEmail(email: string): string {
   return normalizeEmailAddress(email)

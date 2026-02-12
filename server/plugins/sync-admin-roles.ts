@@ -1,6 +1,6 @@
 import { consola } from 'consola'
 import { inArray } from 'drizzle-orm'
-import { getRuntimeAdminAccess } from '../utils/knowledge-runtime'
+import { getRuntimeAdminAccess } from '#server/utils/knowledge-runtime'
 
 const log = consola.withTag('sync-admin-roles')
 

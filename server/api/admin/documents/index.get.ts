@@ -1,4 +1,4 @@
-import { createDocumentListStore } from '../../../utils/document-list-store'
+import { createDocumentListStore } from '#server/utils/document-list-store'
 
 export default defineEventHandler(async function listAdminDocumentsHandler(event) {
   await requireRuntimeAdminSession(event)

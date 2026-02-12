@@ -2,7 +2,7 @@ import {
   createKnowledgeRuntimeConfig,
   deriveAllowedAccessLevels,
   isAdminEmailAllowlisted,
-} from '../../shared/schemas/knowledge-runtime'
+} from '#shared/schemas/knowledge-runtime'
 
 export function getKnowledgeRuntimeConfig() {
   const runtimeConfig = useRuntimeConfig()

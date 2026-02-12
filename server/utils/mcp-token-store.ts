@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto'
 
-import type { McpTokenRecord } from '../../shared/types/knowledge'
+import type { McpTokenRecord } from '#shared/types/knowledge'
 
 import { hashMcpToken } from './mcp-auth'
 

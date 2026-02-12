@@ -1,4 +1,4 @@
-import type { DocumentRecord, DocumentVersionRecord } from '../../shared/types/knowledge'
+import type { DocumentRecord, DocumentVersionRecord } from '#shared/types/knowledge'
 
 import { prepareDocumentVersionAssets } from './document-preprocessing'
 

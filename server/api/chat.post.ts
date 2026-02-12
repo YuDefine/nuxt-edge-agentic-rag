@@ -1,19 +1,22 @@
 import { useLogger } from 'evlog'
 import { z } from 'zod'
 
-import { createCloudflareAiSearchClient, type CloudflareAiBindingLike } from '../utils/ai-search'
-import { getCloudflareEnv, getRequiredKvBinding } from '../utils/cloudflare-bindings'
-import { getD1Database } from '../utils/database'
-import { createCitationStore } from '../utils/citation-store'
-import { createKnowledgeAuditStore } from '../utils/knowledge-audit'
-import { createKnowledgeEvidenceStore } from '../utils/knowledge-evidence-store'
-import { retrieveVerifiedEvidence } from '../utils/knowledge-retrieval'
-import { getKnowledgeRuntimeConfig, getRuntimeAdminAccess } from '../utils/knowledge-runtime'
+import {
+  createCloudflareAiSearchClient,
+  type CloudflareAiBindingLike,
+} from '#server/utils/ai-search'
+import { getCloudflareEnv, getRequiredKvBinding } from '#server/utils/cloudflare-bindings'
+import { getD1Database } from '#server/utils/database'
+import { createCitationStore } from '#server/utils/citation-store'
+import { createKnowledgeAuditStore } from '#server/utils/knowledge-audit'
+import { createKnowledgeEvidenceStore } from '#server/utils/knowledge-evidence-store'
+import { retrieveVerifiedEvidence } from '#server/utils/knowledge-retrieval'
+import { getKnowledgeRuntimeConfig, getRuntimeAdminAccess } from '#server/utils/knowledge-runtime'
 import {
   ChatRateLimitExceededError,
   chatWithKnowledge,
   createChatKvRateLimitStore,
-} from '../utils/web-chat'
+} from '#server/utils/web-chat'
 
 const chatBodySchema = z
   .object({

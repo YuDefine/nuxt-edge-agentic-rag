@@ -1,9 +1,6 @@
-import { getD1Database } from '../../../../../utils/database'
-import {
-  publishDocumentVersion,
-  DocumentPublishStateError,
-} from '../../../../../utils/document-publish'
-import { createDocumentSyncStore } from '../../../../../utils/document-store'
+import { getD1Database } from '#server/utils/database'
+import { publishDocumentVersion, DocumentPublishStateError } from '#server/utils/document-publish'
+import { createDocumentSyncStore } from '#server/utils/document-store'
 
 export default defineEventHandler(async (event) => {
   await requireRuntimeAdminSession(event)

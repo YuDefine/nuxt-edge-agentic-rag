@@ -1,7 +1,7 @@
 import { useLogger } from 'evlog'
 
-import { getD1Database } from '../../utils/database'
-import { createMcpReplayStore } from '../../utils/mcp-replay'
+import { getD1Database } from '#server/utils/database'
+import { createMcpReplayStore } from '#server/utils/mcp-replay'
 
 export default defineEventHandler(async function getCitationHandler(event) {
   const log = useLogger(event)

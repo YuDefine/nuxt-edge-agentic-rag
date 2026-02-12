@@ -1,4 +1,4 @@
-import { deriveAllowedAccessLevels } from '../../shared/schemas/knowledge-runtime'
+import { deriveAllowedAccessLevels } from '#shared/schemas/knowledge-runtime'
 
 /**
  * Client-side role composable for UI context only.

@@ -1,7 +1,7 @@
 import { z } from 'zod'
-import { getD1Database } from '../../../utils/database'
-import { buildProvisionedMcpToken, createMcpTokenStore } from '../../../utils/mcp-token-store'
-import { requireRuntimeAdminSession } from '../../../utils/admin-session'
+import { getD1Database } from '#server/utils/database'
+import { buildProvisionedMcpToken, createMcpTokenStore } from '#server/utils/mcp-token-store'
+import { requireRuntimeAdminSession } from '#server/utils/admin-session'
 
 const bodySchema = z.object({
   name: z.string().min(1, 'Token name is required'),
