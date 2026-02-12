@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { eq } from 'drizzle-orm'
-import { getRuntimeAdminAccess } from '../../utils/knowledge-runtime'
+import { getRuntimeAdminAccess } from '#server/utils/knowledge-runtime'
 
 /**
  * Development-only login endpoint for testing.

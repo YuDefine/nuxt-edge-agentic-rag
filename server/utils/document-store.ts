@@ -1,4 +1,4 @@
-import type { DocumentRecord, DocumentVersionRecord } from '../../shared/types/knowledge'
+import type { DocumentRecord, DocumentVersionRecord } from '#shared/types/knowledge'
 
 interface D1PreparedStatementLike {
   bind(...values: unknown[]): D1PreparedStatementLike

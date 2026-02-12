@@ -1,4 +1,4 @@
-import type { DocumentRecord, DocumentVersionRecord } from '../../shared/types/knowledge'
+import type { DocumentRecord, DocumentVersionRecord } from '#shared/types/knowledge'
 
 export class DocumentPublishStateError extends Error {
   constructor(

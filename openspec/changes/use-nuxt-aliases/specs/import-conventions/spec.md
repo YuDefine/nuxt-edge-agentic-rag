@@ -17,6 +17,8 @@ The mapping between source directory and alias SHALL follow this table:
 
 Within-file-tree sibling imports (for example `./helpers` inside the same feature folder) MAY continue to use relative paths and are NOT covered by this requirement.
 
+**Exception: files loaded outside the Nuxt module resolver** (for example `server/auth.config.ts` loaded by `@onmax/nuxt-better-auth` via `jiti`) MUST use relative paths for cross-module imports, because their loader does not resolve Nuxt virtual aliases (`#shared`, `#server`). Such files SHALL include a one-line comment noting why the relative path is retained.
+
 #### Scenario: Server util imports shared schema
 
 - **WHEN** a file under `server/utils/` needs a symbol exported from `shared/schemas/knowledge-runtime.ts`

@@ -1,7 +1,7 @@
 import { eq, desc } from 'drizzle-orm'
-import type { DocumentWithCurrentVersion } from '../../shared/types/knowledge'
+import type { DocumentWithCurrentVersion } from '#shared/types/knowledge'
 
-export type { DocumentWithCurrentVersion } from '../../shared/types/knowledge'
+export type { DocumentWithCurrentVersion } from '#shared/types/knowledge'
 
 export interface DocumentVersion {
   id: string

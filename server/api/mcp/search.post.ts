@@ -1,20 +1,20 @@
 import { useLogger } from 'evlog'
 import { z } from 'zod'
 
-import { createCloudflareAiSearchClient } from '../../utils/ai-search'
-import { getCloudflareEnv, getRequiredKvBinding } from '../../utils/cloudflare-bindings'
-import { getD1Database } from '../../utils/database'
-import { createKnowledgeEvidenceStore } from '../../utils/knowledge-evidence-store'
-import { retrieveVerifiedEvidence } from '../../utils/knowledge-retrieval'
-import { getAllowedAccessLevels, getKnowledgeRuntimeConfig } from '../../utils/knowledge-runtime'
-import { McpAuthError, requireMcpBearerToken, requireMcpScope } from '../../utils/mcp-auth'
+import { createCloudflareAiSearchClient } from '#server/utils/ai-search'
+import { getCloudflareEnv, getRequiredKvBinding } from '#server/utils/cloudflare-bindings'
+import { getD1Database } from '#server/utils/database'
+import { createKnowledgeEvidenceStore } from '#server/utils/knowledge-evidence-store'
+import { retrieveVerifiedEvidence } from '#server/utils/knowledge-retrieval'
+import { getAllowedAccessLevels, getKnowledgeRuntimeConfig } from '#server/utils/knowledge-runtime'
+import { McpAuthError, requireMcpBearerToken, requireMcpScope } from '#server/utils/mcp-auth'
 import {
   consumeMcpToolRateLimit,
   createKvRateLimitStore,
   McpRateLimitExceededError,
-} from '../../utils/mcp-rate-limit'
-import { searchKnowledge } from '../../utils/mcp-search'
-import { createMcpTokenStore } from '../../utils/mcp-token-store'
+} from '#server/utils/mcp-rate-limit'
+import { searchKnowledge } from '#server/utils/mcp-search'
+import { createMcpTokenStore } from '#server/utils/mcp-token-store'
 
 const searchKnowledgeBodySchema = z.object({
   query: z

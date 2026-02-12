@@ -1,23 +1,26 @@
 import { useLogger } from 'evlog'
 import { z } from 'zod'
 
-import { createCloudflareAiSearchClient, type CloudflareAiBindingLike } from '../../utils/ai-search'
-import { createKnowledgeAuditStore } from '../../utils/knowledge-audit'
-import { createCitationStore } from '../../utils/citation-store'
-import { getCloudflareEnv, getRequiredKvBinding } from '../../utils/cloudflare-bindings'
-import { getD1Database } from '../../utils/database'
-import { createKnowledgeEvidenceStore } from '../../utils/knowledge-evidence-store'
-import { retrieveVerifiedEvidence } from '../../utils/knowledge-retrieval'
-import { getKnowledgeRuntimeConfig } from '../../utils/knowledge-runtime'
-import { askKnowledge, createMcpQueryLogStore } from '../../utils/mcp-ask'
-import { McpAuthError, requireMcpBearerToken, requireMcpScope } from '../../utils/mcp-auth'
+import {
+  createCloudflareAiSearchClient,
+  type CloudflareAiBindingLike,
+} from '#server/utils/ai-search'
+import { createKnowledgeAuditStore } from '#server/utils/knowledge-audit'
+import { createCitationStore } from '#server/utils/citation-store'
+import { getCloudflareEnv, getRequiredKvBinding } from '#server/utils/cloudflare-bindings'
+import { getD1Database } from '#server/utils/database'
+import { createKnowledgeEvidenceStore } from '#server/utils/knowledge-evidence-store'
+import { retrieveVerifiedEvidence } from '#server/utils/knowledge-retrieval'
+import { getKnowledgeRuntimeConfig } from '#server/utils/knowledge-runtime'
+import { askKnowledge, createMcpQueryLogStore } from '#server/utils/mcp-ask'
+import { McpAuthError, requireMcpBearerToken, requireMcpScope } from '#server/utils/mcp-auth'
 import {
   consumeMcpToolRateLimit,
   createKvRateLimitStore,
   McpRateLimitExceededError,
-} from '../../utils/mcp-rate-limit'
-import { createMcpTokenStore } from '../../utils/mcp-token-store'
-import { readZodBody } from '../../utils/read-zod-body'
+} from '#server/utils/mcp-rate-limit'
+import { createMcpTokenStore } from '#server/utils/mcp-token-store'
+import { readZodBody } from '#server/utils/read-zod-body'
 
 const askKnowledgeSchema = z
   .object({

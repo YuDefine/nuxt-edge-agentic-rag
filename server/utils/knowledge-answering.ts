@@ -1,4 +1,4 @@
-import type { KnowledgeGovernanceConfig } from '../../shared/schemas/knowledge-runtime'
+import type { KnowledgeGovernanceConfig } from '#shared/schemas/knowledge-runtime'
 import type { VerifiedKnowledgeEvidence } from './knowledge-retrieval'
 
 export async function answerKnowledgeQuery(

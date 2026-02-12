@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { createDocumentListStore } from '../../../utils/document-list-store'
+import { createDocumentListStore } from '#server/utils/document-list-store'
 
 const paramsSchema = z.object({
   id: z.string().uuid(),

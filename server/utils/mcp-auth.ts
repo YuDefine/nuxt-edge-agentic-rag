@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 
-import type { McpTokenRecord } from '../../shared/types/knowledge'
+import type { McpTokenRecord } from '#shared/types/knowledge'
 
 export class McpAuthError extends Error {
   constructor(

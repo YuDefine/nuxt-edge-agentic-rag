@@ -1,8 +1,8 @@
 import { z } from 'zod'
 
-import { getD1Database } from '../../utils/database'
-import { createDocumentSyncStore } from '../../utils/document-store'
-import { syncDocumentVersionSnapshot } from '../../utils/document-sync'
+import { getD1Database } from '#server/utils/database'
+import { createDocumentSyncStore } from '#server/utils/document-store'
+import { syncDocumentVersionSnapshot } from '#server/utils/document-sync'
 
 const syncDocumentSchema = z.object({
   accessLevel: z.enum(['internal', 'restricted']),

@@ -1,4 +1,4 @@
-import type { KnowledgeGovernanceConfig } from '../../shared/schemas/knowledge-runtime'
+import type { KnowledgeGovernanceConfig } from '#shared/schemas/knowledge-runtime'
 import { answerKnowledgeQuery } from './knowledge-answering'
 import { auditKnowledgeText } from './knowledge-audit'
 import { getAllowedAccessLevels } from './knowledge-runtime'

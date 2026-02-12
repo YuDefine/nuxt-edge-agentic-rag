@@ -1,7 +1,7 @@
 import { useLogger } from 'evlog'
 
-import { getD1Database } from '../../../utils/database'
-import { pruneKnowledgeRetentionWindow } from '../../../utils/knowledge-retention'
+import { getD1Database } from '#server/utils/database'
+import { pruneKnowledgeRetentionWindow } from '#server/utils/knowledge-retention'
 
 export default defineEventHandler(async function pruneRetentionHandler(event) {
   const log = useLogger(event)
