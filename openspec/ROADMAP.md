@@ -157,7 +157,7 @@ spectra unpark observability-and-debug
 
 ## Active Changes
 
-_last synced: 2026-04-18T03:39:18.453Z_
+_last synced: 2026-04-18T03:52:05.390Z_
 
 9 active changes (0 ready · 5 in progress · 4 draft · 0 blocked)
 
@@ -171,7 +171,7 @@ _(none)_
 - **bootstrap-v1-core-from-report** — 29/34 tasks (85%)
 - **governance-refinements** — 6/17 tasks (35%)
 - **test-coverage-and-automation** — 14/43 tasks (33%)
-- **use-nuxt-aliases** — 2/25 tasks (8%)
+- **use-nuxt-aliases** — 12/25 tasks (48%)
   - Specs: `admin-document-management-ui`, `web-chat-ui`
 
 ### Draft
