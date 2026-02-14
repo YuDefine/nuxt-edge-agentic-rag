@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { syncDocumentVersionSnapshot } from '../../server/utils/document-sync'
+import { syncDocumentVersionSnapshot } from '#server/utils/document-sync'
 
 describe('document sync', () => {
   it('creates a draft document, version snapshot, and source chunks for a finalized upload', async () => {

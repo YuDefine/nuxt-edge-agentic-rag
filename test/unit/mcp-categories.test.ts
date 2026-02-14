@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { createMcpCategoryStore, listCategories } from '../../server/utils/mcp-categories'
+import { createMcpCategoryStore, listCategories } from '#server/utils/mcp-categories'
 
 describe('mcp categories', () => {
   it('returns categories in stable name order and omits counts unless requested', async () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { assertNever } from '../../app/utils/assert-never'
+import { assertNever } from '~/utils/assert-never'
 
 describe('assertNever utility', () => {
   it('throws error with context when called', () => {

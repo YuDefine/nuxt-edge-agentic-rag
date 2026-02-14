@@ -4,7 +4,7 @@ import {
   hasRuntimeAdminAccess,
   normalizeAllowlistEmail,
   parseRuntimeAdminAllowlist,
-} from '../../server/utils/allowlist'
+} from '#server/utils/allowlist'
 
 describe('runtime admin allowlist', () => {
   it('normalizes emails by trimming surrounding whitespace and lowercasing', () => {

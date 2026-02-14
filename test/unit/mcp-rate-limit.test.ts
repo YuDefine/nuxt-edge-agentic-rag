@@ -4,7 +4,7 @@ import {
   McpRateLimitExceededError,
   consumeMcpToolRateLimit,
   createKvRateLimitStore,
-} from '../../server/utils/mcp-rate-limit'
+} from '#server/utils/mcp-rate-limit'
 
 describe('mcp rate limit', () => {
   it('consumes rate limits through a KV-backed store', async () => {

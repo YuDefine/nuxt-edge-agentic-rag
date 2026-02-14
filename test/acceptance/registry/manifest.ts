@@ -1,7 +1,7 @@
 import {
   createKnowledgeRuntimeConfig,
   type KnowledgeRuntimeConfigInput,
-} from '../../../shared/schemas/knowledge-runtime'
+} from '#shared/schemas/knowledge-runtime'
 
 export interface AcceptanceRegistryManifest {
   reportPath: string

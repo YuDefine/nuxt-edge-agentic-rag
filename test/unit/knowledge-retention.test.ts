@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { pruneKnowledgeRetentionWindow } from '../../server/utils/knowledge-retention'
+import { pruneKnowledgeRetentionWindow } from '#server/utils/knowledge-retention'
 
 describe('knowledge retention', () => {
   it('prunes expired audit records and scrubs expired or revoked MCP token metadata after 180 days', async () => {

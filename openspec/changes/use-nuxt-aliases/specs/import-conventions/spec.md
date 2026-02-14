@@ -15,7 +15,7 @@ The mapping between source directory and alias SHALL follow this table:
 | `test/`       | `server/`          | `#server/`            |
 | `test/`       | `shared/`          | `#shared/`            |
 
-Within-file-tree sibling imports (for example `./helpers` inside the same feature folder) MAY continue to use relative paths and are NOT covered by this requirement.
+Within-file-tree imports (for example `./helpers` inside the same feature folder, or `../acceptance/fixtures` from `test/integration/` into `test/acceptance/`) MAY continue to use relative paths and are NOT covered by this requirement. A "file tree" here means one of the top-level source roots (`app/`, `server/`, `shared/`, `test/`)—imports that stay inside the same root, regardless of depth, are considered within-tree.
 
 **Exception: files loaded outside the Nuxt module resolver** (for example `server/auth.config.ts` loaded by `@onmax/nuxt-better-auth` via `jiti`) MUST use relative paths for cross-module imports, because their loader does not resolve Nuxt virtual aliases (`#shared`, `#server`). Such files SHALL include a one-line comment noting why the relative path is retained.
 

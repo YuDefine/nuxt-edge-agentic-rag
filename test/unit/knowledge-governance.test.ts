@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { createKnowledgeRuntimeConfig } from '../../shared/schemas/knowledge-runtime'
+import { createKnowledgeRuntimeConfig } from '#shared/schemas/knowledge-runtime'
 
 describe('knowledge governance config snapshot', () => {
   it('derives a stable config snapshot version from the governed runtime config', () => {

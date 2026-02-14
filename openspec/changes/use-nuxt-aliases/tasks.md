@@ -15,18 +15,18 @@
 - [x] 2.7 跑 `pnpm test`（所有 project）全綠（與 batch 1 baseline 完全一致：44 passed / 3 pre-existing failed）
 - [x] 2.8 跑 `pnpm lint` 全綠（與 baseline 完全一致：1 pre-existing warning 不相關）
 - [x] 2.9 搜尋殘留：`grep -rE "from ['\"]\.\.\/" app/ server/ shared/` 應只剩 sibling 相對路徑（`./xxx`）或本次規則允許的 within-folder 匯入
-- [ ] 2.10 Commit 批次 2
+- [x] 2.10 Commit 批次 2
 
 ## 3. 批次 3：test/ 導入 alias（Alias-based cross-module imports 第二階段）
 
-- [ ] 3.1 [P] 改 `test/unit/**/*.ts` 中 25 處 `../../server/utils/...` 為 `#server/utils/...`
-- [ ] 3.2 [P] 改 `test/unit/**/*.ts` 中 16 處 `../../shared/...` 為 `#shared/...`
-- [ ] 3.3 [P] 改 `test/unit/**/*.ts` 中 2 處 `../../app/utils/assert-never` 為 `~/utils/assert-never`
-- [ ] 3.4 [P] 改 `test/integration/**/*.ts` 的 `../../` 匯入為對應 alias
-- [ ] 3.5 [P] 改 `test/acceptance/**/*.ts` 與 `test/nuxt/**/*.ts`（若有）的 `../../` 匯入為對應 alias
-- [ ] 3.6 跑 `pnpm test`（所有 project）全綠，確認 Vitest alias parity with Nuxt runtime 生效
-- [ ] 3.7 跑 `pnpm lint` 與 `pnpm typecheck` 全綠
-- [ ] 3.8 搜尋殘留：`grep -rE "from ['\"]\.\.\/" test/` 應只剩 sibling 相對路徑（`./xxx`）
+- [x] 3.1 [P] 改 `test/unit/**/*.ts` 中 25 處 `../../server/utils/...` 為 `#server/utils/...`
+- [x] 3.2 [P] 改 `test/unit/**/*.ts` 中 16 處 `../../shared/...` 為 `#shared/...`
+- [x] 3.3 [P] 改 `test/unit/**/*.ts` 中 2 處 `../../app/utils/assert-never` 為 `~/utils/assert-never`
+- [x] 3.4 [P] 改 `test/integration/**/*.ts` 的 `../../` 匯入為對應 alias（`../acceptance/**` 保留為同 tree sibling）
+- [x] 3.5 [P] 改 `test/acceptance/**/*.ts` 的 `../../../` 匯入為對應 alias（`test/nuxt/` 目錄不存在，略過）
+- [x] 3.6 跑 `pnpm test`（所有 project）全綠，確認 Vitest alias parity with Nuxt runtime 生效（44 passed / 3 pre-existing 失敗 與 baseline 完全一致）
+- [x] 3.7 跑 `pnpm lint` 與 `pnpm typecheck` 全綠（與 baseline 一致）
+- [x] 3.8 搜尋殘留：`grep -rE "from ['\"]\.\.\/" test/` 應只剩 sibling 相對路徑（`./xxx`）（實際殘留皆為 test/ 同 tree 內 sibling：integration → acceptance、fixtures → registry；spec 已更新澄清同 tree sibling 允許）
 - [ ] 3.9 Commit 批次 3
 
 ## 4. 收尾驗證

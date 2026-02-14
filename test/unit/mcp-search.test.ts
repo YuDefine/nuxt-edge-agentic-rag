@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { searchKnowledge } from '../../server/utils/mcp-search'
+import { searchKnowledge } from '#server/utils/mcp-search'
 
 describe('mcp search', () => {
   it('forwards allowed access levels into retrieval and returns only safe result fields', async () => {

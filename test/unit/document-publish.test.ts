@@ -1,9 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import {
-  DocumentPublishStateError,
-  publishDocumentVersion,
-} from '../../server/utils/document-publish'
+import { DocumentPublishStateError, publishDocumentVersion } from '#server/utils/document-publish'
 
 describe('document publish', () => {
   it('publishes an indexed replacement version and atomically switches current version', async () => {

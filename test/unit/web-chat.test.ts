@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { createKnowledgeRuntimeConfig } from '../../shared/schemas/knowledge-runtime'
+import { createKnowledgeRuntimeConfig } from '#shared/schemas/knowledge-runtime'
 import {
   ChatRateLimitExceededError,
   chatWithKnowledge,
   createChatKvRateLimitStore,
-} from '../../server/utils/web-chat'
+} from '#server/utils/web-chat'
 
 describe('web chat', () => {
   it('consumes a per-user chat rate limit and reuses the knowledge answering core', async () => {

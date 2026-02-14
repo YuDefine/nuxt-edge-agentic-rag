@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { createKnowledgeRuntimeConfig } from '../../shared/schemas/knowledge-runtime'
-import { auditKnowledgeText, createKnowledgeAuditStore } from '../../server/utils/knowledge-audit'
+import { createKnowledgeRuntimeConfig } from '#shared/schemas/knowledge-runtime'
+import { auditKnowledgeText, createKnowledgeAuditStore } from '#server/utils/knowledge-audit'
 
 describe('knowledge audit', () => {
   it('blocks credential-bearing input and produces a marker instead of persisting raw text', () => {

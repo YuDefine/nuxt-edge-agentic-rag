@@ -1,6 +1,6 @@
 import { Buffer } from 'node:buffer'
 
-import type { UploadedObjectMetadata } from '../../../server/utils/staged-upload'
+import type { UploadedObjectMetadata } from '#server/utils/staged-upload'
 
 interface D1ExecutionCall {
   method: 'all' | 'first' | 'run'

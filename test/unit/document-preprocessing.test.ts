@@ -4,7 +4,7 @@ import {
   MissingVersionReplayAssetsError,
   prepareDocumentVersionAssets,
   validateVersionReplayAssets,
-} from '../../server/utils/document-preprocessing'
+} from '#server/utils/document-preprocessing'
 
 describe('document preprocessing', () => {
   it('builds normalized text, replay chunks, and smoke probes from markdown', async () => {

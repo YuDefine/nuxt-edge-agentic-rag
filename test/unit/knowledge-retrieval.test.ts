@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { createKnowledgeRuntimeConfig } from '../../shared/schemas/knowledge-runtime'
+import { createKnowledgeRuntimeConfig } from '#shared/schemas/knowledge-runtime'
 import {
   normalizeKnowledgeQuery,
   retrieveVerifiedEvidence,
-} from '../../server/utils/knowledge-retrieval'
+} from '#server/utils/knowledge-retrieval'
 
 describe('knowledge retrieval', () => {
   it('normalizes category hints, abbreviations, whitespace, and dates without model calls', () => {

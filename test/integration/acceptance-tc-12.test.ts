@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { createKnowledgeRuntimeConfig } from '../../shared/schemas/knowledge-runtime'
+import { createKnowledgeRuntimeConfig } from '#shared/schemas/knowledge-runtime'
 import { loadAcceptanceFixtureDataset } from '../acceptance/fixtures/loader'
 import { createAcceptanceActorFixture } from '../acceptance/helpers/auth'
 import {

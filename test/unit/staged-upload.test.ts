@@ -5,7 +5,7 @@ import {
   signR2UploadUrl,
   StagedUploadValidationError,
   validateStagedUploadMetadata,
-} from '../../server/utils/staged-upload'
+} from '#server/utils/staged-upload'
 
 describe('staged upload', () => {
   it('creates a signed upload target scoped to the current environment and admin', async () => {

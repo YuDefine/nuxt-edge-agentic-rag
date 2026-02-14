@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
-import { hasRuntimeAdminAccess } from '../../server/utils/allowlist'
-import { requireMcpScope } from '../../server/utils/mcp-auth'
+import { hasRuntimeAdminAccess } from '#server/utils/allowlist'
+import { requireMcpScope } from '#server/utils/mcp-auth'
 
 interface AuthModule {
   ACCEPTANCE_ACTOR_PRESET_VALUES: string[]
