@@ -1,5 +1,6 @@
 import { defineServerAuth } from '@onmax/nuxt-better-auth/config'
 import { admin } from 'better-auth/plugins'
+import { consola } from 'consola'
 import { eq } from 'drizzle-orm'
 // nuxt-better-auth 透過 jiti 載入本檔，jiti 不解析 `#shared` 虛擬 alias，只能用相對路徑
 import {
@@ -7,6 +8,8 @@ import {
   isAdminEmailAllowlisted,
   normalizeEmailAddress,
 } from '../shared/schemas/knowledge-runtime'
+
+const authLog = consola.withTag('auth')
 
 export default defineServerAuth(({ db, runtimeConfig }) => {
   const knowledge = createKnowledgeRuntimeConfig(runtimeConfig.knowledge)
@@ -92,7 +95,7 @@ export default defineServerAuth(({ db, runtimeConfig }) => {
                   set: { emailNormalized, roleSnapshot: expectedRole, adminSource },
                 })
             } catch (error) {
-              console.error('[auth] user_profiles sync failed', {
+              authLog.error('user_profiles sync failed', {
                 userId: session.userId,
                 error: error instanceof Error ? error.message : String(error),
               })
