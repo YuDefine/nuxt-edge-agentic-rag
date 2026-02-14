@@ -8,7 +8,7 @@ import {
   decodeBase64ToArrayBuffer,
   isNotFoundError,
   loadKnowledgeUploadsConfig,
-} from '../../server/utils/r2-object-access'
+} from '#server/utils/r2-object-access'
 
 interface FakeBucket {
   get: ReturnType<typeof vi.fn>

@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest'
 
-import { createKnowledgeRuntimeConfig } from '../../shared/schemas/knowledge-runtime'
-import { createCloudflareAiSearchClient } from '../../server/utils/ai-search'
-import { hashMcpToken } from '../../server/utils/mcp-auth'
-import { createMcpTokenStore } from '../../server/utils/mcp-token-store'
-import { createChatKvRateLimitStore } from '../../server/utils/web-chat'
+import { createKnowledgeRuntimeConfig } from '#shared/schemas/knowledge-runtime'
+import { createCloudflareAiSearchClient } from '#server/utils/ai-search'
+import { hashMcpToken } from '#server/utils/mcp-auth'
+import { createMcpTokenStore } from '#server/utils/mcp-token-store'
+import { createChatKvRateLimitStore } from '#server/utils/web-chat'
 
 interface BindingsModule {
   createAiSearchBindingFake(input?: Record<string, unknown>): {

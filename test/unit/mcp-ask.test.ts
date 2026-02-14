@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { createKnowledgeRuntimeConfig } from '../../shared/schemas/knowledge-runtime'
-import { askKnowledge } from '../../server/utils/mcp-ask'
+import { createKnowledgeRuntimeConfig } from '#shared/schemas/knowledge-runtime'
+import { askKnowledge } from '#server/utils/mcp-ask'
 
 describe('mcp ask', () => {
   it('returns a business refusal result instead of translating it into an auth error', async () => {

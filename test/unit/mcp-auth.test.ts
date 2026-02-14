@@ -5,7 +5,7 @@ import {
   McpAuthError,
   requireMcpBearerToken,
   requireMcpScope,
-} from '../../server/utils/mcp-auth'
+} from '#server/utils/mcp-auth'
 
 describe('mcp auth', () => {
   it('authenticates a valid bearer token by its hash and returns usable scopes', async () => {

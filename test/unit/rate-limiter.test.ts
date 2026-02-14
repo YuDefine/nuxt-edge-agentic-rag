@@ -5,7 +5,7 @@ import {
   FIXED_WINDOW_RATE_LIMIT_PRESETS,
   type FixedWindowRateLimitRecord,
   type FixedWindowRateLimitStore,
-} from '../../server/utils/rate-limiter'
+} from '#server/utils/rate-limiter'
 
 class FakeRateLimitStore implements FixedWindowRateLimitStore {
   private readonly records = new Map<string, FixedWindowRateLimitRecord>()

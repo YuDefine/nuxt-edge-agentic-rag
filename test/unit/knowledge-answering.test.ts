@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { createKnowledgeRuntimeConfig } from '../../shared/schemas/knowledge-runtime'
-import { answerKnowledgeQuery } from '../../server/utils/knowledge-answering'
+import { createKnowledgeRuntimeConfig } from '#shared/schemas/knowledge-runtime'
+import { answerKnowledgeQuery } from '#server/utils/knowledge-answering'
 
 describe('knowledge answering', () => {
   it('bypasses judge for high-confidence evidence and persists citations', async () => {

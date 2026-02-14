@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { McpReplayError, getDocumentChunk } from '../../server/utils/mcp-replay'
+import { McpReplayError, getDocumentChunk } from '#server/utils/mcp-replay'
 
 describe('mcp replay', () => {
   it('replays a historical citation snapshot that is still within retention', async () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { buildProvisionedMcpToken } from '../../server/utils/mcp-token-store'
+import { buildProvisionedMcpToken } from '#server/utils/mcp-token-store'
 
 describe('mcp token store', () => {
   it('provisions a plaintext token once while persisting only its hash', () => {

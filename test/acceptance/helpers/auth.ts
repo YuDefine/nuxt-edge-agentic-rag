@@ -1,9 +1,9 @@
 import {
   MCP_TOKEN_SCOPE_VALUES,
   deriveAllowedAccessLevels,
-} from '../../../shared/schemas/knowledge-runtime'
-import { hasRuntimeAdminAccess } from '../../../server/utils/allowlist'
-import { buildProvisionedMcpToken } from '../../../server/utils/mcp-token-store'
+} from '#shared/schemas/knowledge-runtime'
+import { hasRuntimeAdminAccess } from '#server/utils/allowlist'
+import { buildProvisionedMcpToken } from '#server/utils/mcp-token-store'
 
 export const ACCEPTANCE_ACTOR_PRESET_VALUES = ['user', 'admin', 'restricted', 'no-scope'] as const
 
