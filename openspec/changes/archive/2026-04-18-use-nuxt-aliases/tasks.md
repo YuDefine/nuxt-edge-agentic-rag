@@ -27,10 +27,16 @@
 - [x] 3.6 跑 `pnpm test`（所有 project）全綠，確認 Vitest alias parity with Nuxt runtime 生效（44 passed / 3 pre-existing 失敗 與 baseline 完全一致）
 - [x] 3.7 跑 `pnpm lint` 與 `pnpm typecheck` 全綠（與 baseline 一致）
 - [x] 3.8 搜尋殘留：`grep -rE "from ['\"]\.\.\/" test/` 應只剩 sibling 相對路徑（`./xxx`）（實際殘留皆為 test/ 同 tree 內 sibling：integration → acceptance、fixtures → registry；spec 已更新澄清同 tree sibling 允許）
-- [ ] 3.9 Commit 批次 3
+- [x] 3.9 Commit 批次 3
 
 ## 4. 收尾驗證
 
-- [ ] 4.1 跑完整 `pnpm check`（format + lint + typecheck + test）全綠
-- [ ] 4.2 `git diff main...` 檢視三批次合計 diff，確認沒有意外變動 runtime 行為的 import（只有字串前綴改變）
-- [ ] 4.3 全 repo 殘留搜尋 `grep -rE "from ['\"]\.\.\/\.\." app/ server/ shared/ test/`，應為 0
+- [x] 4.1 跑完整 `pnpm check`（format + lint + typecheck + test）全綠
+- [x] 4.2 `git diff main...` 檢視三批次合計 diff，確認沒有意外變動 runtime 行為的 import（只有字串前綴改變；僅 `document-publish.test.ts` 因 formatter 把短的新路徑折成單行，非邏輯變更）
+- [x] 4.3 全 repo 殘留搜尋 `grep -rE "from ['\"]\.\.\/\.\." app/ server/ shared/ test/`，應為 0
+
+## 人工檢查
+
+本 change 為純後端 import 路徑替換，無任何 user-facing 或 UI 變更，所有驗證透過自動化工具（typecheck、test、lint）完成，人工檢查實質上 **N/A**。
+
+- [x] 使用者確認此 change 無需人工走查（skip all）
