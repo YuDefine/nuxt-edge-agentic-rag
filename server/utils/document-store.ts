@@ -314,10 +314,11 @@ export function createDocumentSyncStore(database: D1DatabaseLike) {
     async publishVersionAtomic(input: {
       documentId: string
       previousCurrentVersionId: string | null
+      promoteToActive: boolean
       publishedAt: string
       versionId: string
     }): Promise<DocumentVersionRecord> {
-      await database.batch([
+      const statements: D1PreparedStatementLike[] = [
         database
           .prepare(
             [
@@ -343,7 +344,23 @@ export function createDocumentSyncStore(database: D1DatabaseLike) {
             )
           )
           .bind(input.versionId, input.publishedAt, input.documentId),
-      ])
+      ]
+
+      if (input.promoteToActive) {
+        statements.push(
+          database
+            .prepare(
+              [
+                'UPDATE documents',
+                "SET status = 'active', updated_at = ?",
+                "WHERE id = ? AND status = 'draft'",
+              ].join('\n')
+            )
+            .bind(input.publishedAt, input.documentId)
+        )
+      }
+
+      await database.batch(statements)
 
       const publishedVersion = await this.findVersionById(input.versionId)
 
