@@ -16,6 +16,7 @@ export interface DocumentPublishStore {
   publishVersionAtomic(input: {
     documentId: string
     previousCurrentVersionId: string | null
+    promoteToActive: boolean
     publishedAt: string
     versionId: string
   }): Promise<DocumentVersionRecord>
@@ -41,7 +42,17 @@ export async function publishDocumentVersion(
     throw new DocumentPublishStateError('Document was not found', 404)
   }
 
-  if (document.status !== 'active') {
+  if (document.status === 'archived') {
+    throw new DocumentPublishStateError(
+      'Cannot publish a version: the document has been archived',
+      409
+    )
+  }
+
+  const isFirstPublish = document.currentVersionId === null
+  const canPromoteDraft = document.status === 'draft' && isFirstPublish
+
+  if (document.status !== 'active' && !canPromoteDraft) {
     throw new DocumentPublishStateError('Only active documents can publish versions', 409)
   }
 
@@ -70,6 +81,7 @@ export async function publishDocumentVersion(
   const publishedVersion = await options.store.publishVersionAtomic({
     documentId: document.id,
     previousCurrentVersionId: document.currentVersionId,
+    promoteToActive: canPromoteDraft,
     publishedAt,
     versionId: version.id,
   })
