@@ -72,16 +72,66 @@ function missingSigner(): never {
   throw new Error('A staged upload signer must be provided')
 }
 
-function sanitizeFilename(filename: string): string {
-  const candidate = filename.split(/[/\\]/).at(-1)?.trim().toLowerCase() ?? ''
-  const normalized = candidate
-    .normalize('NFKD')
-    .replace(/[^\p{ASCII}]/gu, '')
-    .replace(/[^a-z0-9._-]+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '')
+/* eslint-disable no-control-regex -- intentional: filenames must reject control chars */
+const FORBIDDEN_FILENAME_CHARS =
+  /[/\\:*?"<>|\u0000-\u001F\u007F\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/g
+/* eslint-enable no-control-regex */
+const MAX_FILENAME_BYTES = 255
+const FILENAME_ENCODER = new TextEncoder()
 
-  return normalized || 'upload.bin'
+function splitNameAndExt(filename: string): { base: string; ext: string } {
+  const dotIndex = filename.lastIndexOf('.')
+  // Leading dot only (e.g. ".pdf"): treat as extension-only, empty base.
+  if (dotIndex === 0 && filename.length > 1) {
+    return { base: '', ext: filename.slice(1) }
+  }
+  // No dot, or trailing dot — no extension.
+  if (dotIndex <= 0 || dotIndex === filename.length - 1) {
+    return { base: filename, ext: '' }
+  }
+  return { base: filename.slice(0, dotIndex), ext: filename.slice(dotIndex + 1) }
+}
+
+function truncateToBytes(value: string, maxBytes: number): string {
+  if (maxBytes <= 0) return ''
+  const encoded = FILENAME_ENCODER.encode(value)
+  if (encoded.length <= maxBytes) return value
+
+  // Cut at maxBytes, then back off to a valid UTF-8 codepoint boundary.
+  // UTF-8 continuation bytes match 0b10xxxxxx (0x80–0xBF).
+  let cut = maxBytes
+  while (cut > 0 && ((encoded[cut] ?? 0) & 0xc0) === 0x80) {
+    cut--
+  }
+  return new TextDecoder().decode(encoded.subarray(0, cut))
+}
+
+function fallbackFilename(uploadId: string, safeExt: string): string {
+  const base = `upload-${uploadId.replace(/^upload-/, '').slice(0, 8)}`
+  return safeExt ? `${base}.${safeExt}` : `${base}.bin`
+}
+
+function sanitizeFilename(filename: string, uploadId: string): string {
+  const lastSegment = filename.split(/[/\\]/).at(-1)?.normalize('NFC').trim() ?? ''
+  const cleaned = lastSegment.replace(FORBIDDEN_FILENAME_CHARS, '').trim()
+
+  // Pure-dot names (`.`, `..`, `...`) survive cleaning but are unsafe as filesystem
+  // path segments and as Content-Disposition values; force fallback.
+  if (/^\.+$/.test(cleaned)) return fallbackFilename(uploadId, '')
+
+  const { base, ext } = splitNameAndExt(cleaned)
+  const safeExt = ext.replace(FORBIDDEN_FILENAME_CHARS, '')
+  const trimmedBase = base.trim()
+
+  if (!trimmedBase) return fallbackFilename(uploadId, safeExt)
+
+  const extWithDot = safeExt ? `.${safeExt}` : ''
+  const extByteLength = FILENAME_ENCODER.encode(extWithDot).length
+  const truncatedBase = truncateToBytes(trimmedBase, MAX_FILENAME_BYTES - extByteLength)
+
+  if (!truncatedBase) return fallbackFilename(uploadId, safeExt)
+
+  return `${truncatedBase}${extWithDot}`
 }
 
 function encodeBase64(value: ArrayBuffer): string {
@@ -94,7 +144,7 @@ export function createStagedUploadObjectKey(input: {
   filename: string
   uploadId: string
 }): string {
-  const safeFilename = sanitizeFilename(input.filename)
+  const safeFilename = sanitizeFilename(input.filename, input.uploadId)
 
   return ['staged', input.environment, input.adminUserId, input.uploadId, safeFilename].join('/')
 }
