@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import {
+  createStagedUploadObjectKey,
   createStagedUploadTarget,
   signR2UploadUrl,
   StagedUploadValidationError,
@@ -31,7 +32,7 @@ describe('staged upload', () => {
 
     expect(result).toEqual({
       expiresAt: expect.any(String),
-      objectKey: 'staged/local/admin-1/upload-123/quarterly-report.md',
+      objectKey: 'staged/local/admin-1/upload-123/Quarterly Report.md',
       requiredHeaders: {
         'content-type': 'text/markdown',
         'x-amz-checksum-sha256': 'c2hhMjU2LWRpZ2VzdA==',
@@ -46,8 +47,94 @@ describe('staged upload', () => {
       checksumSha256: 'c2hhMjU2LWRpZ2VzdA==',
       expiresInSeconds: 600,
       mimeType: 'text/markdown',
-      objectKey: 'staged/local/admin-1/upload-123/quarterly-report.md',
+      objectKey: 'staged/local/admin-1/upload-123/Quarterly Report.md',
       size: 128,
+    })
+  })
+
+  describe('sanitize filename via createStagedUploadObjectKey', () => {
+    function keyFor(filename: string, uploadId = 'upload-abcdef12') {
+      return createStagedUploadObjectKey({
+        adminUserId: 'admin-1',
+        environment: 'local',
+        filename,
+        uploadId,
+      })
+    }
+
+    it('preserves Chinese, Japanese, accented Latin, and emoji characters in filenames', () => {
+      expect(keyFor('採購流程.pdf')).toBe('staged/local/admin-1/upload-abcdef12/採購流程.pdf')
+      expect(keyFor('日本語のドキュメント.md')).toBe(
+        'staged/local/admin-1/upload-abcdef12/日本語のドキュメント.md'
+      )
+      expect(keyFor('café-menü.txt')).toBe('staged/local/admin-1/upload-abcdef12/café-menü.txt')
+      expect(keyFor('🚀launch-plan.pdf')).toBe(
+        'staged/local/admin-1/upload-abcdef12/🚀launch-plan.pdf'
+      )
+    })
+
+    it('strips path separators, shell metacharacters, and control chars while preserving the extension', () => {
+      // path separators are split off, taking only the trailing segment
+      expect(keyFor('report/2026:Q1*.pdf')).toBe('staged/local/admin-1/upload-abcdef12/2026Q1.pdf')
+      // backslash separator on Windows-style path
+      expect(keyFor('docs\\plan?.md')).toBe('staged/local/admin-1/upload-abcdef12/plan.md')
+      // shell metacharacters get dropped from the bare filename
+      expect(keyFor('a"b<c>d|e.txt')).toBe('staged/local/admin-1/upload-abcdef12/abcde.txt')
+      // control characters U+0000–U+001F and U+007F get dropped
+      expect(keyFor('plan\u0001\u0007\u007f.md')).toBe(
+        'staged/local/admin-1/upload-abcdef12/plan.md'
+      )
+      // bidi/zero-width chars (RLO spoofing, ZWSP/BOM) get dropped
+      expect(keyFor('evil\u202Efdp.exe')).toBe('staged/local/admin-1/upload-abcdef12/evilfdp.exe')
+      expect(keyFor('a\u200Bb\uFEFFc.txt')).toBe('staged/local/admin-1/upload-abcdef12/abc.txt')
+    })
+
+    it('forces fallback when sanitized result is only dots', () => {
+      const uploadId = 'upload-feedface'
+      // `.`, `..`, `...` are valid filesystem-traversal symbols, not real names
+      expect(keyFor('.', uploadId)).toBe('staged/local/admin-1/upload-feedface/upload-feedface.bin')
+      expect(keyFor('..', uploadId)).toBe(
+        'staged/local/admin-1/upload-feedface/upload-feedface.bin'
+      )
+      expect(keyFor('...', uploadId)).toBe(
+        'staged/local/admin-1/upload-feedface/upload-feedface.bin'
+      )
+    })
+
+    it('falls back to a deterministic generated name when sanitize leaves only the extension or empty', () => {
+      const sameUpload = 'upload-cafebabe'
+      // Empty after sanitize → fallback uses upload-id prefix and .bin extension
+      expect(keyFor('', sameUpload)).toBe(
+        'staged/local/admin-1/upload-cafebabe/upload-cafebabe.bin'
+      )
+      // Only an extension survives → preserve the extension, generate base from upload id
+      expect(keyFor('.pdf', sameUpload)).toBe(
+        'staged/local/admin-1/upload-cafebabe/upload-cafebabe.pdf'
+      )
+      // Only forbidden chars + extension → fallback
+      expect(keyFor('<>|.md', sameUpload)).toBe(
+        'staged/local/admin-1/upload-cafebabe/upload-cafebabe.md'
+      )
+      // Same uploadId → same fallback (deterministic)
+      expect(keyFor('.pdf', sameUpload)).toBe(keyFor('.pdf', sameUpload))
+      // Different uploadId → different fallback
+      expect(keyFor('.pdf', 'upload-deadbeef')).not.toBe(keyFor('.pdf', 'upload-cafebabe'))
+    })
+
+    it('truncates the base name when the UTF-8 byte length exceeds 255 while preserving the extension', () => {
+      // Each Chinese char is 3 bytes UTF-8; 100 chars = 300 bytes > 255 limit
+      const longName = '採'.repeat(100) + '.pdf'
+      const key = keyFor(longName)
+      const filename = key.split('/').at(-1) ?? ''
+
+      // Extension preserved
+      expect(filename.endsWith('.pdf')).toBe(true)
+      // Total UTF-8 bytes within 255
+      expect(new TextEncoder().encode(filename).length).toBeLessThanOrEqual(255)
+      // Base name still has Chinese content (truncated, not emptied)
+      const base = filename.slice(0, -'.pdf'.length)
+      expect(base.length).toBeGreaterThan(0)
+      expect(base).toMatch(/^採+$/)
     })
   })
 
