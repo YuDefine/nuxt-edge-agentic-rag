@@ -1,5 +1,9 @@
 <script setup lang="ts">
-  import type { DocumentWithAllVersions } from '~~/server/utils/document-list-store'
+  import type {
+    DocumentVersion,
+    DocumentWithAllVersions,
+  } from '~~/server/utils/document-list-store'
+  import { assertNever } from '~~/shared/utils/assert-never'
 
   /**
    * Admin document detail page - requires admin role.
@@ -10,6 +14,7 @@
   })
 
   const route = useRoute()
+  const router = useRouter()
   const documentId = computed(() => route.params.id as string)
 
   const { data, status, error, refresh } = await useFetch<{ data: DocumentWithAllVersions }>(
@@ -20,6 +25,19 @@
   const isLoading = computed(() => status.value === 'pending')
   const hasError = computed(() => status.value === 'error')
 
+  const lifecycle = useDocumentLifecycle()
+
+  type PendingAction = { kind: 'delete' | 'archive' | 'unarchive' }
+  const pendingAction = ref<PendingAction | null>(null)
+  const confirmOpen = ref(false)
+  const retryingVersionId = ref<string | null>(null)
+
+  const hasPublishedHistory = computed(() =>
+    (document.value?.versions ?? []).some((v) => v.publishedAt !== null)
+  )
+
+  const versionCount = computed(() => document.value?.versions.length ?? 0)
+
   function formatDate(dateString: string): string {
     return new Date(dateString).toLocaleString('zh-TW', {
       year: 'numeric',
@@ -28,6 +46,66 @@
       hour: '2-digit',
       minute: '2-digit',
     })
+  }
+
+  function canShowRetry(version: DocumentVersion): boolean {
+    return version.syncStatus === 'pending' || version.syncStatus === 'failed'
+  }
+
+  // 此按鈕只會在 syncStatus ∈ {pending, failed} 時 render（見 template 的 v-else-if="canShowRetry"），
+  // 因此只需判斷是否為目前正在重試的那一列。
+  function isRetryDisabled(version: DocumentVersion): boolean {
+    return retryingVersionId.value === version.id
+  }
+
+  async function handleRetrySync(version: DocumentVersion) {
+    if (!document.value) return
+    retryingVersionId.value = version.id
+    const result = await lifecycle.retrySync(document.value.id, version.id)
+    retryingVersionId.value = null
+    if (result.ok) await refresh()
+  }
+
+  function openConfirm(kind: PendingAction['kind']) {
+    pendingAction.value = { kind }
+    confirmOpen.value = true
+  }
+
+  async function runLifecycleAction(kind: PendingAction['kind'], targetId: string) {
+    switch (kind) {
+      case 'delete':
+        return lifecycle.deleteDocument(targetId)
+      case 'archive':
+        return lifecycle.archive(targetId)
+      case 'unarchive':
+        return lifecycle.unarchive(targetId)
+      default:
+        return assertNever(kind, 'admin.documents[id].runLifecycleAction')
+    }
+  }
+
+  async function handleConfirm() {
+    if (!pendingAction.value || !document.value) return
+    const doc = document.value
+    const completedKind = pendingAction.value.kind
+
+    const result = await runLifecycleAction(completedKind, doc.id)
+
+    if (result.ok) {
+      confirmOpen.value = false
+      pendingAction.value = null
+
+      if (completedKind === 'delete') {
+        await router.push('/admin/documents')
+      } else {
+        await refresh()
+      }
+    }
+  }
+
+  function handleCancel() {
+    confirmOpen.value = false
+    pendingAction.value = null
   }
 </script>
 
@@ -98,10 +176,52 @@
 
     <!-- Content -->
     <template v-else-if="document">
-      <!-- Document info -->
-      <div>
-        <h1 class="text-2xl font-bold text-default">{{ document.title }}</h1>
-        <p class="mt-1 text-sm text-muted">{{ document.slug }}</p>
+      <!-- Document info + toolbar -->
+      <div class="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 class="text-2xl font-bold text-default">{{ document.title }}</h1>
+          <p class="mt-1 text-sm text-muted">{{ document.slug }}</p>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-2">
+          <!-- draft + no published history → delete -->
+          <UButton
+            v-if="document.status === 'draft' && !hasPublishedHistory"
+            color="error"
+            variant="outline"
+            size="sm"
+            icon="i-lucide-trash-2"
+            @click="openConfirm('delete')"
+          >
+            刪除
+          </UButton>
+
+          <!-- draft with published history OR active → archive -->
+          <UButton
+            v-if="
+              (document.status === 'draft' && hasPublishedHistory) || document.status === 'active'
+            "
+            color="neutral"
+            variant="outline"
+            size="sm"
+            icon="i-lucide-archive"
+            @click="openConfirm('archive')"
+          >
+            封存
+          </UButton>
+
+          <!-- archived → unarchive -->
+          <UButton
+            v-if="document.status === 'archived'"
+            color="neutral"
+            variant="outline"
+            size="sm"
+            icon="i-lucide-archive-restore"
+            @click="openConfirm('unarchive')"
+          >
+            解除封存
+          </UButton>
+        </div>
       </div>
 
       <!-- Metadata card -->
@@ -130,7 +250,7 @@
             <p class="mt-1 text-sm text-default">{{ formatDate(document.updatedAt) }}</p>
           </div>
           <div v-if="document.archivedAt">
-            <p class="text-xs font-medium text-muted">歸檔時間</p>
+            <p class="text-xs font-medium text-muted">封存時間</p>
             <p class="mt-1 text-sm text-default">{{ formatDate(document.archivedAt) }}</p>
           </div>
         </div>
@@ -187,10 +307,50 @@
             <div class="flex items-center gap-2">
               <DocumentsVersionSyncBadge :status="version.syncStatus" />
               <DocumentsVersionIndexBadge :status="version.indexStatus" />
+
+              <!-- Running: disabled button with loading indicator -->
+              <UButton
+                v-if="version.syncStatus === 'running'"
+                color="neutral"
+                variant="soft"
+                size="xs"
+                icon="i-lucide-loader-2"
+                :ui="{ leadingIcon: 'animate-spin' }"
+                disabled
+              >
+                同步中
+              </UButton>
+
+              <!-- Pending/Failed: retry button -->
+              <UButton
+                v-else-if="canShowRetry(version)"
+                color="neutral"
+                variant="outline"
+                size="xs"
+                icon="i-lucide-refresh-cw"
+                :loading="isRetryDisabled(version)"
+                :disabled="isRetryDisabled(version)"
+                @click="handleRetrySync(version)"
+              >
+                重試同步
+              </UButton>
             </div>
           </div>
         </div>
       </UCard>
     </template>
+
+    <!-- Confirmation dialog -->
+    <DocumentsLifecycleConfirmDialog
+      v-if="pendingAction && document"
+      v-model:open="confirmOpen"
+      :action="pendingAction.kind"
+      :document-title="document.title"
+      :version-count="versionCount"
+      :source-chunk-count="null"
+      :loading="lifecycle.isPending.value"
+      @confirm="handleConfirm"
+      @cancel="handleCancel"
+    />
   </div>
 </template>

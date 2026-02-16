@@ -1,6 +1,6 @@
 <script setup lang="ts">
   import type { ChatMessage, MessageRole } from '~/types/chat'
-  import { assertNever } from '~/utils/assert-never'
+  import { assertNever } from '~~/shared/utils/assert-never'
 
   interface Props {
     messages: ChatMessage[]
