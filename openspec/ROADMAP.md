@@ -157,27 +157,26 @@ spectra unpark observability-and-debug
 
 ## Active Changes
 
-_last synced: 2026-04-18T04:28:15.783Z_
+_last synced: 2026-04-18T04:51:42.417Z_
 
-9 active changes (1 ready · 4 in progress · 4 draft · 0 blocked)
+8 active changes (0 ready · 5 in progress · 3 draft · 0 blocked)
 
 ### Ready to apply
 
-- **use-nuxt-aliases** — 26/26 tasks (100%)
-  - Specs: `admin-document-management-ui`, `web-chat-ui`
+_(none)_
 
 ### In progress
 
 - **add-v1-core-ui** — 44/49 tasks (90%)
 - **bootstrap-v1-core-from-report** — 29/34 tasks (85%)
+- **fix-document-publish-draft-to-active** — 19/25 tasks (76%)
+  - Specs: `admin-document-management-ui`
 - **governance-refinements** — 6/17 tasks (35%)
 - **test-coverage-and-automation** — 14/43 tasks (33%)
 
 ### Draft
 
 - **admin-ui-post-core** — 0/33 tasks (0%)
-- **fix-document-publish-draft-to-active** — 0/25 tasks (0%)
-  - Specs: `admin-document-management-ui`
 - **migrate-mcp-to-toolkit** — 0/32 tasks (0%)
 - **observability-and-debug** — 0/21 tasks (0%)
 
@@ -198,6 +197,7 @@ _(none)_
 - `add-v1-core-ui`
 - `admin-ui-post-core`
 - `bootstrap-v1-core-from-report`
+- `fix-document-publish-draft-to-active`
 - `governance-refinements`
 - `migrate-mcp-to-toolkit`
 - `observability-and-debug`
@@ -205,7 +205,7 @@ _(none)_
 
 ### Mutex (same spec touched)
 
-- **admin-document-management-ui** — conflict between: `fix-document-publish-draft-to-active`, `use-nuxt-aliases`
+_(none)_
 
 ### Blocked by dependency
 
