@@ -1,5 +1,5 @@
 <script setup lang="ts">
-  import { assertNever } from '~/utils/assert-never'
+  import { assertNever } from '~~/shared/utils/assert-never'
 
   type SyncStatus = 'pending' | 'running' | 'synced' | 'failed'
 

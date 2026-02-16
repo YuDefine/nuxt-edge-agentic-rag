@@ -83,7 +83,11 @@
 
       <!-- Data table -->
       <template v-else>
-        <DocumentsDocumentListTable :documents="documents" :loading="isLoading" />
+        <DocumentsDocumentListTable
+          :documents="documents"
+          :loading="isLoading"
+          @action-complete="refresh()"
+        />
       </template>
     </UCard>
   </div>
