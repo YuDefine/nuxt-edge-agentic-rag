@@ -16,6 +16,9 @@ describe('knowledge runtime bootstrap', () => {
     expect(knowledge).toEqual({
       environment: 'local',
       adminEmailAllowlist: [],
+      autoRag: {
+        apiToken: '',
+      },
       bindings: {
         aiSearchIndex: '',
         d1Database: 'DB',

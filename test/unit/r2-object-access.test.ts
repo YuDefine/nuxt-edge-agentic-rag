@@ -244,5 +244,45 @@ describe('createR2ObjectAccess', () => {
         httpMetadata: { contentType: 'text/plain; charset=utf-8' },
       })
     })
+
+    it('forwards customMetadata to the underlying bucket when provided', async () => {
+      const bucket = makeBucket()
+      bucket.put.mockResolvedValueOnce(undefined)
+
+      const access = createR2ObjectAccess(makeEvent(bucket))
+      await access.put('normalized-text/ver-123/0001.txt', 'chunk-body', 'text/plain', {
+        access_level: 'public',
+        category_slug: 'sop',
+        citation_locator: 'lines 9-12',
+        document_version_id: 'ver-123',
+        status: 'active',
+        title: 'SOP Doc A',
+        version_state: 'current',
+      })
+
+      expect(bucket.put).toHaveBeenCalledWith('normalized-text/ver-123/0001.txt', 'chunk-body', {
+        customMetadata: {
+          access_level: 'public',
+          category_slug: 'sop',
+          citation_locator: 'lines 9-12',
+          document_version_id: 'ver-123',
+          status: 'active',
+          title: 'SOP Doc A',
+          version_state: 'current',
+        },
+        httpMetadata: { contentType: 'text/plain' },
+      })
+    })
+
+    it('omits customMetadata from the put options when not supplied', async () => {
+      const bucket = makeBucket()
+      bucket.put.mockResolvedValueOnce(undefined)
+
+      const access = createR2ObjectAccess(makeEvent(bucket))
+      await access.put('k', 'v', 'text/plain')
+
+      const options = bucket.put.mock.calls[0]?.[2] as Record<string, unknown>
+      expect(options).not.toHaveProperty('customMetadata')
+    })
   })
 })

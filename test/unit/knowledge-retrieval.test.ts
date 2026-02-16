@@ -25,7 +25,6 @@ describe('knowledge retrieval', () => {
         documentVersionId: 'ver-1',
         excerpt: 'Revenue grew 20%.',
         score: 0.82,
-        title: 'Quarterly Report',
       },
       {
         accessLevel: 'internal',
@@ -33,7 +32,6 @@ describe('knowledge retrieval', () => {
         documentVersionId: 'ver-stale',
         excerpt: 'Outdated revenue figure.',
         score: 0.91,
-        title: 'Quarterly Report',
       },
     ])
     const store = {
@@ -70,10 +68,12 @@ describe('knowledge retrieval', () => {
 
     expect(search).toHaveBeenCalledWith({
       filters: {
-        access_level: { $in: ['internal'] },
-        category_slug: { $in: ['finance'] },
-        status: 'active',
-        version_state: 'current',
+        filters: [
+          { key: 'status', type: 'eq', value: 'active' },
+          { key: 'version_state', type: 'eq', value: 'current' },
+          { key: 'access_level', type: 'eq', value: 'internal' },
+        ],
+        type: 'and',
       },
       max_num_results: 8,
       query: 'frequently asked questions for 2026-04-16',

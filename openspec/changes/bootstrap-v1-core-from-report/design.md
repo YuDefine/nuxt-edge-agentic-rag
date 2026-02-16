@@ -57,6 +57,36 @@ Web 問答主線固定為：規則式 Query Normalization → 權限／敏感資
 
 這樣可以讓答辯與正式環境使用同一套治理規則，又不會因測試資料污染 Production 真相來源。風險是需要更完整的環境設定管理，但這比在系統成熟後再回頭拆環境要安全。
 
+### AutoRAG Indexing & R2 Custom Metadata（2026-04-18 補充）
+
+2026-04-18 驗收 #2 後半發現 `/api/chat` 對已 publish 的 Doc A 與 seed 文件皆回 `refused: true, citations: []`。code 查證後確認兩層根因：
+
+**根因 1（#B2 — state machine 未推進）**：`syncDocumentVersionSnapshot`（`server/utils/document-sync.ts:102`）只把版本設為 `index_status='preprocessing'` / `sync_status='pending'`，整個 repo 沒有任何 code path 會把版本推進到 `smoke_pending` 或 `indexed`。但 publish 檢查（`server/utils/document-publish.ts:73`）要求 `indexStatus === 'indexed'`，造成任何新上傳都卡在 publish 409。
+
+**根因 2（#B3 — R2 物件缺 customMetadata）**：`server/utils/ai-search.ts:47-51` 的 search 結果預期 `entry.attributes.file.citation_locator` / `document_version_id` / `access_level` 等欄位，這些都對應到 AutoRAG indexed file 的 customMetadata。但 `r2-object-access.ts:82` 的 `put` 只傳 `httpMetadata: { contentType }`，**從未傳過 customMetadata**，AutoRAG crawl 時看不到任何 filter / citation 所需 attributes。
+
+**架構決策：R2 Per-Chunk Objects with customMetadata**：
+
+- AutoRAG 的 file-level metadata 對整個 R2 object 只有一組值，但 `citation_locator` 是 **chunk 級別**（「lines 9-12」）。兩者結構不相容 ⇒ **spec 設計上 R2 必須放 per-chunk files（1 chunk = 1 R2 object + chunk-level metadata），不是 per-document 整份**。
+- 目前實作（`writeNormalizedText` 寫整份 normalized text 成一個 object）與此決策衝突，必須改寫。
+- 新 R2 key layout：`normalized-text/<document_version_id>/<chunk_sequence>.txt`，每個 object 帶 customMetadata：
+  - Filter 用：`status`、`version_state`、`access_level`、`category_slug`
+  - Replay / citation 用：`citation_locator`、`document_version_id`、`title`
+- 既有 `normalized_text_r2_key` 欄位仍保留作為 per-version 的 base key（prefix），`source_chunks.content_text` 仍是 D1 層的真相來源；R2 per-chunk objects 只是供 AutoRAG crawl / search 與可選回放使用。
+- 這項決策**不改動 `specs/document-ingestion-and-publishing/spec.md` 的 SHALL 語句**，只是把實作面 R2 物件佈局與 indexing pipeline 對齊原本已 SHALL 的 `preprocessing → smoke_pending → indexed` 狀態機。
+
+**Trade-offs**：per-chunk R2 物件數量 ≈ per-version chunk 數（預估 10-50）。R2 Class A operations 成本增加但仍在 free tier / 個位數成本區間。收穫是 AutoRAG filter 能正確工作、citation replay 不再依賴 fragile locator-in-text 解析。
+
+**R2 Prefix 分工與 AutoRAG crawl scope**：
+
+| Prefix                                             | 內容                      | Writer                      | customMetadata | AutoRAG crawl |
+| -------------------------------------------------- | ------------------------- | --------------------------- | -------------- | ------------- |
+| `staged/<env>/<adminUserId>/<uploadId>/<filename>` | 原始 source 檔（md/txt）  | Client via S3 presigned URL | ❌ 無          | ❌ 必須排除   |
+| `normalized-text/<versionId>/<NNNN>.txt`           | per-chunk normalized text | `document-sync.ts` 統一負責 | ✅ 完整        | ✅ 必須包含   |
+
+- `presign.post.ts` / `finalize.post.ts` 走 S3 presigned URL 路徑，不經 `R2ObjectAccess.put`，因此不涉及 customMetadata；檔案本身也不被 AutoRAG 使用，只作為 sync 時 `loadSourceText` 的暫存讀取來源。
+- 部署時（8.6 task）必須在 AutoRAG data source 設定限定 crawl prefix 為 `normalized-text/`，避免 staged source 被當成 knowledge candidates（雖然因無 `status`/`version_state` customMetadata 而會被 filter 排除，但仍產生多餘 embedding 成本）。
+
 ### Verification & Rollout
 
 實作順序依報告里程碑切成 M1-M8，但真正的 gating 條件只有一個：先完成六步最小閉環，再處理同版後置項。驗證方式要同時包含自動化測試、staging smoke probes 與人工檢查。人工檢查項目會從共用 checklist 挑選，附加在 tasks artifact 尾端，讓之後的 `/review-screenshot` 與 `/review-archive` 流程有固定起點。

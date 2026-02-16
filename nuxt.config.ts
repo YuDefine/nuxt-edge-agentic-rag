@@ -3,6 +3,9 @@ import { createKnowledgeRuntimeConfig } from './shared/schemas/knowledge-runtime
 // https://nuxt.com/docs/api/configuration/nuxt-config
 const knowledgeRuntimeConfig = createKnowledgeRuntimeConfig({
   adminEmailAllowlist: process.env.ADMIN_EMAIL_ALLOWLIST,
+  autoRag: {
+    apiToken: process.env.NUXT_KNOWLEDGE_AUTORAG_API_TOKEN,
+  },
   bindings: {
     aiSearchIndex: process.env.NUXT_KNOWLEDGE_AI_SEARCH_INDEX,
     d1Database: process.env.NUXT_KNOWLEDGE_D1_DATABASE || 'DB',

@@ -62,6 +62,10 @@ export interface KnowledgeUploadsConfig {
   secretAccessKey: string
 }
 
+export interface KnowledgeAutoRagConfig {
+  apiToken: string
+}
+
 export interface KnowledgeFeatureFlags {
   adminDashboard: boolean
   cloudFallback: boolean
@@ -71,6 +75,7 @@ export interface KnowledgeFeatureFlags {
 
 export interface KnowledgeRuntimeConfig {
   adminEmailAllowlist: string[]
+  autoRag: KnowledgeAutoRagConfig
   bindings: KnowledgeBindingsConfig
   environment: string
   features: KnowledgeFeatureFlags
@@ -87,6 +92,7 @@ export interface KnowledgeGovernanceInput {
 
 export interface KnowledgeRuntimeConfigInput {
   adminEmailAllowlist?: string | string[]
+  autoRag?: Partial<KnowledgeAutoRagConfig>
   bindings?: Partial<KnowledgeBindingsConfig>
   environment?: string
   features?: Partial<
@@ -107,6 +113,9 @@ export interface AllowedAccessContext {
 
 const knowledgeRuntimeConfigSchema = z.object({
   adminEmailAllowlist: z.array(z.email()),
+  autoRag: z.object({
+    apiToken: z.string(),
+  }),
   bindings: z.object({
     aiSearchIndex: z.string(),
     d1Database: z.string(),
@@ -318,6 +327,9 @@ export function createKnowledgeRuntimeConfig(
 
   return knowledgeRuntimeConfigSchema.parse({
     adminEmailAllowlist: parseAdminEmailAllowlist(input.adminEmailAllowlist),
+    autoRag: {
+      apiToken: input.autoRag?.apiToken ?? '',
+    },
     bindings: {
       aiSearchIndex: input.bindings?.aiSearchIndex ?? '',
       d1Database: input.bindings?.d1Database ?? '',

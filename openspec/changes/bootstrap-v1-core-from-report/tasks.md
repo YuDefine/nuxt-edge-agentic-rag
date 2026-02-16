@@ -69,6 +69,28 @@
 - [x] 7.6 執行 `/review-screenshot` — 視覺 QA
 - [x] 7.7 Fidelity 確認 — `design-review.md` 中無 DRIFT 項
 
+## 8. AutoRAG Indexing Pipeline（解鎖 #B2 + #B3）
+
+> 對應 `design.md` → AutoRAG Indexing & R2 Custom Metadata 決策。實作對齊原本已 SHALL 的 `preprocessing → smoke_pending → indexed` 狀態機與 Versioned Replay Truth 的 R2 per-chunk 物件佈局。
+
+- [x] 8.1 擴充 `r2-object-access.ts::put` 支援 `customMetadata` — 對應 `design.md` → AutoRAG Indexing & R2 Custom Metadata（2026-04-18 補充）。修改 `R2ObjectAccess.put` signature 接受 `{ httpMetadata?, customMetadata? }` 第三參數並原封傳入 `bucket.put`；先寫 failing unit test 驗證 metadata 正確透傳，再實作（TDD）。
+- [x] [P] 8.2 `document-sync.ts` 改寫為 per-chunk R2 物件 — 以 `source_chunks` 為單位寫成獨立 R2 object（key `normalized-text/<document_version_id>/<chunk_sequence>.txt`），每個 object 帶完整 customMetadata：`status`、`version_state`、`access_level`、`category_slug`、`citation_locator`、`document_version_id`、`title`；取代 `writeNormalizedText` 單一 object 寫法，對齊 Versioned Replay Truth。
+- [x] [P] 8.3 Presign / finalize 路徑對齊 per-chunk 決策 — 確認 `server/api/uploads/presign.post.ts` 與 `finalize.post.ts` 上傳的是原始 source 檔（非 normalized chunk），不需 customMetadata；若有中介暫存路徑，明確定義不被 AutoRAG crawl，並在 `document-sync.ts` 統一負責 per-chunk 寫入。
+- [x] 8.4 Upload wizard 新增 `indexing_wait` step — `UploadWizard.vue` 在 sync 與 publish 之間插入 indexing 等待 UI，polling `/api/documents/[id]/versions/[versionId]`（或新增 status polling endpoint）直到 `index_status='indexed'` 才允許進入 publish step；顯示 preprocessing / smoke_pending / indexed 狀態進度；涉及 UI ⇒ 觸發 Section 9 Design Review。
+- [x] 8.5 Sync 流程觸發 AutoRAG 並推進 `index_status`（解 #B2）— `syncDocumentVersionSnapshot` 寫完 per-chunk R2 後呼叫 AutoRAG binding / API 觸發 crawl（或等待 passive crawl），成功後把 `index_status` 從 `preprocessing` → `smoke_pending`（跑 smoke_test_queries）→ `indexed`，`sync_status` → `completed`；失敗路徑正確回寫 `sync_status='failed'` 與 error。
+- [ ] 8.6 舊檔清理與 staging 重驗（解 #B3）— 撰寫 one-off script 刪除 R2 bucket 中所有既有 `normalized-text/<id>.txt`（per-document 舊佈局）物件；部署 staging；重跑 6.2 驗收 #2 後半、#3 current-version-only、#4 restricted hiding、#5 rate limit，確認 `/api/chat` 正確回 citations。
+
+## 9. Design Review（B3 延伸 — 僅覆蓋 8.4 Upload Wizard indexing wait UI）
+
+> 原 Section 7 Design Review 已覆蓋 1.x / 2.x / 3.x UI。8.4 新增 UI state 需要獨立一輪 Design Checkpoint（依 `proactive-skills.md`）。
+
+- [ ] 9.1 執行 `/design improve app/components/documents/UploadWizard.vue`（含 Fidelity Report，Cross-Change DRIFT 檢查沿用同 layout 基線）
+- [ ] 9.2 修復所有 DRIFT（含 indexing_wait 的 loading / error / timeout state coverage，依 `ux-completeness.md` State Coverage Rule）
+- [ ] 9.3 依 `/design` 計劃執行 targeted skills（預計 `/layout`、`/clarify`、`/harden`）
+- [ ] 9.4 `/audit` — 確認 Critical = 0
+- [ ] 9.5 `/review-screenshot` — 視覺 QA（含 preprocessing / smoke_pending / indexed / failed 四種 state）
+- [ ] 9.6 Fidelity 確認 — `design-review.md` 新增段落記錄 B3 findings
+
 ## 人工檢查
 
 > 來源：`bootstrap-v1-core-from-report` | Specs: `knowledge-access-control`, `document-ingestion-and-publishing`, `web-agentic-answering`, `mcp-knowledge-tools`, `governance-and-observability`
@@ -98,3 +120,26 @@
     - ✅ `pnpm test:unit` 通過（105 tests）
     - ⚠️ `pnpm build` 有間歇性 V8 crash（Node.js 24 runtime 問題，與本修復無關）
   - **待驗證**：部署到 staging 確認 D1 binding 正確運作
+- [ ] #B2 Version indexing pipeline 未實作 — 2026-04-18 人工驗收 #2 時發現 upload wizard 呼叫 `/api/documents/sync` 後立刻打 publish 必 409 (`Only indexed versions without in-progress sync tasks can be published`)。
+  - **實作缺口**：`syncDocumentVersionSnapshot` 只把 version 設為 `index_status='preprocessing'` / `sync_status='pending'`，整個 repo 沒有任何 code 會推進到 `smoke_pending` 或 `indexed`。2.2 Version Preprocessing 雖標 `[x]`，但「smoke probes → indexed」這段未落地。
+  - **Spec 要求**（`specs/document-ingestion-and-publishing/spec.md` #21-26）：`preprocessing → smoke_pending → indexed`，publish 檢查 (`document-publish.ts:73`) 要求 `indexStatus === 'indexed'` 且 `syncStatus !== 'running'`。
+  - **相關檔案**：`server/utils/document-sync.ts:107-112`、`server/utils/document-publish.ts:73-77`、`app/components/documents/UploadWizard.vue:349-393`。
+  - **臨時 workaround**（2026-04-18）：對「SOP-Doc-A-0418」(`ff54539a-...`) 手動 `UPDATE document_versions SET index_status='indexed', sync_status='completed'` 讓 #2 後半（chat streaming、citation replay）可以繼續驗。**每次新上傳都要重做**，不是可接受的長期方案。
+  - **後續**：2026-04-18 已 ingest 進 Section 8（AutoRAG Indexing Pipeline），由 task 8.5 `syncDocumentVersionSnapshot` 呼叫 AutoRAG binding → `smoke_pending` → `indexed` 推進 state machine 解鎖；task 8.4 在 UploadWizard 加 `indexing_wait` step polling。
+- [ ] #B3 AI Search / AutoRAG index 未啟用 — 2026-04-18 驗收 #2 後半時發現 `/api/chat` 對剛上傳的 Doc A 與 2026-04-16 seed「知識庫測試文件」皆回 `{ answer: null, citations: [], refused: true }`。
+  - **根因**：chat 走 `env.AI.autorag('agentic-rag').search(...)`（`server/utils/ai-search.ts`），但 production 的 Cloudflare AutoRAG index `agentic-rag`（見 `wrangler.jsonc` `NUXT_KNOWLEDGE_AI_SEARCH_INDEX`）**可能未建立、未連 R2 source、或尚未 crawl**，導致 vector index 為空 → 所有 query 0 命中 → retrievalScore 0 → refused。
+  - **驗證方向**：
+    1. Cloudflare dashboard 確認 AutoRAG index `agentic-rag` 是否存在
+    2. 若存在，檢查 data source 是否連到 R2 bucket `agentic-rag-documents`
+    3. 檢查 AutoRAG crawl 次數與 indexed 文件數
+  - **Blocker 影響範圍**（未解鎖前以下驗收項皆卡死）：
+    - #2 後半（問答 + 引用回放）
+    - #3 切版 current-version-only 回答
+    - #4 MCP restricted existence-hiding / getDocumentChunk 403（也依賴檢索）
+    - #5 rate limit（部分依賴 chat）
+  - **與 #B2 關係**：B2 是「state machine 沒推進到 indexed」（產品層面流程），B3 是「AutoRAG 本身沒接起來」（infra 設定）。B2 修好後若 B3 仍 0 命中，表示 upload 流程還缺「把 chunks 推到 AutoRAG」那一步。
+  - **2026-04-18 code 查證後根因確認**：不是 infra 未設定，是應用層從未傳 R2 customMetadata：
+    - `server/utils/r2-object-access.ts:82` 的 `put` 只傳 `httpMetadata: { contentType }`，**從未傳過 `customMetadata`** → AutoRAG crawl 看不到任何 filter / citation 所需 attributes。
+    - `server/utils/ai-search.ts:47-51` 預期 `entry.attributes.file.citation_locator` / `document_version_id` / `access_level`，這些都對應 file-level customMetadata。
+    - 架構層面：`citation_locator` 是 chunk 級別，與 AutoRAG file-level metadata（整個 object 一組值）不相容 ⇒ R2 必須改為 **per-chunk objects with chunk-level customMetadata**，不是 per-document 整份。目前 `document-sync.ts:102` 寫整份 normalized text 到一個 object → 必須改寫。
+  - **後續**：2026-04-18 已 ingest 進 Section 8（AutoRAG Indexing Pipeline）。完整實作拆解：8.1 R2.put 支援 customMetadata / 8.2 per-chunk 寫入 / 8.3 presign 路徑對齊 / 8.4 UploadWizard indexing_wait step / 8.5 AutoRAG sync 觸發 + state machine 推進（同時解 #B2）/ 8.6 舊檔清理與 staging 重驗。架構決策見 `design.md` → AutoRAG Indexing & R2 Custom Metadata。

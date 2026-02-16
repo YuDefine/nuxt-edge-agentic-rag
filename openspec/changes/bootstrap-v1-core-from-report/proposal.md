@@ -41,3 +41,15 @@
 
 - 1.1a Runtime Config（已完成）
 - 1.1b NuxtHub & Drizzle Schema（新增，blocker 級任務）
+
+## 2026-04-18 補充：AutoRAG Indexing Pipeline（解鎖 #B2 + #B3）
+
+2026-04-18 驗收 #2 後半發現兩層實作缺口，使 publish 後的文件無法被 `/api/chat` 檢索到：
+
+1. **#B2** — `syncDocumentVersionSnapshot` 後版本卡在 `index_status='preprocessing'`，沒有 code path 推進到 `indexed`，publish 必 409。
+2. **#B3** — R2 物件從未帶 customMetadata，AutoRAG crawl 時看不到 filter / citation 所需 attributes；且 spec 設計上需要的 per-chunk R2 物件佈局目前是 per-document 寫法，架構不相容。
+
+新增 Section 8 task group 處理 AutoRAG indexing pipeline 的實作，包含 R2 put customMetadata 支援、per-chunk 寫入改寫、AutoRAG sync 觸發、upload wizard indexing wait 與舊檔清理。此補充**不改 `specs/**/\*.md` 的 SHALL 語句\*\*，只是把實作對齊原本已 SHALL 的狀態機。
+
+- Affected code（新增）：`server/utils/r2-object-access.ts`、`server/utils/document-sync.ts`、`server/api/uploads/presign.post.ts`、`server/api/uploads/finalize.post.ts`、`server/api/documents/sync.post.ts`、`app/components/documents/UploadWizard.vue`、新增 polling endpoint（若採 polling 方案）
+- 詳細架構決策見 `design.md` → AutoRAG Indexing & R2 Custom Metadata 章節
