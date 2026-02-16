@@ -33,7 +33,10 @@ export interface R2BucketLike {
   put(
     key: string,
     value: string,
-    options?: { httpMetadata?: { contentType?: string } }
+    options?: {
+      customMetadata?: Record<string, string>
+      httpMetadata?: { contentType?: string }
+    }
   ): Promise<unknown>
 }
 

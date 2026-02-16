@@ -6,7 +6,6 @@ export interface KnowledgeSearchCandidate {
   documentVersionId: string
   excerpt: string
   score: number
-  title: string
 }
 
 export interface VerifiedKnowledgeEvidence {
@@ -103,7 +102,6 @@ export async function retrieveVerifiedEvidence(
   const candidates = await options.search({
     filters: buildKnowledgeSearchFilters({
       allowedAccessLevels: input.allowedAccessLevels,
-      categoryHints: normalized.categoryHints,
     }),
     max_num_results: input.maxResults ?? options.governance.retrieval.maxResults,
     query: normalized.normalizedQuery,
@@ -113,6 +111,7 @@ export async function retrieveVerifiedEvidence(
     rewrite_query: false,
   })
   const evidence: VerifiedKnowledgeEvidence[] = []
+  const categoryFilter = normalized.categoryHints[0] ?? null
 
   for (const candidate of candidates) {
     const verified = await options.store.resolveCurrentEvidence({
@@ -125,11 +124,15 @@ export async function retrieveVerifiedEvidence(
       continue
     }
 
+    if (categoryFilter && verified.categorySlug !== categoryFilter) {
+      continue
+    }
+
     evidence.push({
       ...verified,
       excerpt: candidate.excerpt,
       score: candidate.score,
-      title: candidate.title,
+      title: verified.documentTitle,
     })
   }
 
@@ -150,7 +153,6 @@ type AutoRagFilter =
 
 function buildKnowledgeSearchFilters(input: {
   allowedAccessLevels: string[]
-  categoryHints: string[]
 }): AutoRagFilter | Record<string, never> {
   const filters: AutoRagFilter[] = [
     { key: 'status', type: 'eq', value: 'active' },
@@ -159,10 +161,6 @@ function buildKnowledgeSearchFilters(input: {
 
   if (input.allowedAccessLevels.length === 1) {
     filters.push({ key: 'access_level', type: 'eq', value: input.allowedAccessLevels[0] })
-  }
-
-  if (input.categoryHints.length === 1) {
-    filters.push({ key: 'category_slug', type: 'eq', value: input.categoryHints[0] })
   }
 
   return filters.length === 1 ? filters[0]! : { filters, type: 'and' }

@@ -26,7 +26,14 @@ export interface PreparedSourceChunk {
   }
 }
 
+export interface PreparedChunkObject {
+  customMetadata: Record<string, string>
+  key: string
+  text: string
+}
+
 export interface PreparedDocumentVersionAssets {
+  chunkObjects: PreparedChunkObject[]
   metadata: {
     accessLevel: string
     categorySlug: string
@@ -65,18 +72,20 @@ export async function prepareDocumentVersionAssets(
     accessLevel: input.accessLevel,
     documentVersionId: input.versionId,
   })
+  const chunkObjects = buildChunkObjects(sourceChunks, {
+    accessLevel: input.accessLevel,
+    versionId: input.versionId,
+  })
+  const normalizedTextR2Key = createNormalizedTextR2KeyPrefix(input.versionId)
 
   validateVersionReplayAssets({
-    normalizedTextR2Key: createNormalizedTextR2Key(
-      input.environment,
-      input.documentId,
-      input.versionId
-    ),
+    normalizedTextR2Key,
     smokeTestQueries,
     sourceChunkCount: sourceChunks.length,
   })
 
   return {
+    chunkObjects,
     metadata: {
       accessLevel: input.accessLevel,
       categorySlug: input.categorySlug,
@@ -86,11 +95,7 @@ export async function prepareDocumentVersionAssets(
       versionNumber: input.versionNumber,
     },
     normalizedText,
-    normalizedTextR2Key: createNormalizedTextR2Key(
-      input.environment,
-      input.documentId,
-      input.versionId
-    ),
+    normalizedTextR2Key,
     smokeTestQueries,
     sourceChunks,
   }
@@ -124,12 +129,33 @@ export function validateVersionReplayAssets(input: {
   return true
 }
 
-export function createNormalizedTextR2Key(
-  environment: string,
-  documentId: string,
-  versionId: string
-): string {
-  return `normalized/${environment}/${documentId}/${versionId}.txt`
+export function createNormalizedTextR2KeyPrefix(versionId: string): string {
+  return `normalized-text/${versionId}/`
+}
+
+export function createChunkR2Key(versionId: string, chunkIndex: number): string {
+  const sequence = String(chunkIndex + 1).padStart(4, '0')
+  return `normalized-text/${versionId}/${sequence}.txt`
+}
+
+function buildChunkObjects(
+  sourceChunks: PreparedSourceChunk[],
+  input: {
+    accessLevel: string
+    versionId: string
+  }
+): PreparedChunkObject[] {
+  return sourceChunks.map((chunk) => ({
+    customMetadata: {
+      access_level: input.accessLevel,
+      citation_locator: chunk.citationLocator,
+      document_version_id: input.versionId,
+      status: 'draft',
+      version_state: 'pending',
+    },
+    key: createChunkR2Key(input.versionId, chunk.chunkIndex),
+    text: chunk.chunkText,
+  }))
 }
 
 function assertSupportedSourceMimeType(sourceMimeType: string): void {

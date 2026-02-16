@@ -32,7 +32,7 @@ describe('document sync', () => {
           title: 'Quarterly Report',
           versionNumber: 1,
         }),
-        normalizedTextR2Key: 'normalized/staging/doc-1/ver-1.txt',
+        normalizedTextR2Key: 'normalized-text/ver-1/',
         publishedAt: null,
         smokeTestQueriesJson: JSON.stringify(['Quarterly Report', 'Executive Summary']),
         sourceR2Key: 'staged/staging/admin-1/upload-1/quarterly-report.md',
@@ -48,7 +48,7 @@ describe('document sync', () => {
       .mockResolvedValue(
         ['# Quarterly Report', '', '## Executive Summary', 'Revenue grew 20%.'].join('\n')
       )
-    const writeNormalizedText = vi.fn().mockResolvedValue(undefined)
+    const writeChunkObjects = vi.fn().mockResolvedValue(undefined)
 
     const result = await syncDocumentVersionSnapshot(
       {
@@ -69,7 +69,7 @@ describe('document sync', () => {
         loadSourceText,
         now: () => new Date('2026-04-16T00:00:00.000Z'),
         store,
-        writeNormalizedText,
+        writeChunkObjects,
       }
     )
 
@@ -82,10 +82,19 @@ describe('document sync', () => {
       status: 'draft',
       title: 'Quarterly Report',
     })
-    expect(writeNormalizedText).toHaveBeenCalledWith(
-      'normalized/staging/doc-1/ver-1.txt',
-      ['Quarterly Report', 'Executive Summary', 'Revenue grew 20%.'].join('\n')
-    )
+    expect(writeChunkObjects).toHaveBeenCalledWith([
+      {
+        customMetadata: {
+          access_level: 'restricted',
+          citation_locator: 'lines 1-3',
+          document_version_id: 'ver-1',
+          status: 'draft',
+          version_state: 'pending',
+        },
+        key: 'normalized-text/ver-1/0001.txt',
+        text: ['Quarterly Report', 'Executive Summary', 'Revenue grew 20%.'].join('\n'),
+      },
+    ])
     expect(store.createVersion).toHaveBeenCalledWith({
       documentId: 'doc-1',
       id: 'ver-1',
@@ -98,7 +107,7 @@ describe('document sync', () => {
         title: 'Quarterly Report',
         versionNumber: 1,
       }),
-      normalizedTextR2Key: 'normalized/staging/doc-1/ver-1.txt',
+      normalizedTextR2Key: 'normalized-text/ver-1/',
       sourceR2Key: 'staged/staging/admin-1/upload-1/quarterly-report.md',
       smokeTestQueriesJson: JSON.stringify(['Quarterly Report', 'Executive Summary']),
       syncStatus: 'pending',
@@ -129,7 +138,7 @@ describe('document sync', () => {
         indexStatus: 'preprocessing',
         isCurrent: false,
         metadataJson: '{}',
-        normalizedTextR2Key: 'normalized/local/doc-1/ver-2.txt',
+        normalizedTextR2Key: 'normalized-text/ver-2/',
         publishedAt: null,
         smokeTestQueriesJson: JSON.stringify(['Ops Playbook']),
         sourceR2Key: 'staged/local/admin-1/upload-2/playbook.txt',
@@ -171,7 +180,7 @@ describe('document sync', () => {
         createId: () => 'ver-2',
         loadSourceText: () => Promise.resolve('Ops Playbook\nEscalate incidents quickly.'),
         store,
-        writeNormalizedText: () => Promise.resolve(),
+        writeChunkObjects: () => Promise.resolve(),
       }
     )
 

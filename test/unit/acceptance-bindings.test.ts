@@ -148,7 +148,6 @@ describe('acceptance bindings fakes', () => {
         documentVersionId: 'ver-1',
         excerpt: 'Launch moved to Tuesday.',
         score: 0.88,
-        title: 'Launch Guide',
       },
     ])
 

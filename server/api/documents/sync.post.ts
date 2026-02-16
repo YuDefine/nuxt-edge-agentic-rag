@@ -1,5 +1,7 @@
+import { useLogger } from 'evlog'
 import { z } from 'zod'
 
+import { triggerAutoRagSync } from '#server/utils/autorag-sync'
 import { getD1Database } from '#server/utils/database'
 import { createDocumentSyncStore } from '#server/utils/document-store'
 import { syncDocumentVersionSnapshot } from '#server/utils/document-sync'
@@ -17,9 +19,11 @@ const syncDocumentSchema = z.object({
 })
 
 export default defineEventHandler(async (event) => {
+  const log = useLogger(event)
   const { user } = await requireRuntimeAdminSession(event)
   const body = await readZodBody(event, syncDocumentSchema)
-  const environment = getKnowledgeRuntimeConfig().environment
+  const runtimeConfig = getKnowledgeRuntimeConfig()
+  const environment = runtimeConfig.environment
   const bucket = createR2ObjectAccess(event)
   const database = await getD1Database()
   const store = createDocumentSyncStore(database)
@@ -53,11 +57,49 @@ export default defineEventHandler(async (event) => {
         return text
       },
       store,
-      writeNormalizedText: async (objectKey, normalizedText) => {
-        await bucket.put(objectKey, normalizedText, 'text/plain; charset=utf-8')
+      writeChunkObjects: async (objects) => {
+        await Promise.all(
+          objects.map((object) =>
+            bucket.put(object.key, object.text, 'text/plain; charset=utf-8', object.customMetadata)
+          )
+        )
       },
     }
   )
+
+  if (runtimeConfig.autoRag.apiToken) {
+    const kvBinding = getRequiredKvBinding(event, runtimeConfig.bindings.rateLimitKv)
+    try {
+      const job = await triggerAutoRagSync({
+        accountId: runtimeConfig.uploads.accountId,
+        apiToken: runtimeConfig.autoRag.apiToken,
+        instanceName: runtimeConfig.bindings.aiSearchIndex,
+      })
+      await kvBinding.put(`autorag-job:${result.version.id}`, job.jobId, {
+        expirationTtl: 3600,
+      })
+      await store.setVersionIndexingStatus(result.version.id, {
+        indexStatus: 'preprocessing',
+        syncStatus: 'running',
+      })
+    } catch (error) {
+      log.error(error as Error, { step: 'autorag-trigger' })
+      await store.setVersionIndexingStatus(result.version.id, {
+        indexStatus: 'preprocessing',
+        syncStatus: 'failed',
+      })
+      throw createError({
+        statusCode: 502,
+        statusMessage: 'Bad Gateway',
+        message: 'AutoRAG sync 觸發失敗，請稍後重試或聯絡管理員',
+      })
+    }
+  } else {
+    await store.setVersionIndexingStatus(result.version.id, {
+      indexStatus: 'indexed',
+      syncStatus: 'completed',
+    })
+  }
 
   return {
     data: {

@@ -1,6 +1,6 @@
 import type { DocumentRecord, DocumentVersionRecord } from '#shared/types/knowledge'
 
-import { prepareDocumentVersionAssets } from './document-preprocessing'
+import { prepareDocumentVersionAssets, type PreparedChunkObject } from './document-preprocessing'
 
 export interface SyncDocumentVersionSnapshotInput {
   accessLevel: string
@@ -56,7 +56,7 @@ export interface SyncDocumentVersionSnapshotOptions {
   loadSourceText: (objectKey: string) => Promise<string>
   now?: () => Date
   store: DocumentSyncStore
-  writeNormalizedText: (objectKey: string, normalizedText: string) => Promise<void>
+  writeChunkObjects: (objects: PreparedChunkObject[]) => Promise<void>
 }
 
 function defaultCreateId(): string {
@@ -99,7 +99,7 @@ export async function syncDocumentVersionSnapshot(
     versionNumber,
   })
 
-  await options.writeNormalizedText(assets.normalizedTextR2Key, assets.normalizedText)
+  await options.writeChunkObjects(assets.chunkObjects)
 
   const version = await options.store.createVersion({
     documentId: document.id,

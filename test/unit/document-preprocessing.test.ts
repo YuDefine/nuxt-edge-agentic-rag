@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  createChunkR2Key,
   MissingVersionReplayAssetsError,
   prepareDocumentVersionAssets,
   validateVersionReplayAssets,
@@ -43,7 +44,7 @@ describe('document preprocessing', () => {
       ].join('\n')
     )
 
-    expect(result.normalizedTextR2Key).toBe('normalized/staging/doc-1/ver-1.txt')
+    expect(result.normalizedTextR2Key).toBe('normalized-text/ver-1/')
     expect(result.metadata).toEqual({
       accessLevel: 'restricted',
       categorySlug: 'finance',
@@ -53,6 +54,30 @@ describe('document preprocessing', () => {
       versionNumber: 2,
     })
     expect(result.smokeTestQueries).toEqual(['Quarterly Report', 'Executive Summary', 'Risks'])
+    expect(result.chunkObjects).toEqual([
+      {
+        customMetadata: {
+          access_level: 'restricted',
+          citation_locator: 'lines 1-3',
+          document_version_id: 'ver-1',
+          status: 'draft',
+          version_state: 'pending',
+        },
+        key: 'normalized-text/ver-1/0001.txt',
+        text: ['Quarterly Report', 'Executive Summary', 'Revenue grew 20%.'].join('\n'),
+      },
+      {
+        customMetadata: {
+          access_level: 'restricted',
+          citation_locator: 'lines 5-6',
+          document_version_id: 'ver-1',
+          status: 'draft',
+          version_state: 'pending',
+        },
+        key: 'normalized-text/ver-1/0002.txt',
+        text: ['Risks', 'Watch churn carefully.'].join('\n'),
+      },
+    ])
     expect(result.sourceChunks).toEqual([
       {
         accessLevel: 'restricted',
@@ -96,6 +121,12 @@ describe('document preprocessing', () => {
         versionNumber: 1,
       })
     ).rejects.toThrow('Only text/plain and text/markdown uploads are supported')
+  })
+
+  it('builds zero-padded chunk R2 keys scoped to the version', () => {
+    expect(createChunkR2Key('ver-abc', 0)).toBe('normalized-text/ver-abc/0001.txt')
+    expect(createChunkR2Key('ver-abc', 9)).toBe('normalized-text/ver-abc/0010.txt')
+    expect(createChunkR2Key('ver-abc', 999)).toBe('normalized-text/ver-abc/1000.txt')
   })
 
   it('blocks versions from advancing when replay assets are incomplete', () => {

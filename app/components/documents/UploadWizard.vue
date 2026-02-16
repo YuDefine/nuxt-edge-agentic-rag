@@ -1,14 +1,25 @@
 <script setup lang="ts">
   import { z } from 'zod'
   import type { FormSubmitEvent } from '@nuxt/ui'
-  import { assertNever } from '~/utils/assert-never'
+  import { assertNever } from '~~/shared/utils/assert-never'
 
   const { $csrfFetch } = useNuxtApp()
 
   const UPLOAD_DRAFT_KEY = 'doc-upload-draft-v1'
 
-  type WizardStep = 'select' | 'presign' | 'upload' | 'finalize' | 'sync' | 'publish' | 'complete'
+  type WizardStep =
+    | 'select'
+    | 'presign'
+    | 'upload'
+    | 'finalize'
+    | 'sync'
+    | 'indexing_wait'
+    | 'publish'
+    | 'complete'
   type StepStatus = 'pending' | 'active' | 'completed' | 'error'
+
+  const POLLING_INTERVAL_MS = 3000
+  const INDEXING_TIMEOUT_MS = 5 * 60 * 1000
 
   const documentMetaSchema = z.object({
     title: z.string().trim().min(1, '請輸入文件標題'),
@@ -40,6 +51,7 @@
     { key: 'upload', label: '上傳檔案', description: '上傳至儲存空間' },
     { key: 'finalize', label: '確認上傳', description: '驗證檔案完整性' },
     { key: 'sync', label: '同步處理', description: '處理文件內容' },
+    { key: 'indexing_wait', label: '索引處理', description: '建立向量索引' },
     { key: 'publish', label: '發布文件', description: '發布至知識庫' },
   ]
 
@@ -70,6 +82,78 @@
     documentId: string
     versionId: string
   } | null>(null)
+
+  interface IndexingStatusSnapshot {
+    indexStatus: string
+    syncStatus: string
+  }
+  const indexingStatus = ref<IndexingStatusSnapshot | null>(null)
+  const indexingError = ref<string | null>(null)
+  let indexingTimeoutHandle: ReturnType<typeof setTimeout> | null = null
+
+  const { pause: pauseIndexingPoll, resume: resumeIndexingPoll } = useIntervalFn(
+    () => pollIndexStatus(),
+    POLLING_INTERVAL_MS,
+    { immediate: false, immediateCallback: false }
+  )
+
+  async function pollIndexStatus() {
+    if (!syncResult.value) return
+    try {
+      const response = await $fetch<{
+        data: { indexStatus: string; syncStatus: string; versionId: string }
+      }>(
+        `/api/documents/${syncResult.value.documentId}/versions/${syncResult.value.versionId}/index-status`
+      )
+      indexingStatus.value = {
+        indexStatus: response.data.indexStatus,
+        syncStatus: response.data.syncStatus,
+      }
+      if (response.data.indexStatus === 'indexed' && response.data.syncStatus !== 'running') {
+        stopIndexingPolling()
+        currentStep.value = 'publish'
+        return
+      }
+      if (response.data.indexStatus === 'failed' || response.data.syncStatus === 'failed') {
+        stopIndexingPolling()
+        indexingError.value = '索引處理失敗，請重新上傳或聯絡管理員'
+      }
+    } catch {
+      // 單次 polling 失敗不中斷整體流程；timeout 會接手判定最終失敗
+    }
+  }
+
+  function startIndexingPolling() {
+    indexingStatus.value = null
+    indexingError.value = null
+    indexingTimeoutHandle = setTimeout(() => {
+      stopIndexingPolling()
+      indexingError.value = '索引處理超過 5 分鐘仍未完成，請聯絡管理員'
+    }, INDEXING_TIMEOUT_MS)
+    resumeIndexingPoll()
+    void pollIndexStatus()
+  }
+
+  function stopIndexingPolling() {
+    pauseIndexingPoll()
+    if (indexingTimeoutHandle) {
+      clearTimeout(indexingTimeoutHandle)
+      indexingTimeoutHandle = null
+    }
+  }
+
+  function getIndexingStatusLabel(status: IndexingStatusSnapshot | null): string {
+    if (!status) return '正在啟動索引…'
+    if (status.indexStatus === 'preprocessing') return '正在前處理文件內容…'
+    if (status.indexStatus === 'smoke_pending') return '正在進行 smoke 驗證…'
+    if (status.indexStatus === 'indexed') return '索引完成，即將進入發布階段'
+    if (status.indexStatus === 'failed' || status.syncStatus === 'failed') return '索引失敗'
+    return '處理中…'
+  }
+
+  onUnmounted(() => {
+    stopIndexingPolling()
+  })
 
   function createEmptyDraft(): DocumentMeta {
     return {
@@ -370,7 +454,8 @@
         versionId: syncData.data.version.id,
       }
 
-      currentStep.value = 'publish'
+      currentStep.value = 'indexing_wait'
+      startIndexingPolling()
     } catch (error) {
       errorMessage.value = error instanceof Error ? error.message : '上傳過程發生錯誤'
     } finally {
@@ -403,12 +488,15 @@
   }
 
   function reset() {
+    stopIndexingPolling()
     currentStep.value = 'select'
     errorMessage.value = null
     selectedFile.value = null
     fileChecksum.value = ''
     presignResult.value = null
     syncResult.value = null
+    indexingStatus.value = null
+    indexingError.value = null
     resetDocumentMeta()
     clearDraft()
   }
@@ -564,6 +652,39 @@
           <UButton type="submit" color="neutral" :loading="isProcessing">開始上傳</UButton>
         </div>
       </UForm>
+    </div>
+
+    <div
+      v-else-if="currentStep === 'indexing_wait'"
+      class="flex flex-col items-center justify-center py-8 text-center"
+      data-testid="indexing-wait"
+    >
+      <template v-if="indexingError">
+        <div class="mb-4 rounded-full bg-muted p-4">
+          <UIcon name="i-lucide-alert-triangle" class="size-8 text-error" />
+        </div>
+        <h3 class="mb-2 text-lg font-medium text-default">索引處理未完成</h3>
+        <p class="mb-6 max-w-sm text-sm text-muted">{{ indexingError }}</p>
+        <div class="flex gap-2">
+          <UButton color="neutral" variant="outline" @click="emit('cancel')">返回列表</UButton>
+          <UButton color="neutral" variant="solid" @click="reset">重新開始</UButton>
+        </div>
+      </template>
+      <template v-else>
+        <div class="mb-4 rounded-full bg-muted p-4">
+          <UIcon name="i-lucide-loader-2" class="size-8 animate-spin text-primary" />
+        </div>
+        <h3 class="mb-2 text-lg font-medium text-default">正在建立索引</h3>
+        <p class="mb-2 max-w-sm text-sm text-muted">
+          {{ getIndexingStatusLabel(indexingStatus) }}
+        </p>
+        <p v-if="indexingStatus" class="mb-6 text-xs text-dimmed">
+          index_status: {{ indexingStatus.indexStatus }} · sync_status:
+          {{ indexingStatus.syncStatus }}
+        </p>
+        <p v-else class="mb-6 text-xs text-dimmed">&nbsp;</p>
+        <UButton color="neutral" variant="ghost" @click="emit('cancel')">稍後返回</UButton>
+      </template>
     </div>
 
     <div

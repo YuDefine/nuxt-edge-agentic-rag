@@ -311,6 +311,22 @@ export function createDocumentSyncStore(database: D1DatabaseLike) {
       return row ? fromDocumentVersionRow(row) : null
     },
 
+    async setVersionIndexingStatus(
+      versionId: string,
+      input: { indexStatus: string; syncStatus: string }
+    ): Promise<void> {
+      await database
+        .prepare(
+          [
+            'UPDATE document_versions',
+            'SET index_status = ?, sync_status = ?, updated_at = ?',
+            'WHERE id = ?',
+          ].join('\n')
+        )
+        .bind(input.indexStatus, input.syncStatus, new Date().toISOString(), versionId)
+        .run()
+    },
+
     async publishVersionAtomic(input: {
       documentId: string
       previousCurrentVersionId: string | null

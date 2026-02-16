@@ -46,7 +46,12 @@ export function loadKnowledgeUploadsConfig(): KnowledgeUploadsS3Config {
 export interface R2ObjectAccess {
   getText(key: string): Promise<string | null>
   head(key: string): Promise<UploadedObjectMetadata | null>
-  put(key: string, value: string, contentType: string): Promise<void>
+  put(
+    key: string,
+    value: string,
+    contentType: string,
+    customMetadata?: Record<string, string>
+  ): Promise<void>
 }
 
 export function createR2ObjectAccess(event: H3Event): R2ObjectAccess {
@@ -78,8 +83,13 @@ export function createR2ObjectAccess(event: H3Event): R2ObjectAccess {
 
       return metadata
     },
-    async put(key, value, contentType) {
-      await bucket.put(key, value, { httpMetadata: { contentType } })
+    async put(key, value, contentType, customMetadata) {
+      const options: {
+        customMetadata?: Record<string, string>
+        httpMetadata: { contentType: string }
+      } = { httpMetadata: { contentType } }
+      if (customMetadata) options.customMetadata = customMetadata
+      await bucket.put(key, value, options)
     },
   }
 }

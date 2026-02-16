@@ -60,7 +60,6 @@ export function createCloudflareAiSearchClient(input: {
             documentVersionId,
             excerpt: contentText,
             score: typeof entry.score === 'number' ? entry.score : 0,
-            title: readString(fileAttributes.title) ?? entry.filename ?? 'Untitled document',
           } satisfies KnowledgeSearchCandidate
         })
         .filter((candidate): candidate is KnowledgeSearchCandidate => candidate !== null)
