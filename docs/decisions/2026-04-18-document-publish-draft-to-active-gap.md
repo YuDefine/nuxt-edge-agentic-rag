@@ -2,7 +2,16 @@
 
 ## Decision
 
-`document-sync` 建立新文件時 `status = 'draft'`，但 `publishDocumentVersion` 拒絕非 `active` 狀態的文件，形成死結：新文件永遠過不了第一次 publish。決定在下一個 spectra change 處理狀態轉換。
+`document-sync` 建立新文件時 `status = 'draft'`，但 `publishDocumentVersion` 拒絕非 `active` 狀態的文件，形成死結：新文件永遠過不了第一次 publish。
+
+**選定方案 A（原子化 promoteToActive，2026-04-18 implemented）**：擴充 `DocumentPublishStore.publishVersionAtomic` 介面新增 `promoteToActive: boolean`；`publishDocumentVersion` 在 `status === 'draft' && previousCurrentVersionId === null` 時設 `promoteToActive: true`；store 實作會在同一個 D1 batch 內 append `UPDATE documents SET status = 'active' WHERE id = ? AND status = 'draft'`，保證原子性與 `archived` 防護。`status === 'archived'` 改 throw 含 `archived` 字眼的 409，方便 UI 區分復原路徑。
+
+實作落在 `fix-document-publish-draft-to-active` change：
+
+- `server/utils/document-publish.ts`（介面 + 狀態判斷）
+- `server/utils/document-store.ts`（batch 新增 promotion statement）
+- `test/unit/document-publish.test.ts`（first-publish-promotes-draft + archived-rejects 測試）
+- `test/integration/document-store.test.ts`（batch 內含 promotion statement 驗證）
 
 ## Context
 
