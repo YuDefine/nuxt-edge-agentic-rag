@@ -91,13 +91,22 @@ describe('knowledge audit', () => {
       'accepted',
       expect.any(String)
     )
+    // After governance §1.4: INSERT now binds
+    //   id, conversation_id, query_log_id, user_profile_id, channel, role,
+    //   content_redacted, content_text, citations_json, risk_flags_json,
+    //   redaction_applied, created_at
+    // content_text holds the raw input (pre-redaction); content_redacted
+    // holds the redacted audit copy.
     expect(messageBind).toHaveBeenCalledWith(
       expect.any(String),
+      null,
       queryLogId,
       'user-1',
       'web',
       'user',
       'Contact me at [REDACTED:email]',
+      'Contact me at alice@example.com',
+      '[]',
       '["pii:email"]',
       1,
       expect.any(String)

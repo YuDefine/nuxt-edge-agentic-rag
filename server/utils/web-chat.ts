@@ -3,6 +3,7 @@ import { answerKnowledgeQuery } from './knowledge-answering'
 import { auditKnowledgeText } from './knowledge-audit'
 import { getAllowedAccessLevels } from './knowledge-runtime'
 import type { VerifiedKnowledgeEvidence } from './knowledge-retrieval'
+import type { StaleResolverResult } from './conversation-stale-resolver'
 import {
   consumeFixedWindowRateLimit,
   FIXED_WINDOW_RATE_LIMIT_PRESETS,
@@ -55,12 +56,28 @@ export function createChatKvRateLimitStore(kv: KvLike): FixedWindowRateLimitStor
   }
 }
 
+export interface ChatFollowUpContext {
+  conversationId: string
+  stale: StaleResolverResult
+}
+
 export async function chatWithKnowledge(
   input: {
     auth: {
       isAdmin: boolean
       userId: string
     }
+    /**
+     * Optional conversation context. When supplied, the orchestration MUST
+     * use the `resolveStaleness` option to decide whether the latest cited
+     * document versions are still current. Stale conversations are forced
+     * onto a fresh retrieval path — the previous citation chain is never
+     * treated as truth again. Missing conversation, deleted conversation, or
+     * conversations owned by a different user MUST be rejected by the
+     * caller before this function is invoked; this helper does not repeat
+     * the ownership check.
+     */
+    conversationId?: string
     governance: KnowledgeGovernanceConfig
     environment: string
     now?: number
@@ -76,6 +93,8 @@ export async function chatWithKnowledge(
     auditStore?: {
       createMessage(input: {
         channel: 'mcp' | 'web'
+        citationsJson?: string
+        conversationId?: string | null
         content: string
         now?: Date
         queryLogId?: string
@@ -104,7 +123,21 @@ export async function chatWithKnowledge(
     }>
     persistCitations?: (
       input: WebCitationPersistenceInput
-    ) => Promise<Array<{ citationId: string; sourceChunkId: string }>>
+    ) => Promise<Array<{ citationId: string; documentVersionId: string; sourceChunkId: string }>>
+    /**
+     * Resolves whether `input.conversationId` is stale (governance §1.1).
+     *
+     * Required when `input.conversationId` is provided. When the resolver
+     * reports `isStale: true`, the orchestration MUST fall back to fresh
+     * retrieval instead of treating the prior citation chain as truth — see
+     * `design.md` `Conversation Lifecycle Is Dynamic, Not Cached Truth`.
+     *
+     * This helper still calls `options.retrieve` either way; the concrete
+     * behavioural difference is that on the stale path we MUST NOT inject a
+     * same-document follow-up hint into the query and we flag the run via
+     * the returned `followUp.forcedFreshRetrieval` so callers can record it.
+     */
+    resolveStaleness?: (input: { conversationId: string }) => Promise<StaleResolverResult>
     rateLimitStore: FixedWindowRateLimitStore
     retrieve: (input: { allowedAccessLevels: string[]; query: string }) => Promise<{
       evidence: VerifiedKnowledgeEvidence[]
@@ -113,7 +146,18 @@ export async function chatWithKnowledge(
   }
 ): Promise<{
   answer: string | null
-  citations: Array<{ citationId: string; sourceChunkId: string }>
+  citations: Array<{ citationId: string; documentVersionId: string; sourceChunkId: string }>
+  /**
+   * Populated only when `input.conversationId` + `options.resolveStaleness`
+   * were both provided. `forcedFreshRetrieval` is `true` when the previous
+   * citation chain was considered stale and the orchestration therefore
+   * ignored it in favour of fresh retrieval.
+   */
+  followUp?: {
+    conversationId: string
+    forcedFreshRetrieval: boolean
+    stale: StaleResolverResult
+  }
   refused: boolean
   retrievalScore: number
 }> {
@@ -137,6 +181,27 @@ export async function chatWithKnowledge(
     isAdmin: input.auth.isAdmin,
     isAuthenticated: true,
   })
+
+  // Resolve staleness BEFORE we touch retrieval. The resolver is pure read —
+  // it never mutates prior messages. Whether it reports stale or not, we
+  // still run `options.retrieve` against current `is_current` evidence below;
+  // the stale flag only controls whether we keep any "same-document
+  // follow-up" shortcuts and what we record in `followUp`.
+  let staleResult: StaleResolverResult | null = null
+  let forcedFreshRetrieval = false
+
+  if (input.conversationId) {
+    if (!options.resolveStaleness) {
+      throw new Error(
+        'chatWithKnowledge: conversationId provided without options.resolveStaleness — ' +
+          'the stale conversation resolver is required (governance §1.1)'
+      )
+    }
+
+    staleResult = await options.resolveStaleness({ conversationId: input.conversationId })
+    forcedFreshRetrieval = staleResult.isStale
+  }
+
   const audit = auditKnowledgeText(input.query)
 
   if (audit.shouldBlock) {
@@ -154,6 +219,7 @@ export async function chatWithKnowledge(
       await options.auditStore.createMessage({
         channel: 'web',
         content: input.query,
+        conversationId: input.conversationId ?? null,
         queryLogId,
         role: 'user',
         userProfileId: input.auth.userId,
@@ -165,6 +231,15 @@ export async function chatWithKnowledge(
       citations: [],
       refused: true,
       retrievalScore: 0,
+      ...(staleResult && input.conversationId
+        ? {
+            followUp: {
+              conversationId: input.conversationId,
+              forcedFreshRetrieval,
+              stale: staleResult,
+            },
+          }
+        : {}),
     }
   }
 
@@ -185,6 +260,7 @@ export async function chatWithKnowledge(
     await options.auditStore.createMessage({
       channel: 'web',
       content: input.query,
+      conversationId: input.conversationId ?? null,
       now: typeof input.now === 'number' ? new Date(input.now) : undefined,
       queryLogId: queryLogId ?? undefined,
       role: 'user',
@@ -206,7 +282,16 @@ export async function chatWithKnowledge(
       judge: options.judge,
       persistCitations: async (citations) => {
         if (!options.persistCitations || !queryLogId) {
-          return []
+          // Even without a persistence sink we MUST still surface
+          // `documentVersionId` on the returned shape so the orchestration
+          // can record it on the assistant message (governance §1.1 stale
+          // resolver input). The placeholder citationId is never persisted
+          // — it just satisfies the shared `answerWithCitations` contract.
+          return citations.map((citation) => ({
+            citationId: '',
+            documentVersionId: citation.documentVersionId,
+            sourceChunkId: citation.sourceChunkId,
+          }))
         }
 
         const payload: WebCitationPersistenceInput = {
@@ -227,14 +312,36 @@ export async function chatWithKnowledge(
   )
 
   if (!result.refused && result.answer !== null && options.auditStore) {
+    // Governance §1.1: persist a de-duplicated list of cited
+    // `document_version_id` values so the stale resolver can re-validate
+    // them on the next follow-up turn.
+    const citedDocumentVersionIds = [
+      ...new Set(result.citations.map((citation) => citation.documentVersionId)),
+    ]
+
     await options.auditStore.createMessage({
       channel: 'web',
+      citationsJson: JSON.stringify(
+        citedDocumentVersionIds.map((documentVersionId) => ({ documentVersionId }))
+      ),
       content: result.answer,
+      conversationId: input.conversationId ?? null,
       now: typeof input.now === 'number' ? new Date(input.now) : undefined,
       queryLogId: queryLogId ?? undefined,
       role: 'assistant',
       userProfileId: input.auth.userId,
     })
+  }
+
+  if (staleResult && input.conversationId) {
+    return {
+      ...result,
+      followUp: {
+        conversationId: input.conversationId,
+        forcedFreshRetrieval,
+        stale: staleResult,
+      },
+    }
   }
 
   return result

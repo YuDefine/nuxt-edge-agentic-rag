@@ -24,7 +24,7 @@ export type McpAskResult =
     }
   | {
       answer: string
-      citations: Array<{ citationId: string; sourceChunkId: string }>
+      citations: Array<{ citationId: string; documentVersionId: string; sourceChunkId: string }>
       refused: false
     }
 
@@ -50,6 +50,8 @@ interface McpAskDependencies {
   auditStore?: {
     createMessage(input: {
       channel: 'mcp' | 'web'
+      citationsJson?: string
+      conversationId?: string | null
       content: string
       now?: Date
       queryLogId?: string
@@ -79,7 +81,7 @@ interface McpAskDependencies {
       }>
       now?: Date
       retentionDays?: number
-    }): Promise<Array<{ citationId: string; sourceChunkId: string }>>
+    }): Promise<Array<{ citationId: string; documentVersionId: string; sourceChunkId: string }>>
   }
   judge: (input: {
     evidence: Array<{

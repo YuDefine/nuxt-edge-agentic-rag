@@ -19,11 +19,15 @@ export function createCitationStore(database: D1DatabaseLike) {
       }>
       now?: Date
       retentionDays?: number
-    }): Promise<Array<{ citationId: string; sourceChunkId: string }>> {
+    }): Promise<Array<{ citationId: string; documentVersionId: string; sourceChunkId: string }>> {
       const now = input.now ?? new Date()
       const retentionDays = input.retentionDays ?? 180
       const expiresAt = new Date(now.getTime() + retentionDays * 24 * 60 * 60 * 1000).toISOString()
-      const persisted: Array<{ citationId: string; sourceChunkId: string }> = []
+      const persisted: Array<{
+        citationId: string
+        documentVersionId: string
+        sourceChunkId: string
+      }> = []
 
       for (const citation of input.citations) {
         const citationId = crypto.randomUUID()
@@ -50,6 +54,7 @@ export function createCitationStore(database: D1DatabaseLike) {
 
         persisted.push({
           citationId,
+          documentVersionId: citation.documentVersionId,
           sourceChunkId: citation.sourceChunkId,
         })
       }

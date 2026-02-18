@@ -61,7 +61,13 @@ describe('web chat', () => {
     )
     expect(result).toEqual({
       answer: 'Launch is planned for next Tuesday.',
-      citations: [],
+      citations: [
+        {
+          citationId: '',
+          documentVersionId: 'ver-9',
+          sourceChunkId: 'chunk-1',
+        },
+      ],
       refused: false,
       retrievalScore: 0.92,
     })
@@ -148,6 +154,7 @@ describe('web chat', () => {
     expect(auditStore.createMessage).toHaveBeenCalledWith({
       channel: 'web',
       content: 'password=hunter2',
+      conversationId: null,
       queryLogId: 'query-log-blocked',
       role: 'user',
       userProfileId: 'user-3',
@@ -232,6 +239,7 @@ describe('web chat', () => {
     const persistCitations = vi.fn().mockResolvedValue([
       {
         citationId: 'citation-10',
+        documentVersionId: 'ver-10',
         sourceChunkId: 'chunk-10',
       },
     ])
@@ -294,6 +302,7 @@ describe('web chat', () => {
       citations: [
         {
           citationId: 'citation-10',
+          documentVersionId: 'ver-10',
           sourceChunkId: 'chunk-10',
         },
       ],

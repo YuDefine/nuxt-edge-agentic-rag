@@ -8,7 +8,9 @@ import {
 import { getCloudflareEnv, getRequiredKvBinding } from '#server/utils/cloudflare-bindings'
 import { getD1Database } from '#server/utils/database'
 import { createCitationStore } from '#server/utils/citation-store'
-import { createKnowledgeAuditStore } from '#server/utils/knowledge-audit'
+import { createConversationStaleResolver } from '#server/utils/conversation-stale-resolver'
+import { createConversationStore } from '#server/utils/conversation-store'
+import { auditKnowledgeText, createKnowledgeAuditStore } from '#server/utils/knowledge-audit'
 import { createKnowledgeEvidenceStore } from '#server/utils/knowledge-evidence-store'
 import { retrieveVerifiedEvidence } from '#server/utils/knowledge-retrieval'
 import { getKnowledgeRuntimeConfig, getRuntimeAdminAccess } from '#server/utils/knowledge-runtime'
@@ -21,6 +23,7 @@ import {
 const chatBodySchema = z
   .object({
     query: z.string().trim().min(1, 'query is required').max(4000, 'query is too long'),
+    conversationId: z.string().uuid().optional(),
   })
   .strict()
 
@@ -39,16 +42,62 @@ export default defineEventHandler(async function chatHandler(event) {
     const body = await readValidatedBody(event, chatBodySchema.parse)
     const runtimeConfig = getKnowledgeRuntimeConfig()
     const database = await getD1Database()
+    const conversationStore = createConversationStore(database)
+
+    // governance §1.7: resolve the effective conversation id.
+    //
+    // - If the client supplied `conversationId`, verify it exists, is owned by
+    //   the caller, and is not soft-deleted (governance §1.3). Collapsed into
+    //   404 to avoid leaking ownership.
+    // - Otherwise auto-create one now so the caller can thread follow-up
+    //   turns through the same id. The title defaults to the first 40
+    //   characters of the query (trimmed) — good enough for the sidebar list
+    //   UX without forcing the client to pick a title up front.
+    let effectiveConversationId: string
+    let createdConversation = false
+
+    if (body.conversationId) {
+      const visible = await conversationStore.isVisibleForUser({
+        conversationId: body.conversationId,
+        userProfileId: session.user.id,
+      })
+
+      if (!visible) {
+        throw createError({
+          statusCode: 404,
+          statusMessage: 'Not Found',
+          message: '找不到此對話',
+        })
+      }
+
+      effectiveConversationId = body.conversationId
+    } else {
+      // Derive title from the redacted copy, not the raw query, so that
+      // credential / PII fragments never land on conversations.title.
+      // Empty-string fallback lets the store apply its DEFAULT_TITLE.
+      const titleSource = auditKnowledgeText(body.query).redactedText
+      const derivedTitle = titleSource.trim().slice(0, 40)
+      const created = await conversationStore.createForUser({
+        userProfileId: session.user.id,
+        title: derivedTitle,
+      })
+
+      effectiveConversationId = created.id
+      createdConversation = true
+    }
+
     const aiSearchClient = createCloudflareAiSearchClient({
       aiBinding: getRequiredAiBinding(event),
       indexName: getRequiredAiSearchIndex(runtimeConfig.bindings.aiSearchIndex),
     })
+    const staleResolver = createConversationStaleResolver(database)
     const result = await chatWithKnowledge(
       {
         auth: {
           isAdmin: getRuntimeAdminAccess(session.user.email ?? null),
           userId: session.user.id,
         },
+        conversationId: effectiveConversationId,
         governance: runtimeConfig.governance,
         environment: runtimeConfig.environment,
         query: body.query,
@@ -61,6 +110,7 @@ export default defineEventHandler(async function chatHandler(event) {
         rateLimitStore: createChatKvRateLimitStore(
           getRequiredKvBinding(event, runtimeConfig.bindings.rateLimitKv)
         ),
+        resolveStaleness: staleResolver.resolveStaleness,
         retrieve: (input) =>
           retrieveVerifiedEvidence(input, {
             governance: runtimeConfig.governance,
@@ -72,8 +122,11 @@ export default defineEventHandler(async function chatHandler(event) {
 
     log.set({
       result: {
+        conversationId: effectiveConversationId,
+        conversationCreated: createdConversation,
         citationCount: result.citations.length,
         refused: result.refused,
+        followUpForcedFreshRetrieval: result.followUp?.forcedFreshRetrieval ?? false,
       },
     })
 
@@ -81,7 +134,18 @@ export default defineEventHandler(async function chatHandler(event) {
       data: {
         answer: result.answer,
         citations: result.citations,
+        conversationId: effectiveConversationId,
+        conversationCreated: createdConversation,
         refused: result.refused,
+        ...(result.followUp
+          ? {
+              followUp: {
+                conversationId: result.followUp.conversationId,
+                forcedFreshRetrieval: result.followUp.forcedFreshRetrieval,
+                staleDocumentVersionIds: result.followUp.stale.staleDocumentVersionIds,
+              },
+            }
+          : {}),
       },
     }
   } catch (error) {

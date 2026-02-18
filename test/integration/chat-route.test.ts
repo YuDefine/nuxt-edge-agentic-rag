@@ -18,12 +18,26 @@ const chatRouteMocks = vi.hoisted(() => {
 
   return {
     MockChatRateLimitExceededError,
+    // The chat handler derives the auto-create conversation title from the
+    // redacted copy of the query (governance §1.4 no-leak) via
+    // `auditKnowledgeText`. Tests that don't set their own prompt content
+    // get a safe placeholder with no redaction applied.
+    auditKnowledgeText: vi.fn((text: string) => ({
+      redactedText: text,
+      redactionApplied: false,
+      riskFlags: [],
+      shouldBlock: false,
+    })),
     chatWithKnowledge: vi.fn(),
     createCitationStore: vi.fn().mockReturnValue({
       persistCitations: vi.fn().mockResolvedValue([]),
     }),
     createChatKvRateLimitStore: vi.fn().mockReturnValue({}),
     createCloudflareAiSearchClient: vi.fn().mockReturnValue({ search: vi.fn() }),
+    createConversationStaleResolver: vi.fn().mockReturnValue({
+      resolveStaleness: vi.fn(),
+    }),
+    createConversationStore: vi.fn(),
     createKnowledgeAuditStore: vi.fn().mockReturnValue({}),
     createKnowledgeEvidenceStore: vi.fn().mockReturnValue({}),
     getKnowledgeRuntimeConfig: vi.fn(),
@@ -62,7 +76,16 @@ vi.mock('../../server/utils/citation-store', () => ({
   createCitationStore: chatRouteMocks.createCitationStore,
 }))
 
+vi.mock('../../server/utils/conversation-stale-resolver', () => ({
+  createConversationStaleResolver: chatRouteMocks.createConversationStaleResolver,
+}))
+
+vi.mock('../../server/utils/conversation-store', () => ({
+  createConversationStore: chatRouteMocks.createConversationStore,
+}))
+
 vi.mock('../../server/utils/knowledge-audit', () => ({
+  auditKnowledgeText: chatRouteMocks.auditKnowledgeText,
   createKnowledgeAuditStore: chatRouteMocks.createKnowledgeAuditStore,
 }))
 
@@ -109,6 +132,20 @@ describe('/api/chat route', () => {
         id: 'user-1',
       },
     })
+    chatRouteMocks.createConversationStore.mockReturnValue({
+      createForUser: vi.fn().mockResolvedValue({
+        id: 'conv-auto',
+        userProfileId: 'user-1',
+        accessLevel: 'internal',
+        title: 'What changed?',
+        createdAt: '2026-04-18T09:00:00.000Z',
+        updatedAt: '2026-04-18T09:00:00.000Z',
+      }),
+      isVisibleForUser: vi.fn().mockResolvedValue(true),
+      listForUser: vi.fn(),
+      getForUser: vi.fn(),
+      softDeleteForUser: vi.fn(),
+    })
   })
 
   it('returns unified data on success', async () => {
@@ -126,6 +163,8 @@ describe('/api/chat route', () => {
       data: {
         answer: 'Launch moved to Tuesday.',
         citations: [{ citationId: 'citation-1', sourceChunkId: 'chunk-1' }],
+        conversationId: 'conv-auto',
+        conversationCreated: true,
         refused: false,
       },
     })
@@ -192,6 +231,8 @@ describe('/api/chat route', () => {
       data: {
         answer: 'Launch moved to Tuesday.',
         citations: [],
+        conversationId: 'conv-auto',
+        conversationCreated: true,
         refused: false,
       },
     })

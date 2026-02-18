@@ -127,16 +127,35 @@ export const messages = sqliteTable(
   'messages',
   {
     id: text('id').primaryKey(),
+    conversationId: text('conversation_id').references(() => conversations.id, {
+      onDelete: 'cascade',
+    }),
     queryLogId: text('query_log_id').references(() => queryLogs.id, { onDelete: 'set null' }),
     userProfileId: text('user_profile_id').references(() => userProfiles.id),
     channel: text('channel').notNull(),
     role: text('role').notNull(),
+    /**
+     * Audit-safe redacted copy of the message content. Remains NOT NULL even
+     * after a conversation is soft-deleted (governance §1.5). MUST NOT flow
+     * back into user-visible UI / API / model context.
+     */
     contentRedacted: text('content_redacted').notNull(),
+    /**
+     * User-visible raw content. Populated on write. Set to NULL when the
+     * owning conversation is soft-deleted (governance §1.4 purge policy).
+     * Readers intended for user/model-context surfaces MUST gate on this
+     * column via `getUserVisibleMessageContent` — see conversation-store.
+     */
+    contentText: text('content_text'),
+    citationsJson: text('citations_json').notNull().default('[]'),
     riskFlagsJson: text('risk_flags_json').notNull().default('[]'),
     redactionApplied: integer('redaction_applied', { mode: 'boolean' }).notNull().default(false),
     createdAt: text('created_at').notNull().default(timestampNow),
   },
-  (table) => [index('messages_query_log_idx').on(table.queryLogId)]
+  (table) => [
+    index('messages_query_log_idx').on(table.queryLogId),
+    index('messages_conversation_created_idx').on(table.conversationId, table.createdAt),
+  ]
 )
 
 export const citationRecords = sqliteTable(
