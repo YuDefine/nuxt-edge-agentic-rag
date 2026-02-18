@@ -87,11 +87,22 @@ export default defineEventHandler(async (event) => {
       throw replayError
     }
   } catch (error) {
-    if (
-      error instanceof McpAuthError ||
-      error instanceof McpReplayError ||
-      error instanceof McpRateLimitExceededError
-    ) {
+    if (error instanceof McpReplayError) {
+      // Surface the structured `reason` code via a response header so callers
+      // can tell apart `chunk_not_found` from `chunk_retention_expired` without
+      // parsing the error message. HTTP status stays as spec requires
+      // (404 / 403). We deliberately do NOT put `reason` into `createError`'s
+      // `data` field to avoid leaking internal details through the error body
+      // (see `.claude/rules/error-handling.md`).
+      setResponseHeader(event, 'x-replay-reason', error.reason)
+      throw createError({
+        statusCode: error.statusCode,
+        statusMessage: error.message,
+        message: error.message,
+      })
+    }
+
+    if (error instanceof McpAuthError || error instanceof McpRateLimitExceededError) {
       throw createError({
         statusCode: error.statusCode,
         statusMessage: error.message,

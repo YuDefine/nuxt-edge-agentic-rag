@@ -33,4 +33,7 @@
       "bucket_name": "agentic-rag-documents",
     },
   ],
+  "triggers": {
+    "crons": ["0 3 * * *"],
+  },
 }

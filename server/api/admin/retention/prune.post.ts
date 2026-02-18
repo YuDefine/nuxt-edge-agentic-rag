@@ -1,7 +1,7 @@
 import { useLogger } from 'evlog'
 
 import { getD1Database } from '#server/utils/database'
-import { pruneKnowledgeRetentionWindow } from '#server/utils/knowledge-retention'
+import { runRetentionCleanup } from '#server/utils/knowledge-retention'
 
 export default defineEventHandler(async function pruneRetentionHandler(event) {
   const log = useLogger(event)
@@ -15,20 +15,25 @@ export default defineEventHandler(async function pruneRetentionHandler(event) {
       },
     })
 
-    await pruneKnowledgeRetentionWindow({
+    const cleanup = await runRetentionCleanup({
       database: await getD1Database(),
     })
 
     log.set({
       result: {
-        retentionDays: 180,
+        retentionDays: cleanup.retentionDays,
+        deleted: cleanup.deleted,
+        errorCount: cleanup.errors.length,
       },
     })
 
     return {
       data: {
         pruned: true,
-        retentionDays: 180,
+        retentionDays: cleanup.retentionDays,
+        cutoff: cleanup.cutoff,
+        deleted: cleanup.deleted,
+        errors: cleanup.errors,
       },
     }
   } catch (error) {

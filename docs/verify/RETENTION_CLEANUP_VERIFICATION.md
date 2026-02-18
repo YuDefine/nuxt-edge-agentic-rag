@@ -174,14 +174,88 @@ wrangler d1 execute agentic-rag-db --remote --command \
 
 ### 4.6 Replay 過期契約
 
+> 完整契約文件：`docs/verify/RETENTION_REPLAY_CONTRACT.md`。此處只列 staging 操作步驟。
+
 **操作**：
 
-1. 對已被清除的 backdated citation 呼叫 `getDocumentChunk`。
+1. 對已被 cleanup 刪除的 backdated citation 呼叫 `getDocumentChunk`：
+
+   ```bash
+   curl -i -H "Authorization: Bearer $MCP_TOKEN" \
+     https://agentic-staging.yudefine.com.tw/api/mcp/chunks/<deleted_citation_id>
+   ```
+
+2. 對一筆**仍在 retention 內但 `chunk_text_snapshot` 手動清空**的 citation 呼叫（模擬未來可能的 snapshot scrub policy）：
+
+   ```bash
+   wrangler d1 execute agentic-rag-db --remote --command \
+     "UPDATE citation_records SET chunk_text_snapshot = '' WHERE id = '<retained_citation_id>';"
+
+   curl -i -H "Authorization: Bearer $MCP_TOKEN" \
+     https://agentic-staging.yudefine.com.tw/api/mcp/chunks/<retained_citation_id>
+   ```
 
 **PASS 條件**：
 
-- HTTP 狀態與一般過期 citation 相同（例如 404 或 410），**不洩漏**「此 citation 曾存在」的訊息
-- 回應格式與正常過期完全一致，不得出現額外 debug 資訊
+- 兩種情境都回 `HTTP/1.1 404`
+- 兩種情境的 response body `message` 完全相同（`"The requested citation was not found"`）— **不洩漏**「此 citation 曾存在」訊息
+- `x-replay-reason` header 可區分：
+  - 情境 1：`x-replay-reason: chunk_not_found`
+  - 情境 2：`x-replay-reason: chunk_retention_expired`
+- 回應內不含 stack trace、DB error、或 `data.reason` body 欄位
+
+**驗證完成後**：`DELETE FROM citation_records WHERE id = '<retained_citation_id>'` 清理 staging 資料。
+
+## 4A. Retention Boundary 驗證（governance 2.5）
+
+> 驗證「retention window 邊界」的精確行為：剛好在 cutoff 前一秒的記錄應保留；剛好在 cutoff 當下或之後的記錄應被清除。
+
+### 4A.1 操作（staging only）
+
+1. 使用 `retentionDays: 5` 短 TTL（避免等真的 180 天）：
+
+   ```bash
+   # 一筆在 5 天前 + 1 秒（保留 boundary 內）
+   JUST_INSIDE="$(date -u -v-5d -v+1S +"%Y-%m-%dT%H:%M:%SZ")"
+   # 一筆在 5 天前整（落在 cutoff 上，<=）
+   RIGHT_ON="$(date -u -v-5d +"%Y-%m-%dT%H:%M:%SZ")"
+
+   wrangler d1 execute agentic-rag-db --remote --command \
+     "INSERT INTO query_logs (id, channel, environment, query_redacted_text, \
+        config_snapshot_version, status, created_at) \
+      VALUES ('boundary-inside-$(date +%s)', 'web', 'staging', '[boundary inside]', \
+        'kgov-boundary', 'accepted', '${JUST_INSIDE}'),\
+             ('boundary-on-$(date +%s)', 'web', 'staging', '[boundary on]', \
+        'kgov-boundary', 'accepted', '${RIGHT_ON}');"
+   ```
+
+2. 對 `/api/admin/retention/prune` 傳 `retentionDays=5`（若 endpoint 支援 body 覆寫；否則用 wrangler cron 觸發 staging 獨立 runner）：
+
+   ```bash
+   curl -X POST https://agentic-staging.yudefine.com.tw/api/admin/retention/prune \
+     -H "Content-Type: application/json" \
+     -H "Cookie: $ADMIN_COOKIE" \
+     -d '{"retentionDays": 5}'
+   ```
+
+3. 驗證結果：
+
+   ```bash
+   wrangler d1 execute agentic-rag-db --remote --command \
+     "SELECT id, created_at FROM query_logs WHERE id LIKE 'boundary-%';"
+   ```
+
+### 4A.2 PASS 條件
+
+- `boundary-inside-*` **仍存在**（cutoff 是 `<=`，早 1 秒的 row 不算過期）
+- `boundary-on-*` **已刪除**（精確落在 cutoff 上，被 `<=` 抓到）
+- Response body 含 `deleted.queryLogs >= 1`
+
+### 4A.3 Replay 邊界
+
+同步對 retention-boundary 內的 citation 呼叫 `getDocumentChunk`：
+
+**PASS**：仍 200 回傳完整 chunk（§3.2 保證）。若在 boundary 內卻 404，則 cleanup 邏輯誤 cascading。
 
 ## 5. MCP Token Metadata Cleanup（governance 2.1, 2.2）
 

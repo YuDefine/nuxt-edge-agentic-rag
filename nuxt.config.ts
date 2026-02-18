@@ -35,7 +35,8 @@ export default defineNuxtConfig({
   ssr: false,
 
   modules: [
-    '@nuxthub/core', // NuxtHub must be first for better-auth to receive D1 binding
+    // NuxtHub must be first for better-auth to receive D1 binding
+    '@nuxthub/core',
     '@onmax/nuxt-better-auth',
     '@nuxt/ui',
     'nuxt-security',
@@ -46,6 +47,7 @@ export default defineNuxtConfig({
     '@pinia/colada-nuxt',
     '@nuxt/test-utils/module',
     'evlog/nuxt',
+    '@nuxt/hints',
   ],
 
   // NuxtHub - auto-detects environment:
@@ -149,6 +151,16 @@ export default defineNuxtConfig({
     cloudflare: {
       deployConfig: true,
       nodeCompat: true,
+    },
+    experimental: {
+      tasks: true,
+    },
+    // Cloudflare Workers Cron Trigger → Nitro scheduled task.
+    // Cron expression also declared in wrangler.jsonc (`triggers.crons`);
+    // both must stay in sync.
+    scheduledTasks: {
+      // Daily at 03:00 UTC.
+      '0 3 * * *': ['retention:cleanup'],
     },
   },
 })

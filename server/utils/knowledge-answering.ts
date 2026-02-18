@@ -28,7 +28,7 @@ export async function answerKnowledgeQuery(
         documentVersionId: string
         sourceChunkId: string
       }>
-    ) => Promise<Array<{ citationId: string; sourceChunkId: string }>>
+    ) => Promise<Array<{ citationId: string; documentVersionId: string; sourceChunkId: string }>>
     governance: Pick<KnowledgeGovernanceConfig, 'models' | 'thresholds'>
     retrieve: (input: { allowedAccessLevels: string[]; query: string }) => Promise<{
       evidence: VerifiedKnowledgeEvidence[]
@@ -37,7 +37,7 @@ export async function answerKnowledgeQuery(
   }
 ): Promise<{
   answer: string | null
-  citations: Array<{ citationId: string; sourceChunkId: string }>
+  citations: Array<{ citationId: string; documentVersionId: string; sourceChunkId: string }>
   refused: boolean
   retrievalScore: number
 }> {
@@ -135,10 +135,10 @@ async function answerWithCitations(
       documentVersionId: string
       sourceChunkId: string
     }>
-  ) => Promise<Array<{ citationId: string; sourceChunkId: string }>>
+  ) => Promise<Array<{ citationId: string; documentVersionId: string; sourceChunkId: string }>>
 ): Promise<{
   answer: string
-  citations: Array<{ citationId: string; sourceChunkId: string }>
+  citations: Array<{ citationId: string; documentVersionId: string; sourceChunkId: string }>
   refused: false
   retrievalScore: number
 }> {

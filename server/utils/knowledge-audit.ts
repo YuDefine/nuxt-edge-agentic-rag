@@ -69,7 +69,20 @@ export function createKnowledgeAuditStore(database: D1DatabaseLike) {
     async createMessage(input: {
       channel: KnowledgeChannel
       configSnapshotVersion?: string
+      /**
+       * Optional conversation anchor. When supplied, the row is scoped under
+       * the conversation so governance §1.4 purge (soft-delete NULLs
+       * `content_text` by `conversation_id`) can find it. When omitted, the
+       * message behaves like a session-only audit row.
+       */
+      conversationId?: string | null
       content: string
+      /**
+       * Optional citations payload — persisted raw to `citations_json` so the
+       * stale resolver can re-derive cited `document_version_id` values on
+       * follow-up. Defaults to `[]`.
+       */
+      citationsJson?: string
       now?: Date
       queryLogId?: string
       role: MessageRole
@@ -79,21 +92,44 @@ export function createKnowledgeAuditStore(database: D1DatabaseLike) {
       const audit = auditKnowledgeText(input.content)
       const now = (input.now ?? new Date()).toISOString()
 
+      // Governance §1.4 / §1.5: write two copies of the content.
+      //
+      //   content_text     → raw user-visible copy. Purge policy NULLs this
+      //                      column when the owning conversation is
+      //                      soft-deleted; until then, user/model-context
+      //                      readers get the original text via
+      //                      `getUserVisibleMessageContent`.
+      //   content_redacted → audit-safe redacted copy. Stays NOT NULL across
+      //                      delete so audit paths keep working within the
+      //                      retention window.
+      //
+      // Blocked (high-risk) messages MUST NOT persist the raw content in
+      // content_text — the row is refused so it never surfaces to any user
+      // path, and keeping the raw on disk would defeat the whole point of
+      // the redaction (acceptance TC-15). We null content_text for
+      // shouldBlock rows so the raw never touches storage in any column.
+      const contentTextForStorage = audit.shouldBlock ? null : input.content
+
       await database
         .prepare(
           [
             'INSERT INTO messages (',
-            '  id, query_log_id, user_profile_id, channel, role, content_redacted, risk_flags_json, redaction_applied, created_at',
-            ') VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            '  id, conversation_id, query_log_id, user_profile_id, channel, role,',
+            '  content_redacted, content_text, citations_json, risk_flags_json,',
+            '  redaction_applied, created_at',
+            ') VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
           ].join('\n')
         )
         .bind(
           messageId,
+          input.conversationId ?? null,
           input.queryLogId ?? null,
           input.userProfileId ?? null,
           input.channel,
           input.role,
           audit.redactedText,
+          contentTextForStorage,
+          input.citationsJson ?? '[]',
           JSON.stringify(audit.riskFlags),
           audit.redactionApplied ? 1 : 0,
           now
