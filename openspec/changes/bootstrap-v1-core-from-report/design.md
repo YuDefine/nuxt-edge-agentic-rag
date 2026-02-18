@@ -77,6 +77,35 @@ Web 問答主線固定為：規則式 Query Normalization → 權限／敏感資
 
 **Trade-offs**：per-chunk R2 物件數量 ≈ per-version chunk 數（預估 10-50）。R2 Class A operations 成本增加但仍在 free tier / 個位數成本區間。收穫是 AutoRAG filter 能正確工作、citation replay 不再依賴 fragile locator-in-text 解析。
 
+**Custom metadata schema（受 AutoRAG ≤ 5 fields 限制）**：
+
+AutoRAG 每個 instance 最多允許 5 個 custom metadata fields（reserved: `timestamp`、`folder`、`filename`，每個 text 最多 500 chars）。原規劃 7 個 fields 不可行，收斂為：
+
+| Field                 | 用途                               |
+| --------------------- | ---------------------------------- |
+| `status`              | filter: `eq 'active'`              |
+| `version_state`       | filter: `eq 'current'`             |
+| `access_level`        | filter: `eq <level>`               |
+| `document_version_id` | retrieval 回傳 → 供 D1 replay 反查 |
+| `citation_locator`    | retrieval 回傳 → chunk 位置        |
+
+**從 custom metadata 移出的欄位**（改由 D1 post-verification 補）：
+
+- `title` → `retrieveVerifiedEvidence` 從 D1 `documentTitle` 填入（`resolveCurrentEvidence` 已有 join）
+- `category_slug` → 從 AutoRAG filter 移除；若 query 帶 `category:<slug>` hint，改在 verified evidence 階段以 D1 `categorySlug` post-filter
+
+**Sync flow 觸發 AutoRAG**：
+
+Workers binding `env.AI.autorag('<instance>')` 沒有 `sync()` 方法 — AutoRAG crawl 為被動（定期 scan R2 source），或透過 REST API `POST /accounts/{ACCOUNT_ID}/ai-search/instances/{INSTANCE_NAME}/jobs` 主動觸發。實作：`server/utils/autorag-sync.ts` 封裝 `triggerAutoRagSync` + `getAutoRagJobStatus`，以 `NUXT_KNOWLEDGE_AUTORAG_API_TOKEN`（runtime config `autoRag.apiToken`）Bearer 認證。`sync.post.ts` 寫完 R2 per-chunk 後呼叫 jobs API 取 jobId，寫 KV `autorag-job:<versionId>`（TTL 1 小時）並 `setVersionIndexingStatus('preprocessing', 'running')`。
+
+**Polling 推進 state machine**：
+
+`GET /api/documents/[id]/versions/[versionId]/index-status` 在版本非 terminal（非 `indexed`/`failed`/`completed`）時，從 KV 讀 jobId → 呼叫 `getAutoRagJobStatus` → `completed` 則 `setVersionIndexingStatus('indexed', 'completed')`、`failed` 則 `setVersionIndexingStatus('preprocessing', 'failed')`。UploadWizard `indexing_wait` step 以 3 秒間隔輪詢、5 分鐘 timeout。
+
+**Local dev fallback**：
+
+`autoRag.apiToken === ''`（local 無 API token）時，`sync.post.ts` 直接 `setVersionIndexingStatus('indexed', 'completed')` 跳過 AutoRAG 以利 UI 開發；production 必須提供 token 才能觸發真正 indexing。
+
 **R2 Prefix 分工與 AutoRAG crawl scope**：
 
 | Prefix                                             | 內容                      | Writer                      | customMetadata | AutoRAG crawl |
