@@ -262,6 +262,21 @@
     }
   }
 
+  function stepStatusLabel(status: StepStatus): string {
+    switch (status) {
+      case 'completed':
+        return '已完成'
+      case 'error':
+        return '發生錯誤'
+      case 'active':
+        return '進行中'
+      case 'pending':
+        return '尚未開始'
+      default:
+        return assertNever(status, 'stepStatusLabel')
+    }
+  }
+
   const currentStepIndex = computed(() =>
     Math.max(
       0,
@@ -505,35 +520,43 @@
 <template>
   <div class="flex flex-col gap-6">
     <div v-if="currentStep !== 'complete'" class="flex flex-col gap-2 pb-2">
-      <div class="flex items-center gap-2 overflow-x-auto">
+      <ol
+        class="flex items-center gap-2 overflow-x-auto"
+        :aria-label="`上傳流程：共 ${steps.length} 步`"
+      >
         <template v-for="(step, index) in steps" :key="step.key">
-          <div
+          <li
             class="flex size-6 shrink-0 items-center justify-center rounded-full border transition-colors"
             :class="{
               'border-primary bg-primary text-inverted': getStepStatus(step.key) === 'active',
-              'border-success bg-success text-inverted': getStepStatus(step.key) === 'completed',
+              'border-primary bg-default text-default': getStepStatus(step.key) === 'completed',
               'border-error bg-error text-inverted': getStepStatus(step.key) === 'error',
               'border-muted bg-default text-dimmed': getStepStatus(step.key) === 'pending',
             }"
+            :aria-current="getStepStatus(step.key) === 'active' ? 'step' : undefined"
+            :aria-label="`${step.label}：${stepStatusLabel(getStepStatus(step.key))}`"
           >
             <UIcon
               :name="getStepIcon(getStepStatus(step.key))"
               class="size-3"
               :class="{
-                'animate-spin': getStepStatus(step.key) === 'active' && isProcessing,
+                'animate-spin motion-reduce:animate-none':
+                  getStepStatus(step.key) === 'active' && isProcessing,
               }"
+              aria-hidden="true"
             />
-          </div>
+          </li>
           <div
             v-if="index < steps.length - 1"
             class="h-px flex-1"
             :class="{
-              'bg-success': getStepStatus(step.key) === 'completed',
+              'bg-primary': getStepStatus(step.key) === 'completed',
               'bg-muted': getStepStatus(step.key) !== 'completed',
             }"
+            aria-hidden="true"
           />
         </template>
-      </div>
+      </ol>
       <p class="text-sm text-muted">
         步驟 {{ currentStepIndex + 1 }} / {{ steps.length }}：
         <span class="font-medium text-default">{{ currentStepConfig?.label }}</span>
@@ -692,7 +715,7 @@
       class="flex flex-col items-center justify-center py-8 text-center"
     >
       <div class="mb-4 rounded-full bg-muted p-4">
-        <UIcon name="i-lucide-check-circle" class="size-8 text-success" />
+        <UIcon name="i-lucide-check-circle" class="size-8 text-default" />
       </div>
       <h3 class="mb-2 text-lg font-medium text-default">文件已準備就緒</h3>
       <p class="mb-6 max-w-sm text-sm text-muted">
@@ -711,7 +734,7 @@
       class="flex flex-col items-center justify-center py-8 text-center"
     >
       <div class="mb-4 rounded-full bg-muted p-4">
-        <UIcon name="i-lucide-party-popper" class="size-8 text-success" />
+        <UIcon name="i-lucide-party-popper" class="size-8 text-default" />
       </div>
       <h3 class="mb-2 text-lg font-medium text-default">發布成功</h3>
       <p class="mb-6 max-w-sm text-sm text-muted">文件已成功發布至知識庫，使用者現在可以查詢。</p>
