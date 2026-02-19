@@ -83,6 +83,18 @@
 - [x] 8.6 執行 `/review-screenshot` — 視覺 QA
 - [x] 8.7 Fidelity 確認 — `design-review.md` 中無 DRIFT 項
 
+## 9. UI/UX Refinements（improve.md B1/B2/B6/B7/B9/B13/B15 補強）
+
+> 來源：2026-04-18 improve.md 類別 2 盤點。既有實作已涵蓋多數，以下為**補強項**，不覆蓋既有 completed tasks。完成後對應項目在 improve.md 標記 📝。
+
+- [ ] 9.1 **B1 補強：引用互動 UX** — 行內 `CitationMarker` hover 時對應 `CitationReplayModal` / 引用卡片加 highlight；引用卡片顯示 current 版 badge（對比歷史版）；引用卡片 click 至少兩種進入方式（直接展開 or 開 modal）
+- [ ] 9.2 [P] **B2 補強：拒答下一步引導** — `RefusalMessage` 元件補「建議行動」區塊：顯示 3 項可點擊建議（「改換關鍵字重新提問」/「查看相關文件清單」/「聯絡管理員」），點擊觸發對應行為（清空輸入框 focus / link 到 `/admin/documents` 或公開列表 / mailto）
+- [ ] 9.3 [P] **B6 補強：上傳進度 4 階段 UX** — `UploadWizard` 從 indeterminate progress 改為 **4 階段明確 UI**：(1) 上傳中顯示 XHR 百分比；(2) 前處理中顯示「前處理中」spinner + 預估文件處理時間；(3) smoke 驗證中顯示「驗證中」spinner；(4) 完成顯示「已發布」green checkmark；失敗顯示具體階段的錯誤訊息
+- [ ] 9.4 [P] **B7 補強：串流 UX 細節** — (a) `ChatInput` 加 stop 按鈕（串流中顯示、點擊中斷並呼叫 `abort()`）；(b) `useChat` onError 區分「user abort / network error / timeout / rate limit」並給不同 UX；(c) streaming markdown 中途若有未閉合 code fence 用 `md4x heal:streaming` 或等價處理避免破版
+- [ ] 9.5 [P] **B9 補強：429 rate limit UX** — `/api/chat` 回 429 時 `useChat` 捕獲 → 顯示錯誤 toast「請求過於頻繁，請於 X 秒後重試」；X 為從 response header 讀取的 retry-after 或預設 60；中斷 stop 按鈕切回發送狀態
+- [ ] 9.6 **B13 補強：版本 rollback UI + 歷史引用 badge** — (a) `/admin/documents/[id]` 版本歷史每列加「切為 current」按鈕（僅非 current 且 `index_status=indexed` 可點，二次確認 modal）；(b) 引用卡片若 sourceVersion ≠ current 時加 `已非最新版` 小 badge；(c) rollback 成功 toast 提示
+- [ ] 9.7 [P] **B15 補強：citation 審計回放（併入 B1 路徑）** — 確認 `CitationReplayModal` 在 admin 使用時除使用者層資訊外額外顯示：`query_log.id`、`citationId`、`source_chunk_id`、`expires_at`（admin-only 欄位區塊，一般使用者隱藏）；對應 query_logs 詳情頁（admin-ui-post-core 範疇）加「跳至引用回放」按鈕
+
 ## 人工檢查
 
 > 來源：`add-v1-core-ui` | Specs: `web-chat-ui`, `admin-document-management-ui`
@@ -92,11 +104,16 @@
 - [x] #2 以 Web Admin 登入後，確認 Navigation 顯示 Chat + Documents 入口
 - [ ] #3 在 Chat 頁面提問，確認 streaming 回答逐字顯示，refusal 有不同樣式
 - [ ] #4 點擊引用標記，確認 Citation Replay Modal 正確顯示原文段落
-- [ ] #5 以 Admin 進入 `/admin/documents`，確認文件列表顯示所有欄位與狀態 Badge
+- [x] #5 以 Admin 進入 `/admin/documents`，確認文件列表顯示所有欄位與狀態 Badge
+  - 2026-04-18 local PASS：列表顯示 7 欄（標題 / 分類 / 權限 / 狀態 / 目前版本 / 更新時間 / actions），3 份種子文件覆蓋 3 種 document status badge（草稿 / 啟用 / 已歸檔）與 version sync+index 實際值（待同步+前處理中、已同步+待索引），每列尾端有 `⋯` actions icon。截圖：screenshots/local/add-v1-core-ui/#5-admin-list-all-columns.png
 - [ ] #6 執行完整上傳流程（select → upload → finalize → sync → publish），確認每步驟狀態正確
 - [x] #7 以非 Admin 訪問 `/admin/documents`，確認被阻擋（403 或 redirect）
   - 2026-04-18 production PASS：Web User session 直接訪問 `/admin/documents` 被 redirect 到 `/`（首頁），不可見文件列表。Observation: redirect 目標為 `/` 而非 Runbook 原本預期的 `/chat` 或 `/login`；已由使用者確認接受現況。
-- [ ] #8 測試 empty state、loading state、error state 是否正確顯示
+- [x] #8 測試 empty state、loading state、error state 是否正確顯示
+  - 2026-04-18 local PASS：
+    - Empty: 清空 `documents` / `document_versions` 後 `/admin/documents` 顯示 `DocumentsDocumentListEmpty`（`i-lucide-file-plus` 圖示 + 「開始建立知識庫」標題 + CTA「上傳第一份文件」）。驗完立刻以備份 SQL 還原 3 份文件。截圖：screenshots/local/add-v1-core-ui/#8-empty-state.png
+    - Loading: `/admin/documents` 的 `isLoading` 分支（`i-lucide-loader-2` 旋轉 spinner + 「載入中...」）。透過 `window.fetch` wrapper 對 `/api/admin/documents` 注入 6 秒延遲，再從瀏覽器 devtools 以 `useNuxtApp()._asyncData[key].execute({cause:'refresh'})` 強制觸發 pending 狀態截圖（SPA 首次載入因 `ssr:false` 會只見空殼畫面，實際 `isLoading` UI 僅在 client-side refresh 路徑可見）。截圖：screenshots/local/add-v1-core-ui/#8-loading-state.png
+    - Error: `/admin/documents/00000000-0000-0000-0000-000000000000` 觸發 404 分支 → 「找不到此文件，可能已被刪除。」+「返回列表」CTA（`i-lucide-file-x` 圖示）。截圖：screenshots/local/add-v1-core-ui/#8-error-404.png。附帶測試 `/admin/documents/not-a-uuid` 觸發 Zod 400 → 走 generic network error 分支「連線可能暫時中斷…」+「返回列表 / 重新載入」兩個 CTA。截圖：screenshots/local/add-v1-core-ui/#8-error-400.png
 
 ## Affected Entity Matrix
 

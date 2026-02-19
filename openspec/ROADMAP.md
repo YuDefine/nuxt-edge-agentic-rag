@@ -157,9 +157,9 @@ spectra unpark observability-and-debug
 
 ## Active Changes
 
-_last synced: 2026-04-18T07:50:13.502Z_
+_last synced: 2026-04-18T10:12:56.238Z_
 
-9 active changes (0 ready · 6 in progress · 3 draft · 0 blocked)
+8 active changes (0 ready · 6 in progress · 2 draft · 0 blocked)
 
 ### Ready to apply
 
@@ -167,18 +167,17 @@ _(none)_
 
 ### In progress
 
-- **add-v1-core-ui** — 44/49 tasks (90%)
+- **add-v1-core-ui** — 46/56 tasks (82%)
 - **admin-document-lifecycle-ops** — 22/27 tasks (81%)
   - Specs: `admin-document-management-ui`
-- **bootstrap-v1-core-from-report** — 34/48 tasks (71%)
+- **bootstrap-v1-core-from-report** — 40/48 tasks (83%)
 - **fix-document-publish-draft-to-active** — 19/25 tasks (76%)
   - Specs: `admin-document-management-ui`
-- **governance-refinements** — 6/17 tasks (35%)
-- **test-coverage-and-automation** — 14/43 tasks (33%)
+- **governance-refinements** — 17/18 tasks (94%)
+- **test-coverage-and-automation** — 38/50 tasks (76%)
 
 ### Draft
 
-- **admin-ui-post-core** — 0/33 tasks (0%)
 - **migrate-mcp-to-toolkit** — 0/32 tasks (0%)
 - **observability-and-debug** — 0/21 tasks (0%)
 
@@ -197,7 +196,6 @@ _(none)_
 ### Independent (can run in parallel)
 
 - `add-v1-core-ui`
-- `admin-ui-post-core`
 - `bootstrap-v1-core-from-report`
 - `governance-refinements`
 - `migrate-mcp-to-toolkit`
