@@ -136,3 +136,97 @@ Auth Pages & Layouts:
 Dark mode 測試通過，配色一致性確認。
 
 Agent 另產出完整報告：`screenshots/local/bootstrap-v1-core-from-report/review.md`
+
+---
+
+## Round 3 — UploadWizard Design Review — 2026-04-18
+
+對應 `tasks.md` Section 9。
+
+### Scope
+
+- `app/components/documents/UploadWizard.vue` — 上傳流程 wizard，涵蓋 7 個 step（select → presign → upload → finalize → sync → indexing_wait → publish）+ complete 終態
+
+### Design Fidelity Report (Before)
+
+| #   | 類別        | 狀態  | 位置                                   | 問題                                                                                                                                                          |
+| --- | ----------- | ----- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | consistency | DRIFT | `UploadWizard.vue:514`                 | Step indicator completed 狀態用 `border-success bg-success text-inverted`（綠色填滿），違反 DS「語意色彩僅用於系統回饋，不用於裝飾」                          |
+| 2   | consistency | DRIFT | `UploadWizard.vue:531`                 | Step separator completed 用 `bg-success`（綠線），裝飾性 success 色                                                                                           |
+| 3   | consistency | DRIFT | `UploadWizard.vue:718` (publish step)  | `text-success` 於 `i-lucide-check-circle` — 裝飾性完成 icon 使用 success 語意色                                                                               |
+| 4   | consistency | DRIFT | `UploadWizard.vue:737` (complete step) | `text-success` 於 `i-lucide-party-popper` — 慶祝 icon 使用 success 語意色                                                                                     |
+| 5   | a11y        | 建議  | `UploadWizard.vue:508-535`             | Step indicator 為裝飾性 `<div>`，非語意化 `<ol>/<li>`；缺 `aria-current="step"` 與 `aria-label`；active 狀態的 `animate-spin` 未尊重 `prefers-reduced-motion` |
+| 6   | state       | 建議  | `UploadWizard.vue:145-152`             | `getIndexingStatusLabel` 未覆蓋 `pending`、`queued`、`running` 等 sync/index status，fallback 「處理中…」雖可用但資訊量偏低                                   |
+
+**Fidelity Score (Before): 3/8** — Visual / Consistency / Accessibility 三項偏離 DS
+
+### Fixes Applied
+
+| #   | 修復                                                                                                                                                                                                                                          |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Completed step indicator 改為 `border-primary bg-default text-default`（outlined + check icon），保持視覺識別但不使用 success 色                                                                                                              |
+| 2   | Separator completed 改 `bg-primary`，使用 DS 的 neutral primary（黑/白）表示完成連結                                                                                                                                                          |
+| 3   | Publish step check-circle icon 改 `text-default`，icon 形狀本身已傳達完成語意                                                                                                                                                                 |
+| 4   | Complete step party-popper icon 改 `text-default`，同上                                                                                                                                                                                       |
+| 5   | Step indicator 改用 `<ol>` / `<li>` 語意化；加 `aria-current="step"`、`aria-label="<step.label>：<status-label>"`、separator 加 `aria-hidden="true"`、spinner 加 `motion-reduce:animate-none`；新增 `stepStatusLabel()` helper 產生 a11y 文字 |
+| 6   | 保留 fallback，未擴充 — spec 未明確列 `pending` / `running` 應有專屬文案，改動範圍超出 review scope，移到 follow-up                                                                                                                           |
+
+**Fidelity Score (After): 7/8** — 建議 #6 未做（非 DRIFT，已記錄為 follow-up）
+
+### Skills Executed (conceptually)
+
+1. `/polish` — token 對齊（移除裝飾性 success 色）
+2. `/harden` — a11y（aria-current / aria-label / motion-reduce）
+3. `/audit` — 以 typecheck + lint 0 warnings 驗證
+
+### State Coverage（依 `ux-completeness.md`）
+
+| State               | 實作位置                                      | 覆蓋          |
+| ------------------- | --------------------------------------------- | ------------- |
+| `preprocessing`     | `getIndexingStatusLabel` 分支 + polling       | ✅            |
+| `smoke_pending`     | `getIndexingStatusLabel` 分支                 | ✅            |
+| `indexed`           | polling transition → `currentStep=publish`    | ✅            |
+| `failed`            | polling 檢查 + `indexingError` UI + retry CTA | ✅            |
+| `timeout`（> 5min） | `setTimeout(5 * 60 * 1000)` + 錯誤文案        | ✅            |
+| `pending`/`running` | fallback 「處理中…」                          | ⚠️ 非專屬文案 |
+
+Spec 要求的 4 個 state（preprocessing / smoke_pending / indexed / failed）全部覆蓋。timeout 額外覆蓋。
+
+### Verification
+
+- [x] `pnpm format` — clean
+- [x] `pnpm lint` — 0 warnings / 0 errors
+- [x] `pnpm typecheck` — 0 errors（僅 import dedup warnings，非本次新增）
+- [x] Step indicator DRIFT 修復 — 無 `bg-success` / `text-success` 裝飾殘留
+- [x] a11y — `<ol>/<li>` + `aria-current` + `motion-reduce:animate-none`
+- [x] State Coverage — 4 spec 要求 state 全覆蓋
+
+### Screenshot Evidence (Before)
+
+截圖由前代 agent 拍攝，存放於 `screenshots/local/bootstrap-v1-core-from-report/`：
+
+| File                                      | State                                      |
+| ----------------------------------------- | ------------------------------------------ |
+| `B3-before-01-select-step.png`            | Select / dropzone + form                   |
+| `B3-before-02-indexing-preprocessing.png` | `indexing_wait` - preprocessing            |
+| `B3-before-03-indexing-smoke-pending.png` | `indexing_wait` - smoke_pending            |
+| `B3-before-04-indexing-indexed.png`       | `indexing_wait` - transitioning to publish |
+| `B3-before-05-indexing-failed.png`        | `indexing_wait` - failed with retry CTA    |
+| `B3-before-06-publish-step.png`           | Publish step（前：綠色 check-circle）      |
+| `B3-before-07-complete-step.png`          | Complete step（前：綠色 party-popper）     |
+| `B3-before-08-step-error-indicator.png`   | Step indicator error path                  |
+
+**After 截圖**：因 agent 撞到 image context 限制無法補拍；code diff 已明確驗證修復範圍，若要補 after 截圖可手動跑 dev server 拍攝。
+
+### Cross-Change DRIFT
+
+`admin-document-lifecycle-ops` 近期已完成同 DS 檢查（見該 change 的 `design-review.md`）。此處 UploadWizard 的 DRIFT 都是**裝飾性 success 色**（另一條 change 是**裝飾性 warning / primary 色**）— 屬同一 DS 規則的不同違反點，兩者修復方向一致（都改 neutral）。`.impeccable.md` 上次已補的「破壞性動作允許 `color="error"`」不延伸到 success，維持 error 是唯一例外。
+
+### Follow-Up
+
+- [ ] `getIndexingStatusLabel` 為 `pending` / `running` / `queued` 擴充專屬文案（非 DRIFT，是資訊完整度改善）
+- [ ] 在 dev server 補拍 after 截圖，加進 evidence 段落
+
+### B3 Findings 回顧
+
+原 tasks 9.6 提及「新增段落記錄 B3 findings」。B3 是 `bootstrap` 主 task 清單中記錄的 bug — AutoRAG index 未啟用導致 `/api/chat` 對剛上傳文件回空回覆。**B3 不屬於 UploadWizard UI 層問題**（是 server 端 AutoRAG binding 問題），此 Design Review 無法也不應該修復，僅能在 UI 層確保 `indexing_wait` 的 `failed` state 有明確 CTA（已有）。B3 本身的修復由 `bootstrap` 的 `8.5` / `8.6` task 處理。

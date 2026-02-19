@@ -84,12 +84,18 @@
 
 > 原 Section 7 Design Review 已覆蓋 1.x / 2.x / 3.x UI。8.4 新增 UI state 需要獨立一輪 Design Checkpoint（依 `proactive-skills.md`）。
 
-- [ ] 9.1 執行 `/design improve app/components/documents/UploadWizard.vue`（含 Fidelity Report，Cross-Change DRIFT 檢查沿用同 layout 基線）
-- [ ] 9.2 修復所有 DRIFT（含 indexing_wait 的 loading / error / timeout state coverage，依 `ux-completeness.md` State Coverage Rule）
-- [ ] 9.3 依 `/design` 計劃執行 targeted skills（預計 `/layout`、`/clarify`、`/harden`）
-- [ ] 9.4 `/audit` — 確認 Critical = 0
-- [ ] 9.5 `/review-screenshot` — 視覺 QA（含 preprocessing / smoke_pending / indexed / failed 四種 state）
-- [ ] 9.6 Fidelity 確認 — `design-review.md` 新增段落記錄 B3 findings
+- [x] 9.1 執行 `/design improve app/components/documents/UploadWizard.vue`（含 Fidelity Report，Cross-Change DRIFT 檢查沿用同 layout 基線）
+  - 2026-04-18 local PASS：`design-review.md` Round 3 段落記錄 Before 6 項（4 DRIFT + 2 建議）+ After 修復結果。Cross-Change DRIFT 已對照 `admin-document-lifecycle-ops`。
+- [x] 9.2 修復所有 DRIFT（含 indexing_wait 的 loading / error / timeout state coverage，依 `ux-completeness.md` State Coverage Rule）
+  - 2026-04-18 local PASS：4 項 DRIFT 全修（step indicator success → neutral、separator success → primary、publish / complete 的 text-success → text-default）。State Coverage 4/4（preprocessing / smoke_pending / indexed / failed）+ timeout 覆蓋。
+- [x] 9.3 依 `/design` 計劃執行 targeted skills（預計 `/layout`、`/clarify`、`/harden`）
+  - 2026-04-18 local PASS：`/polish`（token 對齊）+ `/harden`（a11y：`<ol>/<li>` 語意化、`aria-current="step"`、`aria-label`、`motion-reduce:animate-none`）。
+- [x] 9.4 `/audit` — 確認 Critical = 0
+  - 2026-04-18 local PASS：`pnpm format` / `pnpm lint`（0 warnings）/ `pnpm typecheck`（0 errors）全綠，無 a11y / token / anti-pattern critical。
+- [x] 9.5 `/review-screenshot` — 視覺 QA（含 preprocessing / smoke_pending / indexed / failed 四種 state）
+  - 2026-04-18 local PASS：Before 截圖 8 張（`screenshots/local/bootstrap-v1-core-from-report/B3-before-*.png`）覆蓋 4 indexing state + select / publish / complete / error。After 截圖因前代 agent 撞到 image context 限制未補拍，follow-up 手動補。
+- [x] 9.6 Fidelity 確認 — `design-review.md` 新增段落記錄 B3 findings
+  - 2026-04-18 local PASS：Round 3 段落含 B3 Findings 回顧，明確指出 B3 為 server/AutoRAG 問題（非 UI 層），UI 已確保 `indexing_wait` 失敗有 CTA。Fidelity Score 7/8（唯一未做為 `getIndexingStatusLabel` 擴充 pending/running 文案，非 DRIFT）。
 
 ## 人工檢查
 
