@@ -22,6 +22,14 @@ const ALLOWED_FILES = new Set([
   'test/unit/knowledge-governance-drift.test.ts',
   'test/unit/knowledge-governance.test.ts',
   'test/unit/knowledge-runtime-config.test.ts',
+  // Acceptance scenarios that deliberately use scores on / near the
+  // governance threshold boundaries (judgeMin / answerMin /
+  // directAnswerMin) to exercise the judge vs direct-answer branching.
+  // Allow-listed so the drift guard does not false-positive on the mock
+  // fixture numbers.
+  'test/integration/acceptance-tc-06.test.ts',
+  'test/integration/acceptance-tc-10.test.ts',
+  'test/integration/acceptance-tc-11.test.ts',
 ])
 const DRIFT_PATTERNS: DriftPattern[] = [
   {

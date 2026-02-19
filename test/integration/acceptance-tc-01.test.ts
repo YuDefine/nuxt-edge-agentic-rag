@@ -137,18 +137,47 @@ describe('acceptance direct-answer automation', () => {
         query: fixture.prompt,
       },
     })
-    expect(result).toEqual({
-      data: {
-        answer: expect.any(String),
-        citations: [
-          {
-            citationId: expect.any(String),
-            sourceChunkId: scenario.sourceChunkId,
+    // governance §1.7 auto-create conversation: the web channel now
+    // surfaces conversationId / conversationCreated / followUp on every
+    // chat response so the client can thread follow-ups. The MCP channel
+    // intentionally does NOT expose conversation lifecycle (it is a
+    // per-request protocol), hence the channel branching below.
+    if (fixture.channel === 'web') {
+      expect(result).toEqual({
+        data: {
+          answer: expect.any(String),
+          citations: [
+            {
+              citationId: expect.any(String),
+              documentVersionId: scenario.documentVersionId,
+              sourceChunkId: scenario.sourceChunkId,
+            },
+          ],
+          conversationCreated: true,
+          conversationId: expect.any(String),
+          followUp: {
+            conversationId: expect.any(String),
+            forcedFreshRetrieval: false,
+            staleDocumentVersionIds: [],
           },
-        ],
-        refused: false,
-      },
-    })
+          refused: false,
+        },
+      })
+    } else {
+      expect(result).toEqual({
+        data: {
+          answer: expect.any(String),
+          citations: [
+            {
+              citationId: expect.any(String),
+              documentVersionId: scenario.documentVersionId,
+              sourceChunkId: scenario.sourceChunkId,
+            },
+          ],
+          refused: false,
+        },
+      })
+    }
     for (const fragment of scenario.answerFragments) {
       expect(result.data.answer).toContain(fragment)
     }

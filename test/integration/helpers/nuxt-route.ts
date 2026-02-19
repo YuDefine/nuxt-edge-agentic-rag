@@ -7,6 +7,13 @@ export function installNuxtRouteTestGlobals() {
     vi.stubGlobal('createError', (input: { message: string }) =>
       Object.assign(new Error(input.message), input)
     )
+    vi.stubGlobal(
+      'setResponseHeader',
+      (_event: unknown, _name: string, _value: string | number | null) => {
+        // no-op in unit tests; integration tests that care about headers can
+        // override this stub.
+      }
+    )
   })
 
   afterEach(() => {
