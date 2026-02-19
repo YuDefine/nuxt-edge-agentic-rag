@@ -11,44 +11,75 @@
 - [x] 2.1 自動化 `TC-01` 一般定義題，驗證 direct answer + valid citation。
 - [x] 2.2 自動化 `TC-02` SOP 程序題，驗證程序步驟與責任角色引用正確。
 - [x] 2.3 自動化 `TC-03` 欄位定義題，驗證欄位語境與 citation support。
-- [ ] 2.4 自動化 `TC-04` 模糊查詢，驗證 Self-Correction 觸發與第二輪成功條件。
-- [ ] 2.5 自動化 `TC-05` Web 多輪追問，驗證 `conversationId` 上下文延續與 stale 保護。
-- [ ] 2.6 自動化 `TC-06` 跨文件比較，驗證至少兩份不同文件引用與 judge / reformulation 路徑。
-- [ ] 2.7 自動化 `TC-07` 知識庫外問題，驗證零引用拒答。
-- [ ] 2.8 自動化 `TC-08` 系統能力外問題，驗證不宣稱已執行交易寫入。
-- [ ] 2.9 自動化 `TC-09` 敏感查詢，驗證高風險政策阻擋與不落原文。
-- [ ] 2.10 自動化 `TC-10` 制度查詢，驗證 direct answer 與制度文件引用。
+- [x] 2.4 自動化 `TC-04` 模糊查詢，驗證 Self-Correction 觸發與第二輪成功條件。
+- [x] 2.5 自動化 `TC-05` Web 多輪追問，驗證 `conversationId` 上下文延續與 stale 保護。
+- [x] 2.6 自動化 `TC-06` 跨文件比較，驗證至少兩份不同文件引用與 judge / reformulation 路徑。
+- [x] 2.7 自動化 `TC-07` 知識庫外問題，驗證零引用拒答。
+- [x] 2.8 自動化 `TC-08` 系統能力外問題，驗證不宣稱已執行交易寫入。
+- [x] 2.9 自動化 `TC-09` 敏感查詢，驗證高風險政策阻擋與不落原文。
+  - 2026-04-18 local PASS：refused+citations=[]、Workers AI 未呼叫、無 citation_records 寫入、query_logs 仍記 configSnapshotVersion。檔案：test/integration/acceptance-tc-09.test.ts。
+- [x] 2.10 自動化 `TC-10` 制度查詢，驗證 direct answer 與制度文件引用。
+  - 2026-04-18 local PASS：單次 AI Search 高分命中、citation 指向 category_slug='policy' 文件、answer 含制度關鍵詞。檔案：test/integration/acceptance-tc-10.test.ts。
 
 ## 3. Case Automation — TC-11 到 TC-20
 
-- [ ] 3.1 自動化 `TC-11` 條件式程序題，驗證 direct 或 judge_pass 路徑。
+- [x] 3.1 自動化 `TC-11` 條件式程序題，驗證 direct 或 judge_pass 路徑。
+  - 2026-04-18 local PASS：以 describe.each('direct' | 'judge_pass') 雙路徑覆蓋；direct 下 judge 不被呼叫，judge_pass 下 judge 呼叫一次且 retrievalScore ∈ [judgeMin, directAnswerMin)；兩路徑均單筆 citation 指向 SOP 文件。檔案：test/integration/acceptance-tc-11.test.ts。
 - [x] 3.2 自動化 `TC-12` MCP 互操作鏈，驗證 `askKnowledge` 到 `getDocumentChunk` 的 replay 一致性。
 - [x] 3.3 自動化 `TC-13` restricted citation 越權，驗證 `403` 與零內容洩漏。
-- [ ] 3.4 自動化 `TC-14` Admin Web restricted 讀取，驗證 Admin Web 與 MCP scope 邊界分離。
+- [x] 3.4 自動化 `TC-14` Admin Web restricted 讀取，驗證 Admin Web 與 MCP scope 邊界分離。
+  - 2026-04-18 local PASS：同一 admin actor web 側 allowedAccessLevels=['internal','restricted'] 成功引用 restricted citation、AI Search filter 不含 access_level；mcp 側 scopes 不含 knowledge.restricted.read → filter access_level='internal'、AI Search 候選空、askKnowledge refused=true + citations=[] 且 answer 不存在；兩條路徑皆寫入 accepted query_logs + 相同 configSnapshotVersion；mcp 回應序列化不含 restricted chunk/title。檔案：test/integration/acceptance-tc-14.test.ts。
 - [x] 3.5 自動化 `TC-15` 高風險輸入治理，驗證 `messages.content_text` 與 `query_logs` 只落遮罩資料。
 - [x] 3.6 自動化 `TC-16` `searchKnowledge` no-hit 契約，驗證 `200` + `results: []`。
-- [ ] 3.7 自動化 `TC-17` restricted existence-hiding，驗證 `askKnowledge` 拒答與 `searchKnowledge` 空結果。
+- [x] 3.7 自動化 `TC-17` restricted existence-hiding，驗證 `askKnowledge` 拒答與 `searchKnowledge` 空結果。
+  - 2026-04-18 local PASS：user scope 缺 knowledge.restricted.read → allowedAccessLevels=['internal']，AI Search filter access_level='internal' 將 restricted-only 文件過濾空；askKnowledge 回 refused=true + citations=[] 且無 answer 欄位；searchKnowledge 回 200 + results=[]，envelope 無 answer/citations/refused/decisionPath；兩條路徑回應序列化皆不含 restricted chunkText/title/documentVersionId；askKnowledge 未寫 citation_records、query_logs 仍記 accepted + configSnapshotVersion；驗證 existence-hiding leak phrases 全無。檔案：test/integration/acceptance-tc-17.test.ts。
 - [x] 3.8 自動化 `TC-18` current-version-only 切版案例，驗證舊版引用不再出現在正式回答。
-- [ ] 3.9 自動化 `TC-19` `listCategories` 計數規則，驗證 active + current 去重邏輯。
+- [x] 3.9 自動化 `TC-19` `listCategories` 計數規則，驗證 active + current 去重邏輯。
+  - 2026-04-18 local PASS：listCategories SQL 明確包含 d.status='active'、d.current_version_id IS NOT NULL、v.is_current=1、d.access_level IN (?)；bind 參數為 user scope 的 ['internal']；模擬 SQL 端已過濾的 pre-filtered counts（procurement=1 / policy=2 / inventory 全 archived 不出現）；response 依 name 遞增排序、每 entry 僅 { name, count } 不含其他內部欄位；mcp_tokens 驗證與 touchLastUsedAt 均有呼叫。檔案：test/integration/acceptance-tc-19.test.ts。
 - [x] 3.10 自動化 `TC-20` MCP 契約瘦身，驗證回應不暴露內部診斷欄位。
 
 ## 4. Acceptance And Evidence Outputs
 
-- [ ] 4.1 建立 `A01` 部署成功驗證輸出，連結 deploy metadata、smoke 結果與環境標識。
-- [ ] 4.2 建立 `A02` AI Search + Agent orchestration 驗證輸出，彙整代表性 query logs 與 citation evidence。
-- [ ] 4.3 建立 `A03` citation replay 驗證輸出，對照 `source_chunks`、`citation_records` 與 replay response。
-- [ ] 4.4 建立 `A04` current-version-only 驗證輸出，保存切版前後 answer/citation 差異。
-- [ ] 4.5 建立 `A05` Self-Correction 改善報告，對照重試前後結果與 path。
-- [ ] 4.6 建立 `A06` 拒答正確率輸出，彙整越界、高風險與系統能力外案例。
-- [ ] 4.7 建立 `A07` MCP 四工具驗證輸出，至少含 Inspector/contract snapshot 對照。
-- [ ] 4.8 建立 `A08` OAuth 與 allowlist 權限重算輸出，串接登入與角色切換證據。
-- [ ] 4.9 建立 `A09` restricted scope + redaction 驗證輸出。
-- [ ] 4.10 建立 `A10` Admin Web restricted 可讀與 MCP 隔離輸出。
-- [ ] 4.11 建立 `A11` 高風險原文不落地稽核輸出。
-- [ ] 4.12 建立 `A12` no-internal-diagnostics MCP contract snapshot。
-- [ ] 4.13 建立 `A13` rate limit + retention 可驗證性輸出。
+- [x] 4.1 建立 `A01` 部署成功驗證輸出，連結 deploy metadata、smoke 結果與環境標識。
+  - 2026-04-18 local PASS：exporter `test/acceptance/evidence/a01-deploy-smoke.ts` 產生 web + mcp 兩筆 EvidenceRecord，含 deploy-metadata（commitSha/workerName/environment）與 smoke-response 兩個 payload pointer。本地預設使用 stub pointer → status=`pending-production-run`；staging/production 跑 `wrangler deploy` + real smoke fetch 後注入 `deploy` / `smokeResults` 即可升為 `passed`。`configSnapshotVersion` 來源：`createKnowledgeRuntimeConfig({ bindings, environment: 'local' }).governance.configSnapshotVersion`（與 manifest `createAcceptanceExportRow` 同一來源）。
+- [x] 4.2 建立 `A02` AI Search + Agent orchestration 驗證輸出，彙整代表性 query logs 與 citation evidence。
+  - 2026-04-18 local PASS：exporter `test/acceptance/evidence/a02-ai-search-orchestration.ts` 預設覆蓋 TC-01（direct）、TC-04（self_corrected）、TC-06（judge_pass）、TC-10（direct）；每筆 record 含 ai-search-request、ai-search-response、query-log 與逐一 citation-record pointers。Mock 範圍：本地 stub pointer（pending-production-run），實測時由 integration test 跑完 TC 後注入 `observations`（aiSearchResponsePointer 可指向 screenshot/JSON 檔路徑）。`configSnapshotVersion` 同 A01 來源。
+- [x] 4.3 建立 `A03` citation replay 驗證輸出，對照 `source_chunks`、`citation_records` 與 replay response。
+  - 2026-04-18 local PASS：exporter `test/acceptance/evidence/a03-citation-replay.ts` 對每筆 sample 比對 source_chunks.chunk_text ↔ citation_records.chunk_text_snapshot ↔ replay response，三方一致時 decisionPath=`replay-consistent`；不一致時 `failed` + decisionPath=`replay-drift` 並於 notes 標示差異。Mock 範圍：本地預設 TC-12 replay snapshot（pending-production-run），staging 跑 `/api/mcp/chunks/[citationId]` 後注入真實 D1 sample 升為 `passed`。`configSnapshotVersion` 同 A01 來源。Test 覆蓋：`test/integration/evidence-exporter.test.ts`（7 個 case 全 PASS）。
+- [x] 4.4 建立 `A04` current-version-only 驗證輸出，保存切版前後 answer/citation 差異。
+  - 2026-04-18 local PASS：exporter `test/acceptance/evidence/a04-current-version-only.ts` 每個 sample 記錄 v1 era 與 v2 era 的 answer summary + citations + documentVersionIds + queryLog pointers；v2 era 若仍引用 v1 citation 或 v1 versionId 會被判 `failed` + decisionPath=`cutover-drift`，否則 decisionPath=`cutover-current-only`。Stub 範圍：本地預設 TC-18 兩個 era 的 response/orchestration/queryLog pointer 均為 stub:// → `pending-production-run`；staging/production 跑切版流程後注入真實 D1 `document_versions.is_current` + `citation_records` 快照可升為 `passed`。新增 payload ref kind：`version-era-snapshot`。`configSnapshotVersion` 同 A01 來源。
+- [x] 4.5 建立 `A05` Self-Correction 改善報告，對照重試前後結果與 path。
+  - 2026-04-18 local PASS：exporter `test/acceptance/evidence/a05-self-correction.ts` 每個 sample 含 initial / retry 兩輪 AI Search 的 request/response/orchestration pointer + citation list，驗證 (1) decisionPath 轉為 `self_corrected`、(2) retry score > initial score、(3) retry 產出 citation；任一失敗則 `failed` + notes 指出原因。Stub 範圍：TC-04 兩輪 AI Search pointer 為 stub://，實測時由 `acceptance-tc-04.test.ts` mock `aiSearchCallSequence` 各輪的 request/response JSON 快照注入。新增 payload ref kind：`orchestration-log-correction`。`configSnapshotVersion` 同 A01 來源。
+- [x] 4.6 建立 `A06` 拒答正確率輸出，彙整越界、高風險與系統能力外案例。
+  - 2026-04-18 local PASS：exporter `test/acceptance/evidence/a06-refusal-accuracy.ts` 預設覆蓋 TC-07（out-of-knowledge）、TC-08（system-capability）、TC-09（high-risk-sensitive）、TC-15（high-risk-no-persist）；每筆 sample 記錄 `expectedRefused` vs `actualRefused`、citation leak 檢查、high-risk persistence leak 檢查；任一 drift 則 `failed`。Stub 範圍：本地預設 orchestration-log 與 query-log pointer 均為 stub://，實測時由對應 `acceptance-tc-07/08/09/15.test.ts` 之 orchestration snapshot 注入。新增 payload ref kind：`refusal-case-matrix`。`configSnapshotVersion` 同 A01 來源。
+- [x] 4.7 建立 `A07` MCP 四工具驗證輸出，至少含 Inspector/contract snapshot 對照。
+  - 2026-04-18 local PASS：exporter `test/acceptance/evidence/a07-mcp-contract.ts` 預設覆蓋 `searchKnowledge` (TC-16)、`askKnowledge` (TC-12)、`getDocumentChunk` (TC-12)、`listCategories` (TC-19) 四工具；每筆 sample 含 `mcp-inspector-log` + `contract-snapshot` 兩個 evidence ref，契約漂移（`contractDrift=true`）則 `failed`。`A07_REQUIRED_TOOLS` + `listMissingMcpTools()` helper 供 CI 檢查四工具皆有覆蓋。Stub 範圍：Inspector log / contract snapshot pointer 均為 stub://，實測需跑 MCP Inspector 並 diff 既有 contract 快照。新增 payload ref kind：`contract-snapshot`、`mcp-inspector-log`。Spec 對齊 `MCP no-hit contract stays stable` scenario。`configSnapshotVersion` 同 A01 來源。
+- [x] 4.8 建立 `A08` OAuth 與 allowlist 權限重算輸出，串接登入與角色切換證據。
+  - 2026-04-18 local PASS：exporter `test/acceptance/evidence/a08-oauth-allowlist.ts` 三個 state transition：`baseline`（非 allowlist → user role）、`promoted`（加入 allowlist → admin role）、`demoted`（移除 allowlist → user role）。每筆 snapshot 記錄 user role + accessibleRoutes + navigationItems、OAuth session pointer、allowlist state pointer；驗證 (1) role 符合 allowlist 狀態、(2) allowlist 成員資格與 role 一致、(3) 非 admin 不得存取 `/admin/*` route；privilege leak 則 `failed`。Stub 範圍：OAuth session + allowlist state pointer 為 stub://，實測需真跑 Google OAuth promote/demote 流程並擷取 session token + allowlist diff。新增 payload ref kind：`oauth-session-snapshot`、`allowlist-state`。testCaseId=null（A08 為 acceptance-only 無 TC 綁定）。`configSnapshotVersion` 同 A01 來源。
+- [x] 4.9 建立 `A09` restricted scope + redaction 驗證輸出。
+  - 2026-04-18 local PASS：exporter `test/acceptance/evidence/a09-restricted-scope.ts` 預設覆蓋 TC-13（mcp path restricted deny → 403）、TC-15（高風險 query redaction）、TC-17（existence-hiding deny）；每筆 sample 比對 scope decision（`expectedDecision` vs `actualDecision`）、scope matrix 一致性（`hasRestrictedScope` 必須與 deny/allow 結果對齊）、redaction marker 是否套用（`<redacted` 前綴）、`sensitiveTokens` 是否殘留於 query_logs、response 是否洩漏 restricted 內容、`query_logs.status` 是否在 `accepted|refused` 白名單。drift → `failed` + notes。新增 payload kind：`scope-decision`、`redacted-query-log`。`configSnapshotVersion` 同 A01 來源。Stub 範圍：scope decision + query_logs pointer 為 stub://，實測需跑 TC-13/15/17 並擷取 orchestration scope decision + 實際 D1 query_logs 行。
+- [x] 4.10 建立 `A10` Admin Web restricted 可讀與 MCP 隔離輸出。
+  - 2026-04-18 local PASS：exporter `test/acceptance/evidence/a10-admin-web-mcp-isolation.ts` 對應 TC-14；每個 sample 同步記錄 web-admin path 與 mcp path 的 observation（`allowedAccessLevels`、`effectiveScopes`、`citationCount`、`refused`、`responseLeaksRestrictedContent`、`configSnapshotVersion`）。通過條件：(1) web path 可讀 restricted（`allowedAccessLevels` 含 `restricted` + citationCount>0 + 未 refused）、(2) mcp path 正確拒答（refused=true + citations=0）、(3) mcp scope 隔離（scopes 不含 `knowledge.restricted.read`）、(4) mcp response 無 restricted content leak、(5) 兩 channel 的 `configSnapshotVersion` 對齊。channel=`shared`，因為同時涵蓋 web + mcp。新增 payload kind：`access-matrix`（web/mcp 兩側的 orchestration-log 重用既有 kind）。Stub 範圍：access matrix + 兩側 response snapshot 為 stub://，實測需同時跑 Admin OAuth session + MCP token 並拍下兩條路徑。
+- [x] 4.11 建立 `A11` 高風險原文不落地稽核輸出。
+  - 2026-04-18 local PASS：exporter `test/acceptance/evidence/a11-persistence-audit.ts` 對應 TC-09、TC-15；每個 sample 記錄三個 `A11FieldAudit`（`query_logs`、`citation_records`、`messages`）的持久化快照 + sensitive token 偵測結果。通過條件：三個 table 均無 sensitive token leak、且 refused 案例不寫入 citation_records。drift（任一 leak 或 refused 情境 citation_records 仍被寫入）→ `failed` + notes 指出哪個表格與 token。新增 payload kind：`persistence-audit`（同一 kind 的 3 個 evidenceRefs 涵蓋三張表）。`configSnapshotVersion` 同 A01 來源。Stub 範圍：三張表的 pointer 為 stub://，實測需跑 TC-09/15 並 diff D1 `query_logs.query_text` / `citation_records.chunk_text_snapshot` / `messages.content_text` 與 redaction 政策。
+- [x] 4.12 建立 `A12` no-internal-diagnostics MCP contract snapshot。
+  - 2026-04-18 local PASS：exporter `test/acceptance/evidence/a12-mcp-no-internal-diagnostics.ts` 對應 TC-20（延伸 TC-16/17），覆蓋 `searchKnowledge` / `listCategories` / `askKnowledge` 三個工具。匯出禁用欄位常數 `A12_FORBIDDEN_INTERNAL_KEYS = ['decisionPath','retrievalScore','documentVersionId','firstTokenLatencyMs','completionLatencyMs','confidenceScore','debugInfo','_meta']`（與 `test/integration/acceptance-tc-20.test.ts` 的 `INTERNAL_DIAGNOSTIC_KEYS` 對齊）。每個 sample 儲存 contract snapshot + MCP Inspector log pointer、實際偵測到的 forbidden keys 清單；forbidden keys 非空或 `contractDrift=true` 則 `failed`。重用既有 payload kind `contract-snapshot` + `mcp-inspector-log`。Stub 範圍：contract snapshot + inspector log 為 stub://，實測需跑 MCP Inspector 並 diff response body 是否含禁用欄位。
+- [x] 4.13 建立 `A13` rate limit + retention 可驗證性輸出。
+  - 2026-04-18 local PASS：exporter `test/acceptance/evidence/a13-rate-limit-retention.ts` 對應 EV-04，testCaseId=null（A13 為 acceptance-only）。每個 sample 串接三段證據鍊：(1) rate-limit KV state（window + sample count + 429 count + 預期 vs 實際）、(2) retention cleanup report（cutoff、eligible/removed/remaining、backdated cleaned flag）、(3) replay before vs after cleanup（pre=200, post=404|410）。通過條件：rate-limit 規則生效（actual === expected 且 > 0）、retention cleanup 清理完整（remaining=0 + backdated cleaned + removed≥eligible）、replay chain 一致（pre-cleanup 200、post-cleanup 404|410）。channel=`shared`。四個 evidenceRefs（rate-limit-state + retention-cleanup-report + 2 個 replay-response）。新增 payload kind：`rate-limit-state`、`retention-cleanup-report`。Stub 範圍：四個 pointer 為 stub://，實測需跑真實 KV counter 測試 + retention cleanup run + 替 backdated citation 發 replay 請求。
 - [ ] 4.14 建立 `EV-01` 核心閉環 smoke exporter，保存 deploy、登入、發布、問答、replay 串接證據。
 - [ ] 4.15 建立 `EV-02` OAuth / allowlist 變更後權限重算 exporter。
 - [ ] 4.16 建立 `EV-03` publish no-op、rollback 與版本切換 evidence exporter。
 - [ ] 4.17 建立 `EV-04` `429`、backdated record 與 cleanup run exporter。
 - [ ] 4.18 產出與報告第三章/第四章相容的 summary tables 與 evidence refs，固定包含 `config_snapshot_version`。
+
+## 5. UI State Coverage Automation（improve.md C1 補強）
+
+> 來源：2026-04-18 improve.md 類別 2 盤點（C1）。補足表 3-5 缺少的 UI 四態驗證情境。既有 TC-01 到 TC-20 全為問答行為情境，未涵蓋 UI state。本組任務新增 TC-UI-\* 系列，透過 e2e 測試驗證 UI 四態在 Chat 與 Admin 頁面皆正確呈現。
+
+- [ ] 5.1 建立 `test/acceptance/registry` 中 `TC-UI-01 ~ TC-UI-05` 的註冊項目（UI State Coverage 子系列），對應 empty / loading / error / success / unauthorized 五態，標註為 acceptance-evidence-automation capability 下的新案例
+- [ ] 5.2 [P] 自動化 `TC-UI-01` **empty state**：清空 `documents` 表後訪問 `/admin/documents`，驗證呈現 empty state + CTA（對照 add-v1-core-ui §7.3）
+- [ ] 5.3 [P] 自動化 `TC-UI-02` **loading state**：mock `/api/admin/documents` 以 2s 延遲回傳，驗證 skeleton UI 可見（對照 add-v1-core-ui §7.4）
+- [ ] 5.4 [P] 自動化 `TC-UI-03` **error state**：訪問不存在 id（觸發 404）與無效 id 格式（觸發 400），驗證 error state + retry 按鈕（對照 add-v1-core-ui §7.5）
+- [ ] 5.5 [P] 自動化 `TC-UI-04` **success state** 切換：從 loading → success 的 UI 轉換（表格內容渲染 + skeleton 消失）
+- [ ] 5.6 [P] 自動化 `TC-UI-05` **unauthorized state**：非 admin session 訪問 `/admin/documents`，驗證 403 頁面或 redirect（對照 add-v1-core-ui §7.6）
+- [ ] 5.7 產出 `EV-UI-01` UI state coverage exporter，彙整 TC-UI-01 ~ TC-UI-05 的 screenshot + network log 作為 evidence，供報告表 3-5 引用

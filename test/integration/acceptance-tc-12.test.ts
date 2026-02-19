@@ -168,6 +168,7 @@ describe('acceptance MCP interoperability replay chain', () => {
           citations: [
             {
               citationId: expect.any(String),
+              documentVersionId: scenario.documentVersionId,
               sourceChunkId: scenario.sourceChunkId,
             },
           ],

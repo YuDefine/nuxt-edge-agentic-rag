@@ -112,11 +112,22 @@ describe('acceptance high-risk redaction does not persist raw text (TC-15)', () 
     const { default: handler } = await import('../../server/api/chat.post')
     const result = await handler(createRouteEvent())
 
-    // Refused path 必須回 refused:true、answer 為 null、無 citation
+    // Refused path 必須回 refused:true、answer 為 null、無 citation.
+    // governance §1.7 auto-create conversation: even refused paths return
+    // conversationId/conversationCreated so the client can thread the
+    // refusal into its conversation history, and followUp reports that no
+    // stale citations exist yet.
     expect(result).toEqual({
       data: {
         answer: null,
         citations: [],
+        conversationCreated: true,
+        conversationId: expect.any(String),
+        followUp: {
+          conversationId: expect.any(String),
+          forcedFreshRetrieval: false,
+          staleDocumentVersionIds: [],
+        },
         refused: true,
       },
     })
