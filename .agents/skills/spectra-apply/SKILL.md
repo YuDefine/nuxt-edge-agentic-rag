@@ -11,7 +11,7 @@ metadata:
 
 Implement tasks from a Spectra change.
 
-**Input**: Optionally specify a change name (e.g., `$spectra-apply add-auth`). If omitted, check if it can be inferred from conversation context. If vague or ambiguous you MUST prompt for available changes.
+**Input**: Optionally specify a change name (e.g., `/spectra-apply add-auth`). If omitted, check if it can be inferred from conversation context. If vague or ambiguous you MUST prompt for available changes.
 
 **Task tracking is file-based only.** The tasks file's markdown checkboxes (`- [ ]` / `- [x]`) are the single source of truth for progress. Do NOT use any external task management system, built-in task tracker, or todo tool. When a task is done, edit the checkbox in the tasks file — that is the only way to record progress.
 
@@ -24,9 +24,9 @@ Implement tasks from a Spectra change.
    If a name is provided, use it. Otherwise:
    - Infer from conversation context if the user mentioned a change
    - Auto-select if only one active change exists
-   - If ambiguous, run `spectra list --json` AND `spectra list --parked --json` to get all available changes (including parked ones). Parked changes should be annotated with "(parked)" in the selection list. Use the **AskUserQuestion tool** to let the user select
+   - If ambiguous, run `spectra list --json` AND `spectra list --parked --json` to get all available changes (including parked ones). Parked changes should be annotated with "(parked)" in the selection list. Use the **request_user_input 工具** to let the user select
 
-   Always announce: "Using change: <name>" and how to override (e.g., `$spectra-apply <other>`).
+   Always announce: "Using change: <name>" and how to override (e.g., `/spectra-apply <other>`).
 
 2. **Check status to understand the schema**
 
@@ -45,7 +45,7 @@ Implement tasks from a Spectra change.
    Look for the change name in the `parked` array of the JSON output.
    - **If the change IS in the parked list** (it's parked):
      Inform the user that this change is currently parked（暫存）.
-     Use the **AskUserQuestion tool** to ask whether to continue.
+     Use the **request_user_input 工具** to ask whether to continue.
      Two options:
      - **Continue**: Unpark the change and proceed with apply
      - **Cancel**: Stop the workflow
@@ -66,7 +66,7 @@ Implement tasks from a Spectra change.
 
      Then re-run `spectra status --change "<name>" --json` and continue normally.
 
-     If there is no AskUserQuestion tool available (non-Claude-Code environment):
+     If there is no request_user_input 工具 available (non-Claude-Code environment):
      Inform the user that this change is currently parked（暫存）and ask via plain text whether to unpark and continue, or cancel.
      Wait for the user's response. If the user confirms, run `spectra unpark "<name>"`, then set `spectra in-progress add "<name>"`, and continue normally.
 
@@ -95,7 +95,7 @@ Implement tasks from a Spectra change.
    - Dynamic instruction based on current state
 
    **Handle states:**
-   - If `state: "blocked"` (missing artifacts): show message, suggest using `$spectra-propose` to create the change artifacts first
+   - If `state: "blocked"` (missing artifacts): show message, suggest using `/spectra-propose` to create the change artifacts first
    - If `state: "all_done"`: congratulate, suggest archive
    - Otherwise: proceed to implementation
 
@@ -112,7 +112,7 @@ If the apply instructions JSON includes a `preflight` field, act on its `status`
   Continuing...
   ```
   Only show the lines that are relevant (skip drifted if none, skip staleness if not stale).
-- **`"critical"`**: display missing files with their source artifact, then use the **AskUserQuestion tool** to ask the user:
+- **`"critical"`**: display missing files with their source artifact, then use the **request_user_input 工具** to ask the user:
 
   ```
   ⚠ Preflight: missing files detected
@@ -124,7 +124,7 @@ If the apply instructions JSON includes a `preflight` field, act on its `status`
   Options: "Continue anyway" / "Stop"
   If the user chooses "Stop", end the workflow.
 
-  If there is no AskUserQuestion tool available:
+  If there is no request_user_input 工具 available:
   Display the same information as plain text and ask whether to continue or stop.
   Wait for the user's response.
 
@@ -247,7 +247,7 @@ Working on task 4/7: <task description>
 - [x] Task 2
 ...
 
-All tasks complete! You can archive this change with `$spectra-archive`.
+All tasks complete! You can archive this change with `/spectra-archive`.
 ```
 
 **Output On Pause (Issue Encountered)**
@@ -281,7 +281,7 @@ What would you like to do?
 - Pause on errors, blockers, or unclear requirements - don't guess
 - Use contextFiles from CLI output, don't assume specific file names
 - **No external task tracking** — do not use any built-in task management, todo list, or progress tracking tool; the tasks file is the only system
-- If **AskUserQuestion tool** is not available, ask the same questions as plain text and wait for the user's response
+- If **request_user_input 工具** is not available, ask the same questions as plain text and wait for the user's response
 
 **Fluid Workflow Integration**
 

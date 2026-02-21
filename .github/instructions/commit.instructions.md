@@ -1,8 +1,3 @@
----
-applyTo: '**'
-description: Commit
----
-
 # Commit
 
 所有 commit **MUST** 透過 `/commit` command 執行。**NEVER** 直接 `git commit`（例外見下）。
@@ -64,7 +59,7 @@ description: Commit
 
 ## 搭配
 
-- Command 本體：`.claude/commands/commit.md` — 定義「怎麼做」（procedure）
+- Command 本體：`.agents/skills/commit.md` — 定義「怎麼做」（procedure）
 - 本規則：定義「要不要做」— 政策、閘門、強制入口
 
 > 本檔為 starter template 的預設規則，複製出去後依專案實際使用調整。

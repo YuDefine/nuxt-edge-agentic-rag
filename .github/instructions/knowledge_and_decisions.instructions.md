@@ -1,8 +1,3 @@
----
-applyTo: '**'
-description: Knowledge & Decisions
----
-
 # Knowledge & Decisions
 
 ## 任務前檢查
@@ -57,6 +52,6 @@ description: Knowledge & Decisions
 
 ## 規則生命週期
 
-- `docs/solutions/` 中同一 pattern 出現 3+ 次 → **提議**晉升為 `.claude/rules/` 規則
+- `docs/solutions/` 中同一 pattern 出現 3+ 次 → **提議**晉升為 `.github/instructions/` 規則
 - 既有規則被新事證推翻 → **提議**降級或修訂
 - **NEVER** 自動變更規則，一律提議由使用者確認

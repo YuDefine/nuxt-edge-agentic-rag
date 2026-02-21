@@ -1,13 +1,6 @@
 ---
-applyTo: '**'
-description: Logging
----
-
----
-
 description: Server API logging 與錯誤記錄規範（evlog）
 globs: ['server/api/**/*.ts']
-
 ---
 
 # Logging

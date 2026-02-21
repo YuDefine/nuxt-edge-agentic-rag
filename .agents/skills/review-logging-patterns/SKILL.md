@@ -25,7 +25,7 @@ Review and improve logging patterns in TypeScript/JavaScript codebases. Transfor
 | --------------------- | ------------------------------------------------------------------ |
 | Wide events patterns  | [references/wide-events.md](references/wide-events.md)             |
 | Error handling        | [references/structured-errors.md](references/structured-errors.md) |
-| Code review checklist | [references$code-review.md](references$code-review.md)             |
+| Code review checklist | [references/code-review.md](references/code-review.md)             |
 | Drain pipeline        | [references/drain-pipeline.md](references/drain-pipeline.md)       |
 
 ## Installation
@@ -1025,7 +1025,7 @@ See [references/structured-errors.md](references/structured-errors.md) for commo
 | Logging sensitive data `log.set({ user: body })` | Explicit fields: `{ user: { id: body.id, plan: body.plan } }` + enable `redact: true` |
 | Putting support-only IDs in `why` / `message`    | Use `createError({ ..., internal: { ... } })` for non-user-facing diagnostics         |
 
-See [references$code-review.md](references$code-review.md) for the full checklist.
+See [references/code-review.md](references/code-review.md) for the full checklist.
 
 ---
 
@@ -1035,5 +1035,5 @@ Load based on what you're working on — **do not load all at once**:
 
 - Designing wide events → [references/wide-events.md](references/wide-events.md)
 - Improving errors → [references/structured-errors.md](references/structured-errors.md)
-- Full code review → [references$code-review.md](references$code-review.md)
+- Full code review → [references/code-review.md](references/code-review.md)
 - Drain pipeline setup → [references/drain-pipeline.md](references/drain-pipeline.md)

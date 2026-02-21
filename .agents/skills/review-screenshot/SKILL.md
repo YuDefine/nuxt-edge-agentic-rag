@@ -5,9 +5,9 @@ description: '截圖、看畫面、確認 UI、看一下頁面、幫我看 UI、
 
 # 截圖（統一入口）
 
-所有截圖工作由 `screenshot-review` agent（Sonnet）執行。**MUST** 使用 Agent tool 派遣，不要在主 session 直接跑截圖命令。
+所有截圖工作由 `screenshot-review` agent（Sonnet）執行。**MUST** 使用 spawn_agent 工具 派遣，不要在主 session 直接跑截圖命令。
 
-工具選擇規則見 `.claude/rules/screenshot-strategy.md` — agent 會自行判斷，主 session 不需指定。
+工具選擇規則見 `.github/instructions/screenshot-strategy.md` — agent 會自行判斷，主 session 不需指定。
 
 ## 觸發時機
 
@@ -18,7 +18,7 @@ description: '截圖、看畫面、確認 UI、看一下頁面、幫我看 UI、
 
 ## 派遣方式
 
-Agent tool，`subagent_type: "screenshot-review"`。
+spawn_agent 工具，`agent_type: "screenshot-review"`。
 
 ### Ad-hoc 截圖
 

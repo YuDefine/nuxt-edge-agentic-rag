@@ -17,7 +17,7 @@ For component API details (props, slots, events, full documentation, examples), 
 { "mcpServers": { "nuxt-ui": { "type": "http", "url": "https://ui.nuxt.com/mcp" } } }
 ```
 
-**Claude Code**:
+**AI Agent**:
 
 ```bash
 claude mcp add --transport http nuxt-ui https://ui.nuxt.com/mcp
@@ -141,7 +141,7 @@ export default defineConfig({
 
 ```ts
 // src/main.ts
-import './assets/main.css'
+import './assets/css/main.css'
 import { createApp } from 'vue'
 import { createRouter, createWebHistory } from 'vue-router'
 import ui from '@nuxt/ui/vue-plugin'
@@ -159,7 +159,7 @@ app.mount('#app')
 ```
 
 ```css
-/* assets/main.css */
+/* src/assets/css/main.css */
 @import 'tailwindcss';
 @import '@nuxt/ui';
 ```

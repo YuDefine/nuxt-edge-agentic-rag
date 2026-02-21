@@ -2,6 +2,8 @@
 # SessionStart hook: auto-build code-review-graph if graph.db doesn't exist
 set -euo pipefail
 
+PROJECT_DIR="${PROJECT_DIR:-$(pwd)}"
+
 # Monorepo detection
 if [ -d "${PROJECT_DIR}/template/app" ]; then
   _PROJECT="${PROJECT_DIR}/template"
