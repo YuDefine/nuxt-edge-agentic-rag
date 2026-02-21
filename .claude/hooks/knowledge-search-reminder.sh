@@ -10,6 +10,8 @@
 
 set -e
 
+CLAUDE_PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(pwd)}"
+
 # Monorepo detection
 if [ -d "${CLAUDE_PROJECT_DIR}/template/app" ]; then
   _PROJECT="${CLAUDE_PROJECT_DIR}/template"
@@ -18,7 +20,7 @@ else
 fi
 
 INPUT=$(cat)
-FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // ""')
+FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // ""' 2>/dev/null || echo "")
 
 # 只對 .ts 和 .vue 檔案觸發
 case "$FILE_PATH" in

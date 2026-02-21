@@ -10,6 +10,8 @@
 
 set -euo pipefail
 
+CLAUDE_PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(pwd)}"
+
 # Monorepo detection: if repo has a `template/app` sub-directory treat template/ as project root
 if [ -d "${CLAUDE_PROJECT_DIR}/template/app" ]; then
   _PROJECT="${CLAUDE_PROJECT_DIR}/template"

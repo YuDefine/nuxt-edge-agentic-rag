@@ -9,6 +9,8 @@
 
 set -e
 
+CLAUDE_PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(pwd)}"
+
 # Monorepo detection
 if [ -d "${CLAUDE_PROJECT_DIR}/template/app" ]; then
   _PROJECT="${CLAUDE_PROJECT_DIR}/template"
@@ -17,7 +19,7 @@ else
 fi
 
 INPUT=$(cat)
-FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // .tool_response.filePath // ""')
+FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // .tool_response.filePath // ""' 2>/dev/null || echo "")
 
 # 只對 UI 相關檔案觸發
 case "$FILE_PATH" in
