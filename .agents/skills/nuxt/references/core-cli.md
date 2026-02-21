@@ -42,7 +42,7 @@ npx nuxi@latest init my-app --no-modules
 ### Start Dev Server
 
 ```bash
-# Start development server (default: http://localhost:3010)
+# Start development server (default: http://localhost:3000)
 npx nuxt dev
 
 # Custom port

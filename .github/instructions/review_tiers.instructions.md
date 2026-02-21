@@ -1,11 +1,6 @@
 ---
-applyTo: '**'
-description: Review Tier 定義
+description: Review Tier 定義——依變更大小與風險決定 review 嚴格程度，對齊 spectra-audit 與 code-review 觸發門檻
 ---
-
----
-
-## description: Review Tier 定義——依變更大小與風險決定 review 嚴格程度，對齊 spectra-audit 與 code-review 觸發門檻
 
 # Review Tier 定義
 
@@ -17,18 +12,18 @@ description: Review Tier 定義
 
 ## 觸發判斷
 
-| 條件                                                          | Tier |
-| ------------------------------------------------------------- | ---- |
-| 只改 `docs/` / `openspec/` / `.claude/rules/` / README / 註解 | 1    |
-| 改 `.claude/skills/` 的 vendor copy（會被 install 覆蓋）      | 1    |
-| 重構 / 功能變更 < 50 行 non-敏感                              | 1    |
-| 功能變更 ≥ 50 行                                              | 2    |
-| 動到 `supabase/migrations/`                                   | 3    |
-| 動到 RLS policy（`CREATE POLICY` / `ALTER POLICY`）           | 3    |
-| 動到 auth middleware / `server/api/auth/`                     | 3    |
-| 動到 raw SQL（RPC / view / trigger / function）               | 3    |
-| 動到 `.github/workflows/` 或 hooks（`.claude/hooks/`）        | 2    |
-| 動到 `scripts/spectra-ux/` gate scripts                       | 2    |
+| 條件                                                                 | Tier |
+| -------------------------------------------------------------------- | ---- |
+| 只改 `docs/` / `openspec/` / `.github/instructions/` / README / 註解 | 1    |
+| 改 `.agents/skills/` 的 vendor copy（會被 install 覆蓋）             | 1    |
+| 重構 / 功能變更 < 50 行 non-敏感                                     | 1    |
+| 功能變更 ≥ 50 行                                                     | 2    |
+| 動到 `supabase/migrations/`                                          | 3    |
+| 動到 RLS policy（`CREATE POLICY` / `ALTER POLICY`）                  | 3    |
+| 動到 auth middleware / `server/api/auth/`                            | 3    |
+| 動到 raw SQL（RPC / view / trigger / function）                      | 3    |
+| 動到 `.github/workflows/` 或 hooks（`.codex/hooks/`）                | 2    |
+| 動到 `scripts/spectra-ux/` gate scripts                              | 2    |
 
 ## 規則
 

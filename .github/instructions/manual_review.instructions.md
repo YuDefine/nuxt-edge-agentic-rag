@@ -1,8 +1,3 @@
----
-applyTo: '**'
-description: 人工檢查（Manual Review）
----
-
 # 人工檢查（Manual Review）
 
 ## 核心規則

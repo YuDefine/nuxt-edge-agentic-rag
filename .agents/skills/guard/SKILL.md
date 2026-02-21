@@ -2,7 +2,7 @@
 description: '顯示和管理安全護欄'
 ---
 
-# $guard — 安全護欄 Dashboard
+# /guard — 安全護欄 Dashboard
 
 ## 顯示內容
 
@@ -16,7 +16,7 @@ description: '顯示和管理安全護欄'
 
 ### 2. 自訂凍結路徑
 
-讀取 `.claude$guard-state.json` 並列出 `frozen_paths`。
+讀取 `.claude/guard-state.json` 並列出 `frozen_paths`。
 
 ### 3. 危險指令警告
 
@@ -41,6 +41,6 @@ description: '顯示和管理安全護欄'
 - （無）
 
 ### 管理
-- 凍結: $freeze <path>
-- 解凍: $unfreeze <path>
+- 凍結: /freeze <path>
+- 解凍: /unfreeze <path>
 ```

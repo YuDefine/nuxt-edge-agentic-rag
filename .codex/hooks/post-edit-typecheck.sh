@@ -4,6 +4,8 @@
 
 set -e
 
+PROJECT_DIR="${PROJECT_DIR:-$(pwd)}"
+
 # Monorepo detection
 if [ -d "${PROJECT_DIR}/template/app" ]; then
   _PROJECT="${PROJECT_DIR}/template"
@@ -15,7 +17,7 @@ fi
 INPUT=$(cat)
 
 # 取得被編輯的檔案路徑
-FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // .tool_response.filePath // ""')
+FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // .tool_response.filePath // ""' 2>/dev/null || echo "")
 
 # 只對 .ts 和 .vue 檔案執行
 if [[ "$FILE_PATH" == *.ts ]] || [[ "$FILE_PATH" == *.vue ]]; then
