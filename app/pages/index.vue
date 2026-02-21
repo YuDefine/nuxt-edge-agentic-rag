@@ -45,7 +45,7 @@
       </template>
 
       <div class="flex flex-col gap-5">
-        <UAlert
+        <LazyUAlert
           v-if="errorMessage"
           color="error"
           variant="subtle"
@@ -75,7 +75,7 @@
     <div class="flex h-[calc(100vh-4rem)] gap-0">
       <!-- Sidebar: Conversation History -->
       <aside class="hidden w-64 flex-shrink-0 border-r border-default lg:block">
-        <ChatConversationHistory :current-session-id="currentSessionId" />
+        <LazyChatConversationHistory :current-session-id="currentSessionId" />
       </aside>
 
       <!-- Main chat area -->
@@ -87,7 +87,7 @@
           </div>
         </div>
 
-        <ChatContainer class="flex-1" />
+        <LazyChatContainer class="flex-1" />
       </main>
     </div>
   </NuxtLayout>
