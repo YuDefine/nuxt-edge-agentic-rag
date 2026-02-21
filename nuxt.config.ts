@@ -4,7 +4,7 @@ import { createKnowledgeRuntimeConfig } from './shared/schemas/knowledge-runtime
 const knowledgeRuntimeConfig = createKnowledgeRuntimeConfig({
   adminEmailAllowlist: process.env.ADMIN_EMAIL_ALLOWLIST,
   autoRag: {
-    apiToken: process.env.NUXT_KNOWLEDGE_AUTORAG_API_TOKEN,
+    apiToken: process.env.NUXT_KNOWLEDGE_AUTO_RAG_API_TOKEN,
   },
   bindings: {
     aiSearchIndex: process.env.NUXT_KNOWLEDGE_AI_SEARCH_INDEX,
@@ -63,6 +63,13 @@ export default defineNuxtConfig({
   // Enable KV for better-auth session caching
   auth: {
     secondaryStorage: true,
+  },
+
+  app: {
+    head: {
+      htmlAttrs: { lang: 'zh-TW' },
+      title: '知識問答系統',
+    },
   },
 
   css: ['~/assets/css/main.css'],
@@ -133,6 +140,10 @@ export default defineNuxtConfig({
     '/api/mcp/**': { csurf: false },
     // dev endpoints 僅在 local 環境啟用，不需要 CSRF
     '/api/_dev/**': { csurf: false },
+    // Nuxt DevTools 內部 hint endpoints（lazy-load 追蹤等），僅 dev mode
+    ...(process.env.NODE_ENV !== 'production' && {
+      '/__nuxt_hints/**': { csurf: false },
+    }),
   },
   sourcemap: {
     client: 'hidden',
