@@ -1,5 +1,47 @@
 # improve.md — main-v0.0.38 強健度與體驗改善提案
 
+> **封存狀態（2026-04-18）**：25 項「做」的項目已全部交付或追蹤；本文件現作為決策日誌保留。唯一待執行：A5（repo 完成後最終一輪用詞掃描）。封存索引如下，詳細燈號紀錄與原始討論於本文件下方保留不動。
+
+## 封存索引（每項最終落地位置）
+
+**狀態圖例**：📝 已寫入 main-v0.0.39/40.md｜✅ 已實作於既有 change｜📋 已 propose/park 待 apply｜🟢 待最終一輪
+
+| ID  | 落地位置                                                                                         | 狀態              |
+| --- | ------------------------------------------------------------------------------------------------ | ----------------- |
+| A1  | main-v0.0.39.md §4.2（操作示範代理未來工作）                                                     | 📝                |
+| A4  | main-v0.0.39.md §4.1.2（拒答作為產品特色第三軸）                                                 | 📝                |
+| A5  | 待最終一輪用詞掃描（所有 parked change apply 完成後執行）                                        | 🟢                |
+| A10 | main-v0.0.39.md 表 4-2（痛點 × 產品特色對照）                                                    | 📝                |
+| B1  | `add-v1-core-ui/tasks.md` §9.1（引用互動 UX 補強）                                               | 📋                |
+| B2  | `add-v1-core-ui/tasks.md` §9.2（拒答下一步引導）                                                 | 📋                |
+| B3  | `add-v1-core-ui/tasks.md` §7.3-7.6（UI 四態）                                                    | ✅                |
+| B4  | `admin-document-lifecycle-ops/tasks.md` §6.1 實作 + main-v0.0.40.md §3.2.3.3 表 3-5 報告子表     | ✅ 實作 + 📝 報告 |
+| B5  | `add-v1-core-ui/tasks.md` §4.3 / §7.3（onboarding + empty state）                                | ✅                |
+| B6  | `add-v1-core-ui/tasks.md` §9.3（上傳進度 4 階段 UX）                                             | 📋                |
+| B7  | `add-v1-core-ui/tasks.md` §9.4（串流 UX 細節）                                                   | 📋                |
+| B8  | 併入 B16 `member-and-permission-management`（OAuth 開放註冊取代 allowlist 拒絕 UX）              | 📋                |
+| B9  | `add-v1-core-ui/tasks.md` §9.5（429 rate limit UX）                                              | 📋                |
+| B10 | main-v0.0.39.md §1「符號與用詞索引」                                                             | 📝                |
+| B11 | `responsive-and-accessibility-foundation`（響應式）                                              | 📋                |
+| B12 | `responsive-and-accessibility-foundation`（a11y，併入 B11 同一 change）                          | 📋                |
+| B13 | `add-v1-core-ui/tasks.md` §9.6（版本 rollback UI + 歷史引用 badge）                              | 📋                |
+| B14 | `admin-ui-post-core` 從 git 恢復（commit 63b0331 刪除決策被推翻，見 memory 規則）                | 📋                |
+| B15 | `add-v1-core-ui/tasks.md` §9.7（citation 審計回放，併入 B1 路徑）                                | 📋                |
+| B16 | `member-and-permission-management`（三級角色 + 訪客 dial + 開放註冊 + env var seed）             | 📋                |
+| C1  | `test-coverage-and-automation/tasks.md` §5（UI 四態測試 TC-UI-\*）                               | 📋                |
+| C2  | main-v0.0.39.md §5.2（fallback synthesizer 工程誠實段）                                          | 📝                |
+| C3  | main-v0.0.39.md 附錄 C（答辯示範劇本 Demo Script）                                               | 📝                |
+| D1  | `deployment-manual`（附錄 D 部署手冊 + `docs/verify/` runbook + `.github/workflows/deploy.yml`） | 📋                |
+| D4  | `deployment-manual`（併入 D1，災難復原為附錄 D-3）                                               | 📋                |
+
+**封存後作業**：
+
+- A5 最終一輪用詞掃描 — 等所有 📋 狀態的 change 至少進入 apply 階段後再執行。
+- parked change 可透過 `/spectra-apply <change-name>` 啟動實作（會自動 unpark）。
+- 相關 git history 保留：commit 63b0331（誤刪 admin-ui-post-core）已被推翻，檔案從 `63b0331^` 恢復；不可因時程壓力擅自放棄實作之規則已寫入使用者 memory。
+
+---
+
 > **本報告為雲科大 AI 專班的實務導向專題報告，不是學術論文。** 改善提案以「做了什麼 / 怎麼做 / 實際效益 / 使用體驗 / 部署可行性」為主軸，不走「學術差異化 / novelty」敘事。
 >
 > 本文件是**候選清單 + 決策日誌**。尚未動手改 main-v0.0.38.md。流程：逐項討論 → 決策（做 / 不做 + 理由）→ 若「做」則走 `/spectra-discuss` → `/spectra-propose` → 新版 main-v0.0.39.md 起落實。**絕不**直接改 main-v0.0.38.md。
