@@ -78,6 +78,9 @@ export default defineConfig({
       'dist/**',
       'node_modules/**',
       'pnpm-lock.yaml',
+      '.agents/**',
+      '.claude/**',
+      '.github/**',
     ],
   },
   staged: {
