@@ -44,6 +44,7 @@ function extractErrorMessage(error: unknown, fallback: string): string {
 
 export function useDocumentLifecycle() {
   const toast = useToast()
+  const { $csrfFetch } = useNuxtApp()
   const isPending = ref(false)
 
   async function retrySync(
@@ -52,7 +53,7 @@ export function useDocumentLifecycle() {
   ): Promise<LifecycleResult<RetryDocumentSyncResponse['data']>> {
     isPending.value = true
     try {
-      const response = await $fetch<RetryDocumentSyncResponse>(
+      const response = await $csrfFetch<RetryDocumentSyncResponse>(
         `/api/admin/documents/${documentId}/versions/${versionId}/retry-sync`,
         { method: 'POST' }
       )
@@ -99,7 +100,7 @@ export function useDocumentLifecycle() {
   ): Promise<LifecycleResult<ArchiveDocumentResponse['data']>> {
     isPending.value = true
     try {
-      const response = await $fetch<ArchiveDocumentResponse>(
+      const response = await $csrfFetch<ArchiveDocumentResponse>(
         `/api/admin/documents/${documentId}/archive`,
         { method: 'POST' }
       )
@@ -123,7 +124,7 @@ export function useDocumentLifecycle() {
   ): Promise<LifecycleResult<UnarchiveDocumentResponse['data']>> {
     isPending.value = true
     try {
-      const response = await $fetch<UnarchiveDocumentResponse>(
+      const response = await $csrfFetch<UnarchiveDocumentResponse>(
         `/api/admin/documents/${documentId}/unarchive`,
         { method: 'POST' }
       )
