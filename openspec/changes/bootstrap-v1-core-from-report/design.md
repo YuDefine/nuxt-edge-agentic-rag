@@ -96,7 +96,7 @@ AutoRAG 每個 instance 最多允許 5 個 custom metadata fields（reserved: `t
 
 **Sync flow 觸發 AutoRAG**：
 
-Workers binding `env.AI.autorag('<instance>')` 沒有 `sync()` 方法 — AutoRAG crawl 為被動（定期 scan R2 source），或透過 REST API `POST /accounts/{ACCOUNT_ID}/ai-search/instances/{INSTANCE_NAME}/jobs` 主動觸發。實作：`server/utils/autorag-sync.ts` 封裝 `triggerAutoRagSync` + `getAutoRagJobStatus`，以 `NUXT_KNOWLEDGE_AUTORAG_API_TOKEN`（runtime config `autoRag.apiToken`）Bearer 認證。`sync.post.ts` 寫完 R2 per-chunk 後呼叫 jobs API 取 jobId，寫 KV `autorag-job:<versionId>`（TTL 1 小時）並 `setVersionIndexingStatus('preprocessing', 'running')`。
+Workers binding `env.AI.autorag('<instance>')` 沒有 `sync()` 方法 — AutoRAG crawl 為被動（定期 scan R2 source），或透過 REST API `POST /accounts/{ACCOUNT_ID}/ai-search/instances/{INSTANCE_NAME}/jobs` 主動觸發。實作：`server/utils/autorag-sync.ts` 封裝 `triggerAutoRagSync` + `getAutoRagJobStatus`，以 `NUXT_KNOWLEDGE_AUTO_RAG_API_TOKEN`（runtime config `autoRag.apiToken`）Bearer 認證。`sync.post.ts` 寫完 R2 per-chunk 後呼叫 jobs API 取 jobId，寫 KV `autorag-job:<versionId>`（TTL 1 小時）並 `setVersionIndexingStatus('preprocessing', 'running')`。
 
 **Polling 推進 state machine**：
 
