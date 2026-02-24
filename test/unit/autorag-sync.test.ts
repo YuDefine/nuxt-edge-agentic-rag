@@ -12,7 +12,7 @@ describe('autorag sync', () => {
   describe('triggerAutoRagSync', () => {
     it('POSTs to the AI Search jobs endpoint with bearer auth and returns the job id', async () => {
       const fetchFake = vi.fn().mockResolvedValue({
-        json: () => Promise.resolve({ result: { job_id: 'job-123' }, success: true }),
+        json: () => Promise.resolve({ result: { id: 'job-123' }, success: true }),
         ok: true,
       })
 
@@ -50,16 +50,21 @@ describe('autorag sync', () => {
 
       await expect(
         triggerAutoRagSync(config, { fetch: fetchFake as unknown as typeof fetch })
-      ).rejects.toThrow(/job_id/)
+      ).rejects.toThrow(/job id/)
     })
   })
 
   describe('getAutoRagJobStatus', () => {
-    it('GETs the job endpoint and normalizes the status', async () => {
+    it('GETs the job endpoint and maps a finished job with no end_reason to completed', async () => {
       const fetchFake = vi.fn().mockResolvedValue({
         json: () =>
           Promise.resolve({
-            result: { id: 'job-123', status: 'completed' },
+            result: {
+              ended_at: '2025-01-01T00:05:00Z',
+              end_reason: null,
+              id: 'job-123',
+              started_at: '2025-01-01T00:00:00Z',
+            },
             success: true,
           }),
         ok: true,
@@ -79,13 +84,18 @@ describe('autorag sync', () => {
       expect(result).toEqual({ jobId: 'job-123', status: 'completed' })
     })
 
-    it('maps in_progress and succeeded aliases to running/completed', async () => {
+    it('derives pending when started_at is absent and running when ended_at is absent', async () => {
       const fetchFake = vi.fn().mockImplementation((url: string) => {
         if (url.endsWith('/job-a')) {
           return Promise.resolve({
             json: () =>
               Promise.resolve({
-                result: { id: 'job-a', status: 'in_progress' },
+                result: {
+                  ended_at: null,
+                  end_reason: null,
+                  id: 'job-a',
+                  started_at: '2025-01-01T00:00:00Z',
+                },
                 success: true,
               }),
             ok: true,
@@ -94,7 +104,12 @@ describe('autorag sync', () => {
         return Promise.resolve({
           json: () =>
             Promise.resolve({
-              result: { id: 'job-b', status: 'succeeded' },
+              result: {
+                ended_at: null,
+                end_reason: null,
+                id: 'job-b',
+                started_at: null,
+              },
               success: true,
             }),
           ok: true,
@@ -104,19 +119,24 @@ describe('autorag sync', () => {
       const running = await getAutoRagJobStatus(config, 'job-a', {
         fetch: fetchFake as unknown as typeof fetch,
       })
-      const completed = await getAutoRagJobStatus(config, 'job-b', {
+      const pending = await getAutoRagJobStatus(config, 'job-b', {
         fetch: fetchFake as unknown as typeof fetch,
       })
 
       expect(running.status).toBe('running')
-      expect(completed.status).toBe('completed')
+      expect(pending.status).toBe('pending')
     })
 
-    it('maps failed result with error message', async () => {
+    it('maps a finished job with end_reason to failed and surfaces the reason as error', async () => {
       const fetchFake = vi.fn().mockResolvedValue({
         json: () =>
           Promise.resolve({
-            result: { error: 'source unreachable', id: 'job-x', status: 'failed' },
+            result: {
+              ended_at: '2025-01-01T00:05:00Z',
+              end_reason: 'source unreachable',
+              id: 'job-x',
+              started_at: '2025-01-01T00:00:00Z',
+            },
             success: true,
           }),
         ok: true,

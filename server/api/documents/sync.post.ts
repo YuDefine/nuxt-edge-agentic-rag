@@ -1,7 +1,7 @@
 import { useLogger } from 'evlog'
 import { z } from 'zod'
 
-import { triggerAutoRagSync } from '#server/utils/autorag-sync'
+import { AutoRagCooldownError, triggerAutoRagSync } from '#server/utils/autorag-sync'
 import { getD1Database } from '#server/utils/database'
 import { createDocumentSyncStore } from '#server/utils/document-store'
 import { syncDocumentVersionSnapshot } from '#server/utils/document-sync'
@@ -83,16 +83,23 @@ export default defineEventHandler(async (event) => {
         syncStatus: 'running',
       })
     } catch (error) {
-      log.error(error as Error, { step: 'autorag-trigger' })
-      await store.setVersionIndexingStatus(result.version.id, {
-        indexStatus: 'preprocessing',
-        syncStatus: 'failed',
-      })
-      throw createError({
-        statusCode: 502,
-        statusMessage: 'Bad Gateway',
-        message: 'AutoRAG sync 觸發失敗，請稍後重試或聯絡管理員',
-      })
+      if (error instanceof AutoRagCooldownError) {
+        await store.setVersionIndexingStatus(result.version.id, {
+          indexStatus: 'preprocessing',
+          syncStatus: 'pending',
+        })
+      } else {
+        log.error(error as Error, { step: 'autorag-trigger' })
+        await store.setVersionIndexingStatus(result.version.id, {
+          indexStatus: 'preprocessing',
+          syncStatus: 'failed',
+        })
+        throw createError({
+          statusCode: 502,
+          statusMessage: 'Bad Gateway',
+          message: 'AutoRAG sync 觸發失敗，請稍後重試或聯絡管理員',
+        })
+      }
     }
   } else {
     await store.setVersionIndexingStatus(result.version.id, {
