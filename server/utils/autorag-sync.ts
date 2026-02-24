@@ -28,6 +28,13 @@ function authorizationHeader(config: AutoRagClientConfig): Record<string, string
   return { Authorization: `Bearer ${config.apiToken}` }
 }
 
+export class AutoRagCooldownError extends Error {
+  constructor() {
+    super('AutoRAG sync is in cooldown')
+    this.name = 'AutoRagCooldownError'
+  }
+}
+
 export async function triggerAutoRagSync(
   config: AutoRagClientConfig,
   options: ClientOptions = {}
@@ -38,19 +45,25 @@ export async function triggerAutoRagSync(
   })
 
   if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as {
+      errors?: Array<{ code?: number; message?: string }>
+    } | null
+    if (body?.errors?.some((e) => e.message === 'sync_in_cooldown')) {
+      throw new AutoRagCooldownError()
+    }
     throw new Error(`AutoRAG sync trigger failed with HTTP ${response.status}`)
   }
 
   const payload = (await response.json()) as {
-    result?: { job_id?: string }
+    result?: { id?: string }
     success?: boolean
   }
 
-  if (!payload.success || !payload.result?.job_id) {
-    throw new Error('AutoRAG sync response missing job_id')
+  if (!payload.success || !payload.result?.id) {
+    throw new Error('AutoRAG sync response missing job id')
   }
 
-  return { jobId: payload.result.job_id }
+  return { jobId: payload.result.id }
 }
 
 export async function getAutoRagJobStatus(
@@ -68,7 +81,12 @@ export async function getAutoRagJobStatus(
   }
 
   const payload = (await response.json()) as {
-    result?: { error?: string; id?: string; status?: string }
+    result?: {
+      ended_at?: string | null
+      end_reason?: string | null
+      id?: string
+      started_at?: string | null
+    }
     success?: boolean
   }
 
@@ -76,28 +94,24 @@ export async function getAutoRagJobStatus(
     throw new Error('AutoRAG job response missing result')
   }
 
+  const { ended_at, end_reason, started_at } = payload.result
+  let runStatus: AutoRagJobRunStatus
+  if (!started_at) {
+    runStatus = 'pending'
+  } else if (!ended_at) {
+    runStatus = 'running'
+  } else if (end_reason) {
+    runStatus = 'failed'
+  } else {
+    runStatus = 'completed'
+  }
+
   const status: AutoRagJobStatus = {
     jobId: payload.result.id ?? jobId,
-    status: normalizeJobStatus(payload.result.status),
+    status: runStatus,
   }
-  if (payload.result.error) {
-    status.error = payload.result.error
+  if (end_reason) {
+    status.error = end_reason
   }
   return status
-}
-
-function normalizeJobStatus(raw: string | undefined): AutoRagJobRunStatus {
-  switch (raw) {
-    case 'completed':
-    case 'succeeded':
-      return 'completed'
-    case 'failed':
-    case 'error':
-      return 'failed'
-    case 'running':
-    case 'in_progress':
-      return 'running'
-    default:
-      return 'pending'
-  }
 }
