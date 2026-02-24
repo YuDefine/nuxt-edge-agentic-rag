@@ -108,7 +108,7 @@
         v-model="inputValue"
         :placeholder="placeholder"
         :disabled="disabled || loading"
-        :rows="3"
+        :rows="1"
         autoresize
         class="flex-1"
         @keydown="handleKeyDown"

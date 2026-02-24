@@ -393,11 +393,6 @@
   async function startUpload(event: FormSubmitEvent<DocumentMeta>) {
     if (!selectedFile.value) return
 
-    if (slugConflict.value) {
-      errorMessage.value = '此文件代碼已被使用，請改用其他代碼'
-      return
-    }
-
     const validated = event.data
 
     errorMessage.value = null
@@ -642,7 +637,7 @@
               required
               :help="
                 slugConflict
-                  ? '⚠️ 此文件代碼已被其他文件使用，送出會失敗'
+                  ? 'ℹ️ 此文件代碼已存在，將以新版本上傳到既有文件'
                   : '小寫英數字與連字符（-）'
               "
             >
@@ -698,14 +693,9 @@
           <UIcon name="i-lucide-loader-2" class="size-8 animate-spin text-primary" />
         </div>
         <h3 class="mb-2 text-lg font-medium text-default">正在建立索引</h3>
-        <p class="mb-2 max-w-sm text-sm text-muted">
+        <p class="mb-8 max-w-sm text-sm text-muted">
           {{ getIndexingStatusLabel(indexingStatus) }}
         </p>
-        <p v-if="indexingStatus" class="mb-6 text-xs text-dimmed">
-          index_status: {{ indexingStatus.indexStatus }} · sync_status:
-          {{ indexingStatus.syncStatus }}
-        </p>
-        <p v-else class="mb-6 text-xs text-dimmed">&nbsp;</p>
         <UButton color="neutral" variant="ghost" @click="emit('cancel')">稍後返回</UButton>
       </template>
     </div>
