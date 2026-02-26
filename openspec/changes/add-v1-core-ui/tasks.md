@@ -102,11 +102,14 @@
 - [x] #1 以 Web User 登入後，從首頁進入 `/chat`，確認 Navigation 正確顯示（無 Admin 入口）
   - 2026-04-18 production PASS：Web User (非 allowlist Gmail) 在 `https://agentic.yudefine.com.tw/` 登入後停在首頁「開始探索知識庫」，Navigation 只顯示「問答」，無「文件管理」。截圖：temp/phase1/step1.1.png。
 - [x] #2 以 Web Admin 登入後，確認 Navigation 顯示 Chat + Documents 入口
-- [ ] #3 在 Chat 頁面提問，確認 streaming 回答逐字顯示，refusal 有不同樣式
-- [ ] #4 點擊引用標記，確認 Citation Replay Modal 正確顯示原文段落
+- [x] #3 在 Chat 頁面提問，確認 streaming 回答逐字顯示，refusal 有不同樣式
+  - 2026-04-19 production PASS：問「AutoRAG 驗收文件的測試目的是什麼？」回應 streaming 逐字出現並帶 citation。問「今天股票哪支漲？」呈現 refusal 專屬 UI（標題「無法回答」、圖示、可能原因清單、重試引導），與一般 answer 視覺明顯區隔。
+- [x] #4 點擊引用標記，確認 Citation Replay Modal 正確顯示原文段落
+  - 2026-04-19 production PASS：點 `/chat` 回覆的「引用 1」tag 跳出 Citation Replay Modal，顯示「引用內容」標題 + 文件標題「Smoke Test 0418 — AutoRAG 驗收」+ 精確段落原文。
 - [x] #5 以 Admin 進入 `/admin/documents`，確認文件列表顯示所有欄位與狀態 Badge
   - 2026-04-18 local PASS：列表顯示 7 欄（標題 / 分類 / 權限 / 狀態 / 目前版本 / 更新時間 / actions），3 份種子文件覆蓋 3 種 document status badge（草稿 / 啟用 / 已歸檔）與 version sync+index 實際值（待同步+前處理中、已同步+待索引），每列尾端有 `⋯` actions icon。截圖：screenshots/local/add-v1-core-ui/#5-admin-list-all-columns.png
-- [ ] #6 執行完整上傳流程（select → upload → finalize → sync → publish），確認每步驟狀態正確
+- [x] #6 執行完整上傳流程（select → upload → finalize → sync → publish），確認每步驟狀態正確
+  - 2026-04-19 production PASS：Smoke Test 0418 v1 + v2 均走完 `select → upload → finalize → sync → indexing_wait → publish`。每階段顯示對應步驟指示；indexing_wait 實際 polling `/api/documents/[id]/versions/[versionId]/index-status` 直到 `index_status='indexed'` 才允許 publish。UI 移除原本洩漏給使用者看的 `index_status / sync_status` 欄位。同 slug 第二次上傳在同一 wizard 由「⚠️ 此文件代碼已被其他文件使用，送出會失敗」改為「ℹ️ 此文件代碼已存在，將以新版本上傳到既有文件」並可正常送出建 v2。
 - [x] #7 以非 Admin 訪問 `/admin/documents`，確認被阻擋（403 或 redirect）
   - 2026-04-18 production PASS：Web User session 直接訪問 `/admin/documents` 被 redirect 到 `/`（首頁），不可見文件列表。Observation: redirect 目標為 `/` 而非 Runbook 原本預期的 `/chat` 或 `/login`；已由使用者確認接受現況。
 - [x] #8 測試 empty state、loading state、error state 是否正確顯示
