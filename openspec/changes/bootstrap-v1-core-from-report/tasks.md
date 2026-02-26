@@ -43,7 +43,8 @@
     - R2 bucket: `agentic-rag-documents`
     - Secrets 已設定: BETTER_AUTH_SECRET, NUXT_SESSION_PASSWORD, Google OAuth credentials, ADMIN_EMAIL_ALLOWLIST, R2 upload signing secrets
   - **待手動設定**: Google OAuth redirect URI → `https://agentic.yudefine.com.tw/api/auth/callback/google`
-- [ ] 6.2 Manual Acceptance — 以人工檢查完成六步最小閉環驗收，確認 current-version-only、restricted 隔離、citation replay 與 redaction 都成立後，再開啟同版後置項。
+- [x] 6.2 Manual Acceptance — 以人工檢查完成六步最小閉環驗收，確認 current-version-only、restricted 隔離、citation replay 與 redaction 都成立後，再開啟同版後置項。
+  - 2026-04-19 production PASS：#1–#5 全部通過（見人工檢查段）。
   - 2026-04-16 local acceptance attempt: local app boot was repaired enough to reach the login screen and create test accounts, but full 6.2 did not complete.
   - Verified locally:
     - Better Auth local sqlite schema was missing; pushing the merged .nuxt schema into .data/db/sqlite.db created user/session/account/verification plus app tables.
@@ -78,7 +79,8 @@
 - [x] [P] 8.3 Presign / finalize 路徑對齊 per-chunk 決策 — 確認 `server/api/uploads/presign.post.ts` 與 `finalize.post.ts` 上傳的是原始 source 檔（非 normalized chunk），不需 customMetadata；若有中介暫存路徑，明確定義不被 AutoRAG crawl，並在 `document-sync.ts` 統一負責 per-chunk 寫入。
 - [x] 8.4 Upload wizard 新增 `indexing_wait` step — `UploadWizard.vue` 在 sync 與 publish 之間插入 indexing 等待 UI，polling `/api/documents/[id]/versions/[versionId]`（或新增 status polling endpoint）直到 `index_status='indexed'` 才允許進入 publish step；顯示 preprocessing / smoke_pending / indexed 狀態進度；涉及 UI ⇒ 觸發 Section 9 Design Review。
 - [x] 8.5 Sync 流程觸發 AutoRAG 並推進 `index_status`（解 #B2）— `syncDocumentVersionSnapshot` 寫完 per-chunk R2 後呼叫 AutoRAG binding / API 觸發 crawl（或等待 passive crawl），成功後把 `index_status` 從 `preprocessing` → `smoke_pending`（跑 smoke_test_queries）→ `indexed`，`sync_status` → `completed`；失敗路徑正確回寫 `sync_status='failed'` 與 error。
-- [ ] 8.6 舊檔清理與 staging 重驗（解 #B3）— 撰寫 one-off script 刪除 R2 bucket 中所有既有 `normalized-text/<id>.txt`（per-document 舊佈局）物件；部署 staging；重跑 6.2 驗收 #2 後半、#3 current-version-only、#4 restricted hiding、#5 rate limit，確認 `/api/chat` 正確回 citations。
+- [x] 8.6 舊檔清理與 staging 重驗（解 #B3）— 撰寫 one-off script 刪除 R2 bucket 中所有既有 `normalized-text/<id>.txt`（per-document 舊佈局）物件；部署 staging；重跑 6.2 驗收 #2 後半、#3 current-version-only、#4 restricted hiding、#5 rate limit，確認 `/api/chat` 正確回 citations。
+  - 2026-04-19 production PASS：per-document 舊佈局、orphan UUID directories 全部刪除。AutoRAG instance 因原 `parse_type: sitemap` 混亂狀態重建為新 instance 並自動 provision 新 service API token。`normalized-text/` 新 per-chunk 佈局正常 crawl + index（「已編製索引」從 0 → 8 chunks）。6.2 #2–#5 全部通過（見人工檢查段）。過程中順手修的 infra 層 code bugs：`triggerAutoRagSync` 解析 `result.id`（原誤讀 `result.job_id`）、`getAutoRagJobStatus` 改用 `ended_at`/`end_reason` 判讀（原讀不存在的 `status` 欄位）、env override 名稱 `NUXT_KNOWLEDGE_AUTO_RAG_API_TOKEN`、`buildChunkObjects` 寫入 `status='active'/version_state='current'`、`publish.post.ts` 新增 `rewriteVersionMetadata` demote 舊 current、`triggerAutoRagSync` 支援 429 cooldown fallback 到 `syncStatus='pending'`、UploadWizard 移除 tech info（`index_status`/`sync_status`）、wizard slug conflict 由 block submit 改為 inline 提示「將以新版本上傳」、production D1 migrations 0003 + 0004 apply 到齊。
 
 ## 9. Design Review（B3 延伸 — 僅覆蓋 8.4 Upload Wizard indexing wait UI）
 
@@ -104,14 +106,15 @@
 - [x] #1 實際以 Web User / Web Admin 走登入與導頁，確認 allowlist、角色與可見範圍符合規格。
   - 2026-04-16 local partial pass: setup-created admin/user accounts could sign in via /api/auth/sign-in/email; admin reached admin-only guard while user was denied. Google OAuth UI flow still未重跑。
   - 2026-04-18 production PASS (agentic.yudefine.com.tw)：Web User (非 allowlist Gmail) Google OAuth 登入成功，Navigation 只顯示「問答」；Web Admin (charles.yudefine@gmail.com) 登入成功，Navigation 顯示「問答」+「文件管理」，可進入 `/admin/documents`。截圖：temp/phase1/step1.1.png、step1.2.png。
-- [ ] #2 以 `md` 或 `txt` 文件完成 presign → finalize → sync → publish → Web 問答 → 引用回放 的最小閉環。
-  - Blocked locally by missing upload signing secrets and Cloudflare DB / AI bindings required by downstream routes.
-- [ ] #3 將同一文件切到新版後重新提問，確認正式回答不再使用舊版內容，且舊 citation 在保留期限內仍可回放。
-  - 尚未執行；依賴 #2 先完成。
-- [ ] #4 以未具 `knowledge.restricted.read` 的 token 驗證 `searchKnowledge` / `askKnowledge` 的 existence-hiding，以及 `getDocumentChunk` 的 `403` 邊界。
-  - 尚未執行；pnpm dev 下 MCP routes 目前先被 Cloudflare binding 缺失阻塞。
-- [ ] #5 檢查 `query_logs`、`messages` 與 rate limit 結果，確認沒有未遮罩敏感資料且超限時正確回 `429`。
-  - 尚未執行；依賴 chat / MCP routes 可在具 bindings 的環境下正常工作。
+- [x] #2 以 `md` 或 `txt` 文件完成 presign → finalize → sync → publish → Web 問答 → 引用回放 的最小閉環。
+  - 2026-04-16 Blocked locally by missing upload signing secrets and Cloudflare DB / AI bindings required by downstream routes.
+  - 2026-04-19 production PASS：Smoke Test 0418 上傳 → sync → AutoRAG 自動觸發 → index_status 推進到 indexed → publish v1。`/chat` 問「AutoRAG 驗收文件的測試目的是什麼？」回覆含 citation，點「引用 1」跳出 Citation Replay Modal 顯示原文段落。
+- [x] #3 將同一文件切到新版後重新提問，確認正式回答不再使用舊版內容，且舊 citation 在保留期限內仍可回放。
+  - 2026-04-19 production PASS：同 slug 上傳 v2 → v3 published 為 current，v1 is_current=0。`/chat` 問 v2 專屬「紫色長頸鹿做什麼？」4 個 citations 全指向 v3（`3d2bd549-...`）。問共同章節「測試目的」citation 也只取 v3。v1 舊 citation `336e1f1b-...` 透過 `/api/citations/:id` 仍能 replay 出 v1 原文。
+- [x] #4 以未具 `knowledge.restricted.read` 的 token 驗證 `searchKnowledge` / `askKnowledge` 的 existence-hiding，以及 `getDocumentChunk` 的 `403` 邊界。
+  - 2026-04-19 production PASS：建 2 個 MCP token（A 有 restricted.read、B 無），建 restricted doc「機密專案玫瑰」。`searchKnowledge` Token A 回 restricted chunk、Token B 只見 internal chunks（existence-hidden）。`askKnowledge` Token A 答出「暗紫玫瑰」內容、Token B `refused: true`。`getDocumentChunk` Token A 200、Token B 403「requires knowledge.restricted.read」。
+- [x] #5 檢查 `query_logs`、`messages` 與 rate limit 結果，確認沒有未遮罩敏感資料且超限時正確回 `429`。
+  - 2026-04-19 production PASS：Rate limit — MCP `askKnowledge` 連續 35 次，第 30 次 HTTP 429（對應 `rate-limiter.ts` askKnowledge 30/5min 預設）。Redaction — `ask` 送 `my email is john@sample.com phone 0912345678 ...`，`query_logs.query_redacted_text` = `my email is [REDACTED:email] phone [REDACTED:phone] ...`，`redaction_applied=1`，`risk_flags_json=["pii:email","pii:phone"]`。schema 端 `query_logs` 無 raw query 欄位（僅儲 redacted），原始 PII 不落地。
 
 ## Blockers
 
@@ -126,13 +129,13 @@
     - ✅ `pnpm test:unit` 通過（105 tests）
     - ⚠️ `pnpm build` 有間歇性 V8 crash（Node.js 24 runtime 問題，與本修復無關）
   - **待驗證**：部署到 staging 確認 D1 binding 正確運作
-- [ ] #B2 Version indexing pipeline 未實作 — 2026-04-18 人工驗收 #2 時發現 upload wizard 呼叫 `/api/documents/sync` 後立刻打 publish 必 409 (`Only indexed versions without in-progress sync tasks can be published`)。
+- [x] #B2 Version indexing pipeline 未實作 — 2026-04-18 人工驗收 #2 時發現 upload wizard 呼叫 `/api/documents/sync` 後立刻打 publish 必 409 (`Only indexed versions without in-progress sync tasks can be published`)。
   - **實作缺口**：`syncDocumentVersionSnapshot` 只把 version 設為 `index_status='preprocessing'` / `sync_status='pending'`，整個 repo 沒有任何 code 會推進到 `smoke_pending` 或 `indexed`。2.2 Version Preprocessing 雖標 `[x]`，但「smoke probes → indexed」這段未落地。
   - **Spec 要求**（`specs/document-ingestion-and-publishing/spec.md` #21-26）：`preprocessing → smoke_pending → indexed`，publish 檢查 (`document-publish.ts:73`) 要求 `indexStatus === 'indexed'` 且 `syncStatus !== 'running'`。
   - **相關檔案**：`server/utils/document-sync.ts:107-112`、`server/utils/document-publish.ts:73-77`、`app/components/documents/UploadWizard.vue:349-393`。
   - **臨時 workaround**（2026-04-18）：對「SOP-Doc-A-0418」(`ff54539a-...`) 手動 `UPDATE document_versions SET index_status='indexed', sync_status='completed'` 讓 #2 後半（chat streaming、citation replay）可以繼續驗。**每次新上傳都要重做**，不是可接受的長期方案。
   - **後續**：2026-04-18 已 ingest 進 Section 8（AutoRAG Indexing Pipeline），由 task 8.5 `syncDocumentVersionSnapshot` 呼叫 AutoRAG binding → `smoke_pending` → `indexed` 推進 state machine 解鎖；task 8.4 在 UploadWizard 加 `indexing_wait` step polling。
-- [ ] #B3 AI Search / AutoRAG index 未啟用 — 2026-04-18 驗收 #2 後半時發現 `/api/chat` 對剛上傳的 Doc A 與 2026-04-16 seed「知識庫測試文件」皆回 `{ answer: null, citations: [], refused: true }`。
+- [x] #B3 AI Search / AutoRAG index 未啟用 — 2026-04-18 驗收 #2 後半時發現 `/api/chat` 對剛上傳的 Doc A 與 2026-04-16 seed「知識庫測試文件」皆回 `{ answer: null, citations: [], refused: true }`。
   - **根因**：chat 走 `env.AI.autorag('agentic-rag').search(...)`（`server/utils/ai-search.ts`），但 production 的 Cloudflare AutoRAG index `agentic-rag`（見 `wrangler.jsonc` `NUXT_KNOWLEDGE_AI_SEARCH_INDEX`）**可能未建立、未連 R2 source、或尚未 crawl**，導致 vector index 為空 → 所有 query 0 命中 → retrievalScore 0 → refused。
   - **驗證方向**：
     1. Cloudflare dashboard 確認 AutoRAG index `agentic-rag` 是否存在
