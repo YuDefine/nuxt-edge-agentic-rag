@@ -1,5 +1,6 @@
 import { getD1Database } from '#server/utils/database'
 import { publishDocumentVersion, DocumentPublishStateError } from '#server/utils/document-publish'
+import { rewriteVersionMetadata } from '#server/utils/document-publish-r2'
 import { createDocumentSyncStore } from '#server/utils/document-store'
 
 export default defineEventHandler(async (event) => {
@@ -17,16 +18,18 @@ export default defineEventHandler(async (event) => {
     })
   }
 
+  const store = createDocumentSyncStore(database)
+  const previousCurrent = (await store.findDocumentById(documentId))?.currentVersionId ?? null
+
   try {
-    const result = await publishDocumentVersion(
-      {
-        documentId,
-        versionId,
-      },
-      {
-        store: createDocumentSyncStore(database),
+    const result = await publishDocumentVersion({ documentId, versionId }, { store })
+
+    if (!result.alreadyCurrent) {
+      if (previousCurrent && previousCurrent !== versionId) {
+        await rewriteVersionMetadata(event, previousCurrent, 'previous')
       }
-    )
+      await rewriteVersionMetadata(event, versionId, 'current')
+    }
 
     return {
       data: result,
