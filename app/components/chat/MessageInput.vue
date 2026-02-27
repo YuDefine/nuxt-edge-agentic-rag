@@ -13,6 +13,7 @@
 
   const emit = defineEmits<{
     submit: [message: string]
+    stop: []
   }>()
 
   const inputValue = ref('')
@@ -92,6 +93,19 @@
 
   onKeyStroke('/', handleGlobalSlashKey)
 
+  function focusAndClear() {
+    inputValue.value = ''
+    validationError.value = null
+    const target = document.getElementById(TEXTAREA_ID)
+    if (target instanceof HTMLTextAreaElement) {
+      nextTick(() => {
+        target.focus()
+      })
+    }
+  }
+
+  defineExpose({ focusAndClear })
+
   const canSubmit = computed(() => {
     return !props.disabled && !props.loading && inputValue.value.trim().length > 0
   })
@@ -114,12 +128,22 @@
         @keydown="handleKeyDown"
       />
       <UButton
+        v-if="loading"
+        color="neutral"
+        variant="outline"
+        size="md"
+        icon="i-lucide-square"
+        @click="emit('stop')"
+      >
+        中斷
+      </UButton>
+      <UButton
+        v-else
         color="neutral"
         variant="solid"
         size="md"
         icon="i-lucide-send"
         :disabled="!canSubmit"
-        :loading="loading"
         @click="handleSubmit"
       >
         送出

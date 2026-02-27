@@ -8,10 +8,22 @@
     open: boolean
   }
 
+  interface CitationAdminData {
+    documentVersionId: string
+    expiresAt: string
+    queryLogId: string
+    sourceChunkId: string
+  }
+
   interface CitationData {
+    admin?: CitationAdminData
     chunkText: string
     citationId: string
     citationLocator: string
+    documentId: string
+    documentTitle: string
+    isCurrentVersion: boolean
+    versionNumber: number
   }
 
   const props = defineProps<Props>()
@@ -122,19 +134,34 @@
         <!-- Content -->
         <div v-else-if="citationData" class="flex flex-col gap-4">
           <!-- Source metadata -->
-          <div
-            v-if="parseLocator(citationData.citationLocator).title"
-            class="flex items-center gap-2 rounded-lg bg-muted p-3"
-          >
+          <div class="flex items-center gap-2 rounded-lg bg-muted p-3">
             <UIcon name="i-lucide-file-text" class="size-4 text-muted" />
-            <div class="flex-1">
-              <p class="text-sm font-medium text-default">
-                {{ parseLocator(citationData.citationLocator).title }}
+            <div class="min-w-0 flex-1">
+              <p class="truncate text-sm font-medium text-default">
+                {{ citationData.documentTitle || parseLocator(citationData.citationLocator).title }}
               </p>
-              <p v-if="parseLocator(citationData.citationLocator).page" class="text-xs text-muted">
-                頁面 {{ parseLocator(citationData.citationLocator).page }}
+              <p class="text-xs text-muted">
+                <span>版本 v{{ citationData.versionNumber }}</span>
+                <span
+                  v-if="parseLocator(citationData.citationLocator).page"
+                  class="ml-2 border-l border-default pl-2"
+                >
+                  頁面 {{ parseLocator(citationData.citationLocator).page }}
+                </span>
               </p>
             </div>
+            <UBadge
+              v-if="citationData.isCurrentVersion"
+              color="success"
+              variant="subtle"
+              size="sm"
+              icon="i-lucide-badge-check"
+            >
+              最新版
+            </UBadge>
+            <UBadge v-else color="warning" variant="subtle" size="sm" icon="i-lucide-history">
+              已非最新版
+            </UBadge>
           </div>
 
           <!-- Chunk text -->
@@ -142,6 +169,28 @@
             <p class="text-sm leading-relaxed whitespace-pre-wrap text-default">
               {{ citationData.chunkText }}
             </p>
+          </div>
+
+          <!-- Admin-only audit fields -->
+          <div
+            v-if="citationData.admin"
+            class="rounded-lg border border-dashed border-default bg-muted p-3"
+            data-testid="citation-admin-fields"
+          >
+            <p class="mb-2 flex items-center gap-1 text-xs font-medium text-default">
+              <UIcon name="i-lucide-shield-alert" class="size-3.5" />
+              稽核資訊（僅管理員可見）
+            </p>
+            <dl class="grid grid-cols-1 gap-x-4 gap-y-1 text-xs text-muted sm:grid-cols-[auto_1fr]">
+              <dt class="font-medium">Query Log ID</dt>
+              <dd class="font-mono break-all">{{ citationData.admin.queryLogId }}</dd>
+              <dt class="font-medium">Citation ID</dt>
+              <dd class="font-mono break-all">{{ citationData.citationId }}</dd>
+              <dt class="font-medium">Source Chunk ID</dt>
+              <dd class="font-mono break-all">{{ citationData.admin.sourceChunkId }}</dd>
+              <dt class="font-medium">Expires At</dt>
+              <dd class="font-mono break-all">{{ citationData.admin.expiresAt }}</dd>
+            </dl>
           </div>
         </div>
 

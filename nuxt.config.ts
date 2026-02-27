@@ -97,7 +97,9 @@ export default defineNuxtConfig({
       maxAge: 60 * 60 * 24 * 7,
       password: process.env.NUXT_SESSION_PASSWORD || '',
     },
-    public: {},
+    public: {
+      adminContactEmail: process.env.NUXT_PUBLIC_ADMIN_CONTACT_EMAIL || '',
+    },
   },
 
   image: {

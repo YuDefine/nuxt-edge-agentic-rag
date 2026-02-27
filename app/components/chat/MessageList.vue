@@ -11,6 +11,7 @@
   const emit = defineEmits<{
     citationClick: [citationId: string]
     submitSuggestion: [query: string]
+    retryFocus: []
   }>()
 
   // 示例問題，讓使用者快速開始
@@ -59,6 +60,12 @@
   function handleCitationClick(citationId: string) {
     emit('citationClick', citationId)
   }
+
+  const hoveredCitationId = ref<string | null>(null)
+
+  function setHoveredCitation(citationId: string | null) {
+    hoveredCitationId.value = citationId
+  }
 </script>
 
 <template>
@@ -78,6 +85,7 @@
         :content="message.content"
         :created-at="message.createdAt"
         class="max-w-[85%] sm:max-w-2xl"
+        @retry-focus="emit('retryFocus')"
       />
 
       <!-- Regular messages (user or successful assistant) -->
@@ -102,7 +110,21 @@
             :key="citation.citationId"
             :citation-id="citation.citationId"
             :index="index"
+            :is-hovered="hoveredCitationId === citation.citationId"
             @click="handleCitationClick"
+            @hover="setHoveredCitation"
+          />
+        </div>
+
+        <div v-if="hasCitations(message)" class="mt-3 flex flex-col gap-2">
+          <ChatCitationCard
+            v-for="(citation, index) in message.citations"
+            :key="`card-${citation.citationId}`"
+            :citation-id="citation.citationId"
+            :index="index"
+            :is-hovered="hoveredCitationId === citation.citationId"
+            @open-modal="handleCitationClick"
+            @hover="setHoveredCitation"
           />
         </div>
 
