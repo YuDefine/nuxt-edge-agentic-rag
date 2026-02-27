@@ -10,6 +10,24 @@
   }
 
   defineProps<Props>()
+
+  const emit = defineEmits<{
+    retryFocus: []
+  }>()
+
+  const runtimeConfig = useRuntimeConfig().public
+  const adminContactEmail = computed<string>(() => {
+    const raw = (runtimeConfig as Record<string, unknown>).adminContactEmail
+    return typeof raw === 'string' && raw.length > 0 ? raw : 'admin@example.com'
+  })
+
+  const documentListUrl = '/admin/documents'
+  const { isAdmin } = useUserRole()
+  const canBrowseDocuments = isAdmin
+
+  function handleRetryFocus() {
+    emit('retryFocus')
+  }
 </script>
 
 <template>
@@ -34,10 +52,47 @@
         <li>您的帳號權限可能無法存取相關文件</li>
         <li>問題敘述可能過於模糊或過於具體</li>
       </ul>
-      <p class="mt-2 text-xs text-dimmed">請嘗試用不同方式重新描述您的問題，或詢問其他相關主題。</p>
     </div>
 
-    <div class="mt-2 text-xs text-dimmed">
+    <div class="mt-3">
+      <p class="mb-2 flex items-center gap-1 text-xs font-medium text-default">
+        <UIcon name="i-lucide-compass" class="size-3.5" />
+        建議的下一步
+      </p>
+      <div class="flex flex-wrap gap-2">
+        <UButton
+          color="neutral"
+          variant="soft"
+          size="xs"
+          icon="i-lucide-pencil-line"
+          @click="handleRetryFocus"
+        >
+          改換關鍵字重新提問
+        </UButton>
+        <UButton
+          v-if="canBrowseDocuments"
+          color="neutral"
+          variant="soft"
+          size="xs"
+          icon="i-lucide-folder-open"
+          :to="documentListUrl"
+        >
+          查看相關文件清單
+        </UButton>
+        <UButton
+          color="neutral"
+          variant="soft"
+          size="xs"
+          icon="i-lucide-mail"
+          :to="`mailto:${adminContactEmail}?subject=${encodeURIComponent('知識庫查詢協助請求')}`"
+          external
+        >
+          聯絡管理員
+        </UButton>
+      </div>
+    </div>
+
+    <div class="mt-3 text-xs text-dimmed">
       {{ new Date(createdAt).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' }) }}
     </div>
   </div>
