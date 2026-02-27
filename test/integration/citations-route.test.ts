@@ -5,7 +5,7 @@ import { createRouteEvent, installNuxtRouteTestGlobals } from './helpers/nuxt-ro
 
 const citationMocks = vi.hoisted(() => ({
   createMcpReplayStore: vi.fn().mockReturnValue({
-    findReplayableCitationById: vi.fn(),
+    findWebReplayableCitationById: vi.fn(),
   }),
   getKnowledgeRuntimeConfig: vi.fn().mockReturnValue({
     bindings: {
@@ -71,11 +71,19 @@ describe('GET /api/citations/:citationId', () => {
     citationMocks.getRuntimeAdminAccess.mockReturnValue(false)
 
     const mockStore = {
-      findReplayableCitationById: vi.fn().mockResolvedValue({
+      findWebReplayableCitationById: vi.fn().mockResolvedValue({
         accessLevel: 'internal',
         chunkTextSnapshot: 'This is the cited text.',
         citationId: 'cite-1',
         citationLocator: 'doc-1:section:2',
+        documentId: 'doc-1',
+        documentTitle: 'Doc 1',
+        documentVersionId: 'dv-1',
+        expiresAt: '2099-01-01T00:00:00.000Z',
+        isCurrentVersion: true,
+        queryLogId: 'query-log-1',
+        sourceChunkId: 'chunk-1',
+        versionNumber: 2,
       }),
     }
     citationMocks.createMcpReplayStore.mockReturnValue(mockStore)
@@ -88,6 +96,10 @@ describe('GET /api/citations/:citationId', () => {
         chunkText: 'This is the cited text.',
         citationId: 'cite-1',
         citationLocator: 'doc-1:section:2',
+        documentId: 'doc-1',
+        documentTitle: 'Doc 1',
+        isCurrentVersion: true,
+        versionNumber: 2,
       },
     })
   })
@@ -96,7 +108,7 @@ describe('GET /api/citations/:citationId', () => {
     citationMocks.getRouterParam.mockReturnValue('cite-missing')
 
     const mockStore = {
-      findReplayableCitationById: vi.fn().mockResolvedValue(null),
+      findWebReplayableCitationById: vi.fn().mockResolvedValue(null),
     }
     citationMocks.createMcpReplayStore.mockReturnValue(mockStore)
 
@@ -112,11 +124,19 @@ describe('GET /api/citations/:citationId', () => {
     citationMocks.getRuntimeAdminAccess.mockReturnValue(false)
 
     const mockStore = {
-      findReplayableCitationById: vi.fn().mockResolvedValue({
+      findWebReplayableCitationById: vi.fn().mockResolvedValue({
         accessLevel: 'restricted',
         chunkTextSnapshot: 'Restricted content.',
         citationId: 'cite-restricted',
         citationLocator: 'doc-1:section:1',
+        documentId: 'doc-1',
+        documentTitle: 'Doc 1',
+        documentVersionId: 'dv-1',
+        expiresAt: '2099-01-01T00:00:00.000Z',
+        isCurrentVersion: true,
+        queryLogId: 'query-log-1',
+        sourceChunkId: 'chunk-1',
+        versionNumber: 1,
       }),
     }
     citationMocks.createMcpReplayStore.mockReturnValue(mockStore)
@@ -133,11 +153,19 @@ describe('GET /api/citations/:citationId', () => {
     citationMocks.getRuntimeAdminAccess.mockReturnValue(true)
 
     const mockStore = {
-      findReplayableCitationById: vi.fn().mockResolvedValue({
+      findWebReplayableCitationById: vi.fn().mockResolvedValue({
         accessLevel: 'restricted',
         chunkTextSnapshot: 'Restricted content for admin.',
         citationId: 'cite-restricted',
         citationLocator: 'doc-1:section:1',
+        documentId: 'doc-1',
+        documentTitle: 'Doc 1',
+        documentVersionId: 'dv-1',
+        expiresAt: '2099-01-01T00:00:00.000Z',
+        isCurrentVersion: true,
+        queryLogId: 'query-log-1',
+        sourceChunkId: 'chunk-1',
+        versionNumber: 1,
       }),
     }
     citationMocks.createMcpReplayStore.mockReturnValue(mockStore)
@@ -150,6 +178,16 @@ describe('GET /api/citations/:citationId', () => {
         chunkText: 'Restricted content for admin.',
         citationId: 'cite-restricted',
         citationLocator: 'doc-1:section:1',
+        documentId: 'doc-1',
+        documentTitle: 'Doc 1',
+        isCurrentVersion: true,
+        versionNumber: 1,
+        admin: {
+          documentVersionId: 'dv-1',
+          expiresAt: '2099-01-01T00:00:00.000Z',
+          queryLogId: 'query-log-1',
+          sourceChunkId: 'chunk-1',
+        },
       },
     })
   })

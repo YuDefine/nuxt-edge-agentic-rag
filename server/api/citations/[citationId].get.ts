@@ -21,7 +21,7 @@ export default defineEventHandler(async function getCitationHandler(event) {
     const database = await getD1Database()
     const replayStore = createMcpReplayStore(database)
 
-    const citation = await replayStore.findReplayableCitationById(citationId)
+    const citation = await replayStore.findWebReplayableCitationById(citationId)
 
     if (!citation) {
       throw createError({
@@ -47,6 +47,20 @@ export default defineEventHandler(async function getCitationHandler(event) {
         chunkText: citation.chunkTextSnapshot,
         citationId: citation.citationId,
         citationLocator: citation.citationLocator,
+        documentId: citation.documentId,
+        documentTitle: citation.documentTitle,
+        isCurrentVersion: citation.isCurrentVersion,
+        versionNumber: citation.versionNumber,
+        ...(isAdmin
+          ? {
+              admin: {
+                documentVersionId: citation.documentVersionId,
+                expiresAt: citation.expiresAt,
+                queryLogId: citation.queryLogId,
+                sourceChunkId: citation.sourceChunkId,
+              },
+            }
+          : {}),
       },
     }
   } catch (error) {
