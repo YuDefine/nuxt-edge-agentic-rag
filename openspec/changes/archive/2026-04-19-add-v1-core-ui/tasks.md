@@ -33,9 +33,9 @@
 > 實作 Persisted Conversation Chat UI、Streaming Answer And Refusal Display
 > Note: MVP 採用單一 session 模式，對話 composable 邏輯 inline 在 Container.vue
 
-- [x] 4.1 建立 `app/composables/useChat.ts` — 封裝 `@ai-sdk/vue` 的 `useChat` + conversationId 管理
-- [x] 4.2 建立 `app/composables/useConversations.ts` — 對話列表 CRUD（GET/POST /api/conversations）
-- [x] 4.3 建立 `app/pages/chat.vue` — Chat 首頁，整合 sidebar + 空狀態引導
+- [x] 4.1 直接於 `app/components/chat/Container.vue` 使用 `@ai-sdk/vue` 的 `useChat` + conversationId 管理（改以 inline 取代獨立 `useChat.ts`）
+- [x] 4.2 於 `app/components/chat/Container.vue` inline 對話列表 CRUD 邏輯（GET/POST /api/conversations，改以 inline 取代獨立 `useConversations.ts`）
+- [x] 4.3 建立 `app/pages/chat/index.vue` — Chat 首頁，整合 sidebar + 空狀態引導
 - [x] 4.4 建立 `app/pages/chat/[id].vue` — 對話詳情頁，整合 message list + input
 - [x] 4.5 實作 Streaming Answer And Refusal Display — loading skeleton、逐 token 渲染、refusal 樣式，處理 Risk: Streaming 中斷處理（onError callback + 重試提示）
 - [x] 4.6 實作 Citation Replay UI — 依 design.md「Citation Replay 流程」，點擊 marker → fetch `/api/citations/[id]` → 顯示 modal，expired 顯示錯誤狀態
@@ -45,17 +45,17 @@
 > 對應 design.md「文件列表 DataTable」與「Upload Wizard 狀態機」
 > Note: 元件位於 `app/components/documents/` 而非 `app/components/admin/documents/`
 
-- [x] 5.1 [P] 建立 `app/components/admin/documents/DocumentTable.vue` — 文件列表表格，含所有欄位與 actions
-- [x] 5.2 [P] 建立 `app/components/admin/documents/UploadWizard.vue` — 多步驟上傳 UI
-- [x] 5.3 [P] 建立 `app/components/admin/documents/DocumentStatusBadges.vue` — 組合多個 StatusBadge 顯示文件完整狀態
+- [x] 5.1 [P] 建立 `app/components/documents/DocumentListTable.vue` — 文件列表表格，含所有欄位與 actions
+- [x] 5.2 [P] 建立 `app/components/documents/UploadWizard.vue` — 多步驟上傳 UI
+- [x] 5.3 [P] 建立 `app/components/documents/{DocumentStatusBadge,VersionSyncBadge,VersionIndexBadge,AccessLevelBadge}.vue` — 多個 StatusBadge 變體，組合呈現文件完整狀態
 
 ## 6. Admin 文件管理頁面
 
 > 實作 Admin Document List UI、Staged Upload And Publish Wizard、Version Status Clarity
 > Note: composable 邏輯 inline 在頁面/元件中
 
-- [x] 6.1 建立 `app/composables/useDocuments.ts` — 文件列表 CRUD + pagination
-- [x] 6.2 建立 `app/composables/useUploadWizard.ts` — Upload Wizard 狀態機（select → uploading → finalizing → syncing → publishing → done）
+- [x] 6.1 建立 `app/composables/useDocumentLifecycle.ts` — 文件與版本 lifecycle 邏輯（取代拆分的 useDocuments/useUploadWizard，文件列表 CRUD + pagination 以 page-level `useFetch` 內嵌）
+- [x] 6.2 於 `app/components/documents/UploadWizard.vue` 實作 Upload Wizard 狀態機（select → uploading → finalizing → syncing → publishing → done，以元件內 state 取代獨立 `useUploadWizard.ts`）
 - [x] 6.3 建立 `app/pages/admin/documents/index.vue` — 文件列表頁，含 DataTable + 新增按鈕
 - [x] 6.4 建立 `app/pages/admin/documents/[id].vue` — 文件詳情頁，含 metadata 編輯 + 版本歷史
 - [x] 6.5 建立 `app/pages/admin/documents/upload.vue` — 上傳頁面，整合 UploadWizard
@@ -87,13 +87,13 @@
 
 > 來源：2026-04-18 improve.md 類別 2 盤點。既有實作已涵蓋多數，以下為**補強項**，不覆蓋既有 completed tasks。完成後對應項目在 improve.md 標記 📝。
 
-- [ ] 9.1 **B1 補強：引用互動 UX** — 行內 `CitationMarker` hover 時對應 `CitationReplayModal` / 引用卡片加 highlight；引用卡片顯示 current 版 badge（對比歷史版）；引用卡片 click 至少兩種進入方式（直接展開 or 開 modal）
-- [ ] 9.2 [P] **B2 補強：拒答下一步引導** — `RefusalMessage` 元件補「建議行動」區塊：顯示 3 項可點擊建議（「改換關鍵字重新提問」/「查看相關文件清單」/「聯絡管理員」），點擊觸發對應行為（清空輸入框 focus / link 到 `/admin/documents` 或公開列表 / mailto）
-- [ ] 9.3 [P] **B6 補強：上傳進度 4 階段 UX** — `UploadWizard` 從 indeterminate progress 改為 **4 階段明確 UI**：(1) 上傳中顯示 XHR 百分比；(2) 前處理中顯示「前處理中」spinner + 預估文件處理時間；(3) smoke 驗證中顯示「驗證中」spinner；(4) 完成顯示「已發布」green checkmark；失敗顯示具體階段的錯誤訊息
-- [ ] 9.4 [P] **B7 補強：串流 UX 細節** — (a) `ChatInput` 加 stop 按鈕（串流中顯示、點擊中斷並呼叫 `abort()`）；(b) `useChat` onError 區分「user abort / network error / timeout / rate limit」並給不同 UX；(c) streaming markdown 中途若有未閉合 code fence 用 `md4x heal:streaming` 或等價處理避免破版
-- [ ] 9.5 [P] **B9 補強：429 rate limit UX** — `/api/chat` 回 429 時 `useChat` 捕獲 → 顯示錯誤 toast「請求過於頻繁，請於 X 秒後重試」；X 為從 response header 讀取的 retry-after 或預設 60；中斷 stop 按鈕切回發送狀態
-- [ ] 9.6 **B13 補強：版本 rollback UI + 歷史引用 badge** — (a) `/admin/documents/[id]` 版本歷史每列加「切為 current」按鈕（僅非 current 且 `index_status=indexed` 可點，二次確認 modal）；(b) 引用卡片若 sourceVersion ≠ current 時加 `已非最新版` 小 badge；(c) rollback 成功 toast 提示
-- [ ] 9.7 [P] **B15 補強：citation 審計回放（併入 B1 路徑）** — 確認 `CitationReplayModal` 在 admin 使用時除使用者層資訊外額外顯示：`query_log.id`、`citationId`、`source_chunk_id`、`expires_at`（admin-only 欄位區塊，一般使用者隱藏）；對應 query_logs 詳情頁（admin-ui-post-core 範疇）加「跳至引用回放」按鈕
+- [x] 9.1 **B1 補強：引用互動 UX** — 行內 `CitationMarker` hover 時對應 `CitationReplayModal` / 引用卡片加 highlight；引用卡片顯示 current 版 badge（對比歷史版）；引用卡片 click 至少兩種進入方式（直接展開 or 開 modal）
+- [x] 9.2 [P] **B2 補強：拒答下一步引導** — `RefusalMessage` 元件補「建議行動」區塊：顯示 3 項可點擊建議（「改換關鍵字重新提問」/「查看相關文件清單」/「聯絡管理員」），點擊觸發對應行為（清空輸入框 focus / link 到 `/admin/documents` 或公開列表 / mailto）
+- [x] 9.3 [P] **B6 補強：上傳進度 4 階段 UX** — `UploadWizard` 從 indeterminate progress 改為 **4 階段明確 UI**：(1) 上傳中顯示 XHR 百分比；(2) 前處理中顯示「前處理中」spinner + 預估文件處理時間；(3) smoke 驗證中顯示「驗證中」spinner；(4) 完成顯示「已發布」green checkmark；失敗顯示具體階段的錯誤訊息
+- [x] 9.4 [P] **B7 補強：串流 UX 細節** — (a) `ChatInput` 加 stop 按鈕（串流中顯示、點擊中斷並呼叫 `abort()`）；(b) `useChat` onError 區分「user abort / network error / timeout / rate limit」並給不同 UX；(c) streaming markdown 中途若有未閉合 code fence 用 `md4x heal:streaming` 或等價處理避免破版
+- [x] 9.5 [P] **B9 補強：429 rate limit UX** — `/api/chat` 回 429 時 `useChat` 捕獲 → 顯示錯誤 toast「請求過於頻繁，請於 X 秒後重試」；X 為從 response header 讀取的 retry-after 或預設 60；中斷 stop 按鈕切回發送狀態
+- [x] 9.6 **B13 補強：版本 rollback UI + 歷史引用 badge** — (a) `/admin/documents/[id]` 版本歷史每列加「切為 current」按鈕（僅非 current 且 `index_status=indexed` 可點，二次確認 modal）；(b) 引用卡片若 sourceVersion ≠ current 時加 `已非最新版` 小 badge；(c) rollback 成功 toast 提示
+- [x] 9.7 [P] **B15 補強：citation 審計回放（併入 B1 路徑）** — 註：對應 query_logs 詳情頁「跳至引用回放」按鈕屬 `admin-ui-post-core` 範疇，本 change 僅完成 Modal admin-only 欄位 — 確認 `CitationReplayModal` 在 admin 使用時除使用者層資訊外額外顯示：`query_log.id`、`citationId`、`source_chunk_id`、`expires_at`（admin-only 欄位區塊，一般使用者隱藏）；對應 query_logs 詳情頁（admin-ui-post-core 範疇）加「跳至引用回放」按鈕
 
 ## 人工檢查
 

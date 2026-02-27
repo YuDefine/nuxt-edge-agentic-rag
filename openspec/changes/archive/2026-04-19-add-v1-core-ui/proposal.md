@@ -47,17 +47,15 @@ bootstrap-v1-core-from-report 已完成後端 API（Auth、Document Lifecycle、
 
 ### 影響的程式碼
 
-- `app/pages/chat.vue`（新建）
+- `app/pages/chat/index.vue`（新建 — 單一 session 入口，對話列表 inline 於 Container.vue）
 - `app/pages/chat/[id].vue`（新建）
 - `app/pages/admin/documents/index.vue`（新建）
 - `app/pages/admin/documents/[id].vue`（新建）
 - `app/pages/admin/documents/upload.vue`（新建）
-- `app/components/chat/`（新建目錄）
-- `app/components/admin/documents/`（新建目錄）
-- `app/components/ui/StatusBadge.vue`（新建）
-- `app/layouts/default.vue`（修改 — 加入 navigation）
-- `app/composables/useChat.ts`（新建）
-- `app/composables/useDocuments.ts`（新建）
+- `app/components/chat/`（新建目錄 — Container/MessageList/MessageInput/StreamingMessage/RefusalMessage/ConversationHistory/CitationMarker/CitationReplayModal/CitationCard）
+- `app/components/documents/`（新建目錄 — DocumentListTable/UploadWizard/DocumentListEmpty/LifecycleConfirmDialog/AccessLevelBadge/DocumentStatusBadge/VersionSyncBadge/VersionIndexBadge）
+- `app/layouts/default.vue`（修改 — 加入 `UNavigationMenu` 而非獨立 AppSidebar）
+- `app/composables/useDocumentLifecycle.ts`（新建 — 封裝文件與版本 lifecycle；Chat streaming 直接使用 `@ai-sdk/vue` 的 `useChat`，不另包 composable）
 
 ### 依賴的 API（來自 bootstrap）
 
