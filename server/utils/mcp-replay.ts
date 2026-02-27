@@ -110,6 +110,21 @@ export async function getDocumentChunk(
   }
 }
 
+export interface WebReplayableCitation {
+  accessLevel: string
+  chunkTextSnapshot: string
+  citationId: string
+  citationLocator: string
+  documentId: string
+  documentTitle: string
+  documentVersionId: string
+  expiresAt: string
+  isCurrentVersion: boolean
+  queryLogId: string
+  sourceChunkId: string
+  versionNumber: number
+}
+
 export function createMcpReplayStore(database: D1DatabaseLike) {
   return {
     async findReplayableCitationById(citationId: string): Promise<{
@@ -151,6 +166,69 @@ export function createMcpReplayStore(database: D1DatabaseLike) {
         chunkTextSnapshot: row.chunk_text_snapshot,
         citationId: row.citation_id,
         citationLocator: row.citation_locator,
+      }
+    },
+
+    async findWebReplayableCitationById(citationId: string): Promise<WebReplayableCitation | null> {
+      const now = new Date().toISOString()
+      const row = await database
+        .prepare(
+          [
+            'SELECT',
+            '  cr.id AS citation_id,',
+            '  cr.citation_locator AS citation_locator,',
+            '  cr.chunk_text_snapshot AS chunk_text_snapshot,',
+            '  cr.query_log_id AS query_log_id,',
+            '  cr.source_chunk_id AS source_chunk_id,',
+            '  cr.document_version_id AS document_version_id,',
+            '  cr.expires_at AS expires_at,',
+            '  sc.access_level AS access_level,',
+            '  dv.version_number AS version_number,',
+            '  d.id AS document_id,',
+            '  d.title AS document_title,',
+            '  d.current_version_id AS current_version_id',
+            'FROM citation_records cr',
+            'INNER JOIN source_chunks sc ON sc.id = cr.source_chunk_id',
+            'INNER JOIN document_versions dv ON dv.id = cr.document_version_id',
+            'INNER JOIN documents d ON d.id = dv.document_id',
+            'WHERE cr.id = ?',
+            '  AND cr.expires_at > ?',
+            'LIMIT 1',
+          ].join('\n')
+        )
+        .bind(citationId, now)
+        .first<{
+          access_level: string
+          chunk_text_snapshot: string
+          citation_id: string
+          citation_locator: string
+          current_version_id: string | null
+          document_id: string
+          document_title: string
+          document_version_id: string
+          expires_at: string
+          query_log_id: string
+          source_chunk_id: string
+          version_number: number
+        }>()
+
+      if (!row) {
+        return null
+      }
+
+      return {
+        accessLevel: row.access_level,
+        chunkTextSnapshot: row.chunk_text_snapshot,
+        citationId: row.citation_id,
+        citationLocator: row.citation_locator,
+        documentId: row.document_id,
+        documentTitle: row.document_title,
+        documentVersionId: row.document_version_id,
+        expiresAt: row.expires_at,
+        isCurrentVersion: row.current_version_id === row.document_version_id,
+        queryLogId: row.query_log_id,
+        sourceChunkId: row.source_chunk_id,
+        versionNumber: row.version_number,
       }
     },
   }
