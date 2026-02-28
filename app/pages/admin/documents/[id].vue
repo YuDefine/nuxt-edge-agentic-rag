@@ -32,6 +32,10 @@
   const confirmOpen = ref(false)
   const retryingVersionId = ref<string | null>(null)
 
+  const rollbackTarget = ref<DocumentVersion | null>(null)
+  const rollbackOpen = ref(false)
+  const rollbackPendingId = ref<string | null>(null)
+
   const hasPublishedHistory = computed(() =>
     (document.value?.versions ?? []).some((v) => v.publishedAt !== null)
   )
@@ -106,6 +110,38 @@
   function handleCancel() {
     confirmOpen.value = false
     pendingAction.value = null
+  }
+
+  function canRollback(version: DocumentVersion): boolean {
+    return (
+      !version.isCurrent &&
+      version.indexStatus === 'indexed' &&
+      version.syncStatus !== 'running' &&
+      document.value?.status !== 'archived'
+    )
+  }
+
+  function openRollback(version: DocumentVersion) {
+    rollbackTarget.value = version
+    rollbackOpen.value = true
+  }
+
+  async function confirmRollback() {
+    if (!rollbackTarget.value || !document.value) return
+    const versionId = rollbackTarget.value.id
+    rollbackPendingId.value = versionId
+    const result = await lifecycle.setAsCurrentVersion(document.value.id, versionId)
+    rollbackPendingId.value = null
+    if (result.ok) {
+      rollbackOpen.value = false
+      rollbackTarget.value = null
+      await refresh()
+    }
+  }
+
+  function cancelRollback() {
+    rollbackOpen.value = false
+    rollbackTarget.value = null
   }
 </script>
 
@@ -334,6 +370,20 @@
               >
                 重試同步
               </UButton>
+
+              <!-- Rollback: set non-current indexed version as current -->
+              <UButton
+                v-if="canRollback(version)"
+                color="neutral"
+                variant="soft"
+                size="xs"
+                icon="i-lucide-git-branch"
+                :loading="rollbackPendingId === version.id"
+                :disabled="rollbackPendingId !== null"
+                @click="openRollback(version)"
+              >
+                切為目前版本
+              </UButton>
             </div>
           </div>
         </div>
@@ -352,5 +402,56 @@
       @confirm="handleConfirm"
       @cancel="handleCancel"
     />
+
+    <!-- Rollback confirmation -->
+    <UModal v-model:open="rollbackOpen">
+      <template #content>
+        <UCard v-if="rollbackTarget">
+          <template #header>
+            <div class="flex items-center gap-2">
+              <UIcon name="i-lucide-git-branch" class="size-5 text-primary" />
+              <h3 class="text-lg font-semibold text-default">切換目前版本</h3>
+            </div>
+          </template>
+
+          <div class="flex flex-col gap-3">
+            <p class="text-sm text-default">
+              確定要將版本
+              <span class="font-semibold">v{{ rollbackTarget.versionNumber }}</span>
+              設為此文件的目前版本嗎？
+            </p>
+            <UAlert
+              color="warning"
+              variant="subtle"
+              icon="i-lucide-alert-triangle"
+              title="此操作會影響後續檢索"
+              description="切換後，新的問答將以此版本為引用來源，舊版本將被標記為「已非最新版」。"
+            />
+          </div>
+
+          <template #footer>
+            <div class="flex justify-end gap-2">
+              <UButton
+                color="neutral"
+                variant="ghost"
+                :disabled="lifecycle.isPending.value"
+                @click="cancelRollback"
+              >
+                取消
+              </UButton>
+              <UButton
+                color="neutral"
+                variant="solid"
+                icon="i-lucide-check"
+                :loading="lifecycle.isPending.value"
+                @click="confirmRollback"
+              >
+                確認切換
+              </UButton>
+            </div>
+          </template>
+        </UCard>
+      </template>
+    </UModal>
   </div>
 </template>

@@ -62,11 +62,24 @@
 
   const currentStep = ref<WizardStep>('select')
   const errorMessage = ref<string | null>(null)
+  const errorStep = ref<WizardStep | null>(null)
   const isProcessing = ref(false)
+  const uploadProgressPercent = ref<number | null>(null)
 
   const selectedFile = ref<File | null>(null)
   const fileChecksum = ref<string>('')
   const fileInputRef = ref<HTMLInputElement | null>(null)
+
+  const STAGE_ERROR_LABEL: Record<WizardStep, string> = {
+    select: '檔案驗證失敗',
+    presign: '取得上傳授權失敗',
+    upload: '檔案上傳失敗',
+    finalize: '上傳確認失敗',
+    sync: '文件同步失敗',
+    indexing_wait: '索引處理失敗',
+    publish: '文件發布失敗',
+    complete: '流程完成後發生錯誤',
+  }
 
   function triggerFileSelect() {
     fileInputRef.value?.click()
@@ -149,6 +162,13 @@
     if (status.indexStatus === 'indexed') return '索引完成，即將進入發布階段'
     if (status.indexStatus === 'failed' || status.syncStatus === 'failed') return '索引失敗'
     return '處理中…'
+  }
+
+  function getIndexingDetailLabel(status: IndexingStatusSnapshot | null): string | null {
+    if (!status) return null
+    if (status.indexStatus === 'preprocessing') return '文件較長時，前處理可能需要 30 秒至數分鐘'
+    if (status.indexStatus === 'smoke_pending') return '系統正以測試問答驗證向量索引品質'
+    return null
   }
 
   onUnmounted(() => {
@@ -390,12 +410,51 @@
     return `doc-${crypto.randomUUID().slice(0, 8)}`
   }
 
+  async function uploadWithProgress(params: {
+    body: File
+    contentType: string
+    checksum: string
+    url: string
+  }): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest()
+      xhr.open('PUT', params.url, true)
+      xhr.setRequestHeader('Content-Type', params.contentType)
+      xhr.setRequestHeader('x-amz-checksum-sha256', params.checksum)
+
+      xhr.upload.addEventListener('progress', (e) => {
+        if (e.lengthComputable && e.total > 0) {
+          uploadProgressPercent.value = Math.min(
+            100,
+            Math.max(0, Math.round((e.loaded / e.total) * 100))
+          )
+        }
+      })
+
+      xhr.addEventListener('load', () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          uploadProgressPercent.value = 100
+          resolve()
+        } else {
+          reject(new Error(`上傳失敗（HTTP ${xhr.status}）`))
+        }
+      })
+
+      xhr.addEventListener('error', () => reject(new Error('上傳時網路中斷')))
+      xhr.addEventListener('abort', () => reject(new Error('上傳已取消')))
+
+      xhr.send(params.body)
+    })
+  }
+
   async function startUpload(event: FormSubmitEvent<DocumentMeta>) {
     if (!selectedFile.value) return
 
     const validated = event.data
 
     errorMessage.value = null
+    errorStep.value = null
+    uploadProgressPercent.value = null
     isProcessing.value = true
 
     try {
@@ -419,13 +478,12 @@
       }
 
       currentStep.value = 'upload'
-      await fetch(presignResult.value.uploadUrl, {
-        method: 'PUT',
+      uploadProgressPercent.value = 0
+      await uploadWithProgress({
         body: selectedFile.value,
-        headers: {
-          'Content-Type': selectedFile.value.type || 'application/octet-stream',
-          'x-amz-checksum-sha256': fileChecksum.value,
-        },
+        contentType: selectedFile.value.type || 'application/octet-stream',
+        checksum: fileChecksum.value,
+        url: presignResult.value.uploadUrl,
       })
 
       currentStep.value = 'finalize'
@@ -467,7 +525,10 @@
       currentStep.value = 'indexing_wait'
       startIndexingPolling()
     } catch (error) {
-      errorMessage.value = error instanceof Error ? error.message : '上傳過程發生錯誤'
+      errorStep.value = currentStep.value
+      const stagePrefix = STAGE_ERROR_LABEL[currentStep.value] ?? '處理失敗'
+      const detail = error instanceof Error ? error.message : '上傳過程發生錯誤'
+      errorMessage.value = `${stagePrefix}：${detail}`
     } finally {
       isProcessing.value = false
     }
@@ -491,7 +552,10 @@
       clearDraft()
       emit('complete', syncResult.value)
     } catch (error) {
-      errorMessage.value = error instanceof Error ? error.message : '發布失敗'
+      errorStep.value = 'publish'
+      const stagePrefix = STAGE_ERROR_LABEL.publish
+      const detail = error instanceof Error ? error.message : '發布失敗'
+      errorMessage.value = `${stagePrefix}：${detail}`
     } finally {
       isProcessing.value = false
     }
@@ -560,6 +624,26 @@
 
     <UAlert v-if="errorMessage" color="error" variant="subtle" :title="errorMessage" />
     <UAlert v-if="validationError" color="warning" variant="subtle" :title="validationError" />
+
+    <div
+      v-if="currentStep === 'upload' && !errorMessage && uploadProgressPercent !== null"
+      class="rounded-md border border-default bg-elevated p-4"
+      data-testid="upload-progress"
+    >
+      <div class="mb-2 flex items-center justify-between text-sm">
+        <span class="flex items-center gap-2 font-medium text-default">
+          <UIcon name="i-lucide-upload" class="size-4" />
+          上傳中…
+        </span>
+        <span class="text-muted tabular-nums">{{ uploadProgressPercent }}%</span>
+      </div>
+      <div class="h-2 overflow-hidden rounded-full bg-muted">
+        <div
+          class="h-full bg-primary transition-[width] duration-150"
+          :style="{ width: `${uploadProgressPercent}%` }"
+        />
+      </div>
+    </div>
 
     <div v-if="currentStep === 'select'" class="flex flex-col gap-4">
       <div
@@ -693,10 +777,18 @@
           <UIcon name="i-lucide-loader-2" class="size-8 animate-spin text-primary" />
         </div>
         <h3 class="mb-2 text-lg font-medium text-default">正在建立索引</h3>
-        <p class="mb-8 max-w-sm text-sm text-muted">
+        <p class="max-w-sm text-sm text-muted">
           {{ getIndexingStatusLabel(indexingStatus) }}
         </p>
-        <UButton color="neutral" variant="ghost" @click="emit('cancel')">稍後返回</UButton>
+        <p
+          v-if="getIndexingDetailLabel(indexingStatus)"
+          class="mt-2 mb-6 max-w-sm text-xs text-dimmed"
+        >
+          {{ getIndexingDetailLabel(indexingStatus) }}
+        </p>
+        <UButton color="neutral" variant="ghost" class="mt-6" @click="emit('cancel')">
+          稍後返回
+        </UButton>
       </template>
     </div>
 

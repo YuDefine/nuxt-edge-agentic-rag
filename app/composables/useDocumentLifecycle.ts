@@ -119,6 +119,37 @@ export function useDocumentLifecycle() {
     }
   }
 
+  async function setAsCurrentVersion(
+    documentId: string,
+    versionId: string
+  ): Promise<LifecycleResult<{ documentId: string; alreadyCurrent: boolean }>> {
+    isPending.value = true
+    try {
+      const response = await $csrfFetch<{
+        data: { alreadyCurrent: boolean; documentId: string }
+      }>(`/api/documents/${documentId}/versions/${versionId}/publish`, { method: 'POST' })
+      toast.add({
+        color: 'success',
+        description: response.data.alreadyCurrent ? '此版本已是目前版本' : '已切換為目前版本',
+        title: response.data.alreadyCurrent ? '無需切換' : '版本切換成功',
+      })
+      return {
+        data: {
+          alreadyCurrent: response.data.alreadyCurrent,
+          documentId: response.data.documentId,
+        },
+        error: null,
+        ok: true,
+      }
+    } catch (error) {
+      const message = extractErrorMessage(error, '版本切換失敗，請稍後再試')
+      toast.add({ color: 'error', description: message, title: '版本切換失敗' })
+      return { data: null, error: message, ok: false }
+    } finally {
+      isPending.value = false
+    }
+  }
+
   async function unarchive(
     documentId: string
   ): Promise<LifecycleResult<UnarchiveDocumentResponse['data']>> {
@@ -149,5 +180,6 @@ export function useDocumentLifecycle() {
     deleteDocument,
     archive,
     unarchive,
+    setAsCurrentVersion,
   }
 }
