@@ -4,7 +4,9 @@ import { createHubDbMock } from './helpers/database'
 import { createRouteEvent, installNuxtRouteTestGlobals } from './helpers/nuxt-route'
 
 const publishRouteMocks = vi.hoisted(() => ({
-  createDocumentSyncStore: vi.fn().mockReturnValue({}),
+  createDocumentSyncStore: vi.fn().mockReturnValue({
+    findDocumentById: vi.fn().mockResolvedValue(null),
+  }),
   getKnowledgeRuntimeConfig: vi.fn().mockReturnValue({
     bindings: {
       d1Database: 'DB',
@@ -14,6 +16,7 @@ const publishRouteMocks = vi.hoisted(() => ({
   getRouterParam: vi.fn(),
   publishDocumentVersion: vi.fn(),
   requireRuntimeAdminSession: vi.fn().mockResolvedValue(undefined),
+  rewriteVersionMetadata: vi.fn().mockResolvedValue(undefined),
 }))
 
 class MockDocumentPublishStateError extends Error {
@@ -35,6 +38,10 @@ vi.mock('../../server/utils/document-publish', () => ({
 
 vi.mock('../../server/utils/document-store', () => ({
   createDocumentSyncStore: publishRouteMocks.createDocumentSyncStore,
+}))
+
+vi.mock('../../server/utils/document-publish-r2', () => ({
+  rewriteVersionMetadata: publishRouteMocks.rewriteVersionMetadata,
 }))
 
 installNuxtRouteTestGlobals()
@@ -66,6 +73,7 @@ describe('publish route', () => {
       key === 'documentId' ? 'doc-1' : 'ver-1'
     )
     publishRouteMocks.publishDocumentVersion.mockResolvedValue({
+      alreadyCurrent: false,
       documentId: 'doc-1',
       publishedVersionId: 'ver-1',
       status: 'published',
@@ -78,6 +86,7 @@ describe('publish route', () => {
     expect(publishRouteMocks.requireRuntimeAdminSession).toHaveBeenCalledTimes(1)
     expect(result).toEqual({
       data: {
+        alreadyCurrent: false,
         documentId: 'doc-1',
         publishedVersionId: 'ver-1',
         status: 'published',
