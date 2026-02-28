@@ -140,13 +140,68 @@ wrangler d1 execute agentic-rag-db --remote --command \
      'loc:0', '[backdated snapshot]', '${OLD_TS}', '${OLD_EXPIRY}');"
 ```
 
-**方式 B — shortened TTL**：若 governance 2.4 提供 `retentionDays` 覆寫 API，可在單次 prune 傳入 `retentionDays=1` 等短值驗證流程（仍須能在 staging 控制）。
+**方式 B — shortened TTL（governance 2.4 正式支援）**：
+
+`POST /api/admin/retention/prune` 接受 optional body `{ "retentionDays": <1..180> }`。staging / local 可傳入短值（例如 `retentionDays=1`）跑一次 prune，伺服器會把覆寫值穿透給 `runRetentionCleanup` 並在 response `data.retentionDays` 回傳實際使用的值。production 會 **400 拒絕** 任何 `retentionDays` 覆寫。
+
+Helper script：
+
+```bash
+# staging：用 1 天 TTL 做一次驗證 prune
+npx tsx scripts/staging-retention-prune.ts \
+  --base-url https://agentic-staging.yudefine.com.tw \
+  --cookie "$ADMIN_SESSION_COOKIE" \
+  --retention-days 1
+```
+
+Response 範例：
+
+```json
+{
+  "data": {
+    "pruned": true,
+    "retentionDays": 1,
+    "cutoff": "2026-04-17T12:00:00.000Z",
+    "deleted": {
+      "queryLogs": 3,
+      "citationRecords": 5,
+      "sourceChunkText": 0,
+      "mcpTokenMetadata": 0
+    },
+    "errors": []
+  }
+}
+```
+
+**方式 C — 程式化種資料（governance 2.4 正式支援）**：
+
+`server/utils/retention-seed.ts::seedBackdatedRetentionRecord` 是 typed helper，staging 內可在 admin / setup endpoint 內呼叫（或寫一次性 tsx script）寫入 backdated `query_logs` + `citation_records`。Helper 會在 `environment === 'production'` 時 throw，避免誤用。
+
+```ts
+import { seedBackdatedRetentionRecord } from '#server/utils/retention-seed'
+
+const seeded = await seedBackdatedRetentionRecord({
+  database: await getD1Database(),
+  environment: 'staging',
+  ageDays: 200,
+  documentVersionId: '<existing dv id>',
+  sourceChunkId: '<existing sc id>',
+})
+// seeded.queryLogId / seeded.citationRecordId / seeded.createdAt / seeded.expiresAt
+```
 
 ### 4.3 觸發 prune 並驗證
 
 ```bash
-curl -X POST https://agentic.yudefine.com.tw/api/admin/retention/prune \
+# 預設 180 天 retention
+curl -X POST https://agentic-staging.yudefine.com.tw/api/admin/retention/prune \
   -H "Cookie: <admin session cookie>"
+
+# 或用 shortened-TTL helper
+npx tsx scripts/staging-retention-prune.ts \
+  --base-url https://agentic-staging.yudefine.com.tw \
+  --cookie "$ADMIN_SESSION_COOKIE" \
+  --retention-days 1
 
 wrangler d1 execute agentic-rag-db --remote --command \
   "SELECT COUNT(*) AS remaining FROM citation_records WHERE id LIKE 'backdated-cr-%';"
