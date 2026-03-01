@@ -53,6 +53,8 @@ export const acceptanceEvidencePayloadRefSchema = z.object({
     'persistence-audit',
     'rate-limit-state',
     'retention-cleanup-report',
+    'ui-screenshot',
+    'ui-network-log',
   ]),
   pointer: z.string().min(1),
 })

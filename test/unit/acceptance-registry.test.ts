@@ -58,16 +58,29 @@ describe('acceptance registry manifest', () => {
       reportVersion: 'v0.0.36',
       summary: {
         acceptances: 13,
-        evidence: 4,
-        testCases: 20,
+        evidence: 5,
+        testCases: 25,
       },
     })
-    expect(entries).toHaveLength(37)
-    expect(new Set(entries.map((entry) => entry.id)).size).toBe(37)
+    expect(entries).toHaveLength(43)
+    expect(new Set(entries.map((entry) => entry.id)).size).toBe(43)
     expect(module?.getAcceptanceRegistryEntry('TC-20')).toMatchObject({
       id: 'TC-20',
       acceptanceIds: expect.arrayContaining(['A12']),
       reportSections: expect.arrayContaining(['附錄 B', '4.1.1']),
+    })
+    expect(module?.getAcceptanceRegistryEntry('TC-UI-01')).toMatchObject({
+      id: 'TC-UI-01',
+      channels: ['web'],
+      primaryOutcome: 'empty_state',
+    })
+    expect(module?.getAcceptanceRegistryEntry('TC-UI-05')).toMatchObject({
+      id: 'TC-UI-05',
+      primaryOutcome: 'unauthorized_state',
+    })
+    expect(module?.getAcceptanceRegistryEntry('EV-UI-01')).toMatchObject({
+      id: 'EV-UI-01',
+      kind: 'evidence',
     })
     expect(module?.getAcceptanceRegistryEntry('A02')).toMatchObject({
       id: 'A02',

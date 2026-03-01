@@ -11,11 +11,17 @@ import { runA10AdminWebMcpIsolationExporter } from './a10-admin-web-mcp-isolatio
 import { runA11PersistenceAuditExporter } from './a11-persistence-audit'
 import { runA12McpNoInternalDiagnosticsExporter } from './a12-mcp-no-internal-diagnostics'
 import { runA13RateLimitRetentionExporter } from './a13-rate-limit-retention'
+import { runEv01CoreLoopExporter } from './ev01-core-loop'
+import { runEv02OauthAllowlistExporter } from './ev02-oauth-allowlist'
+import { runEv03PublishCutoverExporter } from './ev03-publish-cutover'
+import { runEv04RateLimitCleanupExporter } from './ev04-rate-limit-cleanup'
+import { runEvUi01StateCoverageExporter } from './ev-ui-01-state-coverage'
 import {
   resolveEvidenceOutputPath,
   writeEvidenceJson,
   type EvidenceExporterOptions,
 } from './shared'
+import { buildEvidenceSummaryTables, type EvidenceSummaryTable } from './summary-tables'
 
 /**
  * CLI entry: run A01–A13 evidence exporters and write them to
@@ -64,6 +70,56 @@ export function runAllEvidenceExporters(options: RunAllEvidenceExportersOptions 
   return exports
 }
 
+export function runAllEvExporters(options: RunAllEvidenceExportersOptions = {}) {
+  const exports = [
+    runEv01CoreLoopExporter(options),
+    runEv02OauthAllowlistExporter(options),
+    runEv03PublishCutoverExporter(options),
+    runEv04RateLimitCleanupExporter(options),
+    runEvUi01StateCoverageExporter(options),
+  ]
+
+  if (options.write !== false) {
+    for (const payload of exports) {
+      const target = resolveEvidenceOutputPath(
+        {
+          directory: 'evidence',
+          filename: `${payload.acceptanceId}.json`,
+        },
+        payload.reportVersion
+      )
+
+      writeEvidenceJson(target, payload)
+    }
+  }
+
+  return exports
+}
+
+export function runFullEvidenceSummary(
+  options: RunAllEvidenceExportersOptions = {}
+): EvidenceSummaryTable[] {
+  const acceptanceExports = runAllEvidenceExporters({ ...options, write: false })
+  const evExports = runAllEvExporters({ ...options, write: false })
+  const tables = buildEvidenceSummaryTables([...acceptanceExports, ...evExports])
+
+  if (options.write !== false) {
+    for (const table of tables) {
+      const target = resolveEvidenceOutputPath(
+        {
+          directory: 'summary',
+          filename: `${table.chapterRef}.json`,
+        },
+        table.reportVersion
+      )
+
+      writeEvidenceJson(target, table)
+    }
+  }
+
+  return tables
+}
+
 const entryUrl = typeof import.meta !== 'undefined' ? import.meta.url : ''
 const invokedDirectly =
   entryUrl !== '' &&
@@ -72,4 +128,6 @@ const invokedDirectly =
 
 if (invokedDirectly) {
   runAllEvidenceExporters({ write: true })
+  runAllEvExporters({ write: true })
+  runFullEvidenceSummary({ write: true })
 }

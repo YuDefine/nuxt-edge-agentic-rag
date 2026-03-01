@@ -171,6 +171,51 @@ const testCaseRegistryEntries: AcceptanceCaseRegistryEntry[] = [
     '200',
     'direct'
   ),
+  createTestCaseEntry(
+    'TC-UI-01',
+    'Admin documents empty state + CTA',
+    [],
+    ['web'],
+    1779,
+    '200',
+    'empty_state'
+  ),
+  createTestCaseEntry(
+    'TC-UI-02',
+    'Admin documents loading state skeleton',
+    [],
+    ['web'],
+    1780,
+    '200',
+    'loading_state'
+  ),
+  createTestCaseEntry(
+    'TC-UI-03',
+    'Admin documents error state retry',
+    [],
+    ['web'],
+    1781,
+    '4xx_or_5xx',
+    'error_state'
+  ),
+  createTestCaseEntry(
+    'TC-UI-04',
+    'Admin documents success state transition',
+    [],
+    ['web'],
+    1782,
+    '200',
+    'success_state'
+  ),
+  createTestCaseEntry(
+    'TC-UI-05',
+    'Admin documents unauthorized state',
+    [],
+    ['web'],
+    1783,
+    '401_or_403',
+    'unauthorized_state'
+  ),
 ]
 
 const acceptanceRegistryEntries: AcceptanceGoalRegistryEntry[] = [
@@ -295,6 +340,13 @@ const evidenceRegistryEntries: AcceptanceEvidenceRegistryEntry[] = [
     '`429` 測試紀錄、backdated record、清理作業日誌',
     1456
   ),
+  createEvidenceEntry(
+    'EV-UI-01',
+    'UI 四態 + unauthorized 覆蓋（表 3-5）',
+    [],
+    'TC-UI-01 到 TC-UI-05 的 state-machine 驗證、screenshot 指標與對應 network log',
+    1457
+  ),
 ]
 
 export const acceptanceRegistryManifest: AcceptanceRegistryManifest = {
@@ -306,6 +358,21 @@ export const acceptanceRegistryManifest: AcceptanceRegistryManifest = {
     testCases: testCaseRegistryEntries.length,
   },
 }
+
+/**
+ * Test cases in the UI state-coverage subset (TC-UI-01..05). Surfaced as a
+ * helper so the EV-UI-01 exporter and the spec-drift guard can loop over
+ * the subset without re-encoding the ids.
+ */
+export const UI_STATE_COVERAGE_TEST_CASE_IDS = [
+  'TC-UI-01',
+  'TC-UI-02',
+  'TC-UI-03',
+  'TC-UI-04',
+  'TC-UI-05',
+] as const
+
+export type UiStateCoverageTestCaseId = (typeof UI_STATE_COVERAGE_TEST_CASE_IDS)[number]
 
 export function listAcceptanceRegistryEntries(): Array<
   AcceptanceCaseRegistryEntry | AcceptanceEvidenceRegistryEntry | AcceptanceGoalRegistryEntry
