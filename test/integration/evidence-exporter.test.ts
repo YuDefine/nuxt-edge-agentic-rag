@@ -26,6 +26,15 @@ import {
   runA12McpNoInternalDiagnosticsExporter,
 } from '../acceptance/evidence/a12-mcp-no-internal-diagnostics'
 import { runA13RateLimitRetentionExporter } from '../acceptance/evidence/a13-rate-limit-retention'
+import { runEv01CoreLoopExporter } from '../acceptance/evidence/ev01-core-loop'
+import { runEv02OauthAllowlistExporter } from '../acceptance/evidence/ev02-oauth-allowlist'
+import { runEv03PublishCutoverExporter } from '../acceptance/evidence/ev03-publish-cutover'
+import { runEv04RateLimitCleanupExporter } from '../acceptance/evidence/ev04-rate-limit-cleanup'
+import { runEvUi01StateCoverageExporter } from '../acceptance/evidence/ev-ui-01-state-coverage'
+import {
+  buildEvidenceSummaryTables,
+  type EvidenceSummaryTable,
+} from '../acceptance/evidence/summary-tables'
 import { runAllEvidenceExporters } from '../acceptance/evidence/run-all'
 import { acceptanceRegistryManifest } from '../acceptance/registry/manifest'
 
@@ -961,5 +970,299 @@ describe('acceptance evidence exporters', () => {
 
     expect(record.status).toBe('failed')
     expect(record.notes).toMatch(/replay chain inconsistent/i)
+  })
+
+  it('EV-01 core loop exporter chains deploy → login → publish → ask → replay stages', () => {
+    const configSnapshotVersion = getConfigSnapshotVersion()
+    const payload = runEv01CoreLoopExporter({ now: fixedNow })
+
+    expect(parseAcceptanceEvidenceExport(payload)).toBeTruthy()
+    expect(payload.acceptanceId).toBe('EV-01')
+    expect(payload.records).toHaveLength(1)
+
+    const record = payload.records[0]
+
+    expect(record.channel).toBe('shared')
+    expect(record.testCaseId).toBeNull()
+    expect(record.configSnapshotVersion).toBe(configSnapshotVersion)
+    expect(record.decisionPath).toBe('core-loop-smoke')
+    expect(record.status).toBe('pending-production-run')
+    expect(record.evidenceRefs.some((ref) => ref.kind === 'deploy-metadata')).toBe(true)
+    expect(record.evidenceRefs.some((ref) => ref.kind === 'oauth-session-snapshot')).toBe(true)
+    expect(record.evidenceRefs.some((ref) => ref.kind === 'smoke-response')).toBe(true)
+    expect(record.evidenceRefs.some((ref) => ref.kind === 'query-log')).toBe(true)
+    expect(record.evidenceRefs.some((ref) => ref.kind === 'replay-response')).toBe(true)
+  })
+
+  it('EV-01 exporter flags failure when any stage reports failure', () => {
+    const payload = runEv01CoreLoopExporter({
+      now: fixedNow,
+      samples: [
+        {
+          askStage: {
+            answerSummary: 'answer produced',
+            citationIds: ['cit-1'],
+            decisionPath: 'direct',
+            httpStatus: 200,
+            queryLogPointer: 'evidence/ev01/ask-query.json',
+            queryText: 'TC-01 smoke ask',
+            responsePointer: 'evidence/ev01/ask-response.json',
+            succeeded: true,
+          },
+          deployStage: {
+            commitSha: 'abcd1234',
+            environment: 'staging',
+            metadataPointer: 'evidence/ev01/deploy.json',
+            succeeded: true,
+            workerName: 'nuxt-edge-agentic-rag',
+          },
+          loginStage: {
+            oauthSessionPointer: 'evidence/ev01/oauth.json',
+            role: 'admin',
+            succeeded: true,
+            userEmail: 'admin@example.com',
+          },
+          publishStage: {
+            documentId: 'doc-a',
+            httpStatus: 200,
+            publishLogPointer: 'evidence/ev01/publish.json',
+            succeeded: false,
+            versionId: 'ver-1',
+          },
+          replayStage: {
+            citationId: 'cit-1',
+            httpStatus: 200,
+            replayPointer: 'evidence/ev01/replay.json',
+            succeeded: true,
+          },
+        },
+      ],
+    })
+
+    const record = payload.records[0]
+
+    expect(record.status).toBe('failed')
+    expect(record.notes).toMatch(/publish stage failed/i)
+  })
+
+  it('EV-02 OAuth allowlist exporter links allowlist transitions with the EV-level chain', () => {
+    const configSnapshotVersion = getConfigSnapshotVersion()
+    const payload = runEv02OauthAllowlistExporter({ now: fixedNow })
+
+    expect(parseAcceptanceEvidenceExport(payload)).toBeTruthy()
+    expect(payload.acceptanceId).toBe('EV-02')
+    expect(payload.records).toHaveLength(1)
+
+    const record = payload.records[0]
+
+    expect(record.channel).toBe('web')
+    expect(record.configSnapshotVersion).toBe(configSnapshotVersion)
+    expect(record.decisionPath).toBe('allowlist-promote-demote-chain')
+    expect(record.status).toBe('pending-production-run')
+    expect(
+      record.evidenceRefs.filter((ref) => ref.kind === 'oauth-session-snapshot').length
+    ).toBeGreaterThanOrEqual(3)
+    expect(
+      record.evidenceRefs.filter((ref) => ref.kind === 'allowlist-state').length
+    ).toBeGreaterThanOrEqual(3)
+  })
+
+  it('EV-02 exporter flags failure when an observed role does not match allowlist membership', () => {
+    const payload = runEv02OauthAllowlistExporter({
+      now: fixedNow,
+      snapshots: [
+        {
+          accessibleRoutes: ['/', '/chat', '/admin'],
+          actualRole: 'user',
+          allowlistContainsUser: true,
+          allowlistStatePointer: 'evidence/ev02/allow-broken.json',
+          expectedRole: 'admin',
+          httpStatus: 200,
+          navigationItems: ['Home', 'Chat'],
+          oauthSessionPointer: 'evidence/ev02/session-broken.json',
+          stateLabel: 'promoted',
+          userEmail: 'ops@example.com',
+        },
+      ],
+    })
+
+    const record = payload.records[0]
+
+    expect(record.status).toBe('failed')
+    expect(record.notes).toMatch(/role recomputation drift|allowlist membership/i)
+  })
+
+  it('EV-03 publish cutover exporter chains publish no-op + rollback + cutover stages', () => {
+    const configSnapshotVersion = getConfigSnapshotVersion()
+    const payload = runEv03PublishCutoverExporter({ now: fixedNow })
+
+    expect(parseAcceptanceEvidenceExport(payload)).toBeTruthy()
+    expect(payload.acceptanceId).toBe('EV-03')
+    expect(payload.records).toHaveLength(1)
+
+    const record = payload.records[0]
+
+    expect(record.channel).toBe('shared')
+    expect(record.configSnapshotVersion).toBe(configSnapshotVersion)
+    expect(record.decisionPath).toBe('publish-rollback-cutover-chain')
+    expect(record.status).toBe('pending-production-run')
+    expect(record.evidenceRefs.some((ref) => ref.kind === 'version-era-snapshot')).toBe(true)
+    expect(record.evidenceRefs.some((ref) => ref.kind === 'query-log')).toBe(true)
+  })
+
+  it('EV-03 exporter flags failure when cutover stage still cites archived versions', () => {
+    const payload = runEv03PublishCutoverExporter({
+      now: fixedNow,
+      samples: [
+        {
+          cutoverStage: {
+            citationIds: ['cit-v1-leak'],
+            cutoverDocumentId: 'doc-cut',
+            cutoverHttpStatus: 200,
+            cutoverLeaksArchivedVersion: true,
+            cutoverResponsePointer: 'evidence/ev03/cutover.json',
+            currentVersionId: 'ver-v2',
+            previousVersionId: 'ver-v1',
+            queryLogPointer: 'evidence/ev03/cutover-qlog.json',
+          },
+          noopStage: {
+            noopHttpStatus: 200,
+            noopReportPointer: 'evidence/ev03/noop.json',
+            succeeded: true,
+          },
+          rollbackStage: {
+            activeVersionAfterRollback: 'ver-v1',
+            rollbackHttpStatus: 200,
+            rollbackReportPointer: 'evidence/ev03/rollback.json',
+            succeeded: true,
+          },
+        },
+      ],
+    })
+
+    const record = payload.records[0]
+
+    expect(record.status).toBe('failed')
+    expect(record.notes).toMatch(/cutover.*archived|leaks archived version/i)
+  })
+
+  it('EV-04 rate-limit cleanup exporter reuses A13 chain with EV-level metadata', () => {
+    const configSnapshotVersion = getConfigSnapshotVersion()
+    const payload = runEv04RateLimitCleanupExporter({ now: fixedNow })
+
+    expect(parseAcceptanceEvidenceExport(payload)).toBeTruthy()
+    expect(payload.acceptanceId).toBe('EV-04')
+    expect(payload.records.length).toBeGreaterThanOrEqual(1)
+
+    const record = payload.records[0]
+
+    expect(record.channel).toBe('shared')
+    expect(record.configSnapshotVersion).toBe(configSnapshotVersion)
+    expect(record.decisionPath).toBe('rate-limit-retention-replay')
+    expect(record.status).toBe('pending-production-run')
+    expect(record.evidenceRefs.some((ref) => ref.kind === 'rate-limit-state')).toBe(true)
+    expect(record.evidenceRefs.some((ref) => ref.kind === 'retention-cleanup-report')).toBe(true)
+    expect(record.evidenceRefs.filter((ref) => ref.kind === 'replay-response').length).toBe(2)
+  })
+
+  it('summary tables aggregator returns rows with config snapshot version for every record', () => {
+    const configSnapshotVersion = getConfigSnapshotVersion()
+    const acceptanceExports = runAllEvidenceExporters({ now: fixedNow, write: false })
+    const evExports = [
+      runEv01CoreLoopExporter({ now: fixedNow }),
+      runEv02OauthAllowlistExporter({ now: fixedNow }),
+      runEv03PublishCutoverExporter({ now: fixedNow }),
+      runEv04RateLimitCleanupExporter({ now: fixedNow }),
+    ]
+    const tables: EvidenceSummaryTable[] = buildEvidenceSummaryTables([
+      ...acceptanceExports,
+      ...evExports,
+    ])
+
+    expect(tables.length).toBeGreaterThan(0)
+    for (const table of tables) {
+      expect(table.chapterRef).toMatch(/^chapter-(3|4)$/)
+      for (const row of table.rows) {
+        expect(row.configSnapshotVersion).toBe(configSnapshotVersion)
+        expect(row.acceptanceId).toMatch(/^(A|EV)/)
+        expect(row.status).toMatch(/passed|failed|pending-production-run|skipped/)
+      }
+    }
+
+    const ids = new Set(tables.flatMap((table) => table.rows.map((row) => row.acceptanceId)))
+    for (const id of [
+      'A01',
+      'A02',
+      'A03',
+      'A04',
+      'A05',
+      'A06',
+      'A07',
+      'A08',
+      'A09',
+      'A10',
+      'A11',
+      'A12',
+      'A13',
+      'EV-01',
+      'EV-02',
+      'EV-03',
+      'EV-04',
+    ]) {
+      expect(ids.has(id)).toBe(true)
+    }
+  })
+
+  it('EV-UI-01 state coverage exporter emits one record per TC-UI-* with screenshot + network log', () => {
+    const configSnapshotVersion = getConfigSnapshotVersion()
+    const payload = runEvUi01StateCoverageExporter({ now: fixedNow })
+
+    expect(parseAcceptanceEvidenceExport(payload)).toBeTruthy()
+    expect(payload.acceptanceId).toBe('EV-UI-01')
+    expect(payload.records).toHaveLength(5)
+
+    const caseIds = payload.records.map((record) => record.testCaseId).toSorted()
+    expect(caseIds).toEqual(['TC-UI-01', 'TC-UI-02', 'TC-UI-03', 'TC-UI-04', 'TC-UI-05'])
+
+    for (const record of payload.records) {
+      expect(record.channel).toBe('web')
+      expect(record.configSnapshotVersion).toBe(configSnapshotVersion)
+      expect(record.status).toBe('pending-production-run')
+      expect(record.evidenceRefs.some((ref) => ref.kind === 'ui-screenshot')).toBe(true)
+      expect(record.evidenceRefs.some((ref) => ref.kind === 'ui-network-log')).toBe(true)
+      expect(record.decisionPath).toMatch(/^ui-state-(empty|loading|error|success|unauthorized)$/)
+    }
+
+    // TC-UI-05 must resolve to 403 (unauthorized state)
+    const unauthorizedRecord = payload.records.find((record) => record.testCaseId === 'TC-UI-05')
+    expect(unauthorizedRecord?.httpStatus).toBe(403)
+    expect(unauthorizedRecord?.decisionPath).toBe('ui-state-unauthorized')
+
+    // TC-UI-03 must resolve to 5xx (error state)
+    const errorRecord = payload.records.find((record) => record.testCaseId === 'TC-UI-03')
+    expect(errorRecord?.httpStatus).toBe(500)
+    expect(errorRecord?.decisionPath).toBe('ui-state-error')
+  })
+
+  it('EV-UI-01 exporter flags failure when observed state diverges from expected state', () => {
+    const payload = runEvUi01StateCoverageExporter({
+      now: fixedNow,
+      observations: [
+        {
+          expectedState: 'empty',
+          httpStatus: 200,
+          networkLogPointer: 'evidence/ev-ui-01/tc01-network.json',
+          observedState: 'success',
+          pageUrl: '/admin/documents',
+          screenshotPointer: 'evidence/ev-ui-01/tc01-screenshot.png',
+          testCaseId: 'TC-UI-01',
+        },
+      ],
+    })
+
+    const record = payload.records[0]
+
+    expect(record.status).toBe('failed')
+    expect(record.notes).toMatch(/UI state drift/i)
   })
 })
