@@ -126,7 +126,7 @@ spectra unpark observability-and-debug
 ### Phase C: 最終歸檔
 
 - 所有 6 個 changes 完成後，依序 `spectra archive <change-name>`
-- 更新報告 main-v0.0.37.md 記錄實作成果
+- 更新報告 main-v0.0.42.md 記錄實作成果
 
 ## Next Moves
 
@@ -149,7 +149,7 @@ spectra unpark observability-and-debug
 ### 最後階段
 
 - [low] observability-and-debug：依賴 governance latency 欄位
-- [low] 報告更新至 main-v0.0.37.md，記錄完整實作成果
+- [low] 報告更新至 main-v0.0.42.md，記錄完整實作成果
 
 <!-- SPECTRA-UX:ROADMAP-MANUAL:END -->
 
@@ -157,28 +157,27 @@ spectra unpark observability-and-debug
 
 ## Active Changes
 
-_last synced: 2026-04-18T18:02:48.904Z_
+_last synced: 2026-04-18T20:10:25.360Z_
 
-9 active changes (1 ready · 5 in progress · 3 draft · 0 blocked)
+7 active changes (2 ready · 2 in progress · 3 draft · 0 blocked)
 
 ### Ready to apply
 
-- **bootstrap-v1-core-from-report** — 48/48 tasks (100%)
+- **governance-refinements** — 18/18 tasks (100%)
+- **test-coverage-and-automation** — 50/50 tasks (100%)
 
 ### In progress
 
-- **add-v1-core-ui** — 49/56 tasks (88%)
 - **admin-document-lifecycle-ops** — 22/27 tasks (81%)
   - Specs: `admin-document-management-ui`
 - **fix-document-publish-draft-to-active** — 19/25 tasks (76%)
   - Specs: `admin-document-management-ui`
-- **governance-refinements** — 17/18 tasks (94%)
-- **test-coverage-and-automation** — 38/50 tasks (76%)
 
 ### Draft
 
 - **admin-ui-post-core** — 0/33 tasks (0%)
 - **migrate-mcp-to-toolkit** — 0/32 tasks (0%)
+  - Specs: `mcp-knowledge-tools`
 - **observability-and-debug** — 0/21 tasks (0%)
 
 ### Blocked
@@ -195,12 +194,9 @@ _(none)_
 
 ### Independent (can run in parallel)
 
-- `add-v1-core-ui`
 - `admin-ui-post-core`
-- `governance-refinements`
 - `migrate-mcp-to-toolkit`
 - `observability-and-debug`
-- `test-coverage-and-automation`
 
 ### Mutex (same spec touched)
 

@@ -23,6 +23,7 @@ The system SHALL derive admin privileges from the runtime `ADMIN_EMAIL_ALLOWLIST
 - **AND** a stale database role snapshot does not preserve admin access
 
 ---
+
 ### Requirement: Channel Access Matrix
 
 The system SHALL derive `allowed_access_levels` before the first retrieval step for every Web or MCP request. Web User sessions SHALL receive `['internal']`, Web Admin sessions SHALL receive `['internal', 'restricted']`, MCP tokens without `knowledge.restricted.read` SHALL receive `['internal']`, and MCP tokens with `knowledge.restricted.read` SHALL receive `['internal', 'restricted']`. Unauthenticated users SHALL NOT access chat, admin, or MCP token management surfaces.
@@ -40,6 +41,7 @@ The system SHALL derive `allowed_access_levels` before the first retrieval step 
 - **AND** downstream retrieval and replay checks use that expanded visibility set
 
 ---
+
 ### Requirement: Google OAuth Only Interactive Login
 
 For `v1.0.0`, the Web interactive sign-in surface SHALL expose Google OAuth as the only user login path. Email/password login, GitHub OAuth, and Passkey SHALL NOT be presented or enabled in runtime config, auth handlers, or the login page for the core release.

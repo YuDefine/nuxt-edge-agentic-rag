@@ -17,6 +17,7 @@ Before model inference, the system SHALL evaluate user input for secrets, creden
 - **AND** persisted records contain only markers, redacted summaries, or audit metadata
 
 ---
+
 ### Requirement: Per-Channel Rate Limits
 
 The system SHALL enforce fixed-window rate limits in KV for `/api/chat` per user and for each MCP tool per token. The initial `v1.0.0` baselines SHALL be 30 requests per 5 minutes for `/api/chat`, 30 for `askKnowledge`, 60 for `searchKnowledge`, and 120 for both `getDocumentChunk` and `listCategories`. Exceeding the active window SHALL return `429` and SHALL NOT consume additional downstream retrieval or model work.
@@ -28,6 +29,7 @@ The system SHALL enforce fixed-window rate limits in KV for `/api/chat` per user
 - **AND** the request does not execute retrieval or answer generation
 
 ---
+
 ### Requirement: Retention And Replay Window
 
 The system SHALL retain `query_logs`, `citation_records`, `source_chunks.chunk_text`, and revoked or expired MCP token metadata for 180 days, and SHALL keep historical citation replay available inside that window even when the source document version is no longer current or the document is archived. After the retention window expires, the replay endpoint SHALL treat the citation as unavailable.
@@ -45,6 +47,7 @@ The system SHALL retain `query_logs`, `citation_records`, `source_chunks.chunk_t
 - **AND** the caller receives the same unavailable outcome as any other non-replayable citation
 
 ---
+
 ### Requirement: Environment Isolation
 
 Local/Dev, Staging/Preview, and Production SHALL use separate D1, R2, KV, and AI Search resources. Secrets, OAuth credentials, binding names, and feature flags SHALL enter through runtime config or deployment settings, and Production SHALL default `features.passkey`, `features.mcpSession`, `features.cloudFallback`, and `features.adminDashboard` to false.

@@ -23,6 +23,7 @@ The Web answer flow SHALL run rule-based Query Normalization without model invoc
 - **AND** no model call is made before the first retrieval
 
 ---
+
 ### Requirement: Confidence Routed Answering
 
 The system SHALL compute `retrieval_score` from validated evidence, route requests with `retrieval_score >= 0.70` directly to the answer model selected by question type, invoke one answerability judge when `0.45 <= retrieval_score < 0.70`, and perform at most one Query Reformulation retry with `rewrite_query = false`. If confidence stays below the refusal threshold or the required evidence count is not met, the system SHALL return a refusal response. The system SHALL NOT enable cloud fallback in `v1.0.0`.
@@ -40,6 +41,7 @@ The system SHALL compute `retrieval_score` from validated evidence, route reques
 - **AND** the system returns a refusal response if the post-retry confidence still remains below the acceptance threshold
 
 ---
+
 ### Requirement: Citation Mapped Responses
 
 The system SHALL assemble citations only from prebuilt `source_chunks`, SHALL treat unmapped provider candidates as invalid evidence, SHALL persist `citation_records` for cited chunks, and SHALL preserve the Web single-document follow-up fast path only when the previous assistant response can still be revalidated to one current document.
@@ -57,6 +59,7 @@ The system SHALL assemble citations only from prebuilt `source_chunks`, SHALL tr
 - **AND** the system does not reuse the single-document follow-up route
 
 ---
+
 ### Requirement: Neutral Project Shell
 
 Before the full product experience is complete, the Web shell SHALL remain a neutral knowledge-project frame aligned with the report scope. The authenticated landing page and shared layout SHALL NOT use generic starter welcome copy, SHALL NOT imply a finished vertical product, and SHALL keep role context and sign-out affordances without overstating delivered capabilities.

@@ -43,6 +43,8 @@
 
 ## 8. 人工檢查
 
+> 備註（2026-04-19）：`main-v0.0.42.md` §2.2.4 step 14–17 與 §3.2.3.3 表 3-5 已對齊本 change 之 archive / unarchive / delete / retry-sync 四個操作規格；staging 驗收請一併對照報告描述確認 user-facing 行為一致。
+
 - [ ] 8.1 在 staging 重現「殘留 draft 復原流程」：上傳手動造一個 draft-never-published，從列表 actions menu 走「重試同步」與「刪除」兩條路徑
 - [ ] 8.2 在 staging 重現「已發布文件下架流程」：對一個 active 文件執行 archive → 驗證 Web 問答不再命中 → unarchive → 驗證回到可檢索
 - [ ] 8.3 在 staging 重現「失敗版本重試流程」：人工造一個 `sync_status = failed` 版本，驗證版本歷史該列 retry 按鈕出現、點擊後 disable、同步完成後按鈕消失

@@ -51,8 +51,17 @@
     - `test/unit/mcp-replay.test.ts`：既有 3 tests 更新 reason 參數；新增 3 cases（chunk_retention_expired scrubbed snapshot、default reason=chunk_not_found、403 reason=restricted_scope_required）。total 6 cases。
     - `test/integration/get-document-chunk-replay.test.ts`（新）：6 cases — within-retention 200、chunk_not_found 404、chunk_retention_expired 404 同 body 不同 header、restricted_scope_required 403 + blocked query_log、retention 邊界仍 200、MCP session header 400 gate 保持。
     - 驗證：`pnpm typecheck` 0 errors；`pnpm exec vp lint --deny-warnings server/utils/mcp-replay.ts server/api/mcp/chunks/[citationId].get.ts test/unit/mcp-replay.test.ts test/integration/get-document-chunk-replay.test.ts test/integration/helpers/nuxt-route.ts` 0 warnings；`pnpm exec vp test run test/unit/mcp-replay.test.ts test/integration/get-document-chunk-replay.test.ts test/integration/mcp-routes.test.ts test/integration/citations-route.test.ts test/integration/retention-cleanup.test.ts` **32/32 綠**。
-- [ ] 2.4 建立 backdated record / shortened TTL 驗證路徑，供 staging 測試 cleanup。
-  - 2026-04-18 **explicit skip**：本 task 需要實際 staging 環境驗證（建 backdated records + 跑 `retentionDays` 覆寫），不屬於 code-level 完成項。文件化部分已合併到 2.5 的 `RETENTION_CLEANUP_VERIFICATION.md` §4A（boundary verification）與 `§4.6`（replay expiry contract）。待 staging 環境就緒後補上實測 PASS 證據。
+- [x] 2.4 建立 backdated record / shortened TTL 驗證路徑，供 staging 測試 cleanup。
+  - 2026-04-19 **local PASS**：把 task 重新框定為 code-level「驗證路徑」的建置（tooling），staging 實際執行歸屬於 §2.5 runbook / verification doc。
+    - **Shortened-TTL path**：`server/api/admin/retention/prune.post.ts` 擴充 body schema（optional `retentionDays`，`>0 && <=180`，Zod strict）。override 穿透給 `runRetentionCleanup`；response 回傳 `data.retentionDays` 實際使用值作為 verification harness 的記錄依據。production 環境拒絕 override：`getKnowledgeRuntimeConfig().environment === 'production'` 時 400 + 明確訊息。production 不帶 override 仍走預設 180 天。
+    - **Backdated-seed path**：新增 `server/utils/retention-seed.ts::seedBackdatedRetentionRecord`，typed helper 寫入 backdated `query_logs` + `citation_records`，返回 IDs 與時間戳供 caller 清理。`environment === 'production'` 時 throw；`ageDays` 非正整數時 throw。只動 audit chain 前兩層（`query_logs` / `citation_records`），不碰 `source_chunks`（operator 必須重用既存 chunk 以保留下游 `getDocumentChunk` 驗證的語意）。
+    - **Operator CLI**：新增 `scripts/staging-retention-prune.ts`（對齊 `create-mcp-token.ts` 的 UX），支援 `--base-url / --cookie / --retention-days`；對 production host 的 override 給出保守警告（但 server side 已強制拒絕）。
+    - 測試：新增 `test/integration/retention-verification-path.test.ts` 9 cases：
+      - endpoint：(1) 非 production 時穿透 override、(2) 缺 body 時不 override、(3) production + override → 400、(4) production 無 override → 預設 180 跑成功、(5) `retentionDays <= 0 / 非整數` → 400、(6) `retentionDays > 180` → 400（不允許擴大 retention）
+      - seed utility：(7) 寫 2 張表 + 返回正確時間戳與 IDs、(8) production → throw 且不 prepare、(9) `ageDays` 非正 → throw
+    - 文件：`docs/verify/RETENTION_CLEANUP_VERIFICATION.md` §4.2 改寫：方式 A（SQL）保留作為手動 fallback；方式 B 換成正式 `retentionDays` override endpoint + helper script；新增方式 C 指向 `seedBackdatedRetentionRecord` helper。
+    - 驗證：`pnpm exec vp lint --deny-warnings server/api/admin/retention/prune.post.ts server/utils/retention-seed.ts test/integration/retention-verification-path.test.ts scripts/staging-retention-prune.ts` 0 warnings；`pnpm typecheck` 0 errors；`pnpm exec vp test run test/integration/retention-cleanup.test.ts test/integration/retention-verification-path.test.ts test/integration/get-document-chunk-replay.test.ts` **25/25 綠**。
+    - **仍保留的 staging 實測**：實際 staging 環境內跑 `seed → prune → assert` 並截圖的實測 evidence，歸屬 §2.5 runbook 的驗證欄位（runbook 已就緒，執行時填 PASS）。code-level 驗證路徑本身已全數落地。
 - [x] 2.5 補齊 cleanup run、過期 replay 與 retention 邊界的驗證與操作文件。
   - 2026-04-18 **local PASS**：
     - 新增 `docs/verify/RETENTION_CLEANUP_RUNBOOK.md` — operator 日常作業手冊（9 節：何時跑、四階段順序、retention 參數、成功路徑檢查、手動觸發、錯誤排除、禁忌、觀測欄位、交叉參照）。

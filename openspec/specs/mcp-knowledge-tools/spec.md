@@ -23,6 +23,7 @@ The MCP surface SHALL accept only `Authorization: Bearer <token>` authentication
 - **AND** the response does not reveal the restricted chunk text
 
 ---
+
 ### Requirement: Stateless Ask And Replay
 
 `askKnowledge` SHALL reuse the same validated retrieval, confidence routing, refusal, and citation-mapping core as the Web answer path after MCP authorization succeeds. `getDocumentChunk` SHALL replay the cited snapshot using `citationId`, SHALL re-check access rules before returning chunk text, and SHALL return `404` only when the `citationId` is absent or no longer replayable.
@@ -40,6 +41,7 @@ The MCP surface SHALL accept only `Authorization: Bearer <token>` authentication
 - **AND** the replay result still passes current authorization checks for that caller
 
 ---
+
 ### Requirement: Filtered Search And Categories
 
 `searchKnowledge` SHALL apply `allowed_access_levels` before retrieval and SHALL return `200` with `results: []` when no visible evidence remains. `listCategories` SHALL count only visible `active` documents with a current version, deduplicate counts per document, and return categories in stable name order. Neither tool SHALL expose internal diagnostics such as retrieval scores, decision paths, or document version identifiers.
