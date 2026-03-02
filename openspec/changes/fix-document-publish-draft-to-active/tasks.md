@@ -32,6 +32,8 @@
 
 ## 5. 人工檢查
 
+> 備註（2026-04-19）：`main-v0.0.42.md` §2.2.4 step 11 與 §2.2.4.1 已對齊本 change 之規格（publish 升格邏輯、中文檔名 sanitize 規則）；staging 驗收請一併對照報告描述確認 user-facing 行為一致。
+
 - [ ] 5.1 Admin 在 staging 上傳 `採購流程.pdf`（或任意中文檔名），確認上傳後 admin document list 顯示檔名為 `採購流程.pdf`
 - [ ] 5.2 Admin 點擊 publish 按鈕，確認首次發布不再回傳 409、且 list 中 document status 從 `draft` 變 `active`
 - [ ] 5.3 同一份 document 再上傳第二個版本並 publish，確認第二次 publish 仍然成功（status 已是 active，不需要升格）

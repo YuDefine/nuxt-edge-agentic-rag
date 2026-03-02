@@ -23,6 +23,7 @@ The system SHALL use a staged upload flow where an Admin first requests a one-ti
 - **AND** the system does not create a publishable version snapshot
 
 ---
+
 ### Requirement: Versioned Replay Truth
 
 Each `document_versions` record SHALL act as an immutable knowledge snapshot containing `normalized_text_r2_key`, `metadata_json`, `smoke_test_queries_json`, and prebuilt `source_chunks` before the version becomes publishable. `source_chunks` SHALL be derived from the normalized text snapshot rather than provider-owned chunk identifiers, and a version SHALL NOT enter `smoke_pending` or `indexed` without those replay assets.
@@ -40,6 +41,7 @@ Each `document_versions` record SHALL act as an immutable knowledge snapshot con
 - **AND** a new version or re-synced snapshot is required to change publish-time truth
 
 ---
+
 ### Requirement: Current Version Publishing
 
 The system SHALL publish only versions whose parent document is `active`, whose index status is `indexed`, and that have no in-progress sync task. Publishing SHALL switch `is_current` atomically so only one version per document remains current, and re-publishing the already current version SHALL return a no-op success response.
