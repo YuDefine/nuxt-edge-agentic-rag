@@ -43,6 +43,7 @@ export default defineConfig({
       'dist/',
       'coverage/',
       '.claude/skills/',
+      '.claude/worktrees/',
       '.agents/skills/',
       '.github/skills/',
       'scripts/',
