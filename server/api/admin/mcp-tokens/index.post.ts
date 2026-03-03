@@ -1,7 +1,9 @@
+import { useLogger } from 'evlog'
 import { z } from 'zod'
+
+import { requireRuntimeAdminSession } from '#server/utils/admin-session'
 import { getD1Database } from '#server/utils/database'
 import { buildProvisionedMcpToken, createMcpTokenStore } from '#server/utils/mcp-token-store'
-import { requireRuntimeAdminSession } from '#server/utils/admin-session'
 
 const bodySchema = z.object({
   name: z.string().min(1, 'Token name is required'),
@@ -21,8 +23,7 @@ export default defineEventHandler(async (event) => {
   const log = useLogger(event)
   const runtimeConfig = useRuntimeConfig()
 
-  // Require admin access
-  await requireRuntimeAdminSession(event)
+  const session = await requireRuntimeAdminSession(event)
 
   const body = await readValidatedBody(event, bodySchema.parse)
 
@@ -57,6 +58,8 @@ export default defineEventHandler(async (event) => {
   log.set({
     operation: 'mcp_token_create',
     result: { id: record.id, name: record.name, scopes: body.scopes },
+    table: 'mcp_tokens',
+    user: { id: session.user.id ?? null },
   })
 
   return {

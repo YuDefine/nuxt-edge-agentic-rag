@@ -48,6 +48,7 @@ export default defineNuxtConfig({
     '@nuxt/test-utils/module',
     'evlog/nuxt',
     '@nuxt/hints',
+    '@nuxtjs/mcp-toolkit',
   ],
 
   // NuxtHub - auto-detects environment:

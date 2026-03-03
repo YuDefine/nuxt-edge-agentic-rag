@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 
 import type { McpTokenRecord } from '#shared/types/knowledge'
+import { parseStringArrayJson } from '#shared/utils/parse-string-array'
 
 export class McpAuthError extends Error {
   constructor(
@@ -53,7 +54,7 @@ export async function requireMcpBearerToken(
   await options.store.touchLastUsedAt(tokenRecord.id, usedAt)
 
   return {
-    scopes: JSON.parse(tokenRecord.scopesJson) as string[],
+    scopes: parseStringArrayJson(tokenRecord.scopesJson),
     token: tokenRecord,
     tokenId: tokenRecord.id,
   }
