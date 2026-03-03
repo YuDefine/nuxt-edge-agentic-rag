@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import { createKnowledgeRuntimeConfig } from '#shared/schemas/knowledge-runtime'
-import { askKnowledge } from '#server/utils/mcp-ask'
+import { askKnowledge, createMcpQueryLogStore } from '#server/utils/mcp-ask'
 
 describe('mcp ask', () => {
   it('returns a business refusal result instead of translating it into an auth error', async () => {
@@ -177,5 +177,106 @@ describe('mcp ask', () => {
       ],
       refused: false,
     })
+  })
+})
+
+describe('createMcpQueryLogStore (observability-and-debug §0.1 / §0.3)', () => {
+  it('binds NULL for every debug field when caller supplies none (backward compatibility)', async () => {
+    const run = vi.fn().mockResolvedValue(undefined)
+    const database = {
+      prepare: vi.fn().mockReturnValue({
+        bind: vi.fn().mockReturnValue({ run }),
+      }),
+    }
+    const store = createMcpQueryLogStore(database)
+
+    await store.createAcceptedQueryLog({
+      allowedAccessLevels: ['internal'],
+      configSnapshotVersion: 'v1',
+      environment: 'staging',
+      queryText: 'hello',
+      status: 'accepted',
+      tokenId: 'token-x',
+    })
+
+    const prepareCall = vi.mocked(database.prepare).mock.calls[0]?.[0] ?? ''
+    const bind = vi.mocked(database.prepare).mock.results[0]?.value.bind as ReturnType<typeof vi.fn>
+
+    // tasks.md §0 schema prerequisites: INSERT must include the six debug columns.
+    expect(prepareCall).toContain('first_token_latency_ms')
+    expect(prepareCall).toContain('completion_latency_ms')
+    expect(prepareCall).toContain('retrieval_score')
+    expect(prepareCall).toContain('judge_score')
+    expect(prepareCall).toContain('decision_path')
+    expect(prepareCall).toContain('refusal_reason')
+
+    expect(bind).toHaveBeenCalledWith(
+      expect.any(String),
+      'mcp',
+      null,
+      'token-x',
+      'staging',
+      'hello',
+      '[]',
+      '["internal"]',
+      0,
+      'v1',
+      'accepted',
+      expect.any(String),
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    )
+  })
+
+  it('persists supplied debug fields verbatim (no fabrication)', async () => {
+    const run = vi.fn().mockResolvedValue(undefined)
+    const database = {
+      prepare: vi.fn().mockReturnValue({
+        bind: vi.fn().mockReturnValue({ run }),
+      }),
+    }
+    const store = createMcpQueryLogStore(database)
+
+    await store.createAcceptedQueryLog({
+      allowedAccessLevels: ['internal'],
+      configSnapshotVersion: 'v1',
+      environment: 'staging',
+      queryText: 'hello',
+      status: 'accepted',
+      tokenId: 'token-x',
+      firstTokenLatencyMs: 250,
+      completionLatencyMs: 1_800,
+      retrievalScore: 0.91,
+      judgeScore: 0.66,
+      decisionPath: 'direct_answer',
+      refusalReason: null,
+    })
+
+    const bind = vi.mocked(database.prepare).mock.results[0]?.value.bind as ReturnType<typeof vi.fn>
+
+    expect(bind).toHaveBeenCalledWith(
+      expect.any(String),
+      'mcp',
+      null,
+      'token-x',
+      'staging',
+      'hello',
+      '[]',
+      '["internal"]',
+      0,
+      'v1',
+      'accepted',
+      expect.any(String),
+      250,
+      1_800,
+      0.91,
+      0.66,
+      'direct_answer',
+      null
+    )
   })
 })
