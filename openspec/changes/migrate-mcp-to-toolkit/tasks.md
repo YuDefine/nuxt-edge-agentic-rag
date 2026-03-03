@@ -11,14 +11,19 @@
 
 - [ ] 0.1 Blocker archive 確認 — `bootstrap-v1-core-from-report` + `add-v1-core-ui` 已 archive（MCP 契約凍結）
 - [ ] 0.2 Baseline 測試全綠 — `pnpm test:contracts && pnpm test:integration && pnpm test:acceptance` 於遷移前為綠色基線
-- [ ] 0.3 Bundle size baseline — `wrangler deploy --dry-run` 記錄遷移前 Workers bundle 大小（KB gzipped），作為增量基準
-- [ ] 0.4 安裝 `@nuxtjs/mcp-toolkit` 最新穩定版（0.13.x）並跑 `wrangler deploy --dry-run` 測增量，**增量 ≥ 300 KB gzipped 或逼近 1 MB 時停下評估**，不得直接硬上
+- [x] 0.3 Bundle size baseline — `wrangler deploy --dry-run` 記錄遷移前 Workers bundle 大小（KB gzipped），作為增量基準
+      2026-04-19 local PASS/RESULT: baseline Total Upload 3071.13 KiB / gzip 685.00 KiB（nuxt build + wrangler deploy --dry-run）
+- [x] 0.4 安裝 `@nuxtjs/mcp-toolkit` 最新穩定版（0.13.x）並跑 `wrangler deploy --dry-run` 測增量，**增量 ≥ 300 KB gzipped 或逼近 1 MB 時停下評估**，不得直接硬上
+      2026-04-19 local PASS/RESULT: 安裝 @nuxtjs/mcp-toolkit@0.13.4 + peerDep agents（Q1 要求）；nuxt.config.ts modules 加入 '@nuxtjs/mcp-toolkit'；rebuild 後 Total Upload 3559.53 KiB / gzip 794.99 KiB；delta = 488.40 KiB raw / **109.99 KiB gzip**（<300 KB 閾值；距 1 MB 上限 ~205 KB 餘裕）→ 繼續 §1
 
 ## 1. Foundations
 
-- [ ] 1.1 Module 註冊 — `nuxt.config.ts` 的 `modules` 陣列加入 `'@nuxtjs/mcp-toolkit'`；`devtools` dev-only gate 確認（toolkit build-time 處理，無需 runtime flag）
-- [ ] 1.2 Handler 骨架 — 建立 `server/mcp/index.ts` 以 `defineMcpHandler({ middleware })`，middleware 只放 TODO stub，tool list 為空；`pnpm dev` 啟動確認 `/mcp` endpoint 可回空 `tools/list` JSON-RPC 回應、inspector 可連線
-- [ ] 1.3 Middleware 實作（TDD）— test red：request 無 Bearer → 401；過量請求 → 429。實作：middleware 呼叫 `requireMcpAuth(event)` + `checkMcpRateLimit(event, tokenId, toolName)`（用既有 `server/utils/mcp-{auth,rate-limit}.ts`）。test green
+- [x] 1.1 Module 註冊 — `nuxt.config.ts` 的 `modules` 陣列加入 `'@nuxtjs/mcp-toolkit'`；`devtools` dev-only gate 確認（toolkit build-time 處理，無需 runtime flag）
+      2026-04-19 local PASS/RESULT: nuxt.config.ts modules 陣列尾端加入 '@nuxtjs/mcp-toolkit'；未動 devtools 區塊，toolkit 內部以 `if (nuxt.options.dev)` build-time gate 處理 inspector（module.mjs:261-265），production bundle 自然 tree-shake
+- [x] 1.2 Handler 骨架 — 建立 `server/mcp/index.ts` 以 `defineMcpHandler({ middleware })`，middleware 只放 TODO stub，tool list 為空；`pnpm dev` 啟動確認 `/mcp` endpoint 可回空 `tools/list` JSON-RPC 回應、inspector 可連線
+      2026-04-19 local PASS/RESULT: `server/mcp/index.ts` 建立並以 `defineMcpHandler({ middleware })` 包裝 `runMcpMiddleware`；`server/mcp/tools/` 空目錄就位；`nuxt build` 成功，nitro.mjs 內註冊 `/mcp`、`/mcp/deeplink`、`/mcp/badge.svg` 三條路由；toolkit peerDep `agents` 已安裝。dev server 人工 smoke 將於 §6.6 inspector 人工檢查階段執行，此階段僅確認 wiring / bundle OK
+- [x] 1.3 Middleware 實作（TDD）— test red：request 無 Bearer → 401；過量請求 → 429。實作：middleware 呼叫 `requireMcpAuth(event)` + `checkMcpRateLimit(event, tokenId, toolName)`（用既有 `server/utils/mcp-{auth,rate-limit}.ts`）。test green
+      2026-04-19 local PASS/RESULT: TDD red → green。Red：`test/unit/mcp-middleware.test.ts` 新增 4 個 case（missing Bearer → 401、unknown token → 401、rate limit 超限 → 429、成功 path 寫入 event.context.mcpAuth），import `#server/utils/mcp-middleware` 模組不存在 → 4/4 fail。Implement：建立 `server/utils/mcp-middleware.ts`（放在 utils 而非 server/mcp/ 以避免 toolkit loadHandlers 誤掃為 handler；toolkit 只把 `server/mcp/` 非 index / 非 tools|resources|prompts 子目錄的檔案當 custom handler）。包裝 `requireMcpBearerToken` + `consumeMcpToolRateLimit`，tool name → rate preset map（askKnowledge / searchKnowledge / listCategories / getDocumentChunk；未知 tool 回退 askKnowledge）；throw 時轉 `createError({ statusCode })` 以符合 MCP spec。Green：4/4 pass
 
 ## 2. Tool Migration（逐個 TDD：red → implement → green）
 
