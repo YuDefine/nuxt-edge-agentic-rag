@@ -1,6 +1,10 @@
 import type { KnowledgeGovernanceConfig } from '#shared/schemas/knowledge-runtime'
 import { answerKnowledgeQuery } from './knowledge-answering'
-import { auditKnowledgeText } from './knowledge-audit'
+import {
+  auditKnowledgeText,
+  type CreateMessageInput,
+  type CreateQueryLogInput,
+} from './knowledge-audit'
 import { getAllowedAccessLevels } from './knowledge-runtime'
 import type { VerifiedKnowledgeEvidence } from './knowledge-retrieval'
 import type { StaleResolverResult } from './conversation-stale-resolver'
@@ -91,27 +95,8 @@ export async function chatWithKnowledge(
       retrievalScore: number
     }) => Promise<string>
     auditStore?: {
-      createMessage(input: {
-        channel: 'mcp' | 'web'
-        citationsJson?: string
-        conversationId?: string | null
-        content: string
-        now?: Date
-        queryLogId?: string
-        role: 'system' | 'user' | 'assistant' | 'tool'
-        userProfileId?: string | null
-      }): Promise<string>
-      createQueryLog(input: {
-        allowedAccessLevels: string[]
-        channel: 'mcp' | 'web'
-        configSnapshotVersion: string
-        environment: string
-        mcpTokenId?: string | null
-        now?: Date
-        queryText: string
-        status: 'accepted' | 'blocked' | 'limited' | 'rejected'
-        userProfileId?: string | null
-      }): Promise<string>
+      createMessage(input: CreateMessageInput): Promise<string>
+      createQueryLog(input: CreateQueryLogInput): Promise<string>
     }
     judge: (input: {
       evidence: VerifiedKnowledgeEvidence[]
@@ -294,18 +279,10 @@ export async function chatWithKnowledge(
           }))
         }
 
-        const payload: WebCitationPersistenceInput = {
-          citations: citations.map((citation) => ({
-            ...citation,
-            queryLogId,
-          })),
-        }
-
-        if (typeof input.now === 'number') {
-          payload.now = new Date(input.now)
-        }
-
-        return options.persistCitations(payload)
+        return options.persistCitations({
+          citations: citations.map((citation) => ({ ...citation, queryLogId })),
+          ...(typeof input.now === 'number' ? { now: new Date(input.now) } : {}),
+        })
       },
       retrieve: options.retrieve,
     }

@@ -1,4 +1,4 @@
-import { index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
+import { index, integer, real, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
 import { sql } from 'drizzle-orm'
 
 const timestampNow = sql`CURRENT_TIMESTAMP`
@@ -119,6 +119,46 @@ export const queryLogs = sqliteTable(
     configSnapshotVersion: text('config_snapshot_version').notNull().default('v1'),
     status: text('status').notNull().default('accepted'),
     createdAt: text('created_at').notNull().default(timestampNow),
+    /**
+     * observability-and-debug §0.1: SSE first-token latency in ms. NULL means
+     * "not measured" (e.g. blocked pre-stream, legacy row). MUST NOT be
+     * fabricated to 0 — the debug surface distinguishes null-latency from a
+     * zero-latency run (see tasks.md §3.3).
+     */
+    firstTokenLatencyMs: integer('first_token_latency_ms'),
+    /**
+     * observability-and-debug §0.1: completion latency in ms (end of stream).
+     * NULL means the completion never ran or was refused before any tokens
+     * were produced. Debug surface treats null and partial-stream as distinct
+     * states.
+     */
+    completionLatencyMs: integer('completion_latency_ms'),
+    /**
+     * observability-and-debug §0.1: retrieval score (0-1 float). NULL when
+     * retrieval didn't execute for this row (e.g. blocked query). Do not map
+     * to 0 — the refusal-path rows still need to be distinguishable from
+     * low-score answered rows.
+     */
+    retrievalScore: real('retrieval_score'),
+    /**
+     * observability-and-debug §0.1: answerability judge score (0-1 float).
+     * NULL when the judge was bypassed. Do not fabricate.
+     */
+    judgeScore: real('judge_score'),
+    /**
+     * observability-and-debug §0.1: short decision-path tag (e.g.
+     * `direct_answer`, `judge_pass_then_refuse`, `self_correction_retry`).
+     * NULL for rows that predate the debug surface. Canonical enum owned by
+     * the UI task (tasks.md §2.1); writer here does not validate the tag.
+     */
+    decisionPath: text('decision_path'),
+    /**
+     * observability-and-debug §0.1: refusal classification (e.g.
+     * `restricted_scope`, `no_citation`, `sensitive_governance`). NULL when
+     * the run did not refuse. Writer does not validate — UI task owns the
+     * enum of categories.
+     */
+    refusalReason: text('refusal_reason'),
   },
   (table) => [index('query_logs_channel_created_idx').on(table.channel, table.createdAt)]
 )

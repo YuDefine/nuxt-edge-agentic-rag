@@ -1,6 +1,11 @@
 import type { KnowledgeGovernanceConfig } from '#shared/schemas/knowledge-runtime'
 import { answerKnowledgeQuery } from './knowledge-answering'
-import { auditKnowledgeText } from './knowledge-audit'
+import {
+  auditKnowledgeText,
+  insertQueryLogRow,
+  type CreateMessageInput,
+  type CreateQueryLogInput,
+} from './knowledge-audit'
 import { getAllowedAccessLevels } from './knowledge-runtime'
 
 interface D1PreparedStatementLike {
@@ -48,27 +53,8 @@ interface McpAskDependencies {
     retrievalScore: number
   }) => Promise<string>
   auditStore?: {
-    createMessage(input: {
-      channel: 'mcp' | 'web'
-      citationsJson?: string
-      conversationId?: string | null
-      content: string
-      now?: Date
-      queryLogId?: string
-      role: 'system' | 'user' | 'assistant' | 'tool'
-      userProfileId?: string | null
-    }): Promise<string>
-    createQueryLog(input: {
-      allowedAccessLevels: string[]
-      channel: 'mcp' | 'web'
-      configSnapshotVersion: string
-      environment: string
-      mcpTokenId?: string | null
-      now?: Date
-      queryText: string
-      status: 'accepted' | 'blocked' | 'limited' | 'rejected'
-      userProfileId?: string | null
-    }): Promise<string>
+    createMessage(input: CreateMessageInput): Promise<string>
+    createQueryLog(input: CreateQueryLogInput): Promise<string>
   }
   citationStore: {
     persistCitations(input: {
@@ -112,6 +98,12 @@ interface McpAskDependencies {
       queryText: string
       status: string
       tokenId: string
+      firstTokenLatencyMs?: number | null
+      completionLatencyMs?: number | null
+      retrievalScore?: number | null
+      judgeScore?: number | null
+      decisionPath?: string | null
+      refusalReason?: string | null
     }): Promise<string>
   }
   retrieve: (input: { allowedAccessLevels: string[]; query: string }) => Promise<{
@@ -224,45 +216,19 @@ export async function askKnowledge(
       },
       judge: options.judge,
       persistCitations: async (citations) => {
-        const payload: {
-          citations: Array<{
-            chunkTextSnapshot: string
-            citationLocator: string
-            documentVersionId: string
-            queryLogId: string
-            sourceChunkId: string
-          }>
-          now?: Date
-          retentionDays?: number
-        } = {
-          citations: citations.map((citation) => ({
-            ...citation,
-            queryLogId,
-          })),
-        }
-
-        if (input.now) {
-          payload.now = input.now
-        }
-
-        if (typeof input.retentionDays === 'number') {
-          payload.retentionDays = input.retentionDays
-        }
-
-        return options.citationStore.persistCitations(payload)
+        return options.citationStore.persistCitations({
+          citations: citations.map((citation) => ({ ...citation, queryLogId })),
+          ...(input.now ? { now: input.now } : {}),
+          ...(typeof input.retentionDays === 'number'
+            ? { retentionDays: input.retentionDays }
+            : {}),
+        })
       },
       retrieve: options.retrieve,
     }
   )
 
-  if (result.refused) {
-    return {
-      citations: [],
-      refused: true,
-    }
-  }
-
-  if (result.answer === null) {
+  if (result.refused || result.answer === null) {
     return {
       citations: [],
       refused: true,
@@ -297,33 +263,41 @@ export function createMcpQueryLogStore(database: D1DatabaseLike) {
       queryText: string
       status: string
       tokenId: string
+      firstTokenLatencyMs?: number | null
+      completionLatencyMs?: number | null
+      retrievalScore?: number | null
+      judgeScore?: number | null
+      decisionPath?: string | null
+      refusalReason?: string | null
     }): Promise<string> {
       const queryLogId = crypto.randomUUID()
+      const audit = auditKnowledgeText(input.queryText)
       const now = (input.now ?? new Date()).toISOString()
 
-      await database
-        .prepare(
-          [
-            'INSERT INTO query_logs (',
-            '  id, channel, user_profile_id, mcp_token_id, environment, query_redacted_text, risk_flags_json, allowed_access_levels_json, redaction_applied, config_snapshot_version, status, created_at',
-            ') VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-          ].join('\n')
-        )
-        .bind(
-          queryLogId,
-          'mcp',
-          null,
-          input.tokenId,
-          input.environment,
-          input.queryText,
-          '[]',
-          JSON.stringify(input.allowedAccessLevels),
-          0,
-          input.configSnapshotVersion,
-          input.status,
-          now
-        )
-        .run()
+      // SECURITY: Re-run audit here even though callers typically pre-redact —
+      // if a future caller forgets, raw credentials / PII would land in
+      // `query_redacted_text` and leak via the admin log UI. Running it here
+      // makes the redaction a structural guarantee of the store itself.
+      await insertQueryLogRow(database, {
+        id: queryLogId,
+        channel: 'mcp',
+        userProfileId: null,
+        mcpTokenId: input.tokenId,
+        environment: input.environment,
+        queryRedactedText: audit.redactedText,
+        riskFlags: audit.riskFlags,
+        allowedAccessLevels: input.allowedAccessLevels,
+        redactionApplied: audit.redactionApplied,
+        configSnapshotVersion: input.configSnapshotVersion,
+        status: input.status as CreateQueryLogInput['status'],
+        createdAt: now,
+        firstTokenLatencyMs: input.firstTokenLatencyMs,
+        completionLatencyMs: input.completionLatencyMs,
+        retrievalScore: input.retrievalScore,
+        judgeScore: input.judgeScore,
+        decisionPath: input.decisionPath,
+        refusalReason: input.refusalReason,
+      })
 
       return queryLogId
     },

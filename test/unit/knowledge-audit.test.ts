@@ -70,12 +70,24 @@ describe('knowledge audit', () => {
     expect(database.prepare).toHaveBeenCalledTimes(2)
     expect(run).toHaveBeenCalledTimes(2)
 
+    const queryLogPrepareCall = vi.mocked(database.prepare).mock.calls[0]?.[0] ?? ''
     const queryLogBind = vi.mocked(database.prepare).mock.results[0]?.value.bind as ReturnType<
       typeof vi.fn
     >
     const messageBind = vi.mocked(database.prepare).mock.results[1]?.value.bind as ReturnType<
       typeof vi.fn
     >
+
+    // observability-and-debug tasks.md §0 (schema prerequisites): the INSERT
+    // statement must include the six nullable debug columns. Prior callers
+    // that don't supply values still bind NULL for each (i.e. 18 bind args
+    // total, not 12).
+    expect(queryLogPrepareCall).toContain('first_token_latency_ms')
+    expect(queryLogPrepareCall).toContain('completion_latency_ms')
+    expect(queryLogPrepareCall).toContain('retrieval_score')
+    expect(queryLogPrepareCall).toContain('judge_score')
+    expect(queryLogPrepareCall).toContain('decision_path')
+    expect(queryLogPrepareCall).toContain('refusal_reason')
 
     expect(queryLogBind).toHaveBeenCalledWith(
       expect.any(String),
@@ -89,7 +101,15 @@ describe('knowledge audit', () => {
       1,
       governance.configSnapshotVersion,
       'accepted',
-      expect.any(String)
+      expect.any(String),
+      // observability-and-debug §0.1: six nullable debug surface fields.
+      // Null when caller doesn't supply — never fabricated to 0/empty string.
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
     )
     // After governance §1.4: INSERT now binds
     //   id, conversation_id, query_log_id, user_profile_id, channel, role,
@@ -110,6 +130,116 @@ describe('knowledge audit', () => {
       '["pii:email"]',
       1,
       expect.any(String)
+    )
+  })
+
+  it('persists optional observability debug fields when caller supplies them (observability-and-debug §0.1/§0.3)', async () => {
+    const governance = createKnowledgeRuntimeConfig({
+      environment: 'staging',
+    }).governance
+    const run = vi.fn().mockResolvedValue(undefined)
+    const database = {
+      prepare: vi.fn().mockReturnValue({
+        bind: vi.fn().mockReturnValue({
+          run,
+        }),
+      }),
+    }
+    const auditStore = createKnowledgeAuditStore(database)
+
+    await auditStore.createQueryLog({
+      allowedAccessLevels: ['internal'],
+      channel: 'web',
+      configSnapshotVersion: governance.configSnapshotVersion,
+      environment: 'staging',
+      queryText: 'healthy query',
+      status: 'accepted',
+      userProfileId: 'user-debug',
+      firstTokenLatencyMs: 180,
+      completionLatencyMs: 2_450,
+      retrievalScore: 0.82,
+      judgeScore: 0.74,
+      decisionPath: 'judge_pass_then_answer',
+      refusalReason: null,
+    })
+
+    const queryLogBind = vi.mocked(database.prepare).mock.results[0]?.value.bind as ReturnType<
+      typeof vi.fn
+    >
+
+    expect(queryLogBind).toHaveBeenCalledWith(
+      expect.any(String),
+      'web',
+      'user-debug',
+      null,
+      'staging',
+      'healthy query',
+      '[]',
+      '["internal"]',
+      0,
+      governance.configSnapshotVersion,
+      'accepted',
+      expect.any(String),
+      180,
+      2_450,
+      0.82,
+      0.74,
+      'judge_pass_then_answer',
+      null
+    )
+  })
+
+  it('persists refusal metadata when caller supplies only refusal fields (observability-and-debug §0.1)', async () => {
+    const governance = createKnowledgeRuntimeConfig({
+      environment: 'staging',
+    }).governance
+    const run = vi.fn().mockResolvedValue(undefined)
+    const database = {
+      prepare: vi.fn().mockReturnValue({
+        bind: vi.fn().mockReturnValue({
+          run,
+        }),
+      }),
+    }
+    const auditStore = createKnowledgeAuditStore(database)
+
+    await auditStore.createQueryLog({
+      allowedAccessLevels: ['internal'],
+      channel: 'web',
+      configSnapshotVersion: governance.configSnapshotVersion,
+      environment: 'staging',
+      queryText: 'restricted scope query',
+      status: 'rejected',
+      userProfileId: 'user-debug',
+      decisionPath: 'refused_restricted_scope',
+      refusalReason: 'restricted_scope',
+    })
+
+    const queryLogBind = vi.mocked(database.prepare).mock.results[0]?.value.bind as ReturnType<
+      typeof vi.fn
+    >
+
+    // Latency + score fields stay NULL (not 0) when no measurement happened.
+    // decision_path + refusal_reason carry meaningful text.
+    expect(queryLogBind).toHaveBeenCalledWith(
+      expect.any(String),
+      'web',
+      'user-debug',
+      null,
+      'staging',
+      'restricted scope query',
+      '[]',
+      '["internal"]',
+      0,
+      governance.configSnapshotVersion,
+      'rejected',
+      expect.any(String),
+      null,
+      null,
+      null,
+      null,
+      'refused_restricted_scope',
+      'restricted_scope'
     )
   })
 })
