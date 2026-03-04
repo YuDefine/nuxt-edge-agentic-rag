@@ -302,7 +302,7 @@
               variant="outline"
               size="sm"
               icon="i-lucide-upload"
-              to="/admin/documents/upload"
+              :to="`/admin/documents/upload?documentId=${document.id}`"
             >
               上傳新版
             </UButton>
