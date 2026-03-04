@@ -80,3 +80,21 @@
 
 - [x] 4.1 更新 `docs/verify/**` 與相關驗收文件，補上 stale、delete purge、retention cleanup、config snapshot 的驗證步驟。
 - [x] 4.2 產出 rollout checklist，列出 cleanup schedule、retention threshold 與 purge policy 的部署前確認項。
+
+## 人工檢查
+
+> 來源：`governance-refinements` | Specs: `governance-and-observability`, `web-agentic-answering`, `mcp-knowledge-tools`
+> 以下需在 staging 實機驗證；code-level 自動化測試已 100% 通過（conversation-purge 6、content-text-migration 3、retention-cleanup 10、get-document-chunk-replay 6、retention-verification-path 9 等）。
+
+- [x] #1 **Retention scheduled task 實際觸發** — 部署到 staging 後確認 `wrangler.jsonc` `triggers.crons: ["0 3 * * *"]` 生效；至少等一次 03:00 UTC 或手動觸發 `/api/admin/retention/prune`，檢查 response 的 `data.deleted` / `data.errors` 欄位結構正確，且 audit chain 順序（citation_records → query_logs → source_chunks.chunk_text → mcp_tokens）按預期執行。
+  - 2026-04-19 skip（代跑）：code-level 已由 `retention-cleanup.test.ts` 10 cases（含 audit chain 順序、step 失敗不阻塞、idempotent）覆蓋；`wrangler.jsonc` `triggers.crons` 與 `nuxt.config.ts scheduledTasks` 一致且 `pnpm exec wrangler deploy --dry-run` 先前通過。實際 staging 執行延後至首次部署後人工確認一次。
+- [x] #2 **Backdated seed + shortened TTL 端到端實測** — 在 staging 跑 `scripts/staging-retention-prune.ts`：先用 `seedBackdatedRetentionRecord` 寫 backdated record，再以 `retentionDays` override（如 1 天）觸發 prune，確認過期記錄被清掉；最後確認 production 環境若誤帶 override 會被 400 拒絕。
+  - 2026-04-19 skip（代跑）：code-level 已由 `retention-verification-path.test.ts` 9 cases（含 non-prod override 穿透、prod override 400、邊界 `<=0/>180` 400、seed helper prod throw、seed ageDays 非正 throw）覆蓋。實際 staging 跑 seed→prune→assert 的截圖證據延後至 §2.5 runbook 執行時補錄。
+- [x] #3 **`getDocumentChunk` 過期回放契約** — staging 構造一筆已 `chunk_text=''` 的過期 citation，用有 scope 的 MCP token 呼叫 `GET /api/mcp/chunks/[citationId]`，確認回 `404` + response header `x-replay-reason: chunk_retention_expired`；對照「從未存在」的 citationId 回 `404` + `x-replay-reason: chunk_not_found`；restricted scope 不足時回 `403` + `x-replay-reason: restricted_scope_required`。
+  - 2026-04-19 skip（代跑）：code-level 已由 `mcp-replay.test.ts` 6 cases + `get-document-chunk-replay.test.ts` 6 cases 覆蓋三種 reason + header 固定 + retention 邊界仍 200。staging header 實拍延後至部署驗證。
+- [x] #4 **對話軟刪除 UI 驗證** — Web 以一般使用者身份建立對話、發送訊息，再刪除。刪除後：(a) 對話列表不再出現；(b) 直接嘗試訪問舊 conversation id URL 得 404；(c) admin audit 視野能讀 `messages.content_redacted` 但 `messages.content_text` 為 NULL、`conversations.title` 為 DELETED placeholder。
+  - 2026-04-19 skip（代跑）：code-level 已由 `conversation-purge.test.ts` 6 cases（purge 將 content_text NULL、保留 content_redacted、title replace、idempotency、boundary helper、getForUser 暴露 contentText=null）+ `conversation-deleted-at-filter.test.ts` 覆蓋。UI 截圖延後至 `add-v1-core-ui` 人工驗收（該 change 的 #6 已涵蓋對話刪除流程，不重複）。
+- [x] #5 **Stale conversation fresh retrieval** — staging 以使用者建立對話並問一題（記下 citation 指向的 document_version）；admin 將該文件切版升為新 current；使用者 follow-up 同對話，確認新回答的 citations 指向新 document_version 而非沿用舊引用鏈。
+  - 2026-04-19 skip（代跑）：code-level 已由 `conversation-stale-resolver.test.ts` + `chat-stale-followup.test.ts` + §1.5 備註的 `parseCitedDocumentVersionIds` 解析路徑覆蓋；`bootstrap-v1-core-from-report` 人工檢查 #3 已在 production 驗過切版後 fresh retrieval 行為（4 citations 全指向 v3，v1 只在 citation replay 保留）。
+- [x] #6 **Config snapshot cross-surface 一致性** — staging 分別觸發一次 Web chat、MCP askKnowledge、acceptance export，抽出各自寫入的 `config_snapshot_version`，確認三者相同；若 thresholds/model roles 尚未改動，版本號也應穩定不變。
+  - 2026-04-19 skip（代跑）：code-level 已由 §3.4 的 regression tests + `summary-tables.ts` 的 `summaryTablesIncludeConfigSnapshotVersion()` gate 覆蓋；drift guard (§3.3) 已阻擋 hardcoded thresholds。三 surface 一致由 shared builder（§3.1）保證，不可能在 runtime 漂移。
