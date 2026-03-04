@@ -37,6 +37,11 @@
     set: (value) => emit('update:open', value),
   })
 
+  const isDesktop = useMediaQuery('(min-width: 768px)')
+  const UModal = resolveComponent('UModal')
+  const UDrawer = resolveComponent('UDrawer')
+  const overlayComponent = computed(() => (isDesktop.value ? UModal : UDrawer))
+
   const citationUrl = computed(() => (props.citationId ? `/api/citations/${props.citationId}` : ''))
 
   const {
@@ -96,9 +101,9 @@
 </script>
 
 <template>
-  <UModal v-model:open="isOpen">
+  <component :is="overlayComponent" v-model:open="isOpen">
     <template #content>
-      <UCard>
+      <UCard :ui="{ root: isDesktop ? '' : 'rounded-t-lg rounded-b-none border-b-0' }">
         <template #header>
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-2">
@@ -132,7 +137,7 @@
         </div>
 
         <!-- Content -->
-        <div v-else-if="citationData" class="flex flex-col gap-4">
+        <div v-else-if="citationData" class="flex max-h-[70vh] flex-col gap-4 overflow-y-auto">
           <!-- Source metadata -->
           <div class="flex items-center gap-2 rounded-lg bg-muted p-3">
             <UIcon name="i-lucide-file-text" class="size-4 text-muted" />
@@ -203,5 +208,5 @@
         </template>
       </UCard>
     </template>
-  </UModal>
+  </component>
 </template>
