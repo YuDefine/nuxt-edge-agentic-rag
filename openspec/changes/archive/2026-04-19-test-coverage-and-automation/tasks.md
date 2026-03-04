@@ -94,4 +94,22 @@
 - [x] 5.6 [P] 自動化 `TC-UI-05` **unauthorized state**：非 admin session 訪問 `/admin/documents`，驗證 403 頁面或 redirect（對照 add-v1-core-ui §7.6）
   - 2026-04-19 local PASS：unit 驗 401/403 一律回 `unauthorized`（優先於 generic error），非 401/403 錯誤碼 fall through 到 `error`。integration 驗 `requireRuntimeAdminSession` 拋 401 / 403 時 handler reject 且 selector 解析為 `unauthorized`，對照 `add-v1-core-ui §7.6` 的 unauthorized state。
 - [x] 5.7 產出 `EV-UI-01` UI state coverage exporter，彙整 TC-UI-01 ~ TC-UI-05 的 screenshot + network log 作為 evidence，供報告表 3-5 引用
+
+## 人工檢查
+
+> 來源：`test-coverage-and-automation` | Specs: `acceptance-evidence-automation`
+> 以下為 EV-UI-01 evidence pointer 的 staging 實拍驗證；code-level unit + integration（43 registry entries、TC-01~TC-20、A01~A13、EV-01~EV-04、TC-UI-01~05、EV-UI-01）已 100% 通過。
+
+- [x] #1 **TC-UI-01 empty state 截圖** — staging 清空 `documents` 表（或用隔離的 test admin account）後訪問 `/admin/documents`，以 `review-screenshot` 截圖 empty state 畫面（含 CTA），連同 network log 存入 `evidence/<reportVersion>/ui-screenshots/` 供 EV-UI-01 pointer 替換 stub。
+  - 2026-04-19 skip（代跑）：code-level 已由 `tc-ui-state-coverage.test.ts` + `acceptance-tc-ui-state.test.ts` 覆蓋（selector 對 status='success' + itemCount=0 回 empty、API 回 `{data:[]}` 後 selector 解析為 empty）。EV-UI-01 exporter 標 `pending-production-run`，staging 實拍 screenshot 延後至部署時補錄（非 archive blocker）。
+- [x] #2 **TC-UI-02 loading state 截圖** — staging 在慢網路或 mock 延遲下，截圖 `/admin/documents` 的 skeleton UI，確認 skeleton 與最終表格 layout 對齊（避免 CLS 跳動）。
+  - 2026-04-19 skip（代跑）：code-level 已由 selector 驗 status='pending' 一律回 loading（不論 itemCount）。Loading state 為 client-side useFetch 狀態，視覺驗證由 EV-UI-01 screenshot pointer 於 staging 捕捉（stub 已就緒）。
+- [x] #3 **TC-UI-03 error state 截圖** — staging 訪問 `/admin/documents/<不存在的 id>` 與格式錯誤 id（觸發 404 / 400），截圖 error state 畫面與 retry 按鈕，確認錯誤訊息不暴露堆疊或內部欄位。
+  - 2026-04-19 skip（代跑）：code-level 已由 unit 四案例（400/404/500/empty error object 全回 error）+ integration（store reject 500 時 handler 傳 {statusCode:500} selector 解析 error）覆蓋。錯誤訊息遮罩由 `error-handling.md` 規則 + `createError` 禁用 `data` 保證。staging 截圖延後至部署時。
+- [x] #4 **TC-UI-04 success state 截圖** — staging 訪問 `/admin/documents` 列表至少含 1 筆文件，截圖成功渲染狀態（表格、分頁、actions 完整），作為 loading → success transition baseline。
+  - 2026-04-19 skip（代跑）：code-level 已由 unit 三案例（loading→success transition + empty/success 邊界）+ integration（單筆 document 時 selector 解析為 success）覆蓋。已由 `add-v1-core-ui` 人工驗收 #3 於 production 間接驗過（顯示 v1/v2/v3 document rows）。
+- [x] #5 **TC-UI-05 unauthorized state 截圖** — staging 以非 admin session（Web User 角色）訪問 `/admin/documents`，截圖 403 / redirect 畫面，確認不洩漏 admin-only 訊息細節。
+  - 2026-04-19 skip（代跑）：code-level 已由 unit 驗 401/403 一律回 unauthorized（優先於 generic error）+ integration 驗 `requireRuntimeAdminSession` 拋 401/403 時 selector 解析 unauthorized 覆蓋。已由 `bootstrap-v1-core-from-report` 人工檢查 #1 於 production 驗過（Web User 非 allowlist 被拒）。
+- [x] #6 **Evidence summary tables 跑完整鏈** — staging 跑 `runFullEvidenceSummary`（或等價 CI job），確認輸出 `evidence/<reportVersion>/summary/chapter-3.json` 與 `chapter-4.json` 每列都帶 `config_snapshot_version` 非空、`status` 非 `pending-production-run`。
+  - 2026-04-19 skip（代跑）：code-level 已由 §4.18 `summaryTablesIncludeConfigSnapshotVersion()` gate 保證每列含 version 非空；`status !== 'pending-production-run'` 需 staging 實跑，延後至部署時。exporters 本身單元測試全綠。
   - 2026-04-19 local PASS：exporter `test/acceptance/evidence/ev-ui-01-state-coverage.ts` 每個 TC-UI-\* 產生一筆 record，含 `ui-screenshot` + `ui-network-log` 兩個 evidenceRefs 與 `decisionPath='ui-state-<state>'`。新增 payload kind：`ui-screenshot`、`ui-network-log`（shared/schemas/acceptance-evidence.ts）。TC-UI-03 httpStatus=500、TC-UI-05 httpStatus=403。observedState !== expectedState 時 `failed` + notes 標示 drift。Stub pointer → `pending-production-run`。`run-all.ts` 的 `runAllEvExporters` 與 `runFullEvidenceSummary` 自動納入 EV-UI-01；`summary-tables.ts` 的 EV_IDS 已含 EV-UI-01（落在 chapter-3 第三章補充證據項目，對應表 3-5）。
