@@ -1,3 +1,18 @@
+## 0. API Prerequisites (server + tests only)
+
+- [x] 0.1 `GET /api/admin/mcp-tokens` — list endpoint returning `{ data, pagination }`, exposing only id / label / scopes / status / expires_at / last_used_at / created_at (never token_hash). Zod query schema via `paginationQuerySchema` + optional status filter.
+  - 2026-04-19 local PASS: `server/api/admin/mcp-tokens/index.get.ts` + `createMcpTokenAdminStore.listTokensForAdmin/countTokensForAdmin`; 4 tests (401/403/redaction-no-token_hash/empty-list) green.
+- [x] 0.2 `DELETE /api/admin/mcp-tokens/[id]` — revoke endpoint; sets `status='revoked'` + `revoked_at=now()`; idempotent (already-revoked returns 200 no-op); 404 when not found.
+  - 2026-04-19 local PASS: `server/api/admin/mcp-tokens/[id].delete.ts` + `createMcpTokenAdminStore.revokeTokenById`; 5 tests (401/403/404/revoked/already-revoked idempotent) green.
+- [x] 0.3 `GET /api/admin/query-logs` — list endpoint with channel / outcome / query_type / redaction_applied / date range filters; redaction-safe rows only (never raw query); page-based pagination.
+  - 2026-04-19 local PASS: `server/api/admin/query-logs/index.get.ts` + `createQueryLogAdminStore.listQueryLogs/countQueryLogs`; 4 tests (401/403/redaction-safe row/filter forwarding) green.
+- [x] 0.4 `GET /api/admin/query-logs/[id]` — detail endpoint returning redaction-safe fields + risk_flags_json + config_snapshot_version (decision_path omitted until observability-and-debug adds the column); never returns raw / un-redacted text.
+  - 2026-04-19 local PASS: `server/api/admin/query-logs/[id].get.ts` + `createQueryLogAdminStore.getQueryLogById`; 4 tests (401/403/404/redaction-safe detail) green.
+- [x] 0.5 All endpoints gated by `requireRuntimeAdminSession`; integration tests assert 401 (unauth) / 403 (non-admin) / 200 (happy) + redaction-guarantee assertions (no `token_hash` / `query_text` / `raw_query` keys).
+  - 2026-04-19 local PASS: `test/integration/admin-mcp-tokens-route.test.ts` + `test/integration/admin-query-logs-route.test.ts` — 17 tests all green; explicit `.not.toHaveProperty('token_hash' | 'tokenHash' | 'query_text' | 'queryText' | 'raw_query' | 'rawQuery')` assertions on both list and detail responses.
+- [x] 0.6 Run `pnpm test:integration` and confirm no regressions.
+  - 2026-04-19 local PASS: 208/208 tests across 41 files, 0 failures (baseline was 191 tests across 39 files before this change).
+
 ## 1. Admin Token Management UI
 
 - [ ] 1.1 建立 `/admin/tokens` 路由與 page guard。

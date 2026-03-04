@@ -55,6 +55,20 @@
     { key: 'publish', label: '發布文件', description: '發布至知識庫' },
   ]
 
+  interface LockedDocument {
+    id: string
+    slug: string
+    title: string
+    categorySlug: string
+    accessLevel: 'internal' | 'restricted'
+  }
+
+  const props = defineProps<{
+    lockedDocument?: LockedDocument | null
+  }>()
+
+  const isLocked = computed(() => Boolean(props.lockedDocument))
+
   const emit = defineEmits<{
     complete: [result: { documentId: string; versionId: string }]
     cancel: []
@@ -186,10 +200,27 @@
 
   const documentMeta = reactive<DocumentMeta>(createEmptyDraft())
 
+  // Copy the four locked metadata fields into `documentMeta`. Used whenever
+  // the wizard resets / restores state under `lockedDocument` mode so the
+  // four fields stay in sync across mount, reset, and file-selection paths.
+  function applyLockedMeta() {
+    if (!props.lockedDocument) return
+    documentMeta.title = props.lockedDocument.title
+    documentMeta.slug = props.lockedDocument.slug
+    documentMeta.categorySlug = props.lockedDocument.categorySlug
+    documentMeta.accessLevel = props.lockedDocument.accessLevel
+  }
+
   const draft = useLocalStorage<DocumentMeta>(UPLOAD_DRAFT_KEY, createEmptyDraft())
   const hasRestoredDraft = ref(false)
 
   onMounted(() => {
+    // 鎖定模式：以既有文件資料預填，並忽略 localStorage 草稿
+    if (props.lockedDocument) {
+      applyLockedMeta()
+      return
+    }
+
     const d = draft.value
     const hasContent = Boolean(d.title || d.slug || d.categorySlug)
     if (!hasContent) return
@@ -202,7 +233,9 @@
 
   // watchEffect below syncs documentMeta → draft.value, so clearing draft directly is redundant;
   // mutating documentMeta triggers the sync.
+  // 鎖定模式不寫入草稿，避免污染下次「新文件上傳」。
   watchEffect(() => {
+    if (isLocked.value) return
     draft.value = {
       title: documentMeta.title,
       slug: documentMeta.slug,
@@ -245,6 +278,11 @@
   watch(
     () => documentMeta.slug,
     (value) => {
+      // 鎖定模式：slug 已綁定既有文件，不需做衝突檢查提示
+      if (isLocked.value) {
+        slugConflict.value = false
+        return
+      }
       const trimmed = value.trim()
       if (!trimmed || !/^[a-z0-9-]+$/.test(trimmed)) {
         slugConflict.value = false
@@ -394,6 +432,8 @@
     }
 
     selectedFile.value = file
+    // 鎖定模式：保留既有文件的 title / slug，不從檔名覆寫
+    if (isLocked.value) return
     const baseName = file.name.replace(/\.[^/.]+$/, '')
     documentMeta.title = baseName
     documentMeta.slug = generateSlugFromName(baseName)
@@ -450,7 +490,15 @@
   async function startUpload(event: FormSubmitEvent<DocumentMeta>) {
     if (!selectedFile.value) return
 
-    const validated = event.data
+    // 鎖定模式：強制以既有文件的 slug / metadata 送出，防止 form state 被繞過
+    const validated: DocumentMeta = props.lockedDocument
+      ? {
+          title: props.lockedDocument.title,
+          slug: props.lockedDocument.slug,
+          categorySlug: props.lockedDocument.categorySlug,
+          accessLevel: props.lockedDocument.accessLevel,
+        }
+      : event.data
 
     errorMessage.value = null
     errorStep.value = null
@@ -571,6 +619,11 @@
     syncResult.value = null
     indexingStatus.value = null
     indexingError.value = null
+    // 鎖定模式：保留既有文件 metadata，只清檔案與流程狀態
+    if (props.lockedDocument) {
+      applyLockedMeta()
+      return
+    }
     resetDocumentMeta()
     clearDraft()
   }
@@ -646,8 +699,16 @@
     </div>
 
     <div v-if="currentStep === 'select'" class="flex flex-col gap-4">
+      <UAlert
+        v-if="isLocked && lockedDocument"
+        color="neutral"
+        variant="subtle"
+        icon="i-lucide-lock"
+        title="新版本上傳模式"
+        :description="`此次上傳會成為文件「${lockedDocument.title}」的新版本，文件代碼已鎖定為「${lockedDocument.slug}」，無法變更。`"
+      />
       <div
-        v-if="hasRestoredDraft && !selectedFile"
+        v-if="!isLocked && hasRestoredDraft && !selectedFile"
         class="flex items-start gap-3 rounded-md border border-default bg-accented p-3"
       >
         <UIcon name="i-lucide-history" class="mt-0.5 size-4 text-default" />
@@ -712,32 +773,62 @@
           </div>
 
           <div class="grid gap-4 sm:grid-cols-2">
-            <UFormField label="文件標題" name="title" required>
-              <UInput v-model="documentMeta.title" placeholder="輸入文件標題" class="w-full" />
+            <UFormField
+              label="文件標題"
+              name="title"
+              required
+              :help="isLocked ? '鎖定模式：沿用既有文件標題' : undefined"
+            >
+              <UInput
+                v-model="documentMeta.title"
+                placeholder="輸入文件標題"
+                class="w-full"
+                :disabled="isLocked"
+              />
             </UFormField>
             <UFormField
               label="文件代碼"
               name="slug"
               required
               :help="
-                slugConflict
-                  ? 'ℹ️ 此文件代碼已存在，將以新版本上傳到既有文件'
-                  : '小寫英數字與連字符（-）'
+                isLocked
+                  ? '🔒 鎖定為既有文件代碼，確保以新版本入庫'
+                  : slugConflict
+                    ? 'ℹ️ 此文件代碼已存在，將以新版本上傳到既有文件'
+                    : '小寫英數字與連字符（-）'
               "
             >
-              <UInput v-model="documentMeta.slug" placeholder="document-slug" class="w-full" />
+              <UInput
+                v-model="documentMeta.slug"
+                placeholder="document-slug"
+                class="w-full"
+                :disabled="isLocked"
+                :readonly="isLocked"
+              />
             </UFormField>
-            <UFormField label="分類" name="categorySlug" help="選填">
-              <UInput v-model="documentMeta.categorySlug" placeholder="general" class="w-full" />
+            <UFormField
+              label="分類"
+              name="categorySlug"
+              :help="isLocked ? '鎖定模式：沿用既有文件分類' : '選填'"
+            >
+              <UInput
+                v-model="documentMeta.categorySlug"
+                placeholder="general"
+                class="w-full"
+                :disabled="isLocked"
+              />
             </UFormField>
             <UFormField
               label="存取等級"
               name="accessLevel"
-              description="決定誰可以在知識庫中查詢此文件"
+              :description="
+                isLocked ? '鎖定模式：沿用既有文件存取等級' : '決定誰可以在知識庫中查詢此文件'
+              "
               required
             >
               <URadioGroup
                 v-model="documentMeta.accessLevel"
+                :disabled="isLocked"
                 :items="[
                   { value: 'internal', label: '內部', description: '所有已登入使用者' },
                   { value: 'restricted', label: '受限', description: '僅管理員' },

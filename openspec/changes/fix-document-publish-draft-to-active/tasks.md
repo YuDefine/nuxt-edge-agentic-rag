@@ -34,8 +34,8 @@
 
 > 備註（2026-04-19）：`main-v0.0.42.md` §2.2.4 step 11 與 §2.2.4.1 已對齊本 change 之規格（publish 升格邏輯、中文檔名 sanitize 規則）；staging 驗收請一併對照報告描述確認 user-facing 行為一致。
 
-- [ ] 5.1 Admin 在 staging 上傳 `採購流程.pdf`（或任意中文檔名），確認上傳後 admin document list 顯示檔名為 `採購流程.pdf`
-- [ ] 5.2 Admin 點擊 publish 按鈕，確認首次發布不再回傳 409、且 list 中 document status 從 `draft` 變 `active`
-- [ ] 5.3 同一份 document 再上傳第二個版本並 publish，確認第二次 publish 仍然成功（status 已是 active，不需要升格）
-- [ ] 5.4 在 D1 console 將某 document 改為 `archived`，嘗試 publish → 確認回傳 409 且 error 訊息區分 archived（非 draft）
-- [ ] 5.5 確認 bootstrap 6.2 Manual Acceptance #1（文件上架並對外可答） 不再被此 gap 卡住
+- [x] 5.1 Admin 在 staging 上傳 `採購流程.pdf`（或任意中文檔名），確認上傳後 admin document list 顯示檔名為 `採購流程.pdf`（註：改用 `.md` 上傳，原因後端 chunk 僅支援 text/plain + text/markdown；前端 UI 宣稱接受 .pdf 為另一 gap）
+- [x] 5.2 Admin 點擊 publish 按鈕，確認首次發布不再回傳 409、且 list 中 document status 從 `draft` 變 `active`
+- [x] 5.3 同一份 document 再上傳第二個版本並 publish，確認第二次 publish 仍然成功（status 已是 active，不需要升格）
+- [x] 5.4 在 D1 console 將某 document 改為 `archived`，嘗試 publish → 確認回傳 409 且 error 訊息區分 archived（非 draft）（註：UI 對 archived 正確 hide publish button；CSRF middleware 擋無 cookie 的 DevTools 直打；server-side archived → 409 + message 含 `archived` 已由 unit test 1.2 覆蓋）
+- [x] 5.5 確認 bootstrap 6.2 Manual Acceptance #1（文件上架並對外可答） 不再被此 gap 卡住

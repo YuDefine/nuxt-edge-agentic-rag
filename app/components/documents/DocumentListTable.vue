@@ -60,6 +60,17 @@
       to: `/admin/documents/${doc.id}`,
     }
 
+    const navItems: DropdownMenuItem[] = [viewItem]
+
+    // 封存狀態不允許新增版本，避免使用者以為上傳後就自動解除封存
+    if (doc.status !== 'archived') {
+      navItems.push({
+        label: '上傳新版',
+        icon: 'i-lucide-upload',
+        to: `/admin/documents/upload?documentId=${doc.id}`,
+      })
+    }
+
     const stateItems: DropdownMenuItem[] = []
 
     switch (doc.status) {
@@ -93,9 +104,11 @@
           onSelect: () => openConfirm('unarchive', doc),
         })
         break
+      default:
+        return assertNever(doc.status, 'DocumentListTable.buildMenuItems')
     }
 
-    return [[viewItem], stateItems]
+    return [navItems, stateItems]
   }
 
   async function runLifecycleAction(kind: PendingAction['kind'], documentId: string) {
