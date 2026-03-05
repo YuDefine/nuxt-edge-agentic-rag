@@ -1,12 +1,22 @@
 <script setup lang="ts">
   const { isAdmin } = useUserRole()
   const { user, signOut } = useUserSession()
+  const runtimeConfig = useRuntimeConfig()
+  const dashboardEnabled = computed(() => runtimeConfig.public?.adminDashboardEnabled ?? true)
 
   const links = computed(() => {
     const items = [{ label: '問答', to: '/' }]
 
     if (isAdmin.value) {
-      items.push({ label: '文件管理', to: '/admin/documents' })
+      items.push(
+        { label: '文件管理', to: '/admin/documents' },
+        { label: 'Token 管理', to: '/admin/tokens' },
+        { label: '查詢日誌', to: '/admin/query-logs' }
+      )
+      if (dashboardEnabled.value) {
+        items.push({ label: '管理摘要', to: '/admin/dashboard' })
+      }
+      items.push({ label: 'Debug 延遲', to: '/admin/debug/latency' })
     }
 
     return items

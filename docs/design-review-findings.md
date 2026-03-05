@@ -61,3 +61,21 @@
 - 這樣下次的 Design Review 可以專注視覺而非重複 a11y 檢查
 
 累積 Findings: **11 項**（接近 `/design-retro` 的 5 倍數觸發點 10 / 15；若再累積一次 Design Review 到達 15 即可觸發 retro）。
+
+---
+
+## admin-ui-post-core (Phase 3) — 2026-04-19
+
+**影響範圍**:
+
+- `app/pages/admin/dashboard/index.vue`
+- `app/components/admin/dashboard/SummaryCard.vue`
+- `app/components/admin/dashboard/QueryTrendList.vue`
+
+| #   | 類別        | 問題摘要                                                                                                                 | 嚴重度  | 發現來源      |
+| --- | ----------- | ------------------------------------------------------------------------------------------------------------------------ | ------- | ------------- |
+| 1   | consistency | `SummaryCard` 初版用 `bg-primary/10 text-primary` 做 icon halo，不符合既定 empty-state icon-circle `bg-muted` convention | warning | design-review |
+
+備註：修復時未觸發 cross-change DRIFT — tokens / query-logs / documents 全部都使用 `bg-muted text-default`，Phase 3 初版是唯一偏離者；review 當下 inline 修復。
+
+累積 Findings: **12 項**。
