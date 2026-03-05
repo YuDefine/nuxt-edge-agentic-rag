@@ -1,4 +1,4 @@
-name: Deploy Production
+name: Deploy
 
 on:
   push:
@@ -44,7 +44,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     concurrency:
-      group: production-deploy
+      group: deploy
       cancel-in-progress: true
     steps:
       - name: Checkout
@@ -99,10 +99,10 @@ jobs:
         run: |
           STATUS=$(curl -sf -o /dev/null -w '%{http_code}' "${{ secrets.PROD_SITE_URL }}" --max-time 10)
           if [ "$STATUS" != "200" ]; then
-            echo "::error::Production health check failed: HTTP $STATUS"
+            echo "::error::Health check failed: HTTP $STATUS"
             exit 1
           fi
-          echo "✅ Production is healthy (HTTP $STATUS)"
+          echo "✅ Healthy (HTTP $STATUS)"
 
   notify:
     if: always()
@@ -119,9 +119,9 @@ jobs:
         run: |
           TAG="${GITHUB_REF_NAME}"
           if [ "$CI_RESULT" = "success" ] && [ "$DEPLOY_RESULT" = "success" ]; then
-            COLOR=3066993; STATUS="✅ Production 部署成功 — ${TAG}"
+            COLOR=3066993; STATUS="✅ 部署成功 — ${TAG}"
           else
-            COLOR=15158332; STATUS="❌ Production 部署失敗 — ${TAG}"
+            COLOR=15158332; STATUS="❌ 部署失敗 — ${TAG}"
           fi
 
           RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
