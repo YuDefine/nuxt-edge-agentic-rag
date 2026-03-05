@@ -10,11 +10,19 @@ import {
   createKvBindingFake,
 } from '../acceptance/helpers/bindings'
 import { getAcceptanceRegistryEntry } from '../acceptance/registry/manifest'
-import { createRouteEvent, installNuxtRouteTestGlobals } from './helpers/nuxt-route'
+import { runMcpTool } from './helpers/mcp-tool-runner'
+import { installNuxtRouteTestGlobals } from './helpers/nuxt-route'
+
+const pendingEvent = vi.hoisted(() => ({ current: null as unknown }))
+
+vi.mock('nitropack/runtime', () => ({
+  useEvent: () => pendingEvent.current,
+}))
 
 // TC-16 searchKnowledge no-hit 契約
 // 當查詢在目前 actor 可見的 evidence 集合中找不到結果時，
-// /api/mcp/search 必須回 HTTP 200 + `{ data: { results: [] } }`，
+// MCP `searchKnowledge` tool（@nuxtjs/mcp-toolkit /mcp JSON-RPC endpoint）
+// 必須回傳 `{ results: [] }`（toolkit wrap 後 CallToolResult 仍是 200），
 // 並且不得回傳任何暗示命中的欄位。
 
 interface Tc16TestState {
@@ -109,20 +117,22 @@ describe('acceptance searchKnowledge no-hit contract (TC-16)', () => {
     )
     tc16Mocks.readBody.mockResolvedValue({ query: fixture.prompt })
 
-    const { default: handler } = await import('../../server/api/mcp/search.post')
-    const result = (await handler(
-      createRouteEvent({
-        headers: {
-          authorization: tc16Mocks.actor?.mcpToken.authorizationHeader ?? '',
-        },
-      })
-    )) as { data: { results: unknown[]; normalizedQuery?: string } }
+    const { default: tool } = await import('#server/mcp/tools/search')
+    const result = (await runMcpTool(
+      tool,
+      { query: fixture.prompt },
+      {
+        authorizationHeader: tc16Mocks.actor?.mcpToken.authorizationHeader ?? '',
+        cloudflareEnv: tc16Mocks.bindings ?? {},
+        pendingEvent,
+      }
+    )) as { results: unknown[]; normalizedQuery?: string }
 
-    // 契約 #1：200 + results: []
-    expect(result.data.results).toEqual([])
+    // 契約 #1：tool 直接回傳 results（不含 data envelope）；200 + results: []
+    expect(result.results).toEqual([])
 
     // 契約 #2：回傳 envelope 不得暗示命中（無 answer / citations / refused / decisionPath）
-    const envelopeKeys = Object.keys(result.data)
+    const envelopeKeys = Object.keys(result)
 
     for (const leakingKey of [
       'answer',

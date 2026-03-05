@@ -143,11 +143,13 @@ async function main(): Promise<void> {
       console.log('Token（請妥善保存，只會顯示一次）：')
       console.log(`   ${data.token}`)
       console.log('')
-      console.log('測試命令：')
-      console.log(`   curl -s -X POST "${baseUrl}/api/mcp/search" \\`)
+      console.log('測試命令（JSON-RPC over /mcp）：')
+      console.log(`   curl -s -X POST "${baseUrl}/mcp" \\`)
       console.log(`     -H "Authorization: Bearer ${data.token}" \\`)
       console.log('     -H "Content-Type: application/json" \\')
-      console.log('     -d \'{"query":"test"}\'')
+      console.log(
+        '     -d \'{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"searchKnowledge","arguments":{"query":"test"}}}\''
+      )
     } else {
       if (response.status === 401 || response.status === 403) {
         console.error('❌ 權限不足（需要 admin 權限）')

@@ -4,6 +4,7 @@ export function installNuxtRouteTestGlobals() {
   beforeEach(() => {
     vi.resetModules()
     vi.stubGlobal('defineEventHandler', <T>(handler: T) => handler)
+    vi.stubGlobal('defineMcpTool', <T>(definition: T) => definition)
     vi.stubGlobal('createError', (input: { message: string }) =>
       Object.assign(new Error(input.message), input)
     )

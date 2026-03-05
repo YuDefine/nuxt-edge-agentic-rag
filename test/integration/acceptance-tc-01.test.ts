@@ -10,7 +10,14 @@ import {
   createKvBindingFake,
 } from '../acceptance/helpers/bindings'
 import { getAcceptanceRegistryEntry } from '../acceptance/registry/manifest'
+import { runMcpTool } from './helpers/mcp-tool-runner'
 import { createRouteEvent, installNuxtRouteTestGlobals } from './helpers/nuxt-route'
+
+const pendingEvent = vi.hoisted(() => ({ current: null as unknown }))
+
+vi.mock('nitropack/runtime', () => ({
+  useEvent: () => pendingEvent.current,
+}))
 
 interface Tc01TestState {
   actor: ReturnType<typeof createAcceptanceActorFixture> | null
@@ -119,7 +126,7 @@ describe('acceptance direct-answer automation', () => {
     const result =
       fixture.channel === 'web'
         ? await runWebCase()
-        : await runMcpCase(tc01Mocks.actor?.mcpToken.authorizationHeader ?? '')
+        : await runMcpCase(tc01Mocks.actor?.mcpToken.authorizationHeader ?? '', fixture.prompt)
 
     const d1 = (tc01Mocks.bindings ?? {}).DB as ReturnType<typeof createD1BindingFake>
     const aiBinding = (tc01Mocks.bindings ?? {}).AI as ReturnType<typeof createAiSearchBindingFake>
@@ -216,16 +223,19 @@ async function runWebCase() {
   return await handler(createRouteEvent())
 }
 
-async function runMcpCase(authorizationHeader: string) {
-  const { default: handler } = await import('../../server/api/mcp/ask.post')
-
-  return await handler(
-    createRouteEvent({
-      headers: {
-        authorization: authorizationHeader,
-      },
-    })
+async function runMcpCase(authorizationHeader: string, query: string) {
+  const { default: tool } = await import('#server/mcp/tools/ask')
+  const data = await runMcpTool(
+    tool,
+    { query },
+    {
+      authorizationHeader,
+      cloudflareEnv: tc01Mocks.bindings ?? {},
+      pendingEvent,
+    }
   )
+
+  return { data }
 }
 
 function createTc01Bindings(

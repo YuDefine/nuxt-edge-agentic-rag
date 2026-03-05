@@ -276,11 +276,13 @@ wrangler d1 execute agentic-rag-db --remote --command \
      (SELECT COUNT(*) FROM citation_records WHERE expires_at <= datetime('now')) AS expired_citations;"
 # 預期：三個 count 皆為 0（cleanup 已清光過期資料）
 
-# 抽樣確認 retention window 內的 citation 仍可回放（任挑一筆）
+# 抽樣確認 retention window 內的 citation 仍可回放（任挑一筆，透過 /mcp JSON-RPC）
 CITATION_ID="..."
-curl -s "$BASE_URL/api/mcp/chunks/$CITATION_ID" \
-  -H "Authorization: Bearer $MCP_TOKEN_FULL" | jq .
-# 預期：200 + chunk content
+curl -s -X POST "$BASE_URL/mcp" \
+  -H "Authorization: Bearer $MCP_TOKEN_FULL" \
+  -H "Content-Type: application/json" \
+  -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"getDocumentChunk\",\"arguments\":{\"citationId\":\"$CITATION_ID\"}}}" | jq .
+# 預期：200 + chunk content（result.content[0].text 內為 chunk JSON）
 ```
 
 ### 5.2 Staging-only：Backdated Verification

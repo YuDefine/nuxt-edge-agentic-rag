@@ -10,7 +10,14 @@ import {
   createKvBindingFake,
 } from '../acceptance/helpers/bindings'
 import { getAcceptanceRegistryEntry } from '../acceptance/registry/manifest'
-import { createRouteEvent, installNuxtRouteTestGlobals } from './helpers/nuxt-route'
+import { runMcpTool } from './helpers/mcp-tool-runner'
+import { installNuxtRouteTestGlobals } from './helpers/nuxt-route'
+
+const pendingEvent = vi.hoisted(() => ({ current: null as unknown }))
+
+vi.mock('nitropack/runtime', () => ({
+  useEvent: () => pendingEvent.current,
+}))
 
 // TC-20 MCP no-internal-diagnostics 契約
 // MCP 對外回應不得暴露內部診斷欄位：retrievalScore、decisionPath、
@@ -128,19 +135,21 @@ describe('acceptance MCP no-internal-diagnostics contract (TC-20)', () => {
     )
     tc20Mocks.readBody.mockResolvedValue({ query: fixture.prompt })
 
-    // --- searchKnowledge ---
-    const { default: searchHandler } = await import('../../server/api/mcp/search.post')
-    const searchResult = (await searchHandler(
-      createRouteEvent({
-        headers: {
-          authorization: tc20Mocks.actor?.mcpToken.authorizationHeader ?? '',
-        },
-      })
-    )) as { data: { results: Array<Record<string, unknown>> } }
+    // --- searchKnowledge tool ---
+    const { default: searchTool } = await import('#server/mcp/tools/search')
+    const searchResult = (await runMcpTool(
+      searchTool,
+      { query: fixture.prompt },
+      {
+        authorizationHeader: tc20Mocks.actor?.mcpToken.authorizationHeader ?? '',
+        cloudflareEnv: tc20Mocks.bindings ?? {},
+        pendingEvent,
+      }
+    )) as { results: Array<Record<string, unknown>> }
 
-    assertNoInternalDiagnostics('search envelope', searchResult.data)
+    assertNoInternalDiagnostics('search envelope', searchResult)
 
-    for (const [index, row] of searchResult.data.results.entries()) {
+    for (const [index, row] of searchResult.results.entries()) {
       assertNoInternalDiagnostics(`search result[${index}]`, row)
 
       for (const key of Object.keys(row)) {
@@ -151,19 +160,21 @@ describe('acceptance MCP no-internal-diagnostics contract (TC-20)', () => {
       }
     }
 
-    // --- listCategories ---
-    const { default: categoriesHandler } = await import('../../server/api/mcp/categories.get')
-    const categoriesResult = (await categoriesHandler(
-      createRouteEvent({
-        headers: {
-          authorization: tc20Mocks.actor?.mcpToken.authorizationHeader ?? '',
-        },
-      })
-    )) as { data: { categories: Array<Record<string, unknown>> } }
+    // --- listCategories tool ---
+    const { default: categoriesTool } = await import('#server/mcp/tools/categories')
+    const categoriesResult = (await runMcpTool(
+      categoriesTool,
+      { includeCounts: true },
+      {
+        authorizationHeader: tc20Mocks.actor?.mcpToken.authorizationHeader ?? '',
+        cloudflareEnv: tc20Mocks.bindings ?? {},
+        pendingEvent,
+      }
+    )) as { categories: Array<Record<string, unknown>> }
 
-    assertNoInternalDiagnostics('categories envelope', categoriesResult.data)
+    assertNoInternalDiagnostics('categories envelope', categoriesResult)
 
-    for (const [index, entry] of categoriesResult.data.categories.entries()) {
+    for (const [index, entry] of categoriesResult.categories.entries()) {
       assertNoInternalDiagnostics(`categories[${index}]`, entry)
 
       // 欄位限定為 { name, count }（MCP 契約不得暴露 documentVersionId、slug 以外的內部 id）

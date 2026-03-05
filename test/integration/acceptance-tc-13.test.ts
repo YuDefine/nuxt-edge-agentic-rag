@@ -9,7 +9,14 @@ import {
   createKvBindingFake,
 } from '../acceptance/helpers/bindings'
 import { getAcceptanceRegistryEntry } from '../acceptance/registry/manifest'
-import { createRouteEvent, installNuxtRouteTestGlobals } from './helpers/nuxt-route'
+import { runMcpTool } from './helpers/mcp-tool-runner'
+import { installNuxtRouteTestGlobals } from './helpers/nuxt-route'
+
+const pendingEvent = vi.hoisted(() => ({ current: null as unknown }))
+
+vi.mock('nitropack/runtime', () => ({
+  useEvent: () => pendingEvent.current,
+}))
 
 interface Tc13TestState {
   actor: ReturnType<typeof createAcceptanceActorFixture> | null
@@ -104,20 +111,20 @@ describe('acceptance restricted citation scope (TC-13)', () => {
     // Non-restricted token 確認 scope 不含 restricted read
     expect(tc13Mocks.actor?.mcpAuth.scopes).not.toContain('knowledge.restricted.read')
 
-    const { default: handler } = await import('../../server/api/mcp/chunks/[citationId].get')
-    const event = createRouteEvent({
-      context: {
-        cloudflare: { env: tc13Mocks.bindings ?? {} },
-        params: { citationId: RESTRICTED_CITATION_ID },
-      },
-      headers: {
-        authorization: tc13Mocks.actor?.mcpToken.authorizationHeader ?? '',
-      },
-    })
+    const { default: tool } = await import('#server/mcp/tools/get-document-chunk')
 
     let thrown: unknown = null
     try {
-      await handler(event)
+      await runMcpTool(
+        tool,
+        { citationId: RESTRICTED_CITATION_ID },
+        {
+          authorizationHeader: tc13Mocks.actor?.mcpToken.authorizationHeader ?? '',
+          cloudflareEnv: tc13Mocks.bindings ?? {},
+          params: { citationId: RESTRICTED_CITATION_ID },
+          pendingEvent,
+        }
+      )
     } catch (error) {
       thrown = error
     }
