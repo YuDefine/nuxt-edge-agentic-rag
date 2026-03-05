@@ -176,16 +176,18 @@ export MCP_TOKEN_LIMITED="<token without restricted scope>"
 # 2. 含 knowledge.restricted.read scope
 export MCP_TOKEN_FULL="<token with restricted scope>"
 
-# 測試 searchKnowledge（應對 restricted 文件做 existence-hiding）
-curl -s -X POST "$BASE_URL/api/mcp/search" \
+# 測試 searchKnowledge（應對 restricted 文件做 existence-hiding；JSON-RPC over /mcp）
+curl -s -X POST "$BASE_URL/mcp" \
   -H "Authorization: Bearer $MCP_TOKEN_LIMITED" \
   -H "Content-Type: application/json" \
-  -d '{"query":"restricted content"}' | jq .
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"searchKnowledge","arguments":{"query":"restricted content"}}}' | jq .
 # 預期：不應看到 restricted 文件
 
-# 測試 getDocumentChunk（無權限應回 403）
-curl -s "$BASE_URL/api/mcp/chunks/<restricted-citation-id>" \
-  -H "Authorization: Bearer $MCP_TOKEN_LIMITED"
+# 測試 getDocumentChunk（無權限應回 403；JSON-RPC over /mcp）
+curl -s -X POST "$BASE_URL/mcp" \
+  -H "Authorization: Bearer $MCP_TOKEN_LIMITED" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"getDocumentChunk","arguments":{"citationId":"<restricted-citation-id>"}}}'
 # 預期：403 Forbidden
 ```
 

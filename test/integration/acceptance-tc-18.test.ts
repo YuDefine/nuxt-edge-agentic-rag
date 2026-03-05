@@ -10,7 +10,14 @@ import {
   createKvBindingFake,
 } from '../acceptance/helpers/bindings'
 import { getAcceptanceRegistryEntry } from '../acceptance/registry/manifest'
+import { runMcpTool } from './helpers/mcp-tool-runner'
 import { createRouteEvent, installNuxtRouteTestGlobals } from './helpers/nuxt-route'
+
+const pendingEvent = vi.hoisted(() => ({ current: null as unknown }))
+
+vi.mock('nitropack/runtime', () => ({
+  useEvent: () => pendingEvent.current,
+}))
 
 // TC-18：current-version-only 切版驗證
 // 模擬同一份 document 有 V1（is_current=0, archived）與 V2（is_current=1, active）兩版，
@@ -142,7 +149,7 @@ describe('acceptance current-version-only enforcement', () => {
       const result = (
         fixture.channel === 'web'
           ? await runWebCase()
-          : await runMcpCase(tc18Mocks.actor?.mcpToken.authorizationHeader ?? '')
+          : await runMcpCase(tc18Mocks.actor?.mcpToken.authorizationHeader ?? '', fixture.prompt)
       ) as {
         data: {
           answer: string
@@ -245,16 +252,19 @@ async function runWebCase() {
   return await handler(createRouteEvent())
 }
 
-async function runMcpCase(authorizationHeader: string) {
-  const { default: handler } = await import('../../server/api/mcp/ask.post')
-
-  return await handler(
-    createRouteEvent({
-      headers: {
-        authorization: authorizationHeader,
-      },
-    })
+async function runMcpCase(authorizationHeader: string, query: string) {
+  const { default: tool } = await import('#server/mcp/tools/ask')
+  const data = await runMcpTool(
+    tool,
+    { query },
+    {
+      authorizationHeader,
+      cloudflareEnv: tc18Mocks.bindings ?? {},
+      pendingEvent,
+    }
   )
+
+  return { data }
 }
 
 function getTc18Scenario(): Tc18Scenario {

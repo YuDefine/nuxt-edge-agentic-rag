@@ -2,7 +2,24 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { createKnowledgeRuntimeConfig } from '#shared/schemas/knowledge-runtime'
 import { createHubDbMock } from './helpers/database'
-import { createRouteEvent, installNuxtRouteTestGlobals } from './helpers/nuxt-route'
+import { runMcpTool } from './helpers/mcp-tool-runner'
+import { installNuxtRouteTestGlobals } from './helpers/nuxt-route'
+
+// §3.1 Tool Migration (TDD red → green).
+//
+// After migrating the 4 HTTP endpoints to `defineMcpTool` definitions under
+// `server/mcp/tools/*`, these contract tests MUST exercise the same shape
+// through the JSON-RPC tool pipeline:
+//   - Auth + rate limit live in the middleware (runMcpMiddleware)
+//   - Per-tool scope checks + business logic live in the tool handler
+// The test runner (`runMcpTool`) stands in for the toolkit's `/mcp` handler,
+// running middleware → tool handler with a crafted H3 event.
+
+const pendingEvent = vi.hoisted(() => ({ current: null as unknown }))
+
+vi.mock('nitropack/runtime', () => ({
+  useEvent: () => pendingEvent.current,
+}))
 
 const mcpRouteMocks = vi.hoisted(() => {
   class MockMcpAuthError extends Error {
@@ -29,7 +46,8 @@ const mcpRouteMocks = vi.hoisted(() => {
   class MockMcpReplayError extends Error {
     constructor(
       message: string,
-      readonly statusCode: number
+      readonly statusCode: number,
+      readonly reason = 'chunk_not_found'
     ) {
       super(message)
       this.name = 'McpReplayError'
@@ -50,15 +68,15 @@ const mcpRouteMocks = vi.hoisted(() => {
     createMcpCategoryStore: vi.fn().mockReturnValue({}),
     createMcpQueryLogStore: vi.fn().mockReturnValue({}),
     createMcpReplayStore: vi.fn().mockReturnValue({}),
-    createMcpTokenStore: vi.fn().mockReturnValue({}),
+    createMcpTokenStore: vi.fn().mockReturnValue({
+      findUsableTokenByHash: vi.fn(),
+      touchLastUsedAt: vi.fn(),
+    }),
     getDocumentChunk: vi.fn(),
     getKnowledgeRuntimeConfig: vi.fn(),
     getRequiredD1Binding: vi.fn().mockReturnValue({}),
     getRequiredKvBinding: vi.fn().mockReturnValue({ get: vi.fn(), put: vi.fn() }),
-    getValidatedQuery: vi.fn(),
     listCategories: vi.fn(),
-    readValidatedBody: vi.fn(),
-    readZodBody: vi.fn(),
     requireMcpBearerToken: vi.fn().mockResolvedValue({
       scopes: [
         'knowledge.ask',
@@ -66,6 +84,7 @@ const mcpRouteMocks = vi.hoisted(() => {
         'knowledge.category.list',
         'knowledge.citation.read',
       ],
+      token: {},
       tokenId: 'token-1',
     }),
     requireMcpScope: vi.fn(),
@@ -159,23 +178,16 @@ vi.mock('../../server/utils/mcp-token-store', () => ({
   createMcpTokenStore: mcpRouteMocks.createMcpTokenStore,
 }))
 
-vi.mock('../../server/utils/read-zod-body', () => ({
-  readZodBody: mcpRouteMocks.readZodBody,
-}))
-
 installNuxtRouteTestGlobals()
 
-describe('mcp route handlers', () => {
+describe('mcp tool contract handlers (toolkit-native)', () => {
   beforeEach(() => {
-    vi.stubGlobal('getValidatedQuery', mcpRouteMocks.getValidatedQuery)
-    vi.stubGlobal('readValidatedBody', mcpRouteMocks.readValidatedBody)
-
     mcpRouteMocks.getKnowledgeRuntimeConfig.mockReturnValue(
       createKnowledgeRuntimeConfig({
         bindings: {
           aiSearchIndex: 'knowledge-index',
           d1Database: 'DB',
-          rateLimitKv: 'RATE_LIMITS',
+          rateLimitKv: 'KV',
         },
         environment: 'local',
       })
@@ -190,78 +202,62 @@ describe('mcp route handlers', () => {
       citationId: 'citation-1',
       citationLocator: 'lines 1-3',
     })
-    mcpRouteMocks.getValidatedQuery.mockResolvedValue({ includeCounts: true })
     mcpRouteMocks.listCategories.mockResolvedValue([{ count: 1, slug: 'launch', title: 'Launch' }])
-    mcpRouteMocks.readValidatedBody.mockResolvedValue({ query: 'What changed?' })
-    mcpRouteMocks.readZodBody.mockResolvedValue({ query: 'What changed?' })
     mcpRouteMocks.searchKnowledge.mockResolvedValue({
       evidence: [],
       normalizedQuery: 'what changed',
     })
   })
 
-  it('rejects MCP ask requests that try to provide session state', async () => {
-    const { default: handler } = await import('../../server/api/mcp/ask.post')
-
-    await expect(
-      handler(
-        createRouteEvent({
-          headers: {
-            'mcp-session-id': 'session-1',
-          },
-        })
-      )
-    ).rejects.toMatchObject({
-      message: 'MCP session state is not supported in v1.0.0',
-      statusCode: 400,
-    })
-  })
-
-  it('maps replay authorization failures to 403', async () => {
+  it('surfaces replay 403 errors from the getDocumentChunk tool', async () => {
     mcpRouteMocks.getDocumentChunk.mockRejectedValue(
       new mcpRouteMocks.MockMcpReplayError(
         'The requested citation requires knowledge.restricted.read',
-        403
+        403,
+        'restricted_scope_required'
       )
     )
 
-    const { default: handler } = await import('../../server/api/mcp/chunks/[citationId].get')
+    const { default: tool } = await import('#server/mcp/tools/get-document-chunk')
 
     await expect(
-      handler(
-        createRouteEvent({
-          context: {
-            cloudflare: { env: {} },
-            params: { citationId: 'citation-1' },
-          },
-        })
+      runMcpTool(
+        tool,
+        { citationId: 'citation-1' },
+        {
+          authorizationHeader: 'Bearer test-token',
+          cloudflareEnv: {},
+          pendingEvent,
+        }
       )
     ).rejects.toMatchObject({
-      message: 'The requested citation requires knowledge.restricted.read',
       statusCode: 403,
+      message: 'The requested citation requires knowledge.restricted.read',
     })
   })
 
-  it('records a blocked query_log when getDocumentChunk returns 403', async () => {
+  it('records a blocked query_log when getDocumentChunk tool returns 403', async () => {
     const createAcceptedQueryLog = vi.fn().mockResolvedValue('log-1')
-    mcpRouteMocks.createMcpQueryLogStore.mockReturnValueOnce({ createAcceptedQueryLog })
+    mcpRouteMocks.createMcpQueryLogStore.mockReturnValue({ createAcceptedQueryLog })
     mcpRouteMocks.getDocumentChunk.mockRejectedValue(
       new mcpRouteMocks.MockMcpReplayError(
         'The requested citation requires knowledge.restricted.read',
-        403
+        403,
+        'restricted_scope_required'
       )
     )
 
-    const { default: handler } = await import('../../server/api/mcp/chunks/[citationId].get')
+    const { default: tool } = await import('#server/mcp/tools/get-document-chunk')
 
     await expect(
-      handler(
-        createRouteEvent({
-          context: {
-            cloudflare: { env: {} },
-            params: { citationId: 'citation-restricted' },
-          },
-        })
+      runMcpTool(
+        tool,
+        { citationId: 'citation-restricted' },
+        {
+          authorizationHeader: 'Bearer test-token',
+          cloudflareEnv: {},
+          pendingEvent,
+        }
       )
     ).rejects.toMatchObject({ statusCode: 403 })
 
@@ -275,29 +271,63 @@ describe('mcp route handlers', () => {
     )
   })
 
-  it('returns filtered search results through the unified response envelope', async () => {
+  it('returns filtered search results through the searchKnowledge tool', async () => {
     mcpRouteMocks.searchKnowledge.mockResolvedValue({
       evidence: [{ excerpt: 'Launch moved to Tuesday.', sourceChunkId: 'chunk-1' }],
       normalizedQuery: 'what changed',
     })
 
-    const { default: handler } = await import('../../server/api/mcp/search.post')
-    const result = await handler(createRouteEvent())
+    const { default: tool } = await import('#server/mcp/tools/search')
+    const result = await runMcpTool(
+      tool,
+      { query: 'What changed?' },
+      {
+        authorizationHeader: 'Bearer test-token',
+        cloudflareEnv: {},
+        pendingEvent,
+      }
+    )
 
     expect(result).toEqual({
-      data: {
-        evidence: [{ excerpt: 'Launch moved to Tuesday.', sourceChunkId: 'chunk-1' }],
-        normalizedQuery: 'what changed',
-      },
+      evidence: [{ excerpt: 'Launch moved to Tuesday.', sourceChunkId: 'chunk-1' }],
+      normalizedQuery: 'what changed',
     })
   })
 
-  it('returns visible categories with counts', async () => {
-    const { default: handler } = await import('../../server/api/mcp/categories.get')
-    const result = await handler(createRouteEvent())
+  it('returns visible categories through the listCategories tool', async () => {
+    const { default: tool } = await import('#server/mcp/tools/categories')
+    const result = await runMcpTool(
+      tool,
+      { includeCounts: true },
+      {
+        authorizationHeader: 'Bearer test-token',
+        cloudflareEnv: {},
+        pendingEvent,
+      }
+    )
+
+    expect(result).toEqual([{ count: 1, slug: 'launch', title: 'Launch' }])
+  })
+
+  it('exposes the askKnowledge tool through the middleware pipeline', async () => {
+    const { default: tool } = await import('#server/mcp/tools/ask')
+
+    const result = await runMcpTool(
+      tool,
+      { query: 'What changed?' },
+      {
+        authorizationHeader: 'Bearer test-token',
+        cloudflareEnv: {},
+        pendingEvent,
+      }
+    )
 
     expect(result).toEqual({
-      data: [{ count: 1, slug: 'launch', title: 'Launch' }],
+      answer: 'Launch moved to Tuesday.',
+      citations: [{ citationId: 'citation-1', sourceChunkId: 'chunk-1' }],
+      refused: false,
     })
+
+    expect(mcpRouteMocks.askKnowledge).toHaveBeenCalledTimes(1)
   })
 })

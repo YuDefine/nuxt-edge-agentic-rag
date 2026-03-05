@@ -10,7 +10,14 @@ import {
   createKvBindingFake,
 } from '../acceptance/helpers/bindings'
 import { getAcceptanceRegistryEntry } from '../acceptance/registry/manifest'
-import { createRouteEvent, installNuxtRouteTestGlobals } from './helpers/nuxt-route'
+import { runMcpTool } from './helpers/mcp-tool-runner'
+import { installNuxtRouteTestGlobals } from './helpers/nuxt-route'
+
+const pendingEvent = vi.hoisted(() => ({ current: null as unknown }))
+
+vi.mock('nitropack/runtime', () => ({
+  useEvent: () => pendingEvent.current,
+}))
 
 // TC-12：MCP answer-to-replay 工具鏈
 // 驗證 askKnowledge → getDocumentChunk 的 replay 一致性：
@@ -140,7 +147,8 @@ describe('acceptance MCP interoperability replay chain', () => {
 
       // Step 1：askKnowledge 取得 answer + citations
       const askResult = (await runAskKnowledge(
-        tc12Mocks.actor?.mcpToken.authorizationHeader ?? ''
+        tc12Mocks.actor?.mcpToken.authorizationHeader ?? '',
+        fixture.prompt
       )) as {
         data: {
           answer: string
@@ -257,32 +265,35 @@ describe('acceptance MCP interoperability replay chain', () => {
   )
 })
 
-async function runAskKnowledge(authorizationHeader: string) {
-  const { default: handler } = await import('../../server/api/mcp/ask.post')
-
-  return await handler(
-    createRouteEvent({
-      headers: {
-        authorization: authorizationHeader,
-      },
-    })
+async function runAskKnowledge(authorizationHeader: string, query: string) {
+  const { default: tool } = await import('#server/mcp/tools/ask')
+  const data = await runMcpTool(
+    tool,
+    { query },
+    {
+      authorizationHeader,
+      cloudflareEnv: tc12Mocks.bindings ?? {},
+      pendingEvent,
+    }
   )
+
+  return { data }
 }
 
 async function runGetDocumentChunk(authorizationHeader: string, citationId: string) {
-  const { default: handler } = await import('../../server/api/mcp/chunks/[citationId].get')
-
-  return await handler(
-    createRouteEvent({
-      context: {
-        cloudflare: { env: {} },
-        params: { citationId },
-      },
-      headers: {
-        authorization: authorizationHeader,
-      },
-    })
+  const { default: tool } = await import('#server/mcp/tools/get-document-chunk')
+  const data = await runMcpTool(
+    tool,
+    { citationId },
+    {
+      authorizationHeader,
+      cloudflareEnv: tc12Mocks.bindings ?? {},
+      params: { citationId },
+      pendingEvent,
+    }
   )
+
+  return { data }
 }
 
 function getTc12Scenario(): Tc12Scenario {
