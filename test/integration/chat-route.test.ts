@@ -168,6 +168,27 @@ describe('/api/chat route', () => {
         refused: false,
       },
     })
+
+    // observability-and-debug §4.2 — regression: /api/chat response must never
+    // leak any of the 6 internal debug fields, even though the upstream
+    // chatWithKnowledge may expose `retrievalScore` in its internal result.
+    const serialized = JSON.stringify(result)
+    for (const field of [
+      'firstTokenLatencyMs',
+      'first_token_latency_ms',
+      'completionLatencyMs',
+      'completion_latency_ms',
+      'retrievalScore',
+      'retrieval_score',
+      'judgeScore',
+      'judge_score',
+      'decisionPath',
+      'decision_path',
+      'refusalReason',
+      'refusal_reason',
+    ] as const) {
+      expect(serialized).not.toContain(`"${field}"`)
+    }
   })
 
   it('maps chat rate limits to 429', async () => {

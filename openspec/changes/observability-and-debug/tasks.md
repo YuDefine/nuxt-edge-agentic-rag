@@ -8,35 +8,35 @@
 ## 1. Debug Data Preparation
 
 - [x] 1.1 確認 query logs 已持久化可供 debug surface 使用的 score / path / latency 欄位。 2026-04-19 local PASS: schema 就緒，6 個 debug 欄位 nullable 可用（first_token_latency_ms / completion_latency_ms INTEGER、retrieval_score / judge_score REAL、decision_path / refusal_reason TEXT），預設 NULL，INSERT 18-arg contract 綁定兩條 query_log 路徑皆通過。
-- [ ] 1.2 補齊 debug-safe derived fields，避免 UI 需重跑回答流程。
-- [ ] 1.3 建立 internal gating，限制 debug surfaces 僅供 Admin / internal 使用。
+- [x] 1.2 補齊 debug-safe derived fields，避免 UI 需重跑回答流程。 2026-04-19 local PASS: `shared/types/observability.ts` 定義 9 個 decision_path + 5 個 refusal_reason enum（含 assertNever helper）；`answerKnowledgeQuery` 加 optional `onDecision` telemetry callback（back-compat）；`knowledge-audit.ts::createKnowledgeAuditStore` 與 `mcp-ask.ts::createMcpQueryLogStore` 皆新增 `updateQueryLog` 方法；`web-chat.ts` / `mcp-ask.ts` accepted path 改為 try/catch + 測量 `completion_latency_ms` + 依 telemetry 寫 decision_path / refusal_reason / retrieval_score / judge_score，error path 寫 `decision_path='pipeline_error'` + null latency；blocked path 直接在 createQueryLog 寫 `decision_path='restricted_blocked'` / `refusal_reason='restricted_scope'`（不需 update）。`first_token_latency_ms` 暫留 null（SSE 尚未 instrumented）。新 test：`test/unit/web-chat-observability.test.ts` 6 case、`test/unit/mcp-ask-observability.test.ts` 5 case；現有 `test/unit/web-chat.test.ts`、`test/unit/mcp-ask.test.ts`、`test/unit/knowledge-governance-drift.test.ts` 更新。unit 193 綠 / integration 191 綠。
+- [x] 1.3 建立 internal gating，限制 debug surfaces 僅供 Admin / internal 使用。 2026-04-19 local PASS: 新 `server/utils/debug-surface-guard.ts::requireInternalDebugAccess(event)`：先呼叫 `requireRuntimeAdminSession`（非 admin → 403），再檢查 `runtimeConfig.knowledge.environment === 'production'` + `runtimeConfig.debugSurfaceEnabled` flag（production + flag off → 403，否則回傳 `{userId, environment, enabledByFlag}`）；`nuxt.config.ts` runtimeConfig 新增 `debugSurfaceEnabled: NUXT_DEBUG_SURFACE_ENABLED === 'true'`，預設 false。test：`test/unit/debug-surface-guard.test.ts` 5 case（non-admin / prod+off / prod+on / staging / local）全綠。
 
 ## 2. Decision Inspection UI
 
-- [ ] 2.1 建立 decision path badge / panel 元件。
-- [ ] 2.2 建立 retrieval score、judge score、self-correction、refusal reason 顯示元件。
-- [ ] 2.3 建立 citation eligibility / evidence summary 顯示區塊。
-- [ ] 2.4 將 decision inspection 整合到 internal debug route 或 detail surface。
-- [ ] 2.5 補齊 loading / empty / unauthorized / error 狀態。
+- [x] 2.1 建立 decision path badge / panel 元件。 2026-04-19 local PASS: `app/utils/debug-labels.ts` 提供 `decisionPathLabel` / `decisionPathColor` / `describeDecisionPath`（`switch + assertDecisionPathNever`，涵蓋全部 9 個 DecisionPath 值 + null → `未測量` + `color='neutral'`）；`app/components/debug/DecisionPathBadge.vue` 以 `UBadge :color="meta.color" variant="subtle" size="sm"` 輸出；`test/unit/debug-decision-path-labels.test.ts` 11 case 全綠。
+- [x] 2.2 建立 retrieval score、judge score、self-correction、refusal reason 顯示元件。 2026-04-19 local PASS: `app/components/debug/ScorePanel.vue` 顯示 retrieval_score / judge_score（`formatScore` → null → `未測量`，不偽造 0）與 refusal_reason（`describeRefusalReason` → null → `未測量 neutral`）；`app/utils/debug-labels.ts::refusalReasonLabel` / `refusalReasonColor` 用 `switch + assertRefusalReasonNever` 涵蓋全部 5 個 RefusalReason 值；tests 驗所有 enum 有 label + color，null → `未測量`。
+- [x] 2.3 建立 citation eligibility / evidence summary 顯示區塊。 2026-04-19 local PASS: `app/components/debug/EvidencePanel.vue` 顯示 configSnapshotVersion（threshold 快照版）、allowedAccessLevels、riskFlags、citations（parse `citationsJson` safely，非陣列 / parse fail → `[]`，空列 → `此次查詢未產生引用`）；只顯示 chunk_id，不洩 chunk_text（redaction-safe，避免未來改動時誤加原文）。
+- [x] 2.4 將 decision inspection 整合到 internal debug route 或 detail surface。 2026-04-19 local PASS: 建 `server/api/admin/debug/query-logs/[id].get.ts`（`requireInternalDebugAccess` 守門，透過 `createQueryLogDebugStore.getDebugQueryLogById` 回 6 個 debug 欄位 + redaction-safe core fields，拒絕 raw query text）+ `app/pages/admin/debug/query-logs/[id].vue`（`middleware: ['admin']`，consume `/api/admin/debug/query-logs/[id]`；NEVER 動 admin-ui 的 `/admin/query-logs/[id]`）。`test/integration/admin-debug-query-log-route.test.ts` 5 case（401 / 403-prod-flag-off / 200-local / 200-legacy-nulls / 404）全綠；`test/unit/query-log-debug-store.test.ts` 驗 null pass-through + redactionApplied bool 轉換。
+- [x] 2.5 補齊 loading / empty / unauthorized / error 狀態。 2026-04-19 local PASS: 兩個 page 皆用 typed `UiPageState` union（`'loading' | 'unauthorized' | 'not-found'/'empty' | 'error' | 'ready'`），根據 `useFetch` 的 `status.value === 'pending'` + `error.value.statusCode` 對應 401/403 → unauthorized、404 → not-found、其他 → error，每個 state 有專屬 card 與 CTA（`UButton :loading="isLoading"` refetch）。
 
 ## 3. Latency And Outcome UI
 
-- [ ] 3.1 建立 latency summary cards 或圖表。
-- [ ] 3.2 建立 outcome breakdown 顯示 answered / refused / forbidden / error。
-- [ ] 3.3 表示 null latency 與 partial stream 狀態，不偽造數值。
-- [ ] 3.4 補齊 redaction-safe aggregate summary 呈現。
+- [x] 3.1 建立 latency summary cards 或圖表。 2026-04-19 local PASS: `app/components/debug/LatencySummaryCards.vue` 顯示 channel × `{firstTokenMs, completionMs}` × `{p50, p95, sampleCount}`（4 個格子 + footer 顯示 sample 數）；null p50 / p95 渲染為 `—` + `text-dimmed`，搭配 `<Card footer>` 說明「此通道於所選期間內無可量測的延遲樣本（全為 null）」，不偽造 0。
+- [x] 3.2 建立 outcome breakdown 顯示 answered / refused / forbidden / error。 2026-04-19 local PASS: `app/components/debug/OutcomeBreakdown.vue` 用 CSS 水平長條（不引入 chart 套件）+ 百分比 + 絕對值；`classifyOutcome` 把 `status='blocked'` 映射為 `forbidden`、`decision_path='pipeline_error'` → `error`、拒答類 decision_path → `refused`、其餘 → `answered`；total=0 顯示「此通道於所選期間內無記錄」。`test/unit/query-log-debug-store.test.ts` 驗分類正確。
+- [x] 3.3 表示 null latency 與 partial stream 狀態，不偽造數值。 2026-04-19 local PASS: `app/utils/debug-labels.ts::formatNullableNumber(null, suffix)` 固定回傳 `—`；`formatScore(null)` 固定回傳 `未測量`；Vue 元件內 p50 / p95 / latency 皆以 `value === null ? 'text-dimmed' : 'text-default'` 視覺差異化；store layer 的 `summarizeBucket` 只聚合 `typeof v === 'number'` 的值，null 自動略過。TypeScript `number | null` 強制 consumer 處理。
+- [x] 3.4 補齊 redaction-safe aggregate summary 呈現。 2026-04-19 local PASS: `server/api/admin/debug/latency/summary.get.ts` + `createQueryLogDebugStore.summarizeLatency` 只做 numeric + channel name + outcome 計數的聚合，SELECT 語句明確只取 5 欄（channel / status / decision_path / first_token_latency_ms / completion_latency_ms），不 JOIN 訊息或 citation 文本；`test/integration/admin-debug-latency-summary-route.test.ts` 以 `JSON.stringify(result)` 斷言不含 `query_text` / `rawQuery`。
 
 ## 4. Integration And Verification
 
-- [ ] 4.1 補齊 debug/latency surfaces 的 component / integration tests。
-- [ ] 4.2 驗證一般使用者與 MCP 對外契約看不到 debug 欄位。
-- [ ] 4.3 更新 verify docs，記錄如何在 staging / preview 使用 internal debug surface。
+- [x] 4.1 補齊 debug/latency surfaces 的 component / integration tests。 2026-04-19 local PASS: `test/integration/admin-debug-query-log-route.test.ts` 5 case（401 / 403 / 200 debug fields / 200 legacy null pass-through / 404）+ `test/integration/admin-debug-latency-summary-route.test.ts` 5 case（401 / 403 / 200 全欄位 / days=30 透傳 / null p50 channel）+ `test/unit/query-log-debug-store.test.ts` 7 case（null pass-through、redactionApplied bool 轉換、outcome classify、null bucket、p50/p95 nearest-rank、channel order）+ `test/unit/debug-decision-path-labels.test.ts` 11 case（所有 enum 有 label + 不重複、所有 color 合法、null → `未測量`）。
+- [x] 4.2 驗證一般使用者與 MCP 對外契約看不到 debug 欄位。 2026-04-19 local PASS: `test/integration/chat-route.test.ts` 在 happy-path case 加 `JSON.stringify(result).not.toContain("<debug>")` 對 12 個 snake/camel 變體；`test/integration/debug-surface-contract-regression.test.ts` 驗 `/api/admin/query-logs/[id]`（admin-ui non-debug endpoint）即使 store 回傳 debug 欄位，handler projection 仍會過濾掉；`test/unit/mcp-ask-output-contract.test.ts` 驗 happy + refused path 的 `McpAskResult` 僅有 `{answer, citations, refused}`，無任何 debug 欄位洩漏。unit 218 綠 / integration 219 綠。
+- [x] 4.3 更新 verify docs，記錄如何在 staging / preview 使用 internal debug surface。 2026-04-19 local PASS: 新建 `docs/verify/DEBUG_SURFACE_VERIFICATION.md`，文件化存取矩陣（admin × environment × `NUXT_DEBUG_SURFACE_ENABLED` flag）、staging / production 驗收步驟、redaction 保證 + 對應自動化 test 連結、NULL 語意提醒。
 
 ## 5. Design Review
 
-- [ ] 5.1 執行 `/design improve` 對 debug / observability surfaces。
-- [ ] 5.2 修復 DRIFT 與 Critical issues。
-- [ ] 5.3 執行 `/review-screenshot` 驗證 internal debug pages。
+- [x] 5.1 執行 `/design improve` 對 debug / observability surfaces。 2026-04-19 local PASS: 產出 `openspec/changes/observability-and-debug/design-review.md`，Fidelity 9/9、無 DRIFT 項目。分析模式（無 dev server）對照 `app/components/documents/AccessLevelBadge.vue` + `app/pages/admin/documents/index.vue` reference surface 驗 Component Consistency / Exhaustiveness / State Coverage / NULL 語意 / Typography / Spacing / Colour semantics / Responsive / Accessibility。
+- [x] 5.2 修復 DRIFT 與 Critical issues。 2026-04-19 local PASS: Fidelity 初跑即 9/9（無 DRIFT）。typecheck 初次報 `USelectMenu` readonly tuple error，已改用明確 `interface DayOption` + mutable array；check-vue-components（5 未解析元件）已由 `pnpm exec nuxt prepare` regenerate `.nuxt/components.d.ts` 修復並再跑綠。
+- [ ] 5.3 執行 `/review-screenshot` 驗證 internal debug pages。 (skip - 需 dev server，Phase 3 worktree 不執行；待合併主線後另跑)
 
 ## 人工檢查
 

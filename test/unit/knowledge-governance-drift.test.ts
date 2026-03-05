@@ -30,6 +30,11 @@ const ALLOWED_FILES = new Set([
   'test/integration/acceptance-tc-06.test.ts',
   'test/integration/acceptance-tc-10.test.ts',
   'test/integration/acceptance-tc-11.test.ts',
+  // observability-and-debug §1.2: web-chat observability test must exercise
+  // the judge_pass_refuse branch, which requires a score in
+  // [judgeMin, directAnswerMin). Allow-listed for the same reason as the
+  // acceptance TCs above.
+  'test/unit/web-chat-observability.test.ts',
 ])
 const DRIFT_PATTERNS: DriftPattern[] = [
   {
