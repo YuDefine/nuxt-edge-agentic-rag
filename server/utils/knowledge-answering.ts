@@ -1,5 +1,25 @@
 import type { KnowledgeGovernanceConfig } from '#shared/schemas/knowledge-runtime'
+import type { DecisionPath, RefusalReason } from '#shared/types/observability'
 import type { VerifiedKnowledgeEvidence } from './knowledge-retrieval'
+
+/**
+ * observability-and-debug §1.2 — optional telemetry sink.
+ *
+ * `answerKnowledgeQuery` never stores any observability state itself; callers
+ * (web-chat / mcp-ask) own the `query_logs` row and decide what to persist.
+ * The telemetry callback is the only way internal branch selection
+ * (`direct_answer` vs `judge_pass_refuse` vs `no_citation_refuse` …) leaks
+ * out — so the debug surface can show which path actually ran without the UI
+ * replaying retrieval / judge / self-correction.
+ */
+export interface KnowledgeAnsweringTelemetry {
+  decisionPath: DecisionPath
+  refusalReason: RefusalReason | null
+  /** Final retrieval score at the point a decision was taken (0-1). */
+  retrievalScore: number
+  /** Judge confidence when the judge ran, else null. */
+  judgeScore: number | null
+}
 
 export async function answerKnowledgeQuery(
   input: {
@@ -21,6 +41,13 @@ export async function answerKnowledgeQuery(
       reformulatedQuery?: string
       shouldAnswer: boolean
     }>
+    /**
+     * Optional observability sink. When supplied, `answerKnowledgeQuery`
+     * reports the chosen decision path + derived scores before returning so
+     * callers can persist them on the `query_logs` row. Undefined = no-op
+     * (existing callers and tests are unaffected).
+     */
+    onDecision?: (telemetry: KnowledgeAnsweringTelemetry) => void
     persistCitations: (
       citations: Array<{
         chunkTextSnapshot: string
@@ -48,6 +75,12 @@ export async function answerKnowledgeQuery(
   const initialScore = computeRetrievalScore(firstPass.evidence)
 
   if (initialScore >= options.governance.thresholds.directAnswerMin) {
+    options.onDecision?.({
+      decisionPath: 'direct_answer',
+      refusalReason: null,
+      retrievalScore: initialScore,
+      judgeScore: null,
+    })
     return answerWithCitations(
       firstPass.evidence,
       input.query,
@@ -59,6 +92,12 @@ export async function answerKnowledgeQuery(
   }
 
   if (initialScore < options.governance.thresholds.judgeMin) {
+    options.onDecision?.({
+      decisionPath: 'no_citation_refuse',
+      refusalReason: 'no_citation',
+      retrievalScore: initialScore,
+      judgeScore: null,
+    })
     return refuse(initialScore)
   }
 
@@ -67,8 +106,19 @@ export async function answerKnowledgeQuery(
     query: input.query,
     retrievalScore: initialScore,
   })
+  // Judge API does not surface a numeric confidence today (§1.2 spec: judge
+  // score is "null when judge did not emit one"). Once the judge exposes a
+  // probability, feed it through here. For now the presence of the judge call
+  // itself is encoded in `decisionPath`, and `judgeScore` stays null.
+  const judgeScore: number | null = null
 
   if (judgment.shouldAnswer) {
+    options.onDecision?.({
+      decisionPath: 'judge_pass',
+      refusalReason: null,
+      retrievalScore: initialScore,
+      judgeScore,
+    })
     return answerWithCitations(
       firstPass.evidence,
       input.query,
@@ -80,6 +130,12 @@ export async function answerKnowledgeQuery(
   }
 
   if (!judgment.reformulatedQuery) {
+    options.onDecision?.({
+      decisionPath: 'judge_pass_refuse',
+      refusalReason: 'low_confidence',
+      retrievalScore: initialScore,
+      judgeScore,
+    })
     return refuse(initialScore)
   }
 
@@ -90,6 +146,12 @@ export async function answerKnowledgeQuery(
   const retryScore = computeRetrievalScore(retryPass.evidence)
 
   if (retryScore >= options.governance.thresholds.directAnswerMin) {
+    options.onDecision?.({
+      decisionPath: 'self_correction_retry',
+      refusalReason: null,
+      retrievalScore: retryScore,
+      judgeScore,
+    })
     return answerWithCitations(
       retryPass.evidence,
       judgment.reformulatedQuery,
@@ -100,6 +162,12 @@ export async function answerKnowledgeQuery(
     )
   }
 
+  options.onDecision?.({
+    decisionPath: 'self_correction_refuse',
+    refusalReason: 'low_confidence',
+    retrievalScore: retryScore,
+    judgeScore,
+  })
   return refuse(retryScore)
 }
 

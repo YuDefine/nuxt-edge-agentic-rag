@@ -1,10 +1,7 @@
 import type { KnowledgeGovernanceConfig } from '#shared/schemas/knowledge-runtime'
-import { answerKnowledgeQuery } from './knowledge-answering'
-import {
-  auditKnowledgeText,
-  type CreateMessageInput,
-  type CreateQueryLogInput,
-} from './knowledge-audit'
+import type { DecisionPath, RefusalReason } from '#shared/types/observability'
+import { answerKnowledgeQuery, type KnowledgeAnsweringTelemetry } from './knowledge-answering'
+import { auditKnowledgeText } from './knowledge-audit'
 import { getAllowedAccessLevels } from './knowledge-runtime'
 import type { VerifiedKnowledgeEvidence } from './knowledge-retrieval'
 import type { StaleResolverResult } from './conversation-stale-resolver'
@@ -95,8 +92,53 @@ export async function chatWithKnowledge(
       retrievalScore: number
     }) => Promise<string>
     auditStore?: {
-      createMessage(input: CreateMessageInput): Promise<string>
-      createQueryLog(input: CreateQueryLogInput): Promise<string>
+      createMessage(input: {
+        channel: 'mcp' | 'web'
+        citationsJson?: string
+        conversationId?: string | null
+        content: string
+        now?: Date
+        queryLogId?: string
+        role: 'system' | 'user' | 'assistant' | 'tool'
+        userProfileId?: string | null
+      }): Promise<string>
+      createQueryLog(input: {
+        allowedAccessLevels: string[]
+        channel: 'mcp' | 'web'
+        configSnapshotVersion: string
+        environment: string
+        mcpTokenId?: string | null
+        now?: Date
+        queryText: string
+        status: 'accepted' | 'blocked' | 'limited' | 'rejected'
+        userProfileId?: string | null
+        // observability-and-debug §1.2: derived debug fields written on the
+        // initial INSERT for paths that are known at creation time (i.e. the
+        // blocked / pre-pipeline refusal path). Happy-path / pipeline-error
+        // paths leave these undefined here and back-fill via `updateQueryLog`
+        // after the pipeline completes.
+        firstTokenLatencyMs?: number | null
+        completionLatencyMs?: number | null
+        retrievalScore?: number | null
+        judgeScore?: number | null
+        decisionPath?: string | null
+        refusalReason?: string | null
+      }): Promise<string>
+      /**
+       * observability-and-debug §1.2 — back-fill derived debug fields on a
+       * query_log row after the answering pipeline returned (or threw).
+       * Optional so legacy test fixtures that only stub
+       * `{createMessage, createQueryLog}` continue to work.
+       */
+      updateQueryLog?(input: {
+        queryLogId: string
+        firstTokenLatencyMs?: number | null
+        completionLatencyMs?: number | null
+        retrievalScore?: number | null
+        judgeScore?: number | null
+        decisionPath?: string | null
+        refusalReason?: string | null
+      }): Promise<void>
     }
     judge: (input: {
       evidence: VerifiedKnowledgeEvidence[]
@@ -191,6 +233,11 @@ export async function chatWithKnowledge(
 
   if (audit.shouldBlock) {
     if (options.auditStore) {
+      // observability-and-debug §1.2: audit-blocked path is a pre-pipeline
+      // refusal, so the decision is fully known at INSERT time — no separate
+      // `updateQueryLog` back-fill is needed.
+      const blockedDecisionPath: DecisionPath = 'restricted_blocked'
+      const blockedRefusalReason: RefusalReason = 'restricted_scope'
       const queryLogId = await options.auditStore.createQueryLog({
         allowedAccessLevels,
         channel: 'web',
@@ -199,6 +246,12 @@ export async function chatWithKnowledge(
         queryText: input.query,
         status: 'blocked',
         userProfileId: input.auth.userId,
+        firstTokenLatencyMs: null,
+        completionLatencyMs: null,
+        retrievalScore: null,
+        judgeScore: null,
+        decisionPath: blockedDecisionPath,
+        refusalReason: blockedRefusalReason,
       })
 
       await options.auditStore.createMessage({
@@ -253,40 +306,101 @@ export async function chatWithKnowledge(
     })
   }
 
-  const result = await answerKnowledgeQuery(
-    {
-      allowedAccessLevels,
-      query: input.query,
-    },
-    {
-      answer: options.answer,
-      governance: {
-        models: input.governance.models,
-        thresholds: input.governance.thresholds,
-      },
-      judge: options.judge,
-      persistCitations: async (citations) => {
-        if (!options.persistCitations || !queryLogId) {
-          // Even without a persistence sink we MUST still surface
-          // `documentVersionId` on the returned shape so the orchestration
-          // can record it on the assistant message (governance §1.1 stale
-          // resolver input). The placeholder citationId is never persisted
-          // — it just satisfies the shared `answerWithCitations` contract.
-          return citations.map((citation) => ({
-            citationId: '',
-            documentVersionId: citation.documentVersionId,
-            sourceChunkId: citation.sourceChunkId,
-          }))
-        }
+  // observability-and-debug §1.2: measure completion latency for the
+  // accepted path so the debug surface can show end-to-end time without
+  // replaying the pipeline. `firstTokenLatencyMs` stays null until SSE
+  // streaming is instrumented (not in this phase). When an audit store with
+  // `updateQueryLog` is supplied, the derived fields are back-filled on the
+  // query_log row after the pipeline returns (happy + refusal + error).
+  const pipelineStartMs = Date.now()
+  let telemetry: KnowledgeAnsweringTelemetry | null = null
 
-        return options.persistCitations({
-          citations: citations.map((citation) => ({ ...citation, queryLogId })),
-          ...(typeof input.now === 'number' ? { now: new Date(input.now) } : {}),
-        })
+  let result: Awaited<ReturnType<typeof answerKnowledgeQuery>>
+  try {
+    result = await answerKnowledgeQuery(
+      {
+        allowedAccessLevels,
+        query: input.query,
       },
-      retrieve: options.retrieve,
+      {
+        answer: options.answer,
+        governance: {
+          models: input.governance.models,
+          thresholds: input.governance.thresholds,
+        },
+        judge: options.judge,
+        onDecision: (snapshot) => {
+          telemetry = snapshot
+        },
+        persistCitations: async (citations) => {
+          if (!options.persistCitations || !queryLogId) {
+            // Even without a persistence sink we MUST still surface
+            // `documentVersionId` on the returned shape so the orchestration
+            // can record it on the assistant message (governance §1.1 stale
+            // resolver input). The placeholder citationId is never persisted
+            // — it just satisfies the shared `answerWithCitations` contract.
+            return citations.map((citation) => ({
+              citationId: '',
+              documentVersionId: citation.documentVersionId,
+              sourceChunkId: citation.sourceChunkId,
+            }))
+          }
+
+          const payload: WebCitationPersistenceInput = {
+            citations: citations.map((citation) => ({
+              ...citation,
+              queryLogId,
+            })),
+          }
+
+          if (typeof input.now === 'number') {
+            payload.now = new Date(input.now)
+          }
+
+          return options.persistCitations(payload)
+        },
+        retrieve: options.retrieve,
+      }
+    )
+  } catch (error) {
+    if (options.auditStore?.updateQueryLog && queryLogId) {
+      // observability-and-debug §1.2: pipeline threw → record the failure
+      // path. Latency stays null because we cannot trust partial timing
+      // after a thrown error.
+      await options.auditStore.updateQueryLog({
+        queryLogId,
+        firstTokenLatencyMs: null,
+        completionLatencyMs: null,
+        retrievalScore: null,
+        judgeScore: null,
+        decisionPath: 'pipeline_error',
+        refusalReason: 'pipeline_error',
+      })
     }
-  )
+    throw error
+  }
+
+  if (options.auditStore?.updateQueryLog && queryLogId) {
+    const completionLatencyMs = Date.now() - pipelineStartMs
+    // telemetry is populated by `onDecision` for every normal branch of
+    // answerKnowledgeQuery. If it's null here the pipeline returned without
+    // emitting — treat that as pipeline_error to avoid fabricating a path.
+    const snapshot: KnowledgeAnsweringTelemetry = telemetry ?? {
+      decisionPath: 'pipeline_error',
+      refusalReason: 'pipeline_error',
+      retrievalScore: result.retrievalScore,
+      judgeScore: null,
+    }
+    await options.auditStore.updateQueryLog({
+      queryLogId,
+      firstTokenLatencyMs: null,
+      completionLatencyMs,
+      retrievalScore: snapshot.retrievalScore,
+      judgeScore: snapshot.judgeScore,
+      decisionPath: snapshot.decisionPath,
+      refusalReason: snapshot.refusalReason,
+    })
+  }
 
   if (!result.refused && result.answer !== null && options.auditStore) {
     // Governance §1.1: persist a de-duplicated list of cited

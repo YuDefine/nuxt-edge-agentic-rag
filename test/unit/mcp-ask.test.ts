@@ -82,6 +82,14 @@ describe('mcp ask', () => {
       queryText: 'api_key=super-secret-value',
       status: 'blocked',
       userProfileId: null,
+      // observability-and-debug §1.2: audit-blocked path — decision is known
+      // at INSERT time.
+      firstTokenLatencyMs: null,
+      completionLatencyMs: null,
+      retrievalScore: null,
+      judgeScore: null,
+      decisionPath: 'restricted_blocked',
+      refusalReason: 'restricted_scope',
     })
     expect(auditStore.createMessage).toHaveBeenCalledWith({
       channel: 'mcp',

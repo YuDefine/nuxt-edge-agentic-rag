@@ -1,11 +1,7 @@
 import type { KnowledgeGovernanceConfig } from '#shared/schemas/knowledge-runtime'
-import { answerKnowledgeQuery } from './knowledge-answering'
-import {
-  auditKnowledgeText,
-  insertQueryLogRow,
-  type CreateMessageInput,
-  type CreateQueryLogInput,
-} from './knowledge-audit'
+import type { DecisionPath, RefusalReason } from '#shared/types/observability'
+import { answerKnowledgeQuery, type KnowledgeAnsweringTelemetry } from './knowledge-answering'
+import { auditKnowledgeText } from './knowledge-audit'
 import { getAllowedAccessLevels } from './knowledge-runtime'
 
 interface D1PreparedStatementLike {
@@ -53,8 +49,52 @@ interface McpAskDependencies {
     retrievalScore: number
   }) => Promise<string>
   auditStore?: {
-    createMessage(input: CreateMessageInput): Promise<string>
-    createQueryLog(input: CreateQueryLogInput): Promise<string>
+    createMessage(input: {
+      channel: 'mcp' | 'web'
+      citationsJson?: string
+      conversationId?: string | null
+      content: string
+      now?: Date
+      queryLogId?: string
+      role: 'system' | 'user' | 'assistant' | 'tool'
+      userProfileId?: string | null
+    }): Promise<string>
+    createQueryLog(input: {
+      allowedAccessLevels: string[]
+      channel: 'mcp' | 'web'
+      configSnapshotVersion: string
+      environment: string
+      mcpTokenId?: string | null
+      now?: Date
+      queryText: string
+      status: 'accepted' | 'blocked' | 'limited' | 'rejected'
+      userProfileId?: string | null
+      // observability-and-debug §1.2: derived debug fields written on the
+      // initial INSERT for paths known at creation time (audit-blocked).
+      // Accepted-path / pipeline-error rows leave these undefined here and
+      // back-fill via `updateQueryLog` after the pipeline settles.
+      firstTokenLatencyMs?: number | null
+      completionLatencyMs?: number | null
+      retrievalScore?: number | null
+      judgeScore?: number | null
+      decisionPath?: string | null
+      refusalReason?: string | null
+    }): Promise<string>
+    /**
+     * observability-and-debug §1.2 — back-fill derived debug fields on a
+     * query_log row after the answering pipeline returned (or threw).
+     * Optional so legacy test fixtures that only stub
+     * `{createMessage, createQueryLog}` continue to work.
+     */
+    updateQueryLog?(input: {
+      queryLogId: string
+      firstTokenLatencyMs?: number | null
+      completionLatencyMs?: number | null
+      retrievalScore?: number | null
+      judgeScore?: number | null
+      decisionPath?: string | null
+      refusalReason?: string | null
+    }): Promise<void>
   }
   citationStore: {
     persistCitations(input: {
@@ -98,6 +138,8 @@ interface McpAskDependencies {
       queryText: string
       status: string
       tokenId: string
+      // observability-and-debug §0.1 / §0.3: optional debug fields; see
+      // `auditStore.createQueryLog` above for the contract.
       firstTokenLatencyMs?: number | null
       completionLatencyMs?: number | null
       retrievalScore?: number | null
@@ -105,6 +147,16 @@ interface McpAskDependencies {
       decisionPath?: string | null
       refusalReason?: string | null
     }): Promise<string>
+    /** observability-and-debug §1.2 — see auditStore.updateQueryLog. */
+    updateQueryLog?(input: {
+      queryLogId: string
+      firstTokenLatencyMs?: number | null
+      completionLatencyMs?: number | null
+      retrievalScore?: number | null
+      judgeScore?: number | null
+      decisionPath?: string | null
+      refusalReason?: string | null
+    }): Promise<void>
   }
   retrieve: (input: { allowedAccessLevels: string[]; query: string }) => Promise<{
     evidence: Array<{
@@ -144,6 +196,10 @@ export async function askKnowledge(
 
   if (audit.shouldBlock) {
     if (options.auditStore) {
+      // observability-and-debug §1.2: audit-blocked path — decision is fully
+      // known at INSERT time, no separate `updateQueryLog` needed.
+      const blockedDecisionPath: DecisionPath = 'restricted_blocked'
+      const blockedRefusalReason: RefusalReason = 'restricted_scope'
       const queryLogId = await options.auditStore.createQueryLog({
         allowedAccessLevels,
         channel: 'mcp',
@@ -153,6 +209,12 @@ export async function askKnowledge(
         queryText: input.query,
         status: 'blocked',
         userProfileId: null,
+        firstTokenLatencyMs: null,
+        completionLatencyMs: null,
+        retrievalScore: null,
+        judgeScore: null,
+        decisionPath: blockedDecisionPath,
+        refusalReason: blockedRefusalReason,
       })
 
       await options.auditStore.createMessage({
@@ -203,32 +265,116 @@ export async function askKnowledge(
     })
   }
 
-  const result = await answerKnowledgeQuery(
-    {
-      allowedAccessLevels,
-      query: input.query,
-    },
-    {
-      answer: options.answer,
-      governance: {
-        models: input.governance.models,
-        thresholds: input.governance.thresholds,
-      },
-      judge: options.judge,
-      persistCitations: async (citations) => {
-        return options.citationStore.persistCitations({
-          citations: citations.map((citation) => ({ ...citation, queryLogId })),
-          ...(input.now ? { now: input.now } : {}),
-          ...(typeof input.retentionDays === 'number'
-            ? { retentionDays: input.retentionDays }
-            : {}),
-        })
-      },
-      retrieve: options.retrieve,
-    }
-  )
+  // observability-and-debug §1.2: measure pipeline completion latency and
+  // collect the internal decision path so the debug surface can render
+  // latency + decision without replaying retrieval / judge.
+  const pipelineStartMs = Date.now()
+  let telemetry: KnowledgeAnsweringTelemetry | null = null
 
-  if (result.refused || result.answer === null) {
+  const updateSink = options.auditStore?.updateQueryLog ?? options.queryLogStore.updateQueryLog
+  const maybeUpdateQueryLog = async (snapshot: {
+    decisionPath: DecisionPath
+    refusalReason: RefusalReason | null
+    retrievalScore: number | null
+    judgeScore: number | null
+    completionLatencyMs: number | null
+  }) => {
+    if (!updateSink) {
+      return
+    }
+    await updateSink({
+      queryLogId,
+      firstTokenLatencyMs: null,
+      completionLatencyMs: snapshot.completionLatencyMs,
+      retrievalScore: snapshot.retrievalScore,
+      judgeScore: snapshot.judgeScore,
+      decisionPath: snapshot.decisionPath,
+      refusalReason: snapshot.refusalReason,
+    })
+  }
+
+  let result: Awaited<ReturnType<typeof answerKnowledgeQuery>>
+  try {
+    result = await answerKnowledgeQuery(
+      {
+        allowedAccessLevels,
+        query: input.query,
+      },
+      {
+        answer: options.answer,
+        governance: {
+          models: input.governance.models,
+          thresholds: input.governance.thresholds,
+        },
+        judge: options.judge,
+        onDecision: (snapshot) => {
+          telemetry = snapshot
+        },
+        persistCitations: async (citations) => {
+          const payload: {
+            citations: Array<{
+              chunkTextSnapshot: string
+              citationLocator: string
+              documentVersionId: string
+              queryLogId: string
+              sourceChunkId: string
+            }>
+            now?: Date
+            retentionDays?: number
+          } = {
+            citations: citations.map((citation) => ({
+              ...citation,
+              queryLogId,
+            })),
+          }
+
+          if (input.now) {
+            payload.now = input.now
+          }
+
+          if (typeof input.retentionDays === 'number') {
+            payload.retentionDays = input.retentionDays
+          }
+
+          return options.citationStore.persistCitations(payload)
+        },
+        retrieve: options.retrieve,
+      }
+    )
+  } catch (error) {
+    await maybeUpdateQueryLog({
+      decisionPath: 'pipeline_error',
+      refusalReason: 'pipeline_error',
+      retrievalScore: null,
+      judgeScore: null,
+      completionLatencyMs: null,
+    })
+    throw error
+  }
+
+  const completionLatencyMs = Date.now() - pipelineStartMs
+  const snapshot: KnowledgeAnsweringTelemetry = telemetry ?? {
+    decisionPath: 'pipeline_error',
+    refusalReason: 'pipeline_error',
+    retrievalScore: result.retrievalScore,
+    judgeScore: null,
+  }
+  await maybeUpdateQueryLog({
+    decisionPath: snapshot.decisionPath,
+    refusalReason: snapshot.refusalReason,
+    retrievalScore: snapshot.retrievalScore,
+    judgeScore: snapshot.judgeScore,
+    completionLatencyMs,
+  })
+
+  if (result.refused) {
+    return {
+      citations: [],
+      refused: true,
+    }
+  }
+
+  if (result.answer === null) {
     return {
       citations: [],
       refused: true,
@@ -263,6 +409,11 @@ export function createMcpQueryLogStore(database: D1DatabaseLike) {
       queryText: string
       status: string
       tokenId: string
+      /**
+       * observability-and-debug §0.1 / §0.3: optional debug-surface fields.
+       * Keep undefined (→ NULL) when the path didn't measure the value —
+       * see `knowledge-audit.ts::createQueryLog` for the contract rationale.
+       */
       firstTokenLatencyMs?: number | null
       completionLatencyMs?: number | null
       retrievalScore?: number | null
@@ -271,35 +422,82 @@ export function createMcpQueryLogStore(database: D1DatabaseLike) {
       refusalReason?: string | null
     }): Promise<string> {
       const queryLogId = crypto.randomUUID()
-      const audit = auditKnowledgeText(input.queryText)
       const now = (input.now ?? new Date()).toISOString()
 
-      // SECURITY: Re-run audit here even though callers typically pre-redact —
-      // if a future caller forgets, raw credentials / PII would land in
-      // `query_redacted_text` and leak via the admin log UI. Running it here
-      // makes the redaction a structural guarantee of the store itself.
-      await insertQueryLogRow(database, {
-        id: queryLogId,
-        channel: 'mcp',
-        userProfileId: null,
-        mcpTokenId: input.tokenId,
-        environment: input.environment,
-        queryRedactedText: audit.redactedText,
-        riskFlags: audit.riskFlags,
-        allowedAccessLevels: input.allowedAccessLevels,
-        redactionApplied: audit.redactionApplied,
-        configSnapshotVersion: input.configSnapshotVersion,
-        status: input.status as CreateQueryLogInput['status'],
-        createdAt: now,
-        firstTokenLatencyMs: input.firstTokenLatencyMs,
-        completionLatencyMs: input.completionLatencyMs,
-        retrievalScore: input.retrievalScore,
-        judgeScore: input.judgeScore,
-        decisionPath: input.decisionPath,
-        refusalReason: input.refusalReason,
-      })
+      await database
+        .prepare(
+          [
+            'INSERT INTO query_logs (',
+            '  id, channel, user_profile_id, mcp_token_id, environment, query_redacted_text, risk_flags_json, allowed_access_levels_json, redaction_applied, config_snapshot_version, status, created_at,',
+            '  first_token_latency_ms, completion_latency_ms, retrieval_score, judge_score, decision_path, refusal_reason',
+            ') VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          ].join('\n')
+        )
+        .bind(
+          queryLogId,
+          'mcp',
+          null,
+          input.tokenId,
+          input.environment,
+          input.queryText,
+          '[]',
+          JSON.stringify(input.allowedAccessLevels),
+          0,
+          input.configSnapshotVersion,
+          input.status,
+          now,
+          // observability-and-debug §0.1: six nullable debug fields; see
+          // knowledge-audit.ts for the contract.
+          input.firstTokenLatencyMs ?? null,
+          input.completionLatencyMs ?? null,
+          input.retrievalScore ?? null,
+          input.judgeScore ?? null,
+          input.decisionPath ?? null,
+          input.refusalReason ?? null
+        )
+        .run()
 
       return queryLogId
+    },
+
+    /**
+     * observability-and-debug §1.2 — parallel `updateQueryLog` contract to
+     * `knowledge-audit.ts::createKnowledgeAuditStore`. Used only when
+     * mcp-ask runs without the richer auditStore (fallback path in older
+     * tests); the real runtime always uses auditStore.updateQueryLog.
+     */
+    async updateQueryLog(input: {
+      queryLogId: string
+      firstTokenLatencyMs?: number | null
+      completionLatencyMs?: number | null
+      retrievalScore?: number | null
+      judgeScore?: number | null
+      decisionPath?: string | null
+      refusalReason?: string | null
+    }): Promise<void> {
+      await database
+        .prepare(
+          [
+            'UPDATE query_logs',
+            'SET first_token_latency_ms = ?,',
+            '    completion_latency_ms = ?,',
+            '    retrieval_score = ?,',
+            '    judge_score = ?,',
+            '    decision_path = ?,',
+            '    refusal_reason = ?',
+            'WHERE id = ?',
+          ].join('\n')
+        )
+        .bind(
+          input.firstTokenLatencyMs ?? null,
+          input.completionLatencyMs ?? null,
+          input.retrievalScore ?? null,
+          input.judgeScore ?? null,
+          input.decisionPath ?? null,
+          input.refusalReason ?? null,
+          input.queryLogId
+        )
+        .run()
     },
   }
 }

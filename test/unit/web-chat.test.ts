@@ -150,6 +150,14 @@ describe('web chat', () => {
       queryText: 'password=hunter2',
       status: 'blocked',
       userProfileId: 'user-3',
+      // observability-and-debug §1.2: audit-blocked path is a pre-pipeline
+      // refusal, so the decision is fully known at INSERT time.
+      firstTokenLatencyMs: null,
+      completionLatencyMs: null,
+      retrievalScore: null,
+      judgeScore: null,
+      decisionPath: 'restricted_blocked',
+      refusalReason: 'restricted_scope',
     })
     expect(auditStore.createMessage).toHaveBeenCalledWith({
       channel: 'web',
