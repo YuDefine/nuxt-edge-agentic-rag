@@ -157,7 +157,7 @@ spectra unpark observability-and-debug
 
 ## Active Changes
 
-_last synced: 2026-04-19T06:45:44.957Z_
+_last synced: 2026-04-19T07:35:52.731Z_
 
 5 active changes (1 ready · 4 in progress · 0 draft · 0 blocked)
 
@@ -168,12 +168,12 @@ _last synced: 2026-04-19T06:45:44.957Z_
 
 ### In progress
 
-- **admin-ui-post-core** — 6/39 tasks (15%)
+- **admin-ui-post-core** — 33/39 tasks (85%)
 - **fix-document-publish-draft-to-active** — 24/25 tasks (96%)
   - Specs: `admin-document-management-ui`
-- **migrate-mcp-to-toolkit** — 5/32 tasks (16%)
+- **migrate-mcp-to-toolkit** — 25/32 tasks (78%)
   - Specs: `mcp-knowledge-tools`
-- **observability-and-debug** — 5/25 tasks (20%)
+- **observability-and-debug** — 21/25 tasks (84%)
 
 ### Draft
 
