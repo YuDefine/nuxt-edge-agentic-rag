@@ -26,7 +26,7 @@ import {
  * 的 assertNever rule）。
  *
  * 瀏覽器端的視覺驗收（screenshot / state-machine assertion）由
- * `/design improve` + `review-screenshot` 在 staging 執行後，透過
+ * `/design improve` + `review-screenshot` 在 local 執行後，透過
  * EV-UI-01 exporter 注入 pointer 升級為 `passed`。
  */
 

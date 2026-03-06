@@ -179,7 +179,7 @@ export function runEv03PublishCutoverExporter(
       channel: 'shared',
       configSnapshotVersion: context.runtimeConfig.governance.configSnapshotVersion,
       decisionPath: 'publish-rollback-cutover-chain',
-      environment: context.runtimeConfig.environment as 'local' | 'staging' | 'production',
+      environment: context.runtimeConfig.environment,
       evidenceRefs: [
         {
           description: `publish no-op report (http=${sample.noopStage.noopHttpStatus})`,

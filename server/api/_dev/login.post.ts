@@ -9,7 +9,7 @@ import { getRuntimeAdminAccess } from '#server/utils/knowledge-runtime'
  * Role is automatically set based on ADMIN_EMAIL_ALLOWLIST.
  *
  * SECURITY: Only available when NUXT_KNOWLEDGE_ENVIRONMENT=local.
- * Production and staging environments will reject all requests.
+ * Any non-local environment will reject all requests.
  *
  * Usage:
  *   # Create and login as admin (if email is in ADMIN_EMAIL_ALLOWLIST)

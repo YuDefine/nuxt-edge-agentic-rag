@@ -13,7 +13,7 @@ describe('document preprocessing', () => {
       accessLevel: 'restricted',
       categorySlug: 'finance',
       documentId: 'doc-1',
-      environment: 'staging',
+      environment: 'local',
       sourceMimeType: 'text/markdown',
       sourceObjectKey: 'staged/staging/admin-1/upload-1/quarterly-report.md',
       sourceText: [

@@ -204,7 +204,7 @@ export function runA04CurrentVersionOnlyExporter(
       channel: sample.channel,
       configSnapshotVersion: context.runtimeConfig.governance.configSnapshotVersion,
       decisionPath: passed ? 'cutover-current-only' : 'cutover-drift',
-      environment: context.runtimeConfig.environment as 'local' | 'staging' | 'production',
+      environment: context.runtimeConfig.environment,
       evidenceRefs,
       generatedAt: context.generatedAt,
       httpStatus: sample.httpStatus,

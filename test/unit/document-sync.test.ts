@@ -56,7 +56,7 @@ describe('document sync', () => {
         adminUserId: 'admin-1',
         categorySlug: 'finance',
         checksumSha256: 'abc123',
-        environment: 'staging',
+        environment: 'local',
         mimeType: 'text/markdown',
         objectKey: 'staged/staging/admin-1/upload-1/quarterly-report.md',
         size: 128,

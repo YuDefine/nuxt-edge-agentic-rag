@@ -24,7 +24,7 @@ import {
  *   - config_snapshot_version tying the evidence to the governance surface
  *
  * Real runs should inject samples pulled from the D1 `citation_records`
- * table and cross-check against the actual `/api/mcp/chunks/[citationId]`
+ * table and cross-check against the actual `/mcp` `getDocumentChunk` replay
  * response. The stub default mirrors the TC-12 replay scenario so the
  * schema and wiring are exercised without requiring vitest mocks.
  */
@@ -126,7 +126,7 @@ export function runA03CitationReplayExporter(
       channel: 'mcp',
       configSnapshotVersion: context.runtimeConfig.governance.configSnapshotVersion,
       decisionPath: comparison.consistent ? 'replay-consistent' : 'replay-drift',
-      environment: context.runtimeConfig.environment as 'local' | 'staging' | 'production',
+      environment: context.runtimeConfig.environment,
       evidenceRefs: [
         {
           description: `source_chunks row (${sample.sourceChunkId})`,

@@ -1,6 +1,6 @@
 # Retention Cleanup Runbook
 
-> Operator-facing 日常作業手冊。涵蓋 scheduled job 觸發、手動觸發、執行結果查詢、錯誤排除與 rollback。對齊 `governance-refinements` §2.2 / §2.5，搭配 `RETENTION_CLEANUP_VERIFICATION.md`（staging 驗證）與 `RETENTION_REPLAY_CONTRACT.md`（replay 契約）。
+> Operator-facing 日常作業手冊。涵蓋 scheduled job 觸發、手動觸發、執行結果查詢、錯誤排除與 rollback。對齊 `governance-refinements` §2.2 / §2.5，搭配 `RETENTION_CLEANUP_VERIFICATION.md`（local 完整驗證）與 `RETENTION_REPLAY_CONTRACT.md`（replay 契約）。
 
 ## 1. 何時跑 cleanup
 
@@ -25,7 +25,7 @@ Cleanup 由以下兩條路徑觸發：
 2. **手動觸發（admin-only）**：`POST /api/admin/retention/prune`，需要 admin session cookie。僅用於：
    - 新部署後補跑驗證
    - 發現排程失效時的一次性恢復
-   - Staging 進行 backdated 驗證
+   - Local 進行 backdated 驗證
 
 ## 2. 四階段清理順序（audit chain）
 
@@ -96,13 +96,13 @@ PASS：
 - `query_logs.oldest` 不超過 `now - 180 days` 太多（在正常 schedule 下 <= 24 小時誤差）
 - `citation_records.earliest_expiry` 不早於 `now`（已過期的應被清除）
 
-## 5. 手動觸發（staging / 部署後補跑）
+## 5. 手動觸發（local / 部署後補跑）
 
 ### 5.1 透過 HTTP endpoint
 
 ```bash
-# Staging
-curl -X POST https://agentic-staging.yudefine.com.tw/api/admin/retention/prune \
+# Local
+curl -X POST http://localhost:3010/api/admin/retention/prune \
   -H "Cookie: $ADMIN_SESSION_COOKIE"
 
 # Production（僅限授權的 ops；正常情況不需手動）
@@ -130,7 +130,7 @@ Response（`POST /api/admin/retention/prune`）：
 
 ### 5.2 透過 wrangler 直接觸發 cron handler
 
-（Staging 快速迭代用，不走認證門）
+（Local 快速迭代用，不走認證門）
 
 ```bash
 pnpm exec wrangler deploy --dry-run
@@ -187,7 +187,7 @@ pnpm exec wrangler trigger --cron "0 3 * * *"
 
 ## 7. 不可做的事
 
-- **NEVER** 在 production 塞 backdated 資料測 cleanup — 會讓 production audit chain 汙染。Backdated 測試**只**在 staging。
+- **NEVER** 在 production 塞 backdated 資料測 cleanup — 會讓 production audit chain 汙染。Backdated 測試**只**在 local。
 - **NEVER** 手動 `DELETE FROM source_chunks` — cleanup 只 scrub text，row 保留給 `chunk_hash` / `citation_locator` 審計。直接 DELETE 會打斷 FK 關聯與 audit chain。
 - **NEVER** 跳過 `chunk_text <> ''` guard — 失去冪等，cron 會每天 rewrite 相同 rows，膨脹 WAL。
 - **NEVER** 在 `createError` 內傳 `data` 欄位回傳 cleanup 結果（洩漏內部細節）。Operator 資訊走 `result.errors[]` 與 structured log。
@@ -211,7 +211,7 @@ pnpm exec wrangler trigger --cron "0 3 * * *"
 
 ## 9. 相關文件
 
-- `RETENTION_CLEANUP_VERIFICATION.md` — staging 完整驗證流程（含 backdated）
+- `RETENTION_CLEANUP_VERIFICATION.md` — local 完整驗證流程（含 backdated）
 - `RETENTION_REPLAY_CONTRACT.md` — `getDocumentChunk` 過期回應契約
 - `rollout-checklist.md` — 部署前確認項
 - `openspec/changes/governance-refinements/specs/retention-cleanup-governance/spec.md` — spec requirement 本體

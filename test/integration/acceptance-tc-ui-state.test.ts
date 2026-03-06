@@ -15,7 +15,7 @@ import { createRouteEvent, installNuxtRouteTestGlobals } from './helpers/nuxt-ro
  * We call the handler directly (same pattern as
  * `admin-documents-route.test.ts`) so this remains a fast Node-level
  * integration test. Browser-level visual QA is captured via
- * screenshot-review agent when running against staging.
+ * screenshot-review agent when running against local or production.
  */
 
 const adminDocumentsMocks = vi.hoisted(() => ({

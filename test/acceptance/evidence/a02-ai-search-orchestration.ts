@@ -176,7 +176,7 @@ export function runA02AiSearchOrchestrationExporter(
       channel: observation.channel,
       configSnapshotVersion: context.runtimeConfig.governance.configSnapshotVersion,
       decisionPath: observation.decisionPath,
-      environment: context.runtimeConfig.environment as 'local' | 'staging' | 'production',
+      environment: context.runtimeConfig.environment,
       evidenceRefs,
       generatedAt: context.generatedAt,
       httpStatus: observation.httpStatus,

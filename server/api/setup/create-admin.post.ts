@@ -7,7 +7,7 @@ import { z } from 'zod'
  * 僅供首次設定使用，建立帳號後建議移除此 endpoint 或停用 token
  *
  * NOTE: 此 endpoint 只在 NUXT_KNOWLEDGE_ENVIRONMENT=local 時可用。
- * Production/staging 環境下 emailAndPassword 已依 v1.0.0 spec 停用。
+ * Production 環境下 emailAndPassword 已依 v1.0.0 spec 停用。
  *
  * Usage:
  *   curl -X POST http://localhost:3010/api/setup/create-admin \

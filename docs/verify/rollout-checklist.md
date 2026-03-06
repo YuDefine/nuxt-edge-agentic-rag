@@ -1,12 +1,12 @@
 # Rollout Checklist — Governance & Retention
 
-> 部署 staging / production 前的逐項確認，避免 cleanup schedule、retention threshold、purge policy 與 config snapshot 配置漂移。
+> 部署 production 前的逐項確認（local 開發時也可比照走一遍），避免 cleanup schedule、retention threshold、purge policy 與 config snapshot 配置漂移。本專案 `v1.0.0` 採 local + production 雙環境，不獨立部署 staging。
 >
 > **適用範圍**：`governance-refinements` 產物（conversation lifecycle、retention cleanup、config snapshot governance）。
 >
 > **搭配文件**：
 >
-> - `docs/verify/staging-deploy-checklist.md` — 部署前 secrets / bindings 準備
+> - `docs/verify/production-deploy-checklist.md` — 部署前 secrets / bindings 準備
 > - `docs/verify/CONFIG_SNAPSHOT_VERIFICATION.md` — config snapshot 版本比對細節
 > - `docs/verify/ACCEPTANCE_RUNBOOK.md` — Phase 6 rate limit / config snapshot 驗證
 >
@@ -18,8 +18,8 @@
 
 ### 0.1 環境識別
 
-- [ ] 0.1.1 確認目前部署目標（staging vs production）並記錄於 commit message / PR：
-  - **staging**：`NUXT_KNOWLEDGE_ENVIRONMENT=staging`，允許較短 retention、backdated 資料測試
+- [ ] 0.1.1 確認目前部署目標（local vs production）並記錄於 commit message / PR：
+  - **local**：`NUXT_KNOWLEDGE_ENVIRONMENT=local`，允許較短 retention、backdated 資料測試
   - **production**：`NUXT_KNOWLEDGE_ENVIRONMENT=production`，僅允許配置檢視、禁止 backdated 資料
 - [ ] 0.1.2 確認 `wrangler.jsonc` 的 `vars.NUXT_KNOWLEDGE_ENVIRONMENT` 與部署目標一致
 
@@ -29,12 +29,12 @@
 # 查看目前 wrangler.jsonc 中的環境變數
 grep -A 6 '"vars"' wrangler.jsonc
 
-# Staging 部署後查驗 runtime
+# 部署後查驗 runtime
 curl -s "$BASE_URL/api/chat" \
   -H "Cookie: $SESSION_COOKIE" \
   -H "Content-Type: application/json" \
   -d '{"message":"ping"}' | jq '.governance.environment'
-# 預期：與 wrangler.jsonc 宣告一致（staging / production）
+# 預期：與 wrangler.jsonc 宣告一致（local / production）
 ```
 
 ### 0.2 執行權限
@@ -125,7 +125,7 @@ curl -s -X POST "$BASE_URL/api/admin/retention/prune" \
 
 ### 2.2 環境差異
 
-- [ ] 2.2.1 **staging**：允許使用 shortened TTL / backdated records 做 cleanup 驗證（見 §5.2）
+- [ ] 2.2.1 **local**：允許使用 shortened TTL / backdated records 做 cleanup 驗證（見 §5.2）
 - [ ] 2.2.2 **production**：**不得** 使用 shortened TTL 或 backdated records；僅以配置檢視證明 parity
 
 ### 2.3 硬編驗證（避免 surface-specific drift）
@@ -210,7 +210,7 @@ wrangler d1 execute agentic-rag-db --remote --command \
 
 ### 4.1 部署後首次寫入版本
 
-- [ ] 4.1.1 部署完成後，在 staging 觸發一次 Web chat + MCP ask，各取得一筆 query_logs
+- [ ] 4.1.1 部署完成後，於該環境觸發一次 Web chat + MCP ask，各取得一筆 query_logs
 - [ ] 4.1.2 該筆 log 的 `config_snapshot_version` 與 Web / MCP response 中 `governance.configSnapshotVersion` **完全相同**
 - [ ] 4.1.3 新版本字串中每個 governed 欄位（retrieval、thresholds、execution、models、features）都符合部署時的期望值
 
@@ -261,7 +261,7 @@ wrangler d1 execute agentic-rag-db --remote --command \
 ### 5.1 Cleanup Job 首次執行觀察
 
 - [ ] 5.1.1 排程 cleanup job 首次執行後，evlog / Cloudflare Workers log 有對應 `operation: 'prune-knowledge-retention'` 事件
-- [ ] 5.1.2 執行成功（無 `log.error`），耗時合理（staging < 30 秒、production < 60 秒）
+- [ ] 5.1.2 執行成功（無 `log.error`），耗時合理（local < 30 秒、production < 60 秒）
 - [ ] 5.1.3 執行後，D1 中 `created_at <= now - 180 days` 的 `query_logs` / `messages` 已清除
 - [ ] 5.1.4 保留期內的 `citation_records` 仍可透過 `getDocumentChunk` 回放（replay 未被誤刪）
 
@@ -285,9 +285,9 @@ curl -s -X POST "$BASE_URL/mcp" \
 # 預期：200 + chunk content（result.content[0].text 內為 chunk JSON）
 ```
 
-### 5.2 Staging-only：Backdated Verification
+### 5.2 Local-only：Backdated Verification
 
-**僅限 staging**（production 禁止）：
+**僅限 local**（production 禁止）：
 
 - [ ] 5.2.1 已執行 backdated record seed script（見 governance 2.4 實作）
 - [ ] 5.2.2 seed 完成後 replay 仍成功（retention window 內）
@@ -346,6 +346,6 @@ curl -s -X POST "$BASE_URL/mcp" \
 ```text
 | Date       | Env        | Operator | Config Snapshot Version | Notes |
 | ---------- | ---------- | -------- | ----------------------- | ----- |
-| YYYY-MM-DD | staging    | xxx      | kgov-v1;env=staging;... |       |
+| YYYY-MM-DD | local      | xxx      | kgov-v1;env=local;...   |       |
 | YYYY-MM-DD | production | xxx      | kgov-v1;env=production; |       |
 ```

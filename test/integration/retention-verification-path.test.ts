@@ -1,10 +1,10 @@
 /**
  * Tests for governance §2.4 — Backdated cleanup verification path.
  *
- * The verification path extends `/api/admin/retention/prune` so that staging /
+ * The verification path extends `/api/admin/retention/prune` so that local /
  * local environments can prove cleanup behaviour without waiting 180 real days:
  *
- *   - Accept optional `retentionDays` body override (e.g. 1 day for staging
+ *   - Accept optional `retentionDays` body override (e.g. 1 day for local
  *     smoke).
  *   - Reject any override when the runtime environment is `production`.
  *   - Forward the override through to `runRetentionCleanup` and echo the
@@ -87,7 +87,7 @@ describe('POST /api/admin/retention/prune — verification path (governance §2.
       user: { id: 'admin-user' },
     }))
     pruneMocks.getKnowledgeRuntimeConfig.mockReset()
-    pruneMocks.getKnowledgeRuntimeConfig.mockReturnValue({ environment: 'staging' })
+    pruneMocks.getKnowledgeRuntimeConfig.mockReturnValue({ environment: 'local' })
   })
 
   async function callPrune(body: unknown = {}): Promise<{
@@ -203,7 +203,7 @@ describe('seedBackdatedRetentionRecord utility (governance §2.4)', () => {
 
     const result = await seedBackdatedRetentionRecord({
       database: db,
-      environment: 'staging',
+      environment: 'local',
       ageDays: 200,
       documentVersionId: 'dv-123',
       sourceChunkId: 'sc-123',
@@ -251,7 +251,7 @@ describe('seedBackdatedRetentionRecord utility (governance §2.4)', () => {
     await expect(
       seedBackdatedRetentionRecord({
         database: db,
-        environment: 'staging',
+        environment: 'local',
         ageDays: 0,
         documentVersionId: 'dv-123',
         sourceChunkId: 'sc-123',
@@ -261,7 +261,7 @@ describe('seedBackdatedRetentionRecord utility (governance §2.4)', () => {
     await expect(
       seedBackdatedRetentionRecord({
         database: db,
-        environment: 'staging',
+        environment: 'local',
         ageDays: -1,
         documentVersionId: 'dv-123',
         sourceChunkId: 'sc-123',

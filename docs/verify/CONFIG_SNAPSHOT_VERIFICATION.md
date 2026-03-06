@@ -12,7 +12,7 @@
 `configSnapshotVersion` 是一串由 `buildKnowledgeConfigSnapshotVersion`（`shared/schemas/knowledge-runtime.ts`）組合而成的字串，序列化當下影響 agent orchestration 的所有 governed 參數：
 
 ```text
-kgov-v1;env=staging;retrieval.maxResults=8;retrieval.minScore=0.20;thresholds.directAnswerMin=0.68;thresholds.judgeMin=0.55;thresholds.answerMin=0.40;execution.maxSelfCorrectionRetry=1;models.defaultAnswer=@cf/meta/llama-3.1-8b-instruct;models.agentJudge=@cf/meta/llama-3.3-70b-instruct-fp8-fast;features.adminDashboard=on;features.cloudFallback=off;features.mcpSession=on;features.passkey=off
+kgov-v1;env=local;retrieval.maxResults=8;retrieval.minScore=0.20;thresholds.directAnswerMin=0.68;thresholds.judgeMin=0.55;thresholds.answerMin=0.40;execution.maxSelfCorrectionRetry=1;models.defaultAnswer=@cf/meta/llama-3.1-8b-instruct;models.agentJudge=@cf/meta/llama-3.3-70b-instruct-fp8-fast;features.adminDashboard=on;features.cloudFallback=off;features.mcpSession=on;features.passkey=off
 ```
 
 **Write points**：
@@ -23,13 +23,13 @@ kgov-v1;env=staging;retrieval.maxResults=8;retrieval.minScore=0.20;thresholds.di
 | Web chat response（governance 物件） | `server/utils/web-chat.ts`        | 前端可對照當前 runtime 與 log 一致 |
 | MCP `askKnowledge` response          | `server/utils/mcp-ask.ts`         | MCP 客戶端可讀取版本比對           |
 
-## 2. 驗證清單（Staging）
+## 2. 驗證清單（Local 或 Production）
 
-**前置**：確認已依 `staging-deploy-checklist.md` 部署完成，且 D1 有實際 query_logs。
+**前置**：確認已依 `production-deploy-checklist.md` 部署完成（或具備 local 開發環境），且 D1 有實際 query_logs。
 
 ### 2.1 Runtime 一致性（Web × MCP × D1）
 
-1. 以 Web User 登入 staging，在 `/chat` 問一題可直接命中的問題（如 `A01` fixture）。
+1. 以 Web User 登入該環境，在 `/chat` 問一題可直接命中的問題（如 `A01` fixture）。
 2. 用 MCP token 對同樣問題呼叫 `askKnowledge`。
 3. 查 D1：
 
@@ -47,7 +47,7 @@ kgov-v1;env=staging;retrieval.maxResults=8;retrieval.minScore=0.20;thresholds.di
 
 ### 2.2 Version Bump 後新 log 使用新版本
 
-1. 在 staging 變更任一 governed 參數（例如將 `NUXT_KNOWLEDGE_THRESHOLD_JUDGE_MIN` 從 `0.55` 改為 `0.56`）並重新部署。
+1. 在該環境變更任一 governed 參數（例如將 `NUXT_KNOWLEDGE_THRESHOLD_JUDGE_MIN` 從 `0.55` 改為 `0.56`）並重新部署。
 2. 再觸發一次問答。
 3. 查 D1：
 
@@ -65,8 +65,8 @@ kgov-v1;env=staging;retrieval.maxResults=8;retrieval.minScore=0.20;thresholds.di
 
 ### 2.3 環境差異
 
-1. 比對 local（`env=local`）與 staging（`env=staging`）的 version 字串。
-2. **PASS 條件**：除了 `env=` 欄位不同，其他欄位可能因預設 override 而不同，但**不得出現** `env=local` 的 log 被寫到 staging D1。
+1. 比對 local（`env=local`）與 production（`env=production`）的 version 字串。
+2. **PASS 條件**：除了 `env=` 欄位不同，其他欄位可能因預設 override 而不同，但**不得出現** `env=local` 的 log 被寫到 production D1。
 
 ## 3. 自動化 Drift Guard
 
@@ -109,7 +109,7 @@ pnpm test test/unit/knowledge-governance.test.ts test/unit/knowledge-runtime-con
 
 驗證：
 
-- `createKnowledgeRuntimeConfig({ env: 'staging' })` 產出的 snapshot 與 MCP / Web 兩路寫入邏輯使用同一個 builder
+- `createKnowledgeRuntimeConfig({ env: 'local' })` 產出的 snapshot 與 MCP / Web 兩路寫入邏輯使用同一個 builder
 - Version bump 只需調整 input 參數，字串格式不會漂移（`kgov-v1` prefix、分隔符、欄位順序）
 
 ## 4. Bump Protocol
@@ -118,7 +118,7 @@ pnpm test test/unit/knowledge-governance.test.ts test/unit/knowledge-runtime-con
 
 1. **開 `shared/schemas/knowledge-runtime.ts`** — 只能透過修改 `DEFAULT_KNOWLEDGE_*` 或 env 覆寫改值，**不得**在 handler / component 直接寫數字
 2. 跑 `pnpm test test/unit/knowledge-governance-drift.test.ts` 確認沒有新 drift
-3. 在 staging 部署後跑本文件 §2 的驗證
+3. 在該環境部署後跑本文件 §2 的驗證
 4. **保留舊 log 的 old version**（審計用），**不要** backfill
 
 ## 5. 人工驗收對應
@@ -210,7 +210,7 @@ pnpm test test/unit/knowledge-governance.test.ts test/unit/knowledge-runtime-con
 
 ## 7. 常見陷阱
 
-- Staging 與 local 共用同一 `env=` 字串 → 交叉污染；確認 `NUXT_KNOWLEDGE_ENV` 或等價設定
+- Local 與 production 共用同一 `env=` 字串 → 交叉污染；確認 `NUXT_KNOWLEDGE_ENVIRONMENT` 或等價設定
 - 手動改 `thresholds.judgeMin` 但忘記升版 → 舊 log 仍顯示舊 version，後續比對才發現；改前先跑 `pnpm test test/unit/knowledge-governance.test.ts`
 - 把 `config_snapshot_version` 當 free-form 字串寫進 handler → drift guard test 抓不到（drift guard 檢查的是 decision threshold 硬碼，非 version 字串本身），應在 code review 時特別留意
 - Web / MCP response 的 version 與 query_logs 不同 → 多半是 builder 被 clone 而非共用，governance 3.1 FAIL

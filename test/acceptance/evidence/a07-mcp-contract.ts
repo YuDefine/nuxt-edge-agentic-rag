@@ -143,7 +143,7 @@ export function runA07McpContractExporter(input: A07ExporterInput = {}): Accepta
       channel: 'mcp',
       configSnapshotVersion: context.runtimeConfig.governance.configSnapshotVersion,
       decisionPath: sample.expectedDecisionPath,
-      environment: context.runtimeConfig.environment as 'local' | 'staging' | 'production',
+      environment: context.runtimeConfig.environment,
       evidenceRefs: [
         {
           description: `MCP Inspector log for ${sample.tool} (${sample.testCaseId})`,

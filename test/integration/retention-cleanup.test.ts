@@ -310,7 +310,7 @@ describe('runRetentionCleanup', () => {
     state.mcpTokens.push({
       id: 'tok-expired',
       tokenHash: 'hash-secret',
-      name: 'staging-bot',
+      name: 'local-bot',
       scopesJson: '["knowledge.search"]',
       status: 'revoked',
       createdAt: iso(OUTSIDE_WINDOW),
@@ -355,7 +355,7 @@ describe('runRetentionCleanup', () => {
     state.mcpTokens.push({
       id: 'tok-expired',
       tokenHash: 'hash-secret',
-      name: 'staging-bot',
+      name: 'local-bot',
       scopesJson: '["knowledge.search"]',
       status: 'revoked',
       createdAt: iso(OUTSIDE_WINDOW),
@@ -388,14 +388,14 @@ describe('runRetentionCleanup', () => {
     expect(state.callOrder).toContain('mcpTokens')
   })
 
-  it('honors the retentionDays override for staging backdated verification', async () => {
-    const staging = new Date(NOW.getTime() - 10 * 24 * 60 * 60 * 1000) // 10 days ago
-    state.queryLogs.push({ id: 'ql-staged', createdAt: iso(staging) })
+  it('honors the retentionDays override for local backdated verification', async () => {
+    const tenDaysAgo = new Date(NOW.getTime() - 10 * 24 * 60 * 60 * 1000)
+    state.queryLogs.push({ id: 'ql-staged', createdAt: iso(tenDaysAgo) })
 
     const result = await runRetentionCleanup({
       database: createFakeDatabase(state),
       now: NOW,
-      retentionDays: 5, // shortened TTL for staging validation
+      retentionDays: 5, // shortened TTL for local validation
     })
 
     expect(result.retentionDays).toBe(5)

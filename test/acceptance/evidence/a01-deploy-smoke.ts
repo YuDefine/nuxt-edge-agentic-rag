@@ -19,9 +19,9 @@ import {
  *   - smoke test response (status + body pointer)
  *   - config snapshot version tying the evidence to the governance surface
  *
- * Real staging / production runs should inject:
+ * Real local / production runs should inject:
  *   - `deploy` from the Cloudflare deploy response
- *   - `smokeResults` from actual `fetch('/api/health'|'/api/mcp/...')` calls
+ *   - `smokeResults` from actual `fetch('/api/health'|'/mcp')` calls
  *
  * Locally we fall back to environment variables + stub responses so the
  * wiring, schema, and config_snapshot_version binding stay exercised.
@@ -81,7 +81,7 @@ function defaultSmokeResults(deploy: DeployMetadata): DeploySmokeResult[] {
     },
     {
       channel: 'mcp',
-      endpoint: '/api/mcp/ask',
+      endpoint: '/mcp',
       httpStatus: 200,
       responseBodyPointer: `stub://local/${deploy.environment}/mcp-smoke-response.json`,
       responseTimeMs: null,
@@ -112,7 +112,7 @@ export function runA01DeploySmokeExporter(input: A01ExporterInput = {}): Accepta
       channel: smoke.channel,
       configSnapshotVersion: context.runtimeConfig.governance.configSnapshotVersion,
       decisionPath: 'deploy-smoke',
-      environment: context.runtimeConfig.environment as 'local' | 'staging' | 'production',
+      environment: context.runtimeConfig.environment,
       evidenceRefs: [
         {
           description: `Cloudflare Worker deploy metadata (${deploy.workerName}@${deploy.commitSha})`,
@@ -128,7 +128,7 @@ export function runA01DeploySmokeExporter(input: A01ExporterInput = {}): Accepta
       generatedAt: context.generatedAt,
       httpStatus: smoke.httpStatus,
       notes: isStubbed
-        ? 'Stubbed smoke response — re-run against staging/production to capture real payload.'
+        ? 'Stubbed smoke response — re-run against local/production to capture real payload.'
         : undefined,
       reportVersion: context.reportVersion,
       status: allPassed ? (isStubbed ? 'pending-production-run' : 'passed') : 'failed',

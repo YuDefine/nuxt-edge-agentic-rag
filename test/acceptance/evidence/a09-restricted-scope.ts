@@ -221,7 +221,7 @@ export function runA09RestrictedScopeExporter(
       channel: sample.channel,
       configSnapshotVersion: context.runtimeConfig.governance.configSnapshotVersion,
       decisionPath: sample.actualDecision === 'deny' ? 'scope-deny' : 'scope-allow',
-      environment: context.runtimeConfig.environment as 'local' | 'staging' | 'production',
+      environment: context.runtimeConfig.environment,
       evidenceRefs: [
         {
           description: `scope decision (tc=${sample.testCaseId}, hasRestricted=${sample.hasRestrictedScope}, decision=${sample.actualDecision})`,

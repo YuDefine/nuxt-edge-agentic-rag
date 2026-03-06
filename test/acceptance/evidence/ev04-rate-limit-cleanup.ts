@@ -185,7 +185,7 @@ export function runEv04RateLimitCleanupExporter(
       channel: 'shared',
       configSnapshotVersion: context.runtimeConfig.governance.configSnapshotVersion,
       decisionPath: 'rate-limit-retention-replay',
-      environment: context.runtimeConfig.environment as 'local' | 'staging' | 'production',
+      environment: context.runtimeConfig.environment,
       evidenceRefs: [
         {
           description: `rate-limit KV state (window=${sample.rateLimit.rateLimitWindowSeconds}s, 429count=${sample.rateLimit.actualRateLimitedCount}/${sample.rateLimit.sampleRequestCount})`,

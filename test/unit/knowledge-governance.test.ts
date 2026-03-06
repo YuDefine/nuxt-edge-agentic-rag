@@ -5,14 +5,14 @@ import { createKnowledgeRuntimeConfig } from '#shared/schemas/knowledge-runtime'
 describe('knowledge governance config snapshot', () => {
   it('derives a stable config snapshot version from the governed runtime config', () => {
     const runtimeConfig = createKnowledgeRuntimeConfig({
-      environment: 'staging',
+      environment: 'local',
       features: {
         adminDashboard: true,
       },
     })
 
     expect(runtimeConfig.governance).toMatchObject({
-      environment: 'staging',
+      environment: 'local',
       execution: {
         maxSelfCorrectionRetry: 1,
       },
@@ -36,7 +36,7 @@ describe('knowledge governance config snapshot', () => {
         judgeMin: 0.45,
       },
     })
-    expect(runtimeConfig.governance.configSnapshotVersion).toContain('env=staging')
+    expect(runtimeConfig.governance.configSnapshotVersion).toContain('env=local')
     expect(runtimeConfig.governance.configSnapshotVersion).toContain('features.adminDashboard=on')
   })
 

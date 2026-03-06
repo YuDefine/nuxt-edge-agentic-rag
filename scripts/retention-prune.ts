@@ -1,10 +1,10 @@
 #!/usr/bin/env npx tsx
 /**
- * Staging Retention Prune Script (governance §2.4)
+ * Retention Prune Script (governance §2.4)
  *
  * Calls `POST /api/admin/retention/prune` with an optional shortened-TTL
- * override (`--retention-days`) so staging / local operators can prove the
- * coordinated cleanup path works without waiting 180 real days.
+ * override (`--retention-days`) so local operators can prove the coordinated
+ * cleanup path works without waiting 180 real days.
  *
  * The server side rejects any `retentionDays` override when the runtime
  * environment is `production`; this script does not enforce that itself but
@@ -12,13 +12,13 @@
  * host.
  *
  * Usage:
- *   # Regular prune (no override) against staging
- *   npx tsx scripts/staging-retention-prune.ts \
- *     --base-url https://agentic-staging.yudefine.com.tw \
+ *   # Regular prune (no override) against production
+ *   npx tsx scripts/retention-prune.ts \
+ *     --base-url https://agentic.yudefine.com.tw \
  *     --cookie "$ADMIN_SESSION_COOKIE"
  *
  *   # Shortened-TTL verification (1 day) against local
- *   npx tsx scripts/staging-retention-prune.ts \
+ *   npx tsx scripts/retention-prune.ts \
  *     --base-url http://localhost:3010 \
  *     --cookie "$ADMIN_SESSION_COOKIE" \
  *     --retention-days 1
@@ -26,7 +26,7 @@
  * Options:
  *   --base-url, -u       API base URL (required)
  *   --cookie, -c         Admin session cookie (required; env ADMIN_SESSION_COOKIE)
- *   --retention-days, -r Optional retentionDays override (1..180). Staging only.
+ *   --retention-days, -r Optional retentionDays override (1..180). Local only.
  *   --help, -h           Show help
  */
 
@@ -75,20 +75,20 @@ function parseArgs(args: string[]): ParsedArgs {
 
 function printHelp(): void {
   console.log(`
-Staging Retention Prune (governance §2.4)
+Retention Prune (governance §2.4)
 
 Usage:
-  npx tsx scripts/staging-retention-prune.ts --base-url <url> --cookie <cookie> [--retention-days <n>]
+  npx tsx scripts/retention-prune.ts --base-url <url> --cookie <cookie> [--retention-days <n>]
 
 Options:
-  --base-url, -u       API base URL (required, e.g. https://agentic-staging.yudefine.com.tw)
+  --base-url, -u       API base URL (required, e.g. https://agentic.yudefine.com.tw)
   --cookie, -c         Admin session cookie (required; or env ADMIN_SESSION_COOKIE)
-  --retention-days, -r Optional shortened retention (1..180). Staging / local only.
+  --retention-days, -r Optional shortened retention (1..180). Local only.
   --help, -h           Show this help.
 
 Notes:
   - Any --retention-days override is REJECTED by production; use only against
-    local / staging.
+    local.
   - The server response includes the effective retentionDays and deleted row
     counts so the verification harness can record which threshold was used.
 `)
@@ -121,7 +121,7 @@ async function main(): Promise<void> {
     // Conservative warning; server will reject regardless.
     console.warn(
       'Warning: --retention-days override against what looks like the production host. ' +
-        'The server will reject the override; rerun against staging or drop the flag.'
+        'The server will reject the override; rerun against local or drop the flag.'
     )
   }
 

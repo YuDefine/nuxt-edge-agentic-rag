@@ -1,6 +1,6 @@
-# Staging Deploy Checklist
+# Production Deploy Checklist
 
-> 此文件記錄 6.1b Deploy to Staging 的執行步驟。
+> 此文件記錄 Deploy to Production 的執行步驟。本專案 `v1.0.0` 採 local + production 雙環境，不獨立部署 staging。
 
 ## 前置條件
 
@@ -21,11 +21,11 @@
 | `NUXT_KNOWLEDGE_UPLOADS_BUCKET_NAME`       | R2 Bucket 名稱                   | Cloudflare R2 Dashboard              |
 | `NUXT_KNOWLEDGE_UPLOADS_ACCESS_KEY_ID`     | R2 API Token Access Key ID       | Cloudflare R2 > Manage R2 API Tokens |
 | `NUXT_KNOWLEDGE_UPLOADS_SECRET_ACCESS_KEY` | R2 API Token Secret              | Cloudflare R2 > Manage R2 API Tokens |
-| `NUXT_PUBLIC_SITE_URL`                     | Staging site URL                 | 例：`https://staging.example.com`    |
+| `NUXT_PUBLIC_SITE_URL`                     | Production site URL              | 例：`https://production.example.com` |
 
-### 2. 更新 deploy-staging.yml
+### 2. 更新 deploy-production.yml
 
-編輯 `.github/workflows/deploy-staging.yml`，在 Deploy step 加入缺少的 secrets：
+編輯 `.github/workflows/deploy.yml`，在 Deploy step 加入缺少的 secrets：
 
 ```yaml
 - name: Deploy to Cloudflare Workers
@@ -71,15 +71,15 @@
 在 Google Cloud Console：
 
 - [ ] 建立 OAuth 2.0 Client ID（Web application 類型）
-- [ ] 設定 Authorized redirect URIs：`https://<staging-url>/api/auth/callback/google`
-- [ ] 設定 Authorized JavaScript origins：`https://<staging-url>`
+- [ ] 設定 Authorized redirect URIs：`https://<production-url>/api/auth/callback/google`
+- [ ] 設定 Authorized JavaScript origins：`https://<production-url>`
 
 ## 部署步驟
 
 ### 方法 A：透過 GitHub Actions（推薦）
 
 1. Push 到 `main` branch，或
-2. 到 GitHub Actions > Deploy Staging > Run workflow
+2. 到 GitHub Actions > Deploy Production > Run workflow
 
 ### 方法 B：手動部署
 
@@ -96,7 +96,7 @@ npx wrangler deploy
 
 部署完成後：
 
-- [ ] 訪問 staging URL，確認首頁載入
+- [ ] 訪問 production URL，確認首頁載入
 - [ ] 點擊 Google 登入，確認 OAuth 流程
 - [ ] 以 allowlist 中的 email 登入，確認顯示「管理員」
 - [ ] 訪問 `/api/health`（如有），確認 200 回應
@@ -108,7 +108,7 @@ npx wrangler deploy
 ### 環境變數設定
 
 ```bash
-# 設定 staging URL
+# 設定 production URL
 export BASE_URL="https://agentic.yudefine.com.tw"
 
 # 從瀏覽器開發者工具取得登入後的 session cookie

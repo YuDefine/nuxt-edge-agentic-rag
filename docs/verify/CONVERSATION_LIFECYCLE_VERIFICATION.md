@@ -1,10 +1,10 @@
 # Conversation Lifecycle Verification
 
-> 驗證 `conversation-lifecycle-governance` spec 在 staging / production 的真實行為。涵蓋 stale conversation resolver（governance 1.1-1.2）與 conversation delete purge（governance 1.3-1.5）兩條主線。
+> 驗證 `conversation-lifecycle-governance` spec 在 local / production 的真實行為。涵蓋 stale conversation resolver（governance 1.1-1.2）與 conversation delete purge（governance 1.3-1.5）兩條主線。
 >
 > **前提**：
 >
-> - staging 已依 `staging-deploy-checklist.md` 部署完成
+> - 已依 `production-deploy-checklist.md` 部署完成（或具備 local 開發環境）
 > - D1 `agentic-rag-db` 可以 `wrangler d1 execute ... --remote` 查詢
 > - Web Admin 帳號可登入且具備上傳、切版、刪除對話權限
 > - 至少有一份 `access_level=internal` 文件可問答（對應 `ACCEPTANCE_RUNBOOK.md` 的 Doc A / Doc A'）
@@ -245,7 +245,7 @@ Delete §3.4 skip（無法重現 follow-up 幻覺）
 
 ## 6. 常見陷阱
 
-- `wrangler d1 execute` 忘加 `--remote` → 查到 local sqlite，看不到 staging 真實狀態
+- `wrangler d1 execute` 忘加 `--remote` → 查到 local sqlite，看不到 production 真實狀態
 - 未等 purge 延遲完成（若為 async job）就查 D1 → 誤判為 FAIL；應在刪除後確認「delete policy 觸發形式」（sync on delete vs. scheduled sweep）
 - `PURGE-CANARY-<timestamp>` 留在 browser localStorage / IndexedDB → 不是 server 殘留，應在**新 session / 無痕視窗**測試
-- 測試期間其他使用者同時在用 staging → 可能污染最新 `query_logs`，應以 `conversation_id` 或 timestamp 限縮查詢
+- 測試期間其他使用者同時在用同一環境 → 可能污染最新 `query_logs`，應以 `conversation_id` 或 timestamp 限縮查詢

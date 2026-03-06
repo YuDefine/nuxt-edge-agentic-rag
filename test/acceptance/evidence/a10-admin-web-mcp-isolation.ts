@@ -206,7 +206,7 @@ export function runA10AdminWebMcpIsolationExporter(
       channel: 'shared',
       configSnapshotVersion: context.runtimeConfig.governance.configSnapshotVersion,
       decisionPath: 'web-admin-reads-restricted-mcp-isolated',
-      environment: context.runtimeConfig.environment as 'local' | 'staging' | 'production',
+      environment: context.runtimeConfig.environment,
       evidenceRefs: [
         {
           description: `access matrix (user=${sample.userEmail}, web=${sample.webPath.allowedAccessLevels.join('|')}, mcp=${sample.mcpPath.allowedAccessLevels.join('|')})`,

@@ -20,7 +20,7 @@ import {
  *   2. login  — admin Google OAuth session established (mirrors A08)
  *   3. publish — a document version flipped to `current` (mirrors A04)
  *   4. ask    — `/api/chat` or MCP `askKnowledge` returns a citation
- *   5. replay — the emitted citation resolves via `/api/mcp/chunks`
+ *   5. replay — the emitted citation resolves via MCP `getDocumentChunk`
  *
  * Stage failures are surfaced via `notes` and flip the record to
  * `failed`; when all stages succeed and any pointer is still stubbed,
@@ -208,7 +208,7 @@ export function runEv01CoreLoopExporter(input: Ev01ExporterInput = {}): Acceptan
       channel: 'shared',
       configSnapshotVersion: context.runtimeConfig.governance.configSnapshotVersion,
       decisionPath: 'core-loop-smoke',
-      environment: context.runtimeConfig.environment as 'local' | 'staging' | 'production',
+      environment: context.runtimeConfig.environment,
       evidenceRefs: [
         {
           description: `deploy metadata (${sample.deployStage.workerName}@${sample.deployStage.commitSha})`,

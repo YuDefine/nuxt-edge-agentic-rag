@@ -193,7 +193,7 @@ export function runEv02OauthAllowlistExporter(
     channel: 'web',
     configSnapshotVersion: context.runtimeConfig.governance.configSnapshotVersion,
     decisionPath: 'allowlist-promote-demote-chain',
-    environment: context.runtimeConfig.environment as 'local' | 'staging' | 'production',
+    environment: context.runtimeConfig.environment,
     evidenceRefs,
     generatedAt: context.generatedAt,
     httpStatus: firstSnapshot.httpStatus,

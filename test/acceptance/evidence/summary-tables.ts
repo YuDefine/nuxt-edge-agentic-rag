@@ -24,7 +24,7 @@ export interface EvidenceSummaryRow {
   channel: 'mcp' | 'web' | 'shared'
   configSnapshotVersion: string
   decisionPath: string | null
-  environment: 'local' | 'staging' | 'production'
+  environment: AcceptanceEvidenceRecord['environment']
   evidenceRefCount: number
   httpStatus: number | null
   notes: string | undefined

@@ -80,7 +80,7 @@ async function runStep(
  *
  * @param input.database      D1 client (typically `await getD1Database()`)
  * @param input.now           Optional clock override for testing.
- * @param input.retentionDays Optional override for testing (staging backdated
+ * @param input.retentionDays Optional override for testing (local backdated
  *                            verification). Defaults to DEFAULT_RETENTION_DAYS.
  */
 export async function runRetentionCleanup(input: {

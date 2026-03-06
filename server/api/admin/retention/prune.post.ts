@@ -10,8 +10,8 @@ import { DEFAULT_RETENTION_DAYS } from '#shared/schemas/retention-policy'
 /**
  * Request body schema for governance §2.4 verification path.
  *
- * `retentionDays` is an OPTIONAL shortened-TTL override intended for staging /
- * local smoke verification of retention cleanup behaviour. The handler rejects
+ * `retentionDays` is an OPTIONAL shortened-TTL override intended for local smoke
+ * verification of retention cleanup behaviour. The handler rejects
  * any override when the runtime environment is `production` — production MUST
  * use the configured 180-day retention (see governance §2.5, "Production
  * verifies configuration without fake expiry runs").
@@ -56,7 +56,7 @@ export default defineEventHandler(async function pruneRetentionHandler(event) {
           statusMessage: 'Bad Request',
           message:
             'retentionDays override is not allowed in production. ' +
-            'Shortened-TTL verification is limited to local / staging (governance §2.4).',
+            'Shortened-TTL verification is limited to the local environment (governance §2.4).',
         })
       }
     }
