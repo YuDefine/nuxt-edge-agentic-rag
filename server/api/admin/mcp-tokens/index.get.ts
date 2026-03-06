@@ -2,7 +2,6 @@ import { useLogger } from 'evlog'
 import { z } from 'zod'
 
 import { requireRuntimeAdminSession } from '#server/utils/admin-session'
-import { getD1Database } from '#server/utils/database'
 import { createMcpTokenAdminStore } from '#server/utils/mcp-token-store'
 import { paginateList, paginationQuerySchema } from '#shared/schemas/pagination'
 
@@ -25,8 +24,7 @@ export default defineEventHandler(async function listMcpTokensHandler(event) {
     user: { id: session.user.id ?? null },
   })
 
-  const database = await getD1Database()
-  const store = createMcpTokenAdminStore(database)
+  const store = createMcpTokenAdminStore()
 
   return paginateList(
     { page: query.page, pageSize: query.pageSize },

@@ -3,6 +3,7 @@ import { randomBytes } from 'node:crypto'
 import type { McpTokenRecord } from '#shared/types/knowledge'
 import { parseStringArrayJson } from '#shared/utils/parse-string-array'
 
+import { getD1Database, getDrizzleDb } from './database'
 import { hashMcpToken } from './mcp-auth'
 
 interface D1PreparedStatementLike {
@@ -85,9 +86,10 @@ export function buildProvisionedMcpToken(
   }
 }
 
-export function createMcpTokenStore(database: D1DatabaseLike) {
+export function createMcpTokenStore() {
   return {
     async createToken(record: McpTokenRecord): Promise<void> {
+      const database = (await getD1Database()) as D1DatabaseLike
       await database
         .prepare(
           [
@@ -116,6 +118,7 @@ export function createMcpTokenStore(database: D1DatabaseLike) {
       tokenHash: string,
       environment: string
     ): Promise<McpTokenRecord | null> {
+      const database = (await getD1Database()) as D1DatabaseLike
       const row = await database
         .prepare(
           [
@@ -167,6 +170,7 @@ export function createMcpTokenStore(database: D1DatabaseLike) {
     },
 
     async touchLastUsedAt(tokenId: string, usedAt: string): Promise<void> {
+      const database = (await getD1Database()) as D1DatabaseLike
       await database
         .prepare(['UPDATE mcp_tokens', 'SET last_used_at = ?', 'WHERE id = ?'].join('\n'))
         .bind(usedAt, tokenId)
@@ -181,88 +185,77 @@ interface ListTokensInput {
   status?: string
 }
 
-interface McpTokenAdminRow {
-  created_at: string
-  expires_at: string | null
-  id: string
-  last_used_at: string | null
-  name: string
-  revoked_at: string | null
-  scopes_json: string
-  status: string
-}
-
-function toAdminSummary(row: McpTokenAdminRow): AdminMcpTokenSummary {
-  return {
-    createdAt: row.created_at,
-    expiresAt: row.expires_at,
-    id: row.id,
-    lastUsedAt: row.last_used_at,
-    name: row.name,
-    revokedAt: row.revoked_at,
-    scopes: parseStringArrayJson(row.scopes_json),
-    status: row.status,
-  }
-}
-
 /**
  * Admin-scoped MCP token store used by admin list / revoke endpoints.
  *
  * SECURITY: Selected columns deliberately exclude `token_hash`. Callers must
  * not add `token_hash` to the projection — the hash is lookup-only.
  */
-export function createMcpTokenAdminStore(database: D1DatabaseLike) {
+export function createMcpTokenAdminStore() {
   return {
     async listTokensForAdmin(input: ListTokensInput): Promise<AdminMcpTokenSummary[]> {
-      const base = [
-        'SELECT id, name, scopes_json, status, expires_at, last_used_at, revoked_at, created_at',
-        'FROM mcp_tokens',
-      ]
-      const binds: unknown[] = []
-      if (input.status) {
-        base.push('WHERE status = ?')
-        binds.push(input.status)
-      }
-      base.push('ORDER BY created_at DESC')
-      base.push('LIMIT ? OFFSET ?')
-      binds.push(input.limit, input.offset)
+      const { db, schema } = await getDrizzleDb()
+      const { and, desc, eq } = await import('drizzle-orm')
 
-      const result = await database
-        .prepare(base.join('\n'))
-        .bind(...binds)
-        .all<McpTokenAdminRow>()
+      const conditions = input.status ? [eq(schema.mcpTokens.status, input.status)] : []
+      const query = db
+        .select({
+          id: schema.mcpTokens.id,
+          name: schema.mcpTokens.name,
+          scopesJson: schema.mcpTokens.scopesJson,
+          status: schema.mcpTokens.status,
+          expiresAt: schema.mcpTokens.expiresAt,
+          lastUsedAt: schema.mcpTokens.lastUsedAt,
+          revokedAt: schema.mcpTokens.revokedAt,
+          createdAt: schema.mcpTokens.createdAt,
+        })
+        .from(schema.mcpTokens)
 
-      return (result.results ?? []).map(toAdminSummary)
+      const rows = await (conditions.length > 0 ? query.where(and(...conditions)) : query)
+        .orderBy(desc(schema.mcpTokens.createdAt))
+        .limit(input.limit)
+        .offset(input.offset)
+
+      return rows.map((row) => ({
+        createdAt: row.createdAt,
+        expiresAt: row.expiresAt,
+        id: row.id,
+        lastUsedAt: row.lastUsedAt,
+        name: row.name,
+        revokedAt: row.revokedAt,
+        scopes: parseStringArrayJson(row.scopesJson),
+        status: row.status,
+      }))
     },
 
     async countTokensForAdmin(filter: { status?: string }): Promise<number> {
-      const binds: unknown[] = []
-      const where: string[] = []
-      if (filter.status) {
-        where.push('status = ?')
-        binds.push(filter.status)
-      }
-      const sql = [
-        'SELECT COUNT(*) AS n FROM mcp_tokens',
-        where.length > 0 ? `WHERE ${where.join(' AND ')}` : '',
-      ]
-        .filter(Boolean)
-        .join('\n')
-      const row = await database
-        .prepare(sql)
-        .bind(...binds)
-        .first<{ n: number }>()
-      return row?.n ?? 0
+      const { db, schema } = await getDrizzleDb()
+      const { count, eq } = await import('drizzle-orm')
+
+      const query = db.select({ n: count() }).from(schema.mcpTokens)
+      const rows = await (filter.status
+        ? query.where(eq(schema.mcpTokens.status, filter.status))
+        : query)
+
+      return rows[0]?.n ?? 0
     },
 
     async revokeTokenById(
       tokenId: string,
       options: { now?: () => Date } = {}
     ): Promise<McpTokenRevokeOutcome> {
-      const existing = await database
-        .prepare('SELECT id, status, revoked_at FROM mcp_tokens WHERE id = ? LIMIT 1')
-        .bind(tokenId)
-        .first<{ id: string; revoked_at: string | null; status: string }>()
+      const { db, schema } = await getDrizzleDb()
+      const { and, eq, ne } = await import('drizzle-orm')
+
+      const [existing] = await db
+        .select({
+          id: schema.mcpTokens.id,
+          status: schema.mcpTokens.status,
+          revokedAt: schema.mcpTokens.revokedAt,
+        })
+        .from(schema.mcpTokens)
+        .where(eq(schema.mcpTokens.id, tokenId))
+        .limit(1)
 
       if (!existing) {
         return { outcome: 'not-found' }
@@ -273,7 +266,7 @@ export function createMcpTokenAdminStore(database: D1DatabaseLike) {
           outcome: 'already-revoked',
           token: {
             id: existing.id,
-            revokedAt: existing.revoked_at ?? '',
+            revokedAt: existing.revokedAt ?? '',
             status: existing.status,
           },
         }
@@ -284,17 +277,20 @@ export function createMcpTokenAdminStore(database: D1DatabaseLike) {
       // `revokedAt` reflects the DB's actual persisted timestamp — not a
       // speculative one from this request that may have lost the race.
       const revokedAt = (options.now ?? (() => new Date()))().toISOString()
-      await database
-        .prepare(
-          "UPDATE mcp_tokens SET status = 'revoked', revoked_at = ? WHERE id = ? AND status != 'revoked'"
-        )
-        .bind(revokedAt, tokenId)
-        .run()
+      await db
+        .update(schema.mcpTokens)
+        .set({ status: 'revoked', revokedAt })
+        .where(and(eq(schema.mcpTokens.id, tokenId), ne(schema.mcpTokens.status, 'revoked')))
 
-      const actual = await database
-        .prepare('SELECT id, status, revoked_at FROM mcp_tokens WHERE id = ? LIMIT 1')
-        .bind(tokenId)
-        .first<{ id: string; revoked_at: string | null; status: string }>()
+      const [actual] = await db
+        .select({
+          id: schema.mcpTokens.id,
+          status: schema.mcpTokens.status,
+          revokedAt: schema.mcpTokens.revokedAt,
+        })
+        .from(schema.mcpTokens)
+        .where(eq(schema.mcpTokens.id, tokenId))
+        .limit(1)
 
       if (!actual || actual.status !== 'revoked') {
         return { outcome: 'not-found' }
@@ -304,7 +300,7 @@ export function createMcpTokenAdminStore(database: D1DatabaseLike) {
         outcome: 'revoked',
         token: {
           id: actual.id,
-          revokedAt: actual.revoked_at ?? revokedAt,
+          revokedAt: actual.revokedAt ?? revokedAt,
           status: actual.status,
         },
       }

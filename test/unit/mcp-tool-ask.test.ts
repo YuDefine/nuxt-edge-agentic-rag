@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 //
 // The toolkit wrapper in `server/mcp/tools/ask.ts` must:
 // 1. Expose a name `askKnowledge` and the Zod `inputSchema` matching the
-//    legacy POST /api/mcp/ask body schema.
+//    legacy ask HTTP body schema.
 // 2. Read `event.context.mcpAuth` populated by the middleware (auth / rate
 //    limit already enforced upstream) and call `requireMcpScope` for
 //    `knowledge.ask`.

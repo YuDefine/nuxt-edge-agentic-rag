@@ -2,7 +2,6 @@ import { useLogger } from 'evlog'
 import { z } from 'zod'
 
 import { requireRuntimeAdminSession } from '#server/utils/admin-session'
-import { getD1Database } from '#server/utils/database'
 import { createQueryLogAdminStore } from '#server/utils/query-log-admin-store'
 
 const paramsSchema = z.object({ id: z.string().min(1) })
@@ -21,8 +20,7 @@ export default defineEventHandler(async function getQueryLogDetailHandler(event)
     user: { id: session.user.id ?? null },
   })
 
-  const database = await getD1Database()
-  const store = createQueryLogAdminStore(database)
+  const store = createQueryLogAdminStore()
 
   const row = await store.getQueryLogById(params.id)
 

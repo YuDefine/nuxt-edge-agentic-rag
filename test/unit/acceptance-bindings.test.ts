@@ -2,8 +2,6 @@ import { describe, expect, it } from 'vitest'
 
 import { createKnowledgeRuntimeConfig } from '#shared/schemas/knowledge-runtime'
 import { createCloudflareAiSearchClient } from '#server/utils/ai-search'
-import { hashMcpToken } from '#server/utils/mcp-auth'
-import { createMcpTokenStore } from '#server/utils/mcp-token-store'
 import { createChatKvRateLimitStore } from '#server/utils/web-chat'
 
 interface BindingsModule {
@@ -42,47 +40,6 @@ describe('acceptance bindings fakes', () => {
     const module = await importBindingsModule()
 
     expect(module).not.toBeNull()
-
-    const tokenHash = hashMcpToken('secret-token')
-    const d1 = module?.createD1BindingFake({
-      responders: [
-        {
-          match: /FROM mcp_tokens/,
-          resolve: ({ values }: { values: unknown[] }) => ({
-            first:
-              values[0] === tokenHash && values[1] === 'local'
-                ? {
-                    created_at: '2026-04-16T00:00:00.000Z',
-                    environment: 'local',
-                    expires_at: null,
-                    id: 'token-1',
-                    last_used_at: null,
-                    name: 'Local CLI',
-                    revoked_at: null,
-                    revoked_reason: null,
-                    scopes_json: JSON.stringify(['knowledge.ask', 'knowledge.search']),
-                    status: 'active',
-                    token_hash: tokenHash,
-                  }
-                : null,
-          }),
-        },
-        {
-          match: /UPDATE mcp_tokens/,
-          resolve: () => ({ run: { success: true } }),
-        },
-      ],
-    })
-    const tokenStore = createMcpTokenStore(d1 as never)
-
-    await expect(tokenStore.findUsableTokenByHash(tokenHash, 'local')).resolves.toMatchObject({
-      environment: 'local',
-      id: 'token-1',
-      scopesJson: JSON.stringify(['knowledge.ask', 'knowledge.search']),
-    })
-
-    await tokenStore.touchLastUsedAt('token-1', '2026-04-16T00:10:00.000Z')
-    expect(d1?.calls).toHaveLength(2)
 
     const kv = module?.createKvBindingFake()
     const rateLimitStore = createChatKvRateLimitStore(kv as never)
@@ -168,14 +125,12 @@ describe('acceptance bindings fakes', () => {
     expect(
       module?.createCloudflareBindingsFixture({
         ai: aiBinding,
-        d1,
         kv,
         r2,
         workersAi,
       })
     ).toMatchObject({
       AI: aiBinding,
-      DB: d1,
       DOCUMENTS: r2,
       KV: kv,
       WORKERS_AI: workersAi,

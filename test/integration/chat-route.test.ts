@@ -122,7 +122,7 @@ describe('/api/chat route', () => {
           d1Database: 'DB',
           rateLimitKv: 'RATE_LIMITS',
         },
-        environment: 'staging',
+        environment: 'local',
       })
     )
     chatRouteMocks.readValidatedBody.mockResolvedValue({ query: 'What changed?' })

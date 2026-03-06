@@ -11,7 +11,14 @@ import {
   createWorkersAiBindingFake,
 } from '../acceptance/helpers/bindings'
 import { getAcceptanceRegistryEntry } from '../acceptance/registry/manifest'
+import { runMcpTool } from './helpers/mcp-tool-runner'
 import { createRouteEvent, installNuxtRouteTestGlobals } from './helpers/nuxt-route'
+
+const pendingEvent = vi.hoisted(() => ({ current: null as unknown }))
+
+vi.mock('nitropack/runtime', () => ({
+  useEvent: () => pendingEvent.current,
+}))
 
 // TC-08：系統能力外問題拒答
 // 使用者要求系統執行寫入類操作（如「幫我直接修改 ERP 的採購單狀態」）。
@@ -67,7 +74,6 @@ vi.mock('../../server/utils/cloudflare-bindings', () => ({
 
 vi.mock('../../server/utils/database', () => ({
   getD1Database: async () => (tc08Mocks.bindings ?? {}).DB,
-  getDrizzleDb: async () => ({ db: (tc08Mocks.bindings ?? {}).DB }),
 }))
 
 vi.mock('../../server/utils/knowledge-runtime', async (importOriginal) => {
@@ -145,7 +151,10 @@ describe('acceptance out-of-capability refusal (TC-08)', () => {
                 refused: boolean
               }
             })
-          : ((await runMcpCase(tc08Mocks.actor?.mcpToken.authorizationHeader ?? '')) as {
+          : ((await runMcpCase(
+              tc08Mocks.actor?.mcpToken.authorizationHeader ?? '',
+              fixture.prompt
+            )) as {
               data: {
                 answer?: string
                 citations: Array<{ citationId: string; sourceChunkId: string }>
@@ -219,16 +228,19 @@ async function runWebCase() {
   return await handler(createRouteEvent())
 }
 
-async function runMcpCase(authorizationHeader: string) {
-  const { default: handler } = await import('../../server/api/mcp/ask.post')
-
-  return await handler(
-    createRouteEvent({
-      headers: {
-        authorization: authorizationHeader,
-      },
-    })
+async function runMcpCase(authorizationHeader: string, query: string) {
+  const { default: tool } = await import('#server/mcp/tools/ask')
+  const data = await runMcpTool(
+    tool,
+    { query },
+    {
+      authorizationHeader,
+      cloudflareEnv: tc08Mocks.bindings ?? {},
+      pendingEvent,
+    }
   )
+
+  return { data }
 }
 
 function createTc08Bindings(actor: ReturnType<typeof createAcceptanceActorFixture>) {

@@ -2,7 +2,6 @@ import { useLogger } from 'evlog'
 
 import { requireRuntimeAdminSession } from '#server/utils/admin-session'
 import { createAdminDashboardStore } from '#server/utils/admin-dashboard-store'
-import { getD1Database } from '#server/utils/database'
 
 /**
  * Admin summary dashboard endpoint.
@@ -36,8 +35,7 @@ export default defineEventHandler(async function adminDashboardSummaryHandler(ev
     user: { id: session.user.id ?? null },
   })
 
-  const database = await getD1Database()
-  const store = createAdminDashboardStore(database)
+  const store = createAdminDashboardStore()
 
   const [documentsTotal, queriesLast30Days, tokensActive, trend] = await Promise.all([
     store.countDocuments(),

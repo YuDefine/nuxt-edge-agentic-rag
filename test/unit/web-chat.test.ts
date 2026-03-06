@@ -10,7 +10,7 @@ import {
 describe('web chat', () => {
   it('consumes a per-user chat rate limit and reuses the knowledge answering core', async () => {
     const governance = createKnowledgeRuntimeConfig({
-      environment: 'staging',
+      environment: 'local',
     }).governance
     const kv = {
       get: vi.fn().mockResolvedValue(JSON.stringify({ count: 1, windowStart: 0 })),
@@ -24,7 +24,7 @@ describe('web chat', () => {
           userId: 'user-1',
         },
         governance,
-        environment: 'staging',
+        environment: 'local',
         now: 60_000,
         query: 'Summarize the restricted launch plan.',
       },
@@ -53,9 +53,9 @@ describe('web chat', () => {
       }
     )
 
-    expect(kv.get).toHaveBeenCalledWith('web:staging:chat:user-1')
+    expect(kv.get).toHaveBeenCalledWith('web:local:chat:user-1')
     expect(kv.put).toHaveBeenCalledWith(
-      'web:staging:chat:user-1',
+      'web:local:chat:user-1',
       JSON.stringify({ count: 2, windowStart: 0 }),
       { expirationTtl: 300 }
     )
@@ -178,7 +178,7 @@ describe('web chat', () => {
 
   it('stamps accepted web query logs with the shared config snapshot version', async () => {
     const governance = createKnowledgeRuntimeConfig({
-      environment: 'staging',
+      environment: 'local',
     }).governance
     const auditStore = {
       createMessage: vi.fn().mockResolvedValue('message-9'),
@@ -192,7 +192,7 @@ describe('web chat', () => {
           userId: 'user-9',
         },
         governance,
-        environment: 'staging',
+        environment: 'local',
         query: 'What changed in revenue guidance?',
       },
       {
@@ -228,7 +228,7 @@ describe('web chat', () => {
       allowedAccessLevels: ['internal'],
       channel: 'web',
       configSnapshotVersion: governance.configSnapshotVersion,
-      environment: 'staging',
+      environment: 'local',
       now: undefined,
       queryText: 'What changed in revenue guidance?',
       status: 'accepted',
@@ -238,7 +238,7 @@ describe('web chat', () => {
 
   it('persists citations against the accepted web query log when evidence is answered directly', async () => {
     const governance = createKnowledgeRuntimeConfig({
-      environment: 'staging',
+      environment: 'local',
     }).governance
     const auditStore = {
       createMessage: vi.fn().mockResolvedValue('message-10'),
@@ -259,7 +259,7 @@ describe('web chat', () => {
           userId: 'user-10',
         },
         governance,
-        environment: 'staging',
+        environment: 'local',
         now: 60_000,
         query: 'PO 和 PR 有什麼差別？',
       },

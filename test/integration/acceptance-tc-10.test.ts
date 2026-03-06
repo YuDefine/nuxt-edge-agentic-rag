@@ -10,7 +10,14 @@ import {
   createKvBindingFake,
 } from '../acceptance/helpers/bindings'
 import { getAcceptanceRegistryEntry } from '../acceptance/registry/manifest'
+import { runMcpTool } from './helpers/mcp-tool-runner'
 import { createRouteEvent, installNuxtRouteTestGlobals } from './helpers/nuxt-route'
+
+const pendingEvent = vi.hoisted(() => ({ current: null as unknown }))
+
+vi.mock('nitropack/runtime', () => ({
+  useEvent: () => pendingEvent.current,
+}))
 
 // TC-10：制度查詢題
 // 使用者詢問制度規章（如「新進人員請假規定是什麼？」）。
@@ -69,7 +76,6 @@ vi.mock('../../server/utils/cloudflare-bindings', () => ({
 
 vi.mock('../../server/utils/database', () => ({
   getD1Database: async () => (tc10Mocks.bindings ?? {}).DB,
-  getDrizzleDb: async () => ({ db: (tc10Mocks.bindings ?? {}).DB }),
 }))
 
 vi.mock('../../server/utils/knowledge-runtime', async (importOriginal) => {
@@ -143,7 +149,7 @@ describe('acceptance policy direct-answer (TC-10)', () => {
       const result = (
         fixture.channel === 'web'
           ? await runWebCase()
-          : await runMcpCase(tc10Mocks.actor?.mcpToken.authorizationHeader ?? '')
+          : await runMcpCase(tc10Mocks.actor?.mcpToken.authorizationHeader ?? '', fixture.prompt)
       ) as {
         data: {
           answer: string
@@ -222,16 +228,19 @@ async function runWebCase() {
   return await handler(createRouteEvent())
 }
 
-async function runMcpCase(authorizationHeader: string) {
-  const { default: handler } = await import('../../server/api/mcp/ask.post')
-
-  return await handler(
-    createRouteEvent({
-      headers: {
-        authorization: authorizationHeader,
-      },
-    })
+async function runMcpCase(authorizationHeader: string, query: string) {
+  const { default: tool } = await import('#server/mcp/tools/ask')
+  const data = await runMcpTool(
+    tool,
+    { query },
+    {
+      authorizationHeader,
+      cloudflareEnv: tc10Mocks.bindings ?? {},
+      pendingEvent,
+    }
   )
+
+  return { data }
 }
 
 function getTc10Scenario(): Tc10Scenario {

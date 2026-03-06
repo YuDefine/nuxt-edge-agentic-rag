@@ -11,7 +11,6 @@ import { useLogger } from 'evlog'
 import { z } from 'zod'
 
 import { requireInternalDebugAccess } from '#server/utils/debug-surface-guard'
-import { getD1Database } from '#server/utils/database'
 import { createQueryLogDebugStore } from '#server/utils/query-log-debug-store'
 
 const paramsSchema = z.object({ id: z.string().min(1) })
@@ -33,8 +32,7 @@ export default defineEventHandler(async function getDebugQueryLogDetailHandler(e
     user: { id: access.userId },
   })
 
-  const database = await getD1Database()
-  const store = createQueryLogDebugStore(database)
+  const store = createQueryLogDebugStore()
   const row = await store.getDebugQueryLogById(params.id)
 
   if (!row) {

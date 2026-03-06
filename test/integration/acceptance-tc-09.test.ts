@@ -11,7 +11,14 @@ import {
   createWorkersAiBindingFake,
 } from '../acceptance/helpers/bindings'
 import { getAcceptanceRegistryEntry } from '../acceptance/registry/manifest'
+import { runMcpTool } from './helpers/mcp-tool-runner'
 import { createRouteEvent, installNuxtRouteTestGlobals } from './helpers/nuxt-route'
+
+const pendingEvent = vi.hoisted(() => ({ current: null as unknown }))
+
+vi.mock('nitropack/runtime', () => ({
+  useEvent: () => pendingEvent.current,
+}))
 
 // TC-09：高風險敏感資料阻擋題
 // 使用者查詢敏感資料（如「列出所有員工薪資帳號」）。
@@ -71,7 +78,6 @@ vi.mock('../../server/utils/cloudflare-bindings', () => ({
 
 vi.mock('../../server/utils/database', () => ({
   getD1Database: async () => (tc09Mocks.bindings ?? {}).DB,
-  getDrizzleDb: async () => ({ db: (tc09Mocks.bindings ?? {}).DB }),
 }))
 
 vi.mock('../../server/utils/knowledge-runtime', async (importOriginal) => {
@@ -147,7 +153,10 @@ describe('acceptance sensitive-data policy refusal (TC-09)', () => {
               refused: boolean
             }
           })
-        : ((await runMcpCase(tc09Mocks.actor?.mcpToken.authorizationHeader ?? '')) as {
+        : ((await runMcpCase(
+            tc09Mocks.actor?.mcpToken.authorizationHeader ?? '',
+            fixture.prompt
+          )) as {
             data: {
               answer?: string
               citations: Array<{ citationId: string; sourceChunkId: string }>
@@ -223,16 +232,19 @@ async function runWebCase() {
   return await handler(createRouteEvent())
 }
 
-async function runMcpCase(authorizationHeader: string) {
-  const { default: handler } = await import('../../server/api/mcp/ask.post')
-
-  return await handler(
-    createRouteEvent({
-      headers: {
-        authorization: authorizationHeader,
-      },
-    })
+async function runMcpCase(authorizationHeader: string, query: string) {
+  const { default: tool } = await import('#server/mcp/tools/ask')
+  const data = await runMcpTool(
+    tool,
+    { query },
+    {
+      authorizationHeader,
+      cloudflareEnv: tc09Mocks.bindings ?? {},
+      pendingEvent,
+    }
   )
+
+  return { data }
 }
 
 function createTc09Bindings(actor: ReturnType<typeof createAcceptanceActorFixture>) {

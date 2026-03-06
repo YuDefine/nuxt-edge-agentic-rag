@@ -41,7 +41,7 @@ function evidenceAt(score: number) {
 
 describe('chatWithKnowledge — §1.2 debug-safe derived fields', () => {
   it('happy path → writes retrievalScore + decision_path=direct_answer + completion_latency_ms (null first-token) via updateQueryLog', async () => {
-    const governance = createKnowledgeRuntimeConfig({ environment: 'staging' }).governance
+    const governance = createKnowledgeRuntimeConfig({ environment: 'local' }).governance
     const auditStore = {
       createMessage: vi.fn().mockResolvedValue('msg-1'),
       createQueryLog: vi.fn().mockResolvedValue('query-log-happy'),
@@ -52,7 +52,7 @@ describe('chatWithKnowledge — §1.2 debug-safe derived fields', () => {
       {
         auth: { isAdmin: false, userId: 'user-happy' },
         governance,
-        environment: 'staging',
+        environment: 'local',
         query: 'How does payroll exception work?',
       },
       {
@@ -124,7 +124,7 @@ describe('chatWithKnowledge — §1.2 debug-safe derived fields', () => {
   })
 
   it('no-citation refusal (low retrieval score) → writes decision_path=no_citation_refuse + refusal_reason=no_citation via updateQueryLog', async () => {
-    const governance = createKnowledgeRuntimeConfig({ environment: 'staging' }).governance
+    const governance = createKnowledgeRuntimeConfig({ environment: 'local' }).governance
     const auditStore = {
       createMessage: vi.fn().mockResolvedValue('msg-refuse'),
       createQueryLog: vi.fn().mockResolvedValue('query-log-refuse'),
@@ -135,7 +135,7 @@ describe('chatWithKnowledge — §1.2 debug-safe derived fields', () => {
       {
         auth: { isAdmin: false, userId: 'user-refuse' },
         governance,
-        environment: 'staging',
+        environment: 'local',
         query: 'Tell me something outside the corpus.',
       },
       {
@@ -164,7 +164,7 @@ describe('chatWithKnowledge — §1.2 debug-safe derived fields', () => {
   })
 
   it('pipeline error → writes decision_path=pipeline_error + refusal_reason=pipeline_error + null latency via updateQueryLog, then re-throws', async () => {
-    const governance = createKnowledgeRuntimeConfig({ environment: 'staging' }).governance
+    const governance = createKnowledgeRuntimeConfig({ environment: 'local' }).governance
     const auditStore = {
       createMessage: vi.fn().mockResolvedValue('msg-error'),
       createQueryLog: vi.fn().mockResolvedValue('query-log-error'),
@@ -177,7 +177,7 @@ describe('chatWithKnowledge — §1.2 debug-safe derived fields', () => {
         {
           auth: { isAdmin: false, userId: 'user-error' },
           governance,
-          environment: 'staging',
+          environment: 'local',
           query: 'Anything.',
         },
         {
@@ -204,7 +204,7 @@ describe('chatWithKnowledge — §1.2 debug-safe derived fields', () => {
   })
 
   it('judge_pass_refuse path → writes judge score + decision_path=judge_pass_refuse + refusal_reason=low_confidence', async () => {
-    const governance = createKnowledgeRuntimeConfig({ environment: 'staging' }).governance
+    const governance = createKnowledgeRuntimeConfig({ environment: 'local' }).governance
     const auditStore = {
       createMessage: vi.fn().mockResolvedValue('msg-judge-refuse'),
       createQueryLog: vi.fn().mockResolvedValue('query-log-judge'),
@@ -219,7 +219,7 @@ describe('chatWithKnowledge — §1.2 debug-safe derived fields', () => {
       {
         auth: { isAdmin: false, userId: 'user-judge' },
         governance,
-        environment: 'staging',
+        environment: 'local',
         query: 'Mid-confidence query.',
       },
       {
@@ -246,7 +246,7 @@ describe('chatWithKnowledge — §1.2 debug-safe derived fields', () => {
   })
 
   it('backward compat — auditStore without updateQueryLog works silently (existing callers unchanged)', async () => {
-    const governance = createKnowledgeRuntimeConfig({ environment: 'staging' }).governance
+    const governance = createKnowledgeRuntimeConfig({ environment: 'local' }).governance
     const auditStore = {
       createMessage: vi.fn().mockResolvedValue('msg-compat'),
       createQueryLog: vi.fn().mockResolvedValue('query-log-compat'),
@@ -257,7 +257,7 @@ describe('chatWithKnowledge — §1.2 debug-safe derived fields', () => {
       {
         auth: { isAdmin: false, userId: 'user-compat' },
         governance,
-        environment: 'staging',
+        environment: 'local',
         query: 'Anything.',
       },
       {

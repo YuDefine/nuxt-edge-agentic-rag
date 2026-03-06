@@ -40,12 +40,12 @@ const CURRENT_EVIDENCE = [
 ]
 
 function baseInput() {
-  const governance = createKnowledgeRuntimeConfig({ environment: 'staging' }).governance
+  const governance = createKnowledgeRuntimeConfig({ environment: 'local' }).governance
 
   return {
     auth: { isAdmin: false, userId: 'user-1' },
     governance,
-    environment: 'staging',
+    environment: 'local',
     now: 60_000,
     query: 'What is the new launch timing?',
   }

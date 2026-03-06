@@ -2,7 +2,6 @@ import { useLogger } from 'evlog'
 import { z } from 'zod'
 
 import { requireRuntimeAdminSession } from '#server/utils/admin-session'
-import { getD1Database } from '#server/utils/database'
 import { buildProvisionedMcpToken, createMcpTokenStore } from '#server/utils/mcp-token-store'
 
 const bodySchema = z.object({
@@ -38,8 +37,7 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const database = await getD1Database()
-  const tokenStore = createMcpTokenStore(database)
+  const tokenStore = createMcpTokenStore()
 
   const environment = runtimeConfig.knowledge.environment ?? 'production'
   const expiresAt = body.expiresInDays

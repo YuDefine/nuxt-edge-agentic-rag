@@ -15,17 +15,6 @@
 
 import { parseStringArrayJson } from '#shared/utils/parse-string-array'
 
-interface D1PreparedStatementLike {
-  all<T>(): Promise<{ results?: T[] }>
-  bind(...values: unknown[]): D1PreparedStatementLike
-  first<T>(): Promise<T | null>
-  run(): Promise<unknown>
-}
-
-interface D1DatabaseLike {
-  prepare(query: string): D1PreparedStatementLike
-}
-
 export interface DebugQueryLogDetail {
   allowedAccessLevels: string[]
   channel: string
@@ -43,25 +32,6 @@ export interface DebugQueryLogDetail {
   refusalReason: string | null
   retrievalScore: number | null
   riskFlags: string[]
-  status: string
-}
-
-interface DebugQueryLogRow {
-  allowed_access_levels_json: string
-  channel: string
-  completion_latency_ms: number | null
-  config_snapshot_version: string
-  created_at: string
-  decision_path: string | null
-  environment: string
-  first_token_latency_ms: number | null
-  id: string
-  judge_score: number | null
-  query_redacted_text: string
-  redaction_applied: number
-  refusal_reason: string | null
-  retrieval_score: number | null
-  risk_flags_json: string
   status: string
 }
 
@@ -98,28 +68,6 @@ export interface LatencySummaryOptions {
   days: number
   /** Optional `now` injection for deterministic tests. */
   now?: Date
-}
-
-function toDebugDetail(row: DebugQueryLogRow): DebugQueryLogDetail {
-  return {
-    allowedAccessLevels: parseStringArrayJson(row.allowed_access_levels_json),
-    channel: row.channel,
-    citationsJson: '[]', // detail store doesn't join messages; reserved for future.
-    completionLatencyMs: row.completion_latency_ms,
-    configSnapshotVersion: row.config_snapshot_version,
-    createdAt: row.created_at,
-    decisionPath: row.decision_path,
-    environment: row.environment,
-    firstTokenLatencyMs: row.first_token_latency_ms,
-    id: row.id,
-    judgeScore: row.judge_score,
-    queryRedactedText: row.query_redacted_text,
-    redactionApplied: row.redaction_applied === 1,
-    refusalReason: row.refusal_reason,
-    retrievalScore: row.retrieval_score,
-    riskFlags: parseStringArrayJson(row.risk_flags_json),
-    status: row.status,
-  }
 }
 
 function percentile(sorted: number[], p: number): number | null {
@@ -186,56 +134,78 @@ function classifyOutcome(row: OutcomeRow): keyof OutcomeBreakdown {
   }
 }
 
-export function createQueryLogDebugStore(database: D1DatabaseLike) {
+export function createQueryLogDebugStore() {
   return {
     async getDebugQueryLogById(id: string): Promise<DebugQueryLogDetail | null> {
-      const row = await database
-        .prepare(
-          [
-            'SELECT id, channel, status, environment, query_redacted_text,',
-            '  risk_flags_json, allowed_access_levels_json, redaction_applied,',
-            '  config_snapshot_version, created_at,',
-            '  first_token_latency_ms, completion_latency_ms,',
-            '  retrieval_score, judge_score, decision_path, refusal_reason',
-            'FROM query_logs',
-            'WHERE id = ?',
-            'LIMIT 1',
-          ].join('\n')
-        )
-        .bind(id)
-        .first<DebugQueryLogRow>()
+      const { db, schema } = await import('hub:db')
+      const { eq } = await import('drizzle-orm')
+
+      const [row] = await db
+        .select({
+          id: schema.queryLogs.id,
+          channel: schema.queryLogs.channel,
+          status: schema.queryLogs.status,
+          environment: schema.queryLogs.environment,
+          queryRedactedText: schema.queryLogs.queryRedactedText,
+          riskFlagsJson: schema.queryLogs.riskFlagsJson,
+          allowedAccessLevelsJson: schema.queryLogs.allowedAccessLevelsJson,
+          redactionApplied: schema.queryLogs.redactionApplied,
+          configSnapshotVersion: schema.queryLogs.configSnapshotVersion,
+          createdAt: schema.queryLogs.createdAt,
+          firstTokenLatencyMs: schema.queryLogs.firstTokenLatencyMs,
+          completionLatencyMs: schema.queryLogs.completionLatencyMs,
+          retrievalScore: schema.queryLogs.retrievalScore,
+          judgeScore: schema.queryLogs.judgeScore,
+          decisionPath: schema.queryLogs.decisionPath,
+          refusalReason: schema.queryLogs.refusalReason,
+        })
+        .from(schema.queryLogs)
+        .where(eq(schema.queryLogs.id, id))
+        .limit(1)
 
       if (!row) {
         return null
       }
 
-      return toDebugDetail(row)
+      return {
+        allowedAccessLevels: parseStringArrayJson(row.allowedAccessLevelsJson),
+        channel: row.channel,
+        citationsJson: '[]', // detail store doesn't join messages; reserved for future.
+        completionLatencyMs: row.completionLatencyMs,
+        configSnapshotVersion: row.configSnapshotVersion,
+        createdAt: row.createdAt,
+        decisionPath: row.decisionPath,
+        environment: row.environment,
+        firstTokenLatencyMs: row.firstTokenLatencyMs,
+        id: row.id,
+        judgeScore: row.judgeScore,
+        queryRedactedText: row.queryRedactedText,
+        redactionApplied: Boolean(row.redactionApplied),
+        refusalReason: row.refusalReason,
+        retrievalScore: row.retrievalScore,
+        riskFlags: parseStringArrayJson(row.riskFlagsJson),
+        status: row.status,
+      }
     },
 
     async summarizeLatency(options: LatencySummaryOptions): Promise<LatencySummary> {
+      const { db, schema } = await import('hub:db')
+      const { gte } = await import('drizzle-orm')
+
       const now = options.now ?? new Date()
       const sinceMs = now.getTime() - options.days * 24 * 60 * 60 * 1000
       const since = new Date(sinceMs).toISOString()
 
-      const result = await database
-        .prepare(
-          [
-            'SELECT channel, status, decision_path,',
-            '  first_token_latency_ms, completion_latency_ms',
-            'FROM query_logs',
-            'WHERE created_at >= ?',
-          ].join('\n')
-        )
-        .bind(since)
-        .all<{
-          channel: string
-          completion_latency_ms: number | null
-          decision_path: string | null
-          first_token_latency_ms: number | null
-          status: string
-        }>()
-
-      const rows = result.results ?? []
+      const rows = await db
+        .select({
+          channel: schema.queryLogs.channel,
+          status: schema.queryLogs.status,
+          decisionPath: schema.queryLogs.decisionPath,
+          firstTokenLatencyMs: schema.queryLogs.firstTokenLatencyMs,
+          completionLatencyMs: schema.queryLogs.completionLatencyMs,
+        })
+        .from(schema.queryLogs)
+        .where(gte(schema.queryLogs.createdAt, since))
 
       const byChannel = new Map<
         string,
@@ -252,11 +222,11 @@ export function createQueryLogDebugStore(database: D1DatabaseLike) {
           firstToken: [],
           outcomes: { answered: 0, refused: 0, forbidden: 0, error: 0 },
         }
-        bucket.firstToken.push(row.first_token_latency_ms)
-        bucket.completion.push(row.completion_latency_ms)
+        bucket.firstToken.push(row.firstTokenLatencyMs)
+        bucket.completion.push(row.completionLatencyMs)
         const category = classifyOutcome({
           status: row.status,
-          decision_path: row.decision_path,
+          decision_path: row.decisionPath,
         })
         bucket.outcomes[category] += 1
         byChannel.set(row.channel, bucket)

@@ -65,14 +65,11 @@ export async function runMcpTool<Result = unknown>(
   pendingEvent.current = event
 
   try {
-    const { getD1Database } = await import('#server/utils/database')
-    const database = await getD1Database()
-
     await runMcpMiddleware(event, {
       environment,
       extractToolNames: async () => (tool.name ? [tool.name] : []),
       kvBindingName,
-      tokenStore: createMcpTokenStore(database),
+      tokenStore: createMcpTokenStore(),
     })
 
     return (await tool.handler(args, {} as never)) as Result

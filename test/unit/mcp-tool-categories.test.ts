@@ -6,8 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 // 1. Export name `listCategories` and an input schema with a boolean
 //    `includeCounts` field.
 // 2. Call `requireMcpScope` for `knowledge.category.list` (the scope used by
-//    the legacy `/api/mcp/categories` endpoint — confirmed against
-//    `server/api/mcp/categories.get.ts`).
+//    the legacy category-list HTTP surface before the toolkit migration).
 // 3. Delegate to the existing `listCategories` util using the allowed access
 //    levels derived from the authenticated token.
 

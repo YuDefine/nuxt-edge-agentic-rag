@@ -10,7 +10,14 @@ import {
   createKvBindingFake,
 } from '../acceptance/helpers/bindings'
 import { getAcceptanceRegistryEntry } from '../acceptance/registry/manifest'
+import { runMcpTool } from './helpers/mcp-tool-runner'
 import { createRouteEvent, installNuxtRouteTestGlobals } from './helpers/nuxt-route'
+
+const pendingEvent = vi.hoisted(() => ({ current: null as unknown }))
+
+vi.mock('nitropack/runtime', () => ({
+  useEvent: () => pendingEvent.current,
+}))
 
 // TC-07：知識庫外問題拒答
 // 使用者詢問與 knowledge base 無關的問題（如「今天天氣如何？」）。
@@ -52,7 +59,6 @@ vi.mock('../../server/utils/cloudflare-bindings', () => ({
 
 vi.mock('../../server/utils/database', () => ({
   getD1Database: async () => (tc07Mocks.bindings ?? {}).DB,
-  getDrizzleDb: async () => ({ db: (tc07Mocks.bindings ?? {}).DB }),
 }))
 
 vi.mock('../../server/utils/knowledge-runtime', async (importOriginal) => {
@@ -130,7 +136,10 @@ describe('acceptance out-of-knowledge-base refusal (TC-07)', () => {
                 refused: boolean
               }
             })
-          : ((await runMcpCase(tc07Mocks.actor?.mcpToken.authorizationHeader ?? '')) as {
+          : ((await runMcpCase(
+              tc07Mocks.actor?.mcpToken.authorizationHeader ?? '',
+              fixture.prompt
+            )) as {
               data: {
                 answer?: string
                 citations: Array<{ citationId: string; sourceChunkId: string }>
@@ -198,16 +207,19 @@ async function runWebCase() {
   return await handler(createRouteEvent())
 }
 
-async function runMcpCase(authorizationHeader: string) {
-  const { default: handler } = await import('../../server/api/mcp/ask.post')
-
-  return await handler(
-    createRouteEvent({
-      headers: {
-        authorization: authorizationHeader,
-      },
-    })
+async function runMcpCase(authorizationHeader: string, query: string) {
+  const { default: tool } = await import('#server/mcp/tools/ask')
+  const data = await runMcpTool(
+    tool,
+    { query },
+    {
+      authorizationHeader,
+      cloudflareEnv: tc07Mocks.bindings ?? {},
+      pendingEvent,
+    }
   )
+
+  return { data }
 }
 
 function createTc07Bindings(actor: ReturnType<typeof createAcceptanceActorFixture>) {
