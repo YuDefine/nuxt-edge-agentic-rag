@@ -79,7 +79,7 @@ describe('acceptance evidence exporters', () => {
         },
         {
           channel: 'mcp',
-          endpoint: '/api/mcp/ask',
+          endpoint: '/mcp',
           httpStatus: 200,
           responseBodyPointer: 'evidence/v1.0.0/smoke/mcp-ask.json',
           responseTimeMs: 98,
@@ -1011,7 +1011,7 @@ describe('acceptance evidence exporters', () => {
           },
           deployStage: {
             commitSha: 'abcd1234',
-            environment: 'staging',
+            environment: 'local',
             metadataPointer: 'evidence/ev01/deploy.json',
             succeeded: true,
             workerName: 'nuxt-edge-agentic-rag',

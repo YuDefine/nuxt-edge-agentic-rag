@@ -2,7 +2,6 @@ import { useLogger } from 'evlog'
 import { z } from 'zod'
 
 import { requireRuntimeAdminSession } from '#server/utils/admin-session'
-import { getD1Database } from '#server/utils/database'
 import { createQueryLogAdminStore } from '#server/utils/query-log-admin-store'
 import { KNOWLEDGE_CHANNEL_VALUES } from '#shared/schemas/knowledge-runtime'
 import { paginateList, paginationQuerySchema } from '#shared/schemas/pagination'
@@ -31,8 +30,7 @@ export default defineEventHandler(async function listQueryLogsHandler(event) {
     user: { id: session.user.id ?? null },
   })
 
-  const database = await getD1Database()
-  const store = createQueryLogAdminStore(database)
+  const store = createQueryLogAdminStore()
 
   const filter = {
     channel: query.channel,

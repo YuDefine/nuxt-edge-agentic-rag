@@ -56,7 +56,6 @@ vi.mock('../../server/utils/cloudflare-bindings', () => ({
 
 vi.mock('../../server/utils/database', () => ({
   getD1Database: async () => (tc16Mocks.bindings ?? {}).DB,
-  getDrizzleDb: async () => ({ db: (tc16Mocks.bindings ?? {}).DB }),
 }))
 
 vi.mock('../../server/utils/knowledge-runtime', async (importOriginal) => {

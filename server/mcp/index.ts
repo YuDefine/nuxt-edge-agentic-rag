@@ -1,4 +1,3 @@
-import { getD1Database } from '#server/utils/database'
 import { getKnowledgeRuntimeConfig } from '#server/utils/knowledge-runtime'
 import { runMcpMiddleware } from '#server/utils/mcp-middleware'
 import { createMcpTokenStore } from '#server/utils/mcp-token-store'
@@ -19,13 +18,12 @@ import { createMcpTokenStore } from '#server/utils/mcp-token-store'
 export default defineMcpHandler({
   middleware: async (event) => {
     const runtimeConfig = getKnowledgeRuntimeConfig()
-    const database = await getD1Database()
 
     await runMcpMiddleware(event, {
       environment: runtimeConfig.environment,
       extractToolNames,
       kvBindingName: runtimeConfig.bindings.rateLimitKv,
-      tokenStore: createMcpTokenStore(database),
+      tokenStore: createMcpTokenStore(),
     })
   },
 })

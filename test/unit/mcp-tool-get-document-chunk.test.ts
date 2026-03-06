@@ -10,7 +10,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 // 4. CRITICAL: when the util throws an `McpReplayError` with `statusCode === 403`,
 //    the tool MUST write a `query_logs` row with `status='blocked'` BEFORE
 //    re-throwing, matching the spec in `mcp-knowledge-tools` and the legacy
-//    handler at `server/api/mcp/chunks/[citationId].get.ts`.
+//    replay HTTP surface that existed before the toolkit migration.
 
 class MockMcpReplayError extends Error {
   readonly reason: string

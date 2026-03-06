@@ -7,55 +7,110 @@
  *    error) using decision_path + status, and produces null-safe p50 / p95.
  */
 
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { createQueryLogDebugStore } from '#server/utils/query-log-debug-store'
 
-interface FakeResults<T> {
-  results?: T[]
+/**
+ * Drizzle query builder chain — mimics the fluent API. All chain methods
+ * return `this`; awaiting the chain resolves to the injected rows.
+ */
+function createFakeDb<TRow>(rows: TRow[]) {
+  const chain: any = {
+    from() {
+      return chain
+    },
+    where() {
+      return chain
+    },
+    orderBy() {
+      return chain
+    },
+    groupBy() {
+      return chain
+    },
+    limit() {
+      return chain
+    },
+    offset() {
+      return chain
+    },
+    then(resolve: (v: TRow[]) => unknown) {
+      return Promise.resolve(rows).then(resolve)
+    },
+  }
+  return {
+    select() {
+      return chain
+    },
+  }
 }
 
-function makeDatabase(rows: Array<Record<string, unknown>>, first?: Record<string, unknown>) {
-  const prepare = vi.fn(() => {
-    const stmt = {
-      bind: vi.fn().mockReturnThis(),
-      all: vi.fn().mockResolvedValue({ results: rows } satisfies FakeResults<unknown>),
-      first: vi.fn().mockResolvedValue(first ?? null),
-      run: vi.fn(),
-    }
-    return stmt
-  })
-  return { prepare }
-}
+vi.mock('hub:db', () => ({
+  db: { __placeholder: true },
+  schema: {
+    queryLogs: {
+      id: { __col: 'query_logs.id' },
+      channel: { __col: 'query_logs.channel' },
+      status: { __col: 'query_logs.status' },
+      environment: { __col: 'query_logs.environment' },
+      queryRedactedText: { __col: 'query_logs.query_redacted_text' },
+      riskFlagsJson: { __col: 'query_logs.risk_flags_json' },
+      allowedAccessLevelsJson: { __col: 'query_logs.allowed_access_levels_json' },
+      redactionApplied: { __col: 'query_logs.redaction_applied' },
+      configSnapshotVersion: { __col: 'query_logs.config_snapshot_version' },
+      createdAt: { __col: 'query_logs.created_at' },
+      firstTokenLatencyMs: { __col: 'query_logs.first_token_latency_ms' },
+      completionLatencyMs: { __col: 'query_logs.completion_latency_ms' },
+      retrievalScore: { __col: 'query_logs.retrieval_score' },
+      judgeScore: { __col: 'query_logs.judge_score' },
+      decisionPath: { __col: 'query_logs.decision_path' },
+      refusalReason: { __col: 'query_logs.refusal_reason' },
+    },
+  },
+}))
+
+vi.mock('drizzle-orm', () => ({
+  eq: (col: unknown, val: unknown) => ({ __op: 'eq', col, val }),
+  gte: (col: unknown, val: unknown) => ({ __op: 'gte', col, val }),
+}))
 
 describe('createQueryLogDebugStore.getDebugQueryLogById', () => {
+  let hubDbStub: { db: any }
+
+  beforeEach(async () => {
+    hubDbStub = await import('hub:db')
+  })
+
   it('returns null when row not found', async () => {
-    const db = makeDatabase([], undefined)
-    const store = createQueryLogDebugStore(db)
+    hubDbStub.db = createFakeDb([])
+    const store = createQueryLogDebugStore()
     const result = await store.getDebugQueryLogById('missing')
     expect(result).toBeNull()
   })
 
   it('passes through null debug fields unchanged (does not fabricate)', async () => {
-    const db = makeDatabase([], {
-      id: 'log-legacy',
-      channel: 'web',
-      status: 'accepted',
-      environment: 'local',
-      query_redacted_text: 'redacted',
-      risk_flags_json: '[]',
-      allowed_access_levels_json: '["internal"]',
-      redaction_applied: 0,
-      config_snapshot_version: 'v1',
-      created_at: '2026-04-19T00:00:00.000Z',
-      first_token_latency_ms: null,
-      completion_latency_ms: null,
-      retrieval_score: null,
-      judge_score: null,
-      decision_path: null,
-      refusal_reason: null,
-    })
-    const store = createQueryLogDebugStore(db)
+    hubDbStub.db = createFakeDb([
+      {
+        id: 'log-legacy',
+        channel: 'web',
+        status: 'accepted',
+        environment: 'local',
+        queryRedactedText: 'redacted',
+        riskFlagsJson: '[]',
+        allowedAccessLevelsJson: '["internal"]',
+        redactionApplied: false,
+        configSnapshotVersion: 'v1',
+        createdAt: '2026-04-19T00:00:00.000Z',
+        firstTokenLatencyMs: null,
+        completionLatencyMs: null,
+        retrievalScore: null,
+        judgeScore: null,
+        decisionPath: null,
+        refusalReason: null,
+      },
+    ])
+    const store = createQueryLogDebugStore()
     const result = await store.getDebugQueryLogById('log-legacy')
     expect(result).not.toBeNull()
     expect(result!.firstTokenLatencyMs).toBeNull()
@@ -67,25 +122,27 @@ describe('createQueryLogDebugStore.getDebugQueryLogById', () => {
   })
 
   it('parses redactionApplied as boolean and preserves debug values', async () => {
-    const db = makeDatabase([], {
-      id: 'log-1',
-      channel: 'mcp',
-      status: 'accepted',
-      environment: 'staging',
-      query_redacted_text: '<<redacted>>',
-      risk_flags_json: '["pii"]',
-      allowed_access_levels_json: '["internal","confidential"]',
-      redaction_applied: 1,
-      config_snapshot_version: 'v1',
-      created_at: '2026-04-19T00:00:00.000Z',
-      first_token_latency_ms: 120,
-      completion_latency_ms: 1450,
-      retrieval_score: 0.82,
-      judge_score: 0.91,
-      decision_path: 'judge_pass',
-      refusal_reason: null,
-    })
-    const store = createQueryLogDebugStore(db)
+    hubDbStub.db = createFakeDb([
+      {
+        id: 'log-1',
+        channel: 'mcp',
+        status: 'accepted',
+        environment: 'local',
+        queryRedactedText: '<<redacted>>',
+        riskFlagsJson: '["pii"]',
+        allowedAccessLevelsJson: '["internal","confidential"]',
+        redactionApplied: true,
+        configSnapshotVersion: 'v1',
+        createdAt: '2026-04-19T00:00:00.000Z',
+        firstTokenLatencyMs: 120,
+        completionLatencyMs: 1450,
+        retrievalScore: 0.82,
+        judgeScore: 0.91,
+        decisionPath: 'judge_pass',
+        refusalReason: null,
+      },
+    ])
+    const store = createQueryLogDebugStore()
     const result = await store.getDebugQueryLogById('log-1')
     expect(result).toMatchObject({
       id: 'log-1',
@@ -104,56 +161,62 @@ describe('createQueryLogDebugStore.getDebugQueryLogById', () => {
 })
 
 describe('createQueryLogDebugStore.summarizeLatency', () => {
+  let hubDbStub: { db: any }
+
+  beforeEach(async () => {
+    hubDbStub = await import('hub:db')
+  })
+
   it('classifies outcomes by decision_path and status', async () => {
     const rows = [
       // web: answered x2, refused x1, error x1
       {
         channel: 'web',
         status: 'accepted',
-        decision_path: 'direct_answer',
-        first_token_latency_ms: 100,
-        completion_latency_ms: 1000,
+        decisionPath: 'direct_answer',
+        firstTokenLatencyMs: 100,
+        completionLatencyMs: 1000,
       },
       {
         channel: 'web',
         status: 'accepted',
-        decision_path: 'judge_pass',
-        first_token_latency_ms: 200,
-        completion_latency_ms: 2000,
+        decisionPath: 'judge_pass',
+        firstTokenLatencyMs: 200,
+        completionLatencyMs: 2000,
       },
       {
         channel: 'web',
         status: 'accepted',
-        decision_path: 'no_citation_refuse',
-        first_token_latency_ms: null,
-        completion_latency_ms: null,
+        decisionPath: 'no_citation_refuse',
+        firstTokenLatencyMs: null,
+        completionLatencyMs: null,
       },
       {
         channel: 'web',
         status: 'accepted',
-        decision_path: 'pipeline_error',
-        first_token_latency_ms: null,
-        completion_latency_ms: null,
+        decisionPath: 'pipeline_error',
+        firstTokenLatencyMs: null,
+        completionLatencyMs: null,
       },
       // mcp: forbidden x1 (blocked), answered x1
       {
         channel: 'mcp',
         status: 'blocked',
-        decision_path: 'restricted_blocked',
-        first_token_latency_ms: null,
-        completion_latency_ms: null,
+        decisionPath: 'restricted_blocked',
+        firstTokenLatencyMs: null,
+        completionLatencyMs: null,
       },
       {
         channel: 'mcp',
         status: 'accepted',
-        decision_path: 'direct_answer',
-        first_token_latency_ms: 50,
-        completion_latency_ms: 500,
+        decisionPath: 'direct_answer',
+        firstTokenLatencyMs: 50,
+        completionLatencyMs: 500,
       },
     ]
 
-    const db = makeDatabase(rows)
-    const store = createQueryLogDebugStore(db)
+    hubDbStub.db = createFakeDb(rows)
+    const store = createQueryLogDebugStore()
     const summary = await store.summarizeLatency({ days: 7 })
 
     expect(summary.days).toBe(7)
@@ -170,13 +233,13 @@ describe('createQueryLogDebugStore.summarizeLatency', () => {
       {
         channel: 'web',
         status: 'blocked',
-        decision_path: 'restricted_blocked',
-        first_token_latency_ms: null,
-        completion_latency_ms: null,
+        decisionPath: 'restricted_blocked',
+        firstTokenLatencyMs: null,
+        completionLatencyMs: null,
       },
     ]
-    const db = makeDatabase(rows)
-    const store = createQueryLogDebugStore(db)
+    hubDbStub.db = createFakeDb(rows)
+    const store = createQueryLogDebugStore()
     const summary = await store.summarizeLatency({ days: 7 })
     expect(summary.channels).toHaveLength(1)
     expect(summary.channels[0]!.firstTokenMs.p50).toBeNull()
@@ -189,34 +252,34 @@ describe('createQueryLogDebugStore.summarizeLatency', () => {
       {
         channel: 'web',
         status: 'accepted',
-        decision_path: 'direct_answer',
-        first_token_latency_ms: 100,
-        completion_latency_ms: 1000,
+        decisionPath: 'direct_answer',
+        firstTokenLatencyMs: 100,
+        completionLatencyMs: 1000,
       },
       {
         channel: 'web',
         status: 'accepted',
-        decision_path: 'direct_answer',
-        first_token_latency_ms: 200,
-        completion_latency_ms: 2000,
+        decisionPath: 'direct_answer',
+        firstTokenLatencyMs: 200,
+        completionLatencyMs: 2000,
       },
       {
         channel: 'web',
         status: 'accepted',
-        decision_path: 'direct_answer',
-        first_token_latency_ms: 300,
-        completion_latency_ms: 3000,
+        decisionPath: 'direct_answer',
+        firstTokenLatencyMs: 300,
+        completionLatencyMs: 3000,
       },
       {
         channel: 'web',
         status: 'accepted',
-        decision_path: 'direct_answer',
-        first_token_latency_ms: 400,
-        completion_latency_ms: 4000,
+        decisionPath: 'direct_answer',
+        firstTokenLatencyMs: 400,
+        completionLatencyMs: 4000,
       },
     ]
-    const db = makeDatabase(rows)
-    const store = createQueryLogDebugStore(db)
+    hubDbStub.db = createFakeDb(rows)
+    const store = createQueryLogDebugStore()
     const summary = await store.summarizeLatency({ days: 30 })
     expect(summary.channels[0]!.firstTokenMs.sampleCount).toBe(4)
     // p50 via nearest-rank on 4 samples → rank 2 → 200
@@ -230,27 +293,27 @@ describe('createQueryLogDebugStore.summarizeLatency', () => {
       {
         channel: 'slack',
         status: 'accepted',
-        decision_path: 'direct_answer',
-        first_token_latency_ms: 100,
-        completion_latency_ms: 1000,
+        decisionPath: 'direct_answer',
+        firstTokenLatencyMs: 100,
+        completionLatencyMs: 1000,
       },
       {
         channel: 'mcp',
         status: 'accepted',
-        decision_path: 'direct_answer',
-        first_token_latency_ms: 100,
-        completion_latency_ms: 1000,
+        decisionPath: 'direct_answer',
+        firstTokenLatencyMs: 100,
+        completionLatencyMs: 1000,
       },
       {
         channel: 'web',
         status: 'accepted',
-        decision_path: 'direct_answer',
-        first_token_latency_ms: 100,
-        completion_latency_ms: 1000,
+        decisionPath: 'direct_answer',
+        firstTokenLatencyMs: 100,
+        completionLatencyMs: 1000,
       },
     ]
-    const db = makeDatabase(rows)
-    const store = createQueryLogDebugStore(db)
+    hubDbStub.db = createFakeDb(rows)
+    const store = createQueryLogDebugStore()
     const summary = await store.summarizeLatency({ days: 7 })
     expect(summary.channels.map((c) => c.channel)).toEqual(['web', 'mcp', 'slack'])
   })

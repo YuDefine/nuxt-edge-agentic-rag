@@ -10,7 +10,14 @@ import {
   createKvBindingFake,
 } from '../acceptance/helpers/bindings'
 import { getAcceptanceRegistryEntry } from '../acceptance/registry/manifest'
+import { runMcpTool } from './helpers/mcp-tool-runner'
 import { createRouteEvent, installNuxtRouteTestGlobals } from './helpers/nuxt-route'
+
+const pendingEvent = vi.hoisted(() => ({ current: null as unknown }))
+
+vi.mock('nitropack/runtime', () => ({
+  useEvent: () => pendingEvent.current,
+}))
 
 // TC-14：Admin Web restricted 讀取 vs MCP scope 邊界隔離
 //
@@ -76,7 +83,6 @@ vi.mock('../../server/utils/cloudflare-bindings', () => ({
 
 vi.mock('../../server/utils/database', () => ({
   getD1Database: async () => (tc14Mocks.bindings ?? {}).DB,
-  getDrizzleDb: async () => ({ db: (tc14Mocks.bindings ?? {}).DB }),
 }))
 
 vi.mock('../../server/utils/knowledge-runtime', async (importOriginal) => {
@@ -218,7 +224,10 @@ describe('acceptance admin web vs mcp scope isolation (TC-14)', () => {
     tc14Mocks.readBody.mockResolvedValue({ query: fixture.prompt })
     tc14Mocks.readZodBody.mockResolvedValue({ query: fixture.prompt })
 
-    const mcpResult = (await runMcpCase(tc14Mocks.actor?.mcpToken.authorizationHeader ?? '')) as {
+    const mcpResult = (await runMcpCase(
+      tc14Mocks.actor?.mcpToken.authorizationHeader ?? '',
+      fixture.prompt
+    )) as {
       data: {
         answer?: string
         citations: Array<{ citationId: string; sourceChunkId: string }>
@@ -281,16 +290,19 @@ async function runWebCase() {
   return await handler(createRouteEvent())
 }
 
-async function runMcpCase(authorizationHeader: string) {
-  const { default: handler } = await import('../../server/api/mcp/ask.post')
-
-  return await handler(
-    createRouteEvent({
-      headers: {
-        authorization: authorizationHeader,
-      },
-    })
+async function runMcpCase(authorizationHeader: string, query: string) {
+  const { default: tool } = await import('#server/mcp/tools/ask')
+  const data = await runMcpTool(
+    tool,
+    { query },
+    {
+      authorizationHeader,
+      cloudflareEnv: tc14Mocks.bindings ?? {},
+      pendingEvent,
+    }
   )
+
+  return { data }
 }
 
 function getTc14Scenario(): Tc14Scenario {

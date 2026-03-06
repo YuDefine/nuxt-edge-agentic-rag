@@ -6,7 +6,7 @@ describe('mcp token store', () => {
   it('provisions a plaintext token once while persisting only its hash', () => {
     const provisioned = buildProvisionedMcpToken(
       {
-        environment: 'staging',
+        environment: 'local',
         expiresAt: null,
         name: 'Staging QA',
         scopes: ['knowledge.ask', 'knowledge.search', 'knowledge.ask'],
@@ -21,7 +21,7 @@ describe('mcp token store', () => {
     expect(provisioned.plaintextToken).toBe('plain-secret-token')
     expect(provisioned.record).toEqual({
       createdAt: '2026-04-16T00:00:00.000Z',
-      environment: 'staging',
+      environment: 'local',
       expiresAt: null,
       id: 'token-1',
       lastUsedAt: null,

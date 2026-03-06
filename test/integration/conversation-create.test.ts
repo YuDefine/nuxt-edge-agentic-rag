@@ -192,7 +192,7 @@ describe('/api/chat — conversation auto-create plumbing (governance §1.7)', (
           d1Database: 'DB',
           rateLimitKv: 'RATE_LIMITS',
         },
-        environment: 'staging',
+        environment: 'local',
       })
     )
     chatRouteMocks.requireUserSession.mockResolvedValue({

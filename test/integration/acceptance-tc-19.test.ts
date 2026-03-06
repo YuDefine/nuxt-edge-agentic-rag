@@ -9,7 +9,14 @@ import {
   createKvBindingFake,
 } from '../acceptance/helpers/bindings'
 import { getAcceptanceRegistryEntry } from '../acceptance/registry/manifest'
-import { createRouteEvent, installNuxtRouteTestGlobals } from './helpers/nuxt-route'
+import { runMcpTool } from './helpers/mcp-tool-runner'
+import { installNuxtRouteTestGlobals } from './helpers/nuxt-route'
+
+const pendingEvent = vi.hoisted(() => ({ current: null as unknown }))
+
+vi.mock('nitropack/runtime', () => ({
+  useEvent: () => pendingEvent.current,
+}))
 
 // TC-19：listCategories 計數規則
 //
@@ -68,7 +75,6 @@ vi.mock('../../server/utils/cloudflare-bindings', () => ({
 
 vi.mock('../../server/utils/database', () => ({
   getD1Database: async () => (tc19Mocks.bindings ?? {}).DB,
-  getDrizzleDb: async () => ({ db: (tc19Mocks.bindings ?? {}).DB }),
 }))
 
 vi.mock('../../server/utils/knowledge-runtime', async (importOriginal) => {
@@ -141,14 +147,17 @@ describe('acceptance listCategories count contract (TC-19)', () => {
         preFilteredCounts
       )
 
-      const { default: handler } = await import('../../server/api/mcp/categories.get')
-      const result = (await handler(
-        createRouteEvent({
-          headers: {
-            authorization: tc19Mocks.actor?.mcpToken.authorizationHeader ?? '',
-          },
-        })
-      )) as { data: { categories: Array<{ count?: number; name: string }> } }
+      const { default: tool } = await import('#server/mcp/tools/categories')
+      const data = (await runMcpTool(
+        tool,
+        { includeCounts: true },
+        {
+          authorizationHeader: tc19Mocks.actor?.mcpToken.authorizationHeader ?? '',
+          cloudflareEnv: tc19Mocks.bindings ?? {},
+          pendingEvent,
+        }
+      )) as { categories: Array<{ count?: number; name: string }> }
+      const result = { data }
 
       const d1 = (tc19Mocks.bindings ?? {}).DB as ReturnType<typeof createD1BindingFake>
 

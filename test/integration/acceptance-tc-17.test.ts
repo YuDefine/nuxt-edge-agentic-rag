@@ -9,7 +9,14 @@ import {
   createKvBindingFake,
 } from '../acceptance/helpers/bindings'
 import { getAcceptanceRegistryEntry } from '../acceptance/registry/manifest'
-import { createRouteEvent, installNuxtRouteTestGlobals } from './helpers/nuxt-route'
+import { runMcpTool } from './helpers/mcp-tool-runner'
+import { installNuxtRouteTestGlobals } from './helpers/nuxt-route'
+
+const pendingEvent = vi.hoisted(() => ({ current: null as unknown }))
+
+vi.mock('nitropack/runtime', () => ({
+  useEvent: () => pendingEvent.current,
+}))
 
 // TC-17：restricted existence-hiding 契約
 //
@@ -85,7 +92,6 @@ vi.mock('../../server/utils/cloudflare-bindings', () => ({
 
 vi.mock('../../server/utils/database', () => ({
   getD1Database: async () => (tc17Mocks.bindings ?? {}).DB,
-  getDrizzleDb: async () => ({ db: (tc17Mocks.bindings ?? {}).DB }),
 }))
 
 vi.mock('../../server/utils/knowledge-runtime', async (importOriginal) => {
@@ -159,20 +165,21 @@ describe('acceptance restricted existence-hiding (TC-17)', () => {
     tc17Mocks.readBody.mockResolvedValue({ query: fixture.prompt })
     tc17Mocks.readZodBody.mockResolvedValue({ query: fixture.prompt })
 
-    const { default: askHandler } = await import('../../server/api/mcp/ask.post')
-    const askResult = (await askHandler(
-      createRouteEvent({
-        headers: {
-          authorization: tc17Mocks.actor?.mcpToken.authorizationHeader ?? '',
-        },
-      })
-    )) as {
-      data: {
-        answer?: string
-        citations: Array<{ citationId: string; sourceChunkId: string }>
-        refused: boolean
+    const { default: askTool } = await import('#server/mcp/tools/ask')
+    const askData = (await runMcpTool(
+      askTool,
+      { query: fixture.prompt },
+      {
+        authorizationHeader: tc17Mocks.actor?.mcpToken.authorizationHeader ?? '',
+        cloudflareEnv: tc17Mocks.bindings ?? {},
+        pendingEvent,
       }
+    )) as {
+      answer?: string
+      citations: Array<{ citationId: string; sourceChunkId: string }>
+      refused: boolean
     }
+    const askResult = { data: askData }
 
     // 契約 #1：askKnowledge refused=true + citations=[] + 不帶 answer 欄位
     expect(askResult.data.refused).toBe(true)
@@ -218,14 +225,17 @@ describe('acceptance restricted existence-hiding (TC-17)', () => {
     )
     tc17Mocks.readBody.mockResolvedValue({ query: fixture.prompt })
 
-    const { default: searchHandler } = await import('../../server/api/mcp/search.post')
-    const searchResult = (await searchHandler(
-      createRouteEvent({
-        headers: {
-          authorization: tc17Mocks.actor?.mcpToken.authorizationHeader ?? '',
-        },
-      })
-    )) as { data: { results: unknown[] } & Record<string, unknown> }
+    const { default: searchTool } = await import('#server/mcp/tools/search')
+    const searchData = (await runMcpTool(
+      searchTool,
+      { query: fixture.prompt },
+      {
+        authorizationHeader: tc17Mocks.actor?.mcpToken.authorizationHeader ?? '',
+        cloudflareEnv: tc17Mocks.bindings ?? {},
+        pendingEvent,
+      }
+    )) as { results: unknown[] } & Record<string, unknown>
+    const searchResult = { data: searchData }
 
     // 契約 #5：searchKnowledge 回 200 + results=[]
     expect(searchResult.data.results).toEqual([])

@@ -116,7 +116,7 @@ describe('askKnowledge — §1.2 debug-safe derived fields', () => {
   })
 
   it('pipeline error → writes decision_path=pipeline_error via updateQueryLog then re-throws', async () => {
-    const governance = createKnowledgeRuntimeConfig({ environment: 'staging' }).governance
+    const governance = createKnowledgeRuntimeConfig({ environment: 'local' }).governance
     const auditStore = {
       createMessage: vi.fn().mockResolvedValue('msg-err'),
       createQueryLog: vi.fn().mockResolvedValue('mcp-ql-err'),
@@ -128,7 +128,7 @@ describe('askKnowledge — §1.2 debug-safe derived fields', () => {
       askKnowledge(
         {
           auth: { scopes: ['knowledge.ask'], tokenId: 'tok-err' },
-          environment: 'staging',
+          environment: 'local',
           governance,
           query: 'Anything.',
         },

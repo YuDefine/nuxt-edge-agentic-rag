@@ -12,7 +12,6 @@ import { useLogger } from 'evlog'
 import { z } from 'zod'
 
 import { requireInternalDebugAccess } from '#server/utils/debug-surface-guard'
-import { getD1Database } from '#server/utils/database'
 import { createQueryLogDebugStore } from '#server/utils/query-log-debug-store'
 
 const querySchema = z.object({
@@ -42,8 +41,7 @@ export default defineEventHandler(async function getDebugLatencySummaryHandler(e
     user: { id: access.userId },
   })
 
-  const database = await getD1Database()
-  const store = createQueryLogDebugStore(database)
+  const store = createQueryLogDebugStore()
   const summary = await store.summarizeLatency({ days: query.days })
 
   return {

@@ -8,25 +8,9 @@
  *   `features.adminDashboard` runtime flag; this store does not re-check auth.
  */
 
-interface D1PreparedStatementLike {
-  all<T>(): Promise<{ results?: T[] }>
-  bind(...values: unknown[]): D1PreparedStatementLike
-  first<T>(): Promise<T | null>
-  run(): Promise<unknown>
-}
-
-interface D1DatabaseLike {
-  prepare(query: string): D1PreparedStatementLike
-}
-
 export interface AdminDashboardTrendPoint {
   count: number
   date: string
-}
-
-interface TrendRow {
-  bucket: string
-  n: number
 }
 
 /**
@@ -40,34 +24,45 @@ export function isoDaysAgo(now: Date, days: number): string {
   return copy.toISOString()
 }
 
-export function createAdminDashboardStore(
-  database: D1DatabaseLike,
-  options: { now?: () => Date } = {}
-) {
+export function createAdminDashboardStore(options: { now?: () => Date } = {}) {
   const now = options.now ?? (() => new Date())
 
   return {
     async countDocuments(): Promise<number> {
-      const row = await database
-        .prepare("SELECT COUNT(*) AS n FROM documents WHERE status != 'archived'")
-        .first<{ n: number }>()
-      return row?.n ?? 0
+      const { db, schema } = await import('hub:db')
+      const { count, ne } = await import('drizzle-orm')
+
+      const rows = await db
+        .select({ n: count() })
+        .from(schema.documents)
+        .where(ne(schema.documents.status, 'archived'))
+
+      return rows[0]?.n ?? 0
     },
 
     async countRecentQueryLogs(sinceDays: number): Promise<number> {
+      const { db, schema } = await import('hub:db')
+      const { count, gte } = await import('drizzle-orm')
+
       const threshold = isoDaysAgo(now(), sinceDays)
-      const row = await database
-        .prepare('SELECT COUNT(*) AS n FROM query_logs WHERE created_at >= ?')
-        .bind(threshold)
-        .first<{ n: number }>()
-      return row?.n ?? 0
+      const rows = await db
+        .select({ n: count() })
+        .from(schema.queryLogs)
+        .where(gte(schema.queryLogs.createdAt, threshold))
+
+      return rows[0]?.n ?? 0
     },
 
     async countActiveTokens(): Promise<number> {
-      const row = await database
-        .prepare("SELECT COUNT(*) AS n FROM mcp_tokens WHERE status = 'active'")
-        .first<{ n: number }>()
-      return row?.n ?? 0
+      const { db, schema } = await import('hub:db')
+      const { count, eq } = await import('drizzle-orm')
+
+      const rows = await db
+        .select({ n: count() })
+        .from(schema.mcpTokens)
+        .where(eq(schema.mcpTokens.status, 'active'))
+
+      return rows[0]?.n ?? 0
     },
 
     /**
@@ -76,21 +71,19 @@ export function createAdminDashboardStore(
      * Days with zero queries are omitted — the UI can backfill if needed.
      */
     async listRecentQueryTrend(days: number): Promise<AdminDashboardTrendPoint[]> {
-      const threshold = isoDaysAgo(now(), days)
-      const result = await database
-        .prepare(
-          [
-            'SELECT substr(created_at, 1, 10) AS bucket, COUNT(*) AS n',
-            'FROM query_logs',
-            'WHERE created_at >= ?',
-            'GROUP BY bucket',
-            'ORDER BY bucket ASC',
-          ].join('\n')
-        )
-        .bind(threshold)
-        .all<TrendRow>()
+      const { db, schema } = await import('hub:db')
+      const { count, gte, sql } = await import('drizzle-orm')
 
-      return (result.results ?? []).map((row) => ({
+      const threshold = isoDaysAgo(now(), days)
+      const bucketExpr = sql<string>`substr(${schema.queryLogs.createdAt}, 1, 10)`
+      const rows = await db
+        .select({ bucket: bucketExpr, n: count() })
+        .from(schema.queryLogs)
+        .where(gte(schema.queryLogs.createdAt, threshold))
+        .groupBy(bucketExpr)
+        .orderBy(bucketExpr)
+
+      return rows.map((row) => ({
         count: row.n,
         date: row.bucket,
       }))

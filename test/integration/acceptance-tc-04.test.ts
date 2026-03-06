@@ -10,7 +10,14 @@ import {
   createKvBindingFake,
 } from '../acceptance/helpers/bindings'
 import { getAcceptanceRegistryEntry } from '../acceptance/registry/manifest'
+import { runMcpTool } from './helpers/mcp-tool-runner'
 import { createRouteEvent, installNuxtRouteTestGlobals } from './helpers/nuxt-route'
+
+const pendingEvent = vi.hoisted(() => ({ current: null as unknown }))
+
+vi.mock('nitropack/runtime', () => ({
+  useEvent: () => pendingEvent.current,
+}))
 
 // TC-04：模糊查詢 self-correction 題
 // 驗證 Self-Correction 觸發與第二輪成功條件：
@@ -72,7 +79,6 @@ vi.mock('../../server/utils/cloudflare-bindings', () => ({
 
 vi.mock('../../server/utils/database', () => ({
   getD1Database: async () => (tc04Mocks.bindings ?? {}).DB,
-  getDrizzleDb: async () => ({ db: (tc04Mocks.bindings ?? {}).DB }),
 }))
 
 vi.mock('../../server/utils/knowledge-runtime', async (importOriginal) => {
@@ -176,7 +182,7 @@ describe('acceptance self-correction reformulation (TC-04)', () => {
       const result = (
         fixture.channel === 'web'
           ? await runWebCase()
-          : await runMcpCase(tc04Mocks.actor?.mcpToken.authorizationHeader ?? '')
+          : await runMcpCase(tc04Mocks.actor?.mcpToken.authorizationHeader ?? '', fixture.prompt)
       ) as {
         data: {
           answer: string
@@ -250,16 +256,19 @@ async function runWebCase() {
   return await handler(createRouteEvent())
 }
 
-async function runMcpCase(authorizationHeader: string) {
-  const { default: handler } = await import('../../server/api/mcp/ask.post')
-
-  return await handler(
-    createRouteEvent({
-      headers: {
-        authorization: authorizationHeader,
-      },
-    })
+async function runMcpCase(authorizationHeader: string, query: string) {
+  const { default: tool } = await import('#server/mcp/tools/ask')
+  const data = await runMcpTool(
+    tool,
+    { query },
+    {
+      authorizationHeader,
+      cloudflareEnv: tc04Mocks.bindings ?? {},
+      pendingEvent,
+    }
   )
+
+  return { data }
 }
 
 function getTc04Scenario(): Tc04Scenario {

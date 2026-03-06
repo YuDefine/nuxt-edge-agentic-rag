@@ -4,8 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 //
 // `server/mcp/tools/search.ts` must:
 // 1. Export name `searchKnowledge` and a Zod `inputSchema` with a `query`
-//    field matching the legacy `/api/mcp/search` body schema (trim / max
-//    2000).
+//    field matching the legacy search HTTP body schema (trim / max 2000).
 // 2. Call `requireMcpScope` for `knowledge.search` using
 //    `event.context.mcpAuth`.
 // 3. Delegate to the existing `searchKnowledge` util with evidence retrieval.

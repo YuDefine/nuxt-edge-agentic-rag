@@ -102,7 +102,7 @@ async function main(): Promise<void> {
     console.error('錯誤: 必須提供 --cookie 或設定 MCP_TEST_COOKIE 環境變數')
     console.log('')
     console.log('取得 cookie 方式：')
-    console.log('1. 在瀏覽器登入 staging')
+    console.log('1. 在瀏覽器登入')
     console.log('2. 開啟開發者工具 > Application > Cookies')
     console.log('3. 複製 better-auth.session_token 的值')
     process.exit(1)
