@@ -27,7 +27,7 @@ import { buildEvidenceSummaryTables, type EvidenceSummaryTable } from './summary
  * CLI entry: run A01–A13 evidence exporters and write them to
  * `evidence/<reportVersion>/<acceptanceId>.json`.
  *
- * Intended for local validation; production / staging runs should inject
+ * Intended for local validation; production / local runs should inject
  * live observations via the individual exporter APIs rather than calling
  * this runner directly.
  */

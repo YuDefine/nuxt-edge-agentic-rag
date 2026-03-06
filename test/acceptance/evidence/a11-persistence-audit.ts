@@ -215,7 +215,7 @@ export function runA11PersistenceAuditExporter(
       channel: 'web',
       configSnapshotVersion: context.runtimeConfig.governance.configSnapshotVersion,
       decisionPath: 'persistence-redaction',
-      environment: context.runtimeConfig.environment as 'local' | 'staging' | 'production',
+      environment: context.runtimeConfig.environment,
       evidenceRefs: [
         {
           description: `persistence audit (tc=${sample.testCaseId}, table=query_logs, leak=${comparison.queryLogLeak})`,

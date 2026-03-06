@@ -2,7 +2,7 @@ import { z } from 'zod'
 
 export const KNOWLEDGE_ACCESS_LEVEL_VALUES = ['internal', 'restricted'] as const
 export const KNOWLEDGE_CHANNEL_VALUES = ['web', 'mcp'] as const
-export const KNOWLEDGE_ENVIRONMENT_VALUES = ['local', 'staging', 'production'] as const
+export const KNOWLEDGE_ENVIRONMENT_VALUES = ['local', 'production'] as const
 export const KNOWLEDGE_FEATURE_FLAG_VALUES = [
   'passkey',
   'mcpSession',
@@ -16,6 +16,8 @@ export const MCP_TOKEN_SCOPE_VALUES = [
   'knowledge.category.list',
   'knowledge.restricted.read',
 ] as const
+
+export type KnowledgeEnvironment = (typeof KNOWLEDGE_ENVIRONMENT_VALUES)[number]
 
 export interface KnowledgeRetrievalConfig {
   maxResults: number
@@ -39,7 +41,7 @@ export interface KnowledgeModelRoles {
 
 export interface KnowledgeGovernanceConfig {
   configSnapshotVersion: string
-  environment: string
+  environment: KnowledgeEnvironment
   execution: KnowledgeExecutionConfig
   features: KnowledgeFeatureFlags
   models: KnowledgeModelRoles
@@ -77,7 +79,7 @@ export interface KnowledgeRuntimeConfig {
   adminEmailAllowlist: string[]
   autoRag: KnowledgeAutoRagConfig
   bindings: KnowledgeBindingsConfig
-  environment: string
+  environment: KnowledgeEnvironment
   features: KnowledgeFeatureFlags
   governance: KnowledgeGovernanceConfig
   uploads: KnowledgeUploadsConfig
@@ -244,7 +246,7 @@ export function createKnowledgeFeatureFlags(
 }
 
 export function buildKnowledgeConfigSnapshotVersion(input: {
-  environment: string
+  environment: KnowledgeEnvironment
   execution: KnowledgeExecutionConfig
   features: KnowledgeFeatureFlags
   models: KnowledgeModelRoles
@@ -269,7 +271,7 @@ export function buildKnowledgeConfigSnapshotVersion(input: {
 }
 
 export function createKnowledgeGovernanceConfig(input: {
-  environment: string
+  environment: KnowledgeEnvironment
   features: KnowledgeFeatureFlags
   governance?: KnowledgeGovernanceInput
 }): KnowledgeGovernanceConfig {

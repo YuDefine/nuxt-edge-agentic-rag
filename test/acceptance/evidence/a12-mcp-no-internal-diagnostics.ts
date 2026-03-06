@@ -162,7 +162,7 @@ export function runA12McpNoInternalDiagnosticsExporter(
       channel: 'mcp',
       configSnapshotVersion: context.runtimeConfig.governance.configSnapshotVersion,
       decisionPath: 'no-internal-diagnostics',
-      environment: context.runtimeConfig.environment as 'local' | 'staging' | 'production',
+      environment: context.runtimeConfig.environment,
       evidenceRefs: [
         {
           description: `contract snapshot for ${sample.tool} (forbiddenKeys=${sample.forbiddenKeysFound.length})`,

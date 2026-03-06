@@ -2,7 +2,7 @@
  * Governance §2.4 — Backdated retention verification seed helper.
  *
  * This utility writes backdated `query_logs` + `citation_records` rows so that
- * staging / local can prove the coordinated retention cleanup actually deletes
+ * local verification can prove the coordinated retention cleanup actually deletes
  * expired audit chains without waiting 180 real days.
  *
  * It refuses to run against a `production` environment. The corresponding
@@ -67,7 +67,7 @@ export async function seedBackdatedRetentionRecord(
   if (input.environment === FORBIDDEN_ENVIRONMENT) {
     throw new Error(
       'seedBackdatedRetentionRecord refuses to write backdated rows in production. ' +
-        'Governance §2.4 restricts backdated verification to local / staging environments.'
+        'Governance §2.4 restricts backdated verification to the local environment.'
     )
   }
 

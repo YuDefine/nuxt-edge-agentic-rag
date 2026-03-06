@@ -37,7 +37,7 @@ describe('knowledge audit', () => {
 
   it('stores only redacted query_logs and messages content', async () => {
     const governance = createKnowledgeRuntimeConfig({
-      environment: 'staging',
+      environment: 'local',
     }).governance
     const run = vi.fn().mockResolvedValue(undefined)
     const database = {
@@ -53,7 +53,7 @@ describe('knowledge audit', () => {
       allowedAccessLevels: ['internal'],
       channel: 'web',
       configSnapshotVersion: governance.configSnapshotVersion,
-      environment: 'staging',
+      environment: 'local',
       queryText: 'Contact me at alice@example.com',
       status: 'accepted',
       userProfileId: 'user-1',
@@ -94,7 +94,7 @@ describe('knowledge audit', () => {
       'web',
       'user-1',
       null,
-      'staging',
+      'local',
       'Contact me at [REDACTED:email]',
       '["pii:email"]',
       '["internal"]',
@@ -135,7 +135,7 @@ describe('knowledge audit', () => {
 
   it('persists optional observability debug fields when caller supplies them (observability-and-debug §0.1/§0.3)', async () => {
     const governance = createKnowledgeRuntimeConfig({
-      environment: 'staging',
+      environment: 'local',
     }).governance
     const run = vi.fn().mockResolvedValue(undefined)
     const database = {
@@ -151,7 +151,7 @@ describe('knowledge audit', () => {
       allowedAccessLevels: ['internal'],
       channel: 'web',
       configSnapshotVersion: governance.configSnapshotVersion,
-      environment: 'staging',
+      environment: 'local',
       queryText: 'healthy query',
       status: 'accepted',
       userProfileId: 'user-debug',
@@ -172,7 +172,7 @@ describe('knowledge audit', () => {
       'web',
       'user-debug',
       null,
-      'staging',
+      'local',
       'healthy query',
       '[]',
       '["internal"]',
@@ -191,7 +191,7 @@ describe('knowledge audit', () => {
 
   it('persists refusal metadata when caller supplies only refusal fields (observability-and-debug §0.1)', async () => {
     const governance = createKnowledgeRuntimeConfig({
-      environment: 'staging',
+      environment: 'local',
     }).governance
     const run = vi.fn().mockResolvedValue(undefined)
     const database = {
@@ -207,7 +207,7 @@ describe('knowledge audit', () => {
       allowedAccessLevels: ['internal'],
       channel: 'web',
       configSnapshotVersion: governance.configSnapshotVersion,
-      environment: 'staging',
+      environment: 'local',
       queryText: 'restricted scope query',
       status: 'rejected',
       userProfileId: 'user-debug',
@@ -226,7 +226,7 @@ describe('knowledge audit', () => {
       'web',
       'user-debug',
       null,
-      'staging',
+      'local',
       'restricted scope query',
       '[]',
       '["internal"]',

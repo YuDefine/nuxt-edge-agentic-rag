@@ -7,7 +7,7 @@ import { requireInternalDebugAccess } from '#server/utils/debug-surface-guard'
  *
  *   production  + flag off            → 403
  *   production  + debugSurfaceEnabled → ok
- *   non-production (local / staging)  → ok (admin only)
+ *   non-production (local)  → ok (admin only)
  *   non-admin                         → 403 (via requireRuntimeAdminSession)
  *
  * The helper is the single entry point for every future debug API / page,
@@ -97,9 +97,9 @@ describe('requireInternalDebugAccess (§1.3 internal gating)', () => {
     })
   })
 
-  it('admin + staging environment → ok even without flag (non-prod is always open to admin)', async () => {
+  it('admin + local environment → ok even without flag (non-prod is always open to admin)', async () => {
     stubRuntimeConfig({
-      knowledge: { environment: 'staging' },
+      knowledge: { environment: 'local' },
       debugSurfaceEnabled: false,
     })
     stubRequireRuntimeAdminSession({
@@ -110,7 +110,7 @@ describe('requireInternalDebugAccess (§1.3 internal gating)', () => {
 
     expect(result).toEqual({
       userId: 'admin-3',
-      environment: 'staging',
+      environment: 'local',
       enabledByFlag: false,
     })
   })

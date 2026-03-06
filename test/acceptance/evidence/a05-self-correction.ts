@@ -161,7 +161,7 @@ export function runA05SelfCorrectionExporter(
       channel: sample.channel,
       configSnapshotVersion: context.runtimeConfig.governance.configSnapshotVersion,
       decisionPath: sample.finalDecisionPath,
-      environment: context.runtimeConfig.environment as 'local' | 'staging' | 'production',
+      environment: context.runtimeConfig.environment,
       evidenceRefs: [
         {
           description: `Round 1 AI Search request (query="${sample.initial.queryText}")`,

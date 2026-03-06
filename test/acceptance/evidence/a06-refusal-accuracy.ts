@@ -196,7 +196,7 @@ export function runA06RefusalAccuracyExporter(
       channel: sample.channel,
       configSnapshotVersion: context.runtimeConfig.governance.configSnapshotVersion,
       decisionPath: sample.actualRefused ? 'refused' : 'answered',
-      environment: context.runtimeConfig.environment as 'local' | 'staging' | 'production',
+      environment: context.runtimeConfig.environment,
       evidenceRefs: [
         {
           description: `refusal case matrix (category=${sample.category}, testCase=${sample.testCaseId})`,

@@ -65,7 +65,7 @@ pnpm exec vp test run test/integration/get-document-chunk-replay.test.ts
 
 PASS：上述 12 個 case 全綠（含 5 個任務指定情境與 1 個 MCP session state 例外）。
 
-### 6.2 Staging 實機驗證
+### 6.2 實機驗證（local 或 production）
 
 1. 選一個 retention 窗內有效的 `citationId`，以 MCP token 呼叫：
 
@@ -85,7 +85,7 @@ PASS：上述 12 個 case 全綠（含 5 個任務指定情境與 1 個 MCP sess
 
    PASS：`HTTP/1.1 404`、header 含 `x-replay-reason: chunk_not_found`。
 
-3. 若需驗證 retention-expired scrubbed 情境（§4.6 staging 專用）：對一筆 backdated citation，將 `chunk_text_snapshot` 手動 UPDATE 成空字串後重試：
+3. 若需驗證 retention-expired scrubbed 情境（§4.6 local 專用）：對一筆 backdated citation，將 `chunk_text_snapshot` 手動 UPDATE 成空字串後重試：
 
    ```bash
    wrangler d1 execute agentic-rag-db --remote --command \

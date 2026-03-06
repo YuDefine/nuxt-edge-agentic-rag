@@ -173,7 +173,7 @@ export function runA08OauthAllowlistExporter(
       channel: 'web',
       configSnapshotVersion: context.runtimeConfig.governance.configSnapshotVersion,
       decisionPath: `allowlist-${snapshot.stateLabel}`,
-      environment: context.runtimeConfig.environment as 'local' | 'staging' | 'production',
+      environment: context.runtimeConfig.environment,
       evidenceRefs: [
         {
           description: `OAuth session snapshot (${snapshot.stateLabel}, email=${snapshot.userEmail})`,

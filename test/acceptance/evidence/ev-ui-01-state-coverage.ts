@@ -26,7 +26,7 @@ import {
  *   - the network log pointer captured from the same page-load
  *   - the HTTP status the page resolved to
  *
- * Real staging runs should inject:
+ * Real production runs should inject:
  *   - `screenshotPointer` — path to the captured PNG
  *   - `networkLogPointer` — path to the captured HAR / JSON
  *   - `observedState` — which UI state the screenshot shows
@@ -128,7 +128,7 @@ export function runEvUi01StateCoverageExporter(
 
     if (isStubbed && stateMatches) {
       notesParts.push(
-        'Stubbed screenshot + network log pointers — rerun review-screenshot agent against staging to capture live UI evidence.'
+        'Stubbed screenshot + network log pointers — rerun review-screenshot agent against local or production to capture live UI evidence.'
       )
     }
 
@@ -137,7 +137,7 @@ export function runEvUi01StateCoverageExporter(
       channel: 'web',
       configSnapshotVersion: context.runtimeConfig.governance.configSnapshotVersion,
       decisionPath: `ui-state-${observation.expectedState}`,
-      environment: context.runtimeConfig.environment as 'local' | 'staging' | 'production',
+      environment: context.runtimeConfig.environment,
       evidenceRefs: [
         {
           description: `UI screenshot (${observation.testCaseId} → ${observation.expectedState} @ ${observation.pageUrl})`,

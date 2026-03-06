@@ -10,8 +10,8 @@
  *   2. In production, the surface is additionally locked behind a runtime
  *      feature flag (`runtimeConfig.debugSurfaceEnabled`). This lets us keep
  *      the route code deployed but inert until an incident needs it.
- *   3. Non-production environments (`local` / `staging`) are always open to
- *      admins so developers can exercise the debug UI without flipping
+ *   3. The local environment is always open to admins so developers can
+ *      exercise the debug UI without flipping
  *      flags.
  *
  * NEVER use this helper on a normal admin endpoint — it is strictly for

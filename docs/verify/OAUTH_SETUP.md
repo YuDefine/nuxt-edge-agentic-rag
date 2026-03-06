@@ -10,11 +10,10 @@
 
 ### 2. 設定 Redirect URI
 
-| 環境       | URI                                           |
-| ---------- | --------------------------------------------- |
-| 本地開發   | `http://localhost:3010/auth/google`           |
-| Staging    | `https://staging.your-domain.com/auth/google` |
-| Production | `https://your-domain.com/auth/google`         |
+| 環境       | URI                                   |
+| ---------- | ------------------------------------- |
+| 本地開發   | `http://localhost:3010/auth/google`   |
+| Production | `https://your-domain.com/auth/google` |
 
 ### 3. 環境變數
 

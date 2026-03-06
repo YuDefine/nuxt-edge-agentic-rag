@@ -4,14 +4,14 @@
 >
 > **前提**：
 >
-> - staging 已依 `staging-deploy-checklist.md` 部署完成
+> - 已依 `production-deploy-checklist.md` 部署完成（或具備 local 開發環境）
 > - D1 `agentic-rag-db` 可透過 `wrangler d1 execute ... --remote` 操作
 > - Admin Web token 可呼叫 `/api/admin/retention/prune`（或等價 endpoint）
 > - 具備可用的 MCP token（non-restricted），用於 `getDocumentChunk` replay
 >
 > **規則**：人工檢查項目由使用者走完後回報 OK / 問題 / skip，Claude 才能代勾。
 >
-> **重要**：驗證不得污染 production。Backdated 測試**只在 staging / local** 執行。
+> **重要**：驗證不得污染 production。Backdated 測試**只在 local** 執行。
 
 ## 1. 情境總覽
 
@@ -19,7 +19,7 @@
 | --------------------------- | -------- | ---------------------------------------------------------- |
 | 保留窗內 replay 仍可用      | 2.1, 2.3 | Cleanup preserves replayable evidence before expiry        |
 | 過期後整條 audit chain 消失 | 2.1, 2.2 | Cleanup expires a complete audit chain after retention     |
-| Backdated 加速驗證可行      | 2.4      | Staging verifies expiry with backdated records             |
+| Backdated 加速驗證可行      | 2.4      | Local verifies expiry with backdated records               |
 | Production 配置檢查無需造假 | 2.5      | Production verifies configuration without fake expiry runs |
 | 共享 retention constants    | 2.1      | 清理 TTL / 閾值都來自單一 source of truth                  |
 
@@ -56,7 +56,7 @@
 
 ### 3.1 前置
 
-1. 確認 staging 有一篇可問答的 internal 文件（可重用 `ACCEPTANCE_RUNBOOK.md` Doc A）。
+1. 確認環境（local 或 production）有一篇可問答的 internal 文件（可重用 `ACCEPTANCE_RUNBOOK.md` Doc A）。
 2. 以 Web 提問，取得引用 `[1]` 並記錄：
 
    ```bash
@@ -113,13 +113,13 @@ wrangler d1 execute agentic-rag-db --remote --command \
 
 ### 4.1 前置
 
-**必須在 staging 執行**（絕不可 production）。
+**必須在 local 執行**（絕不可 production）。
 
 目的：模擬超過 180 天的記錄，讓 cleanup 真的刪除，以驗證過期行為。
 
 ### 4.2 種入 backdated 資料
 
-**方式 A — SQL 種資料**：以 staging D1 直接寫入一筆過期 `citation_records` + 對應 `query_logs`：
+**方式 A — SQL 種資料**：以 local D1 直接寫入一筆過期 `citation_records` + 對應 `query_logs`：
 
 ```bash
 # 以 200 天前的時間戳為例
@@ -129,7 +129,7 @@ OLD_EXPIRY="$(date -u -v-20d +"%Y-%m-%dT%H:%M:%SZ")"
 wrangler d1 execute agentic-rag-db --remote --command \
   "INSERT INTO query_logs (id, channel, environment, query_redacted_text, \
      config_snapshot_version, status, created_at) \
-   VALUES ('backdated-ql-$(date +%s)', 'web', 'staging', '[backdated test]', \
+   VALUES ('backdated-ql-$(date +%s)', 'web', 'local', '[backdated test]', \
      'kgov-backdated', 'accepted', '${OLD_TS}');"
 
 # 以最新的 document_version_id 與 source_chunk_id 連接
@@ -142,14 +142,14 @@ wrangler d1 execute agentic-rag-db --remote --command \
 
 **方式 B — shortened TTL（governance 2.4 正式支援）**：
 
-`POST /api/admin/retention/prune` 接受 optional body `{ "retentionDays": <1..180> }`。staging / local 可傳入短值（例如 `retentionDays=1`）跑一次 prune，伺服器會把覆寫值穿透給 `runRetentionCleanup` 並在 response `data.retentionDays` 回傳實際使用的值。production 會 **400 拒絕** 任何 `retentionDays` 覆寫。
+`POST /api/admin/retention/prune` 接受 optional body `{ "retentionDays": <1..180> }`。local 可傳入短值（例如 `retentionDays=1`）跑一次 prune，伺服器會把覆寫值穿透給 `runRetentionCleanup` 並在 response `data.retentionDays` 回傳實際使用的值。production 會 **400 拒絕** 任何 `retentionDays` 覆寫。
 
 Helper script：
 
 ```bash
-# staging：用 1 天 TTL 做一次驗證 prune
-npx tsx scripts/staging-retention-prune.ts \
-  --base-url https://agentic-staging.yudefine.com.tw \
+# local：用 1 天 TTL 做一次驗證 prune
+npx tsx scripts/retention-prune.ts \
+  --base-url http://localhost:3010 \
   --cookie "$ADMIN_SESSION_COOKIE" \
   --retention-days 1
 ```
@@ -175,14 +175,14 @@ Response 範例：
 
 **方式 C — 程式化種資料（governance 2.4 正式支援）**：
 
-`server/utils/retention-seed.ts::seedBackdatedRetentionRecord` 是 typed helper，staging 內可在 admin / setup endpoint 內呼叫（或寫一次性 tsx script）寫入 backdated `query_logs` + `citation_records`。Helper 會在 `environment === 'production'` 時 throw，避免誤用。
+`server/utils/retention-seed.ts::seedBackdatedRetentionRecord` 是 typed helper，local 內可在 admin / setup endpoint 內呼叫（或寫一次性 tsx script）寫入 backdated `query_logs` + `citation_records`。Helper 會在 `environment === 'production'` 時 throw，避免誤用。
 
 ```ts
 import { seedBackdatedRetentionRecord } from '#server/utils/retention-seed'
 
 const seeded = await seedBackdatedRetentionRecord({
   database: await getD1Database(),
-  environment: 'staging',
+  environment: 'local',
   ageDays: 200,
   documentVersionId: '<existing dv id>',
   sourceChunkId: '<existing sc id>',
@@ -194,12 +194,12 @@ const seeded = await seedBackdatedRetentionRecord({
 
 ```bash
 # 預設 180 天 retention
-curl -X POST https://agentic-staging.yudefine.com.tw/api/admin/retention/prune \
+curl -X POST http://localhost:3010/api/admin/retention/prune \
   -H "Cookie: <admin session cookie>"
 
 # 或用 shortened-TTL helper
-npx tsx scripts/staging-retention-prune.ts \
-  --base-url https://agentic-staging.yudefine.com.tw \
+npx tsx scripts/retention-prune.ts \
+  --base-url http://localhost:3010 \
   --cookie "$ADMIN_SESSION_COOKIE" \
   --retention-days 1
 
@@ -229,7 +229,7 @@ wrangler d1 execute agentic-rag-db --remote --command \
 
 ### 4.6 Replay 過期契約
 
-> 完整契約文件：`docs/verify/RETENTION_REPLAY_CONTRACT.md`。此處只列 staging 操作步驟。
+> 完整契約文件：`docs/verify/RETENTION_REPLAY_CONTRACT.md`。此處只列 local 操作步驟。
 
 **操作**：
 
@@ -237,7 +237,7 @@ wrangler d1 execute agentic-rag-db --remote --command \
 
    ```bash
    curl -i -H "Authorization: Bearer $MCP_TOKEN" \
-     https://agentic-staging.yudefine.com.tw/api/mcp/chunks/<deleted_citation_id>
+     http://localhost:3010/api/mcp/chunks/<deleted_citation_id>
    ```
 
 2. 對一筆**仍在 retention 內但 `chunk_text_snapshot` 手動清空**的 citation 呼叫（模擬未來可能的 snapshot scrub policy）：
@@ -247,7 +247,7 @@ wrangler d1 execute agentic-rag-db --remote --command \
      "UPDATE citation_records SET chunk_text_snapshot = '' WHERE id = '<retained_citation_id>';"
 
    curl -i -H "Authorization: Bearer $MCP_TOKEN" \
-     https://agentic-staging.yudefine.com.tw/api/mcp/chunks/<retained_citation_id>
+     http://localhost:3010/api/mcp/chunks/<retained_citation_id>
    ```
 
 **PASS 條件**：
@@ -259,13 +259,13 @@ wrangler d1 execute agentic-rag-db --remote --command \
   - 情境 2：`x-replay-reason: chunk_retention_expired`
 - 回應內不含 stack trace、DB error、或 `data.reason` body 欄位
 
-**驗證完成後**：`DELETE FROM citation_records WHERE id = '<retained_citation_id>'` 清理 staging 資料。
+**驗證完成後**：`DELETE FROM citation_records WHERE id = '<retained_citation_id>'` 清理 local 資料。
 
 ## 4A. Retention Boundary 驗證（governance 2.5）
 
 > 驗證「retention window 邊界」的精確行為：剛好在 cutoff 前一秒的記錄應保留；剛好在 cutoff 當下或之後的記錄應被清除。
 
-### 4A.1 操作（staging only）
+### 4A.1 操作（local only）
 
 1. 使用 `retentionDays: 5` 短 TTL（避免等真的 180 天）：
 
@@ -278,16 +278,16 @@ wrangler d1 execute agentic-rag-db --remote --command \
    wrangler d1 execute agentic-rag-db --remote --command \
      "INSERT INTO query_logs (id, channel, environment, query_redacted_text, \
         config_snapshot_version, status, created_at) \
-      VALUES ('boundary-inside-$(date +%s)', 'web', 'staging', '[boundary inside]', \
+      VALUES ('boundary-inside-$(date +%s)', 'web', 'local', '[boundary inside]', \
         'kgov-boundary', 'accepted', '${JUST_INSIDE}'),\
-             ('boundary-on-$(date +%s)', 'web', 'staging', '[boundary on]', \
+             ('boundary-on-$(date +%s)', 'web', 'local', '[boundary on]', \
         'kgov-boundary', 'accepted', '${RIGHT_ON}');"
    ```
 
-2. 對 `/api/admin/retention/prune` 傳 `retentionDays=5`（若 endpoint 支援 body 覆寫；否則用 wrangler cron 觸發 staging 獨立 runner）：
+2. 對 `/api/admin/retention/prune` 傳 `retentionDays=5`（若 endpoint 支援 body 覆寫；否則用 wrangler cron 觸發 local 獨立 runner）：
 
    ```bash
-   curl -X POST https://agentic-staging.yudefine.com.tw/api/admin/retention/prune \
+   curl -X POST http://localhost:3010/api/admin/retention/prune \
      -H "Content-Type: application/json" \
      -H "Cookie: $ADMIN_COOKIE" \
      -d '{"retentionDays": 5}'
@@ -316,7 +316,7 @@ wrangler d1 execute agentic-rag-db --remote --command \
 
 ### 5.1 前置
 
-1. 在 staging 建一個 MCP token（Admin UI 或 `/api/admin/mcp-tokens`）。
+1. 在 local 建一個 MCP token（Admin UI 或 `/api/admin/mcp-tokens`）。
 2. 在 D1 把它手動改為 200 天前 revoked：
 
    ```bash
@@ -378,7 +378,7 @@ wrangler d1 execute agentic-rag-db --remote --command \
 
 ### 6.2 PASS 條件
 
-- `retentionDays` 設定與 staging 相同（均為 180，或視部署而定）
+- `retentionDays` 設定與 local 相同（均為 180，或視部署而定）
 - `query_logs.oldest` 不超過「今日 - retentionDays」太多（若超過，表示 prune 沒排程或排程失效）
 - `citation_records.earliest_expiry` 不早於「今日」太多（若早於今日大量 → 同上）
 - Cleanup schedule 本身可見（`wrangler.toml` `[triggers] crons`、NuxtHub scheduled task 設定或同等）
@@ -386,7 +386,7 @@ wrangler d1 execute agentic-rag-db --remote --command \
 ### 6.3 失敗排除
 
 - `query_logs.oldest` 遠超 retention → cleanup 沒執行；檢查排程註冊、last run 時間
-- retention 設定與 staging 不同 → 環境差異；governance 2.5 FAIL
+- retention 設定與 local 不同 → 環境差異；governance 2.5 FAIL
 - Cleanup schedule 找不到 → governance 2.2 FAIL（未實作 scheduled cleanup job）
 
 ## 7. 回報格式
@@ -400,7 +400,7 @@ Retention §6 skip（production 未開放查詢）
 
 ## 8. 常見陷阱
 
-- 忘記 `--remote` → 改了 local sqlite，staging 並未受影響
+- 忘記 `--remote` → 改了 local sqlite，production 並未受影響
 - Backdated 種資料後忘了清理 → 下次驗證混淆；建議驗證完成後刪除所有 `backdated-*` id
 - `expires_at` 用錯單位（秒 vs. ms） → 過期判定全錯
 - `source_chunks.chunk_text` 被誤刪 → 該欄位是 retention 內 replay 依據，不能因 cleanup 被碰

@@ -2,7 +2,7 @@
 
 > 單一腳本，把 `bootstrap-v1-core-from-report` 6.2 的 #1–#5、`add-v1-core-ui` 的 #1, #3–#8，以及 `governance-refinements` 的 conversation lifecycle 與 retention cleanup 整合成可依序執行的人工驗收。
 >
-> **前提**：staging 已依 `staging-deploy-checklist.md` 部署完成。
+> **前提**：已依 `production-deploy-checklist.md` 部署完成（或具備 local 開發環境）。
 > **環境**：`https://agentic.yudefine.com.tw`（D1 `agentic-rag-db`、KV `661ea98dad0743be86acc9ebeaf464f4`、R2 `agentic-rag-documents`）
 >
 > **規則**：人工檢查不由 Claude 自行勾選。使用者走完每一項後回報「OK / 問題 / skip」，Claude 才能標 `[x]`。
@@ -408,7 +408,7 @@ wrangler d1 execute agentic-rag-db --remote --command \
 
 ### Step 9.2 — Backdated 過期後整條 audit chain 被清理（G#4）
 
-**只在 staging 執行**。執行 `RETENTION_CLEANUP_VERIFICATION.md` §4：
+**只在 local 執行**。執行 `RETENTION_CLEANUP_VERIFICATION.md` §4：
 
 1. 以 `backdated-ql-*` / `backdated-cr-*` id 前綴種入 200 天前 SQL 記錄
 2. 觸發 prune
@@ -425,7 +425,7 @@ wrangler d1 execute agentic-rag-db --remote --command \
 
 執行 `RETENTION_CLEANUP_VERIFICATION.md` §5：
 
-1. 建 staging MCP token，手動改為 200 天前 revoked
+1. 建 local MCP token，手動改為 200 天前 revoked
 2. 觸發 prune
 3. D1 查 token：`token_hash` = `redacted:<id>`、`name` = `[redacted]`、`scopes_json` = `[]`
 
@@ -460,7 +460,7 @@ wrangler d1 execute agentic-rag-db --remote --command \
 
 **PASS 條件**：
 
-- Production 與 staging 的 retention 設定一致
+- Production 與 local 的 retention 設定一致
 - `query_logs.oldest` 未超過 retention 過多（代表 cleanup 有在跑）
 - Cleanup schedule 已註冊且可查證
 
@@ -478,14 +478,14 @@ B#2 問題: <描述>
 G#1 OK
 G#2 問題: title 被清但 content 仍含原文
 G#3 OK
-G#4 skip（staging 不允許種 backdated）
+G#4 skip（local 不允許種 backdated）
 ...
 ```
 
 或簡寫：
 
 ```
-全部 PASS，除了 B#5 rate limit 沒試到 429、G#4 staging 不允許種 backdated
+全部 PASS，除了 B#5 rate limit 沒試到 429、G#4 local 不允許種 backdated
 ```
 
 **常見陷阱**：

@@ -1,7 +1,7 @@
 # Debug Surface Verification
 
 > observability-and-debug §4.3 — runbook for enabling / verifying the internal
-> debug surfaces in staging + production. The debug pages expose internal
+> debug surfaces in local + production. The debug pages expose internal
 > query-log observability (decision_path / latency / scores / refusal reason)
 > and are gated by Admin role + a production kill-switch.
 
@@ -30,22 +30,21 @@ enforces:
 2. **Environment + flag** — in production (`NUXT_KNOWLEDGE_ENVIRONMENT=production`),
    the route is additionally locked behind
    `runtimeConfig.debugSurfaceEnabled` (sourced from `NUXT_DEBUG_SURFACE_ENABLED`).
-3. **Non-production admins** — in `local` / `staging`, any admin can always
+3. **Non-production admins** — in `local`, any admin can always
    reach the debug surfaces (the flag is ignored).
 
 | Environment | Admin | `NUXT_DEBUG_SURFACE_ENABLED` | Result |
 | ----------- | ----- | ---------------------------- | ------ |
 | local       | yes   | n/a                          | 200    |
-| staging     | yes   | n/a                          | 200    |
 | production  | yes   | `false` / unset              | 403    |
 | production  | yes   | `true`                       | 200    |
 | any         | no    | any                          | 403    |
 
 ## Verification Steps
 
-### Staging / preview
+### Local
 
-1. Deploy the change to the staging environment (`NUXT_KNOWLEDGE_ENVIRONMENT=staging`).
+1. Run the dev server (`pnpm dev`) with `NUXT_KNOWLEDGE_ENVIRONMENT=local`.
 2. Sign in with an email listed in `ADMIN_EMAIL_ALLOWLIST`.
 3. Visit `/admin/debug/latency`. Verify:
    - Loading card appears briefly.
@@ -56,7 +55,7 @@ enforces:
    - Switching the day selector between `近 7 天` / `近 30 天` triggers a
      refresh and updates `sample-count`.
 4. Click through to `/admin/debug/query-logs/<id>` for one row (URL picked from
-   the staging admin query-logs list page). Verify:
+   the local admin query-logs list page). Verify:
    - All 6 debug fields render (decision-path badge, first-token latency,
      completion latency, retrieval score %, judge score %, refusal reason
      badge).
