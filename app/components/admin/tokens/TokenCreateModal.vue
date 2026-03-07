@@ -88,6 +88,8 @@
     }
   )
 
+  const { $csrfFetch } = useNuxtApp()
+
   async function handleSubmit() {
     submitting.value = true
     submitError.value = null
@@ -103,7 +105,7 @@
         if (parsed > 0) payload.expiresInDays = parsed
       }
 
-      const result = await $fetch<TokenCreateResponse>('/api/admin/mcp-tokens', {
+      const result = await $csrfFetch<TokenCreateResponse>('/api/admin/mcp-tokens', {
         method: 'POST',
         body: payload,
       })

@@ -37,8 +37,10 @@
     label: string
   }
 
+  const ALL_OPTION_VALUE = 'all'
+
   const STATUS_OPTIONS: SelectOption[] = [
-    { value: '', label: '全部狀態' },
+    { value: ALL_OPTION_VALUE, label: '全部狀態' },
     { value: 'accepted', label: '已接受' },
     { value: 'blocked', label: '已阻擋' },
     { value: 'limited', label: '限流' },
@@ -46,7 +48,7 @@
   ]
 
   const CHANNEL_OPTIONS: SelectOption[] = [
-    { value: '', label: '全部來源' },
+    { value: ALL_OPTION_VALUE, label: '全部來源' },
     ...KNOWLEDGE_CHANNEL_VALUES.map((c) => ({
       value: c as string,
       label: c === 'web' ? 'Web' : 'MCP',
@@ -54,24 +56,26 @@
   ]
 
   const REDACTION_OPTIONS: SelectOption[] = [
-    { value: '', label: '全部' },
+    { value: ALL_OPTION_VALUE, label: '全部' },
     { value: 'true', label: '已遮罩' },
     { value: 'false', label: '未遮罩' },
   ]
 
   const filters = reactive({
-    channel: '',
-    status: '',
-    redactionApplied: '',
+    channel: ALL_OPTION_VALUE,
+    status: ALL_OPTION_VALUE,
+    redactionApplied: ALL_OPTION_VALUE,
     startDate: '',
     endDate: '',
   })
 
   const queryParams = computed(() => {
     const params: Record<string, string> = {}
-    if (filters.channel) params.channel = filters.channel
-    if (filters.status) params.status = filters.status
-    if (filters.redactionApplied) params.redactionApplied = filters.redactionApplied
+    if (filters.channel !== ALL_OPTION_VALUE) params.channel = filters.channel
+    if (filters.status !== ALL_OPTION_VALUE) params.status = filters.status
+    if (filters.redactionApplied !== ALL_OPTION_VALUE) {
+      params.redactionApplied = filters.redactionApplied
+    }
     if (filters.startDate) params.startDate = filters.startDate
     if (filters.endDate) params.endDate = filters.endDate
     return params
@@ -113,9 +117,9 @@
   }
 
   function resetFilters() {
-    filters.channel = ''
-    filters.status = ''
-    filters.redactionApplied = ''
+    filters.channel = ALL_OPTION_VALUE
+    filters.status = ALL_OPTION_VALUE
+    filters.redactionApplied = ALL_OPTION_VALUE
     filters.startDate = ''
     filters.endDate = ''
   }
@@ -157,6 +161,7 @@
           <USelect
             v-model="filters.channel"
             :items="CHANNEL_OPTIONS"
+            value-key="value"
             color="neutral"
             variant="outline"
             size="md"
@@ -168,6 +173,7 @@
           <USelect
             v-model="filters.status"
             :items="STATUS_OPTIONS"
+            value-key="value"
             color="neutral"
             variant="outline"
             size="md"
@@ -179,6 +185,7 @@
           <USelect
             v-model="filters.redactionApplied"
             :items="REDACTION_OPTIONS"
+            value-key="value"
             color="neutral"
             variant="outline"
             size="md"
