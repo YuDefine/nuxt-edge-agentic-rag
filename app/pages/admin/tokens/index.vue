@@ -31,6 +31,7 @@
   }
 
   const toast = useToast()
+  const { $csrfFetch } = useNuxtApp()
 
   const { data, state, asyncStatus, error, refetch } = useQuery({
     key: ['admin', 'mcp-tokens'],
@@ -79,7 +80,7 @@
     if (!revokeTarget.value) return
     revokeLoading.value = true
     try {
-      await $fetch(`/api/admin/mcp-tokens/${revokeTarget.value.id}`, { method: 'DELETE' })
+      await $csrfFetch(`/api/admin/mcp-tokens/${revokeTarget.value.id}`, { method: 'DELETE' })
       toast.add({
         title: 'Token 已撤銷',
         description: revokeTarget.value.name,

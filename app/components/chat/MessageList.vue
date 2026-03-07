@@ -74,7 +74,7 @@
       }"
     >
       <!-- Refusal messages use dedicated component -->
-      <ChatRefusalMessage
+      <LazyChatRefusalMessage
         v-if="isRefusalMessage(message)"
         :content="message.content"
         :created-at="message.createdAt"
@@ -99,7 +99,7 @@
         </div>
 
         <div v-if="hasCitations(message)" class="mt-2 flex flex-wrap gap-1">
-          <ChatCitationMarker
+          <LazyChatCitationMarker
             v-for="(citation, index) in message.citations"
             :key="citation.citationId"
             :citation-id="citation.citationId"

@@ -274,7 +274,7 @@
 
       <!-- Streaming message -->
       <div v-if="isStreaming" class="mt-4">
-        <ChatStreamingMessage
+        <LazyChatStreamingMessage
           :content="streamingContent"
           :is-streaming="true"
           :error="streamingError"
@@ -326,6 +326,9 @@
     </div>
 
     <!-- Citation replay modal -->
-    <ChatCitationReplayModal v-model:open="citationModalOpen" :citation-id="selectedCitationId" />
+    <LazyChatCitationReplayModal
+      v-model:open="citationModalOpen"
+      :citation-id="selectedCitationId"
+    />
   </div>
 </template>

@@ -42,28 +42,39 @@
   const UDrawer = resolveComponent('UDrawer')
   const overlayComponent = computed(() => (isDesktop.value ? UModal : UDrawer))
 
-  const citationUrl = computed(() => (props.citationId ? `/api/citations/${props.citationId}` : ''))
+  type FetchStatus = 'idle' | 'pending' | 'success' | 'error'
 
-  const {
-    data: citation,
-    status,
-    error,
-    refresh,
-  } = await useFetch<{ data: CitationData }>(citationUrl, {
-    immediate: false,
-    watch: false,
-  })
+  const citationData = shallowRef<CitationData | null>(null)
+  const status = shallowRef<FetchStatus>('idle')
+  const error = shallowRef<unknown>(null)
 
   const isLoading = computed(() => status.value === 'pending')
   const hasError = computed(() => status.value === 'error')
-  const citationData = computed(() => citation.value?.data ?? null)
+
+  let activeRequestId = 0
+
+  async function loadCitation(citationId: string) {
+    const requestId = ++activeRequestId
+    status.value = 'pending'
+    error.value = null
+    try {
+      const response = await $fetch<{ data: CitationData }>(`/api/citations/${citationId}`)
+      if (requestId !== activeRequestId) return
+      citationData.value = response.data
+      status.value = 'success'
+    } catch (err) {
+      if (requestId !== activeRequestId) return
+      error.value = err
+      status.value = 'error'
+    }
+  }
 
   // Fetch when citationId changes and modal is open
   watch(
-    () => [props.citationId, props.open],
-    async ([newCitationId, newOpen]) => {
+    () => [props.citationId, props.open] as const,
+    ([newCitationId, newOpen]) => {
       if (newCitationId && newOpen) {
-        await refresh()
+        loadCitation(newCitationId)
       }
     },
     { immediate: true }
