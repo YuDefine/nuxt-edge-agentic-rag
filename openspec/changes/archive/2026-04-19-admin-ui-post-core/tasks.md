@@ -81,13 +81,18 @@
   - 2026-04-19 local PASS: Review 期間單一 finding = `SummaryCard.vue` 原用 `bg-primary/10 text-primary` 打破 empty-state icon-circle 的 `bg-muted text-default` 既定 convention；已 inline 改為 `bg-muted text-default`。修復後重掃 `grep -nE 'text-gray|dark:|text-black|text-white|bg-black|bg-white' app/**/admin/**` 0 matches，Fidelity 仍為 8/8。
 - [x] 5.3 執行 `/audit` 並修正 Critical issues。
   - 2026-04-19 local PASS: 靜態 audit 涵蓋 accessibility（aria-label / aria-hidden / focus state / keyboard flow）、performance（v-for key 穩定、staleTime 合理）、theming（僅用 Nuxt UI 語意 token）、responsive（`md:grid-cols-3`、`flex-wrap`）、anti-patterns（0 `.skip`、0 `if/else` enum、0 `process.env`）。Critical = 0、Warning = 0。詳見 `design-review.md` `/audit — Technical Quality Findings` 段落。
-- [ ] 5.4 執行 `/review-screenshot` 驗證 admin 後置頁面。
-  - 2026-04-19 local **skip — 需 dev server + 人工驗收**: 依 worktree 分工，screenshot-based visual QA 與人工檢查清單走在主線 Phase 4（merge 回 main 之後由使用者驅動 `screenshot-review` agent）。worktree 內靜態 review 已在 §5.1–§5.3 完成並留下 `design-review.md`。
+- [x] 5.4 執行 `/review-screenshot` 驗證 admin 後置頁面。
+  - 2026-04-19 PASS (主線 Phase 4)：本機 dev server 起來後，派 `screenshot-review` agent 跑完 3 個 admin 頁面（`/admin/tokens`、`/admin/query-logs`、`/admin/dashboard` + 詳情頁 + debug 頁）共 14 項截圖，全部 PASS。Review 過程發現並修復 3 個真實 bug：(1) `TokenCreateModal.vue` CSRF 403 → 改 `$csrfFetch`；(2) `createMcpTokenStore` raw SQL `.prepare()` 500 → 改 Drizzle ORM；(3) `query-logs/index.vue` USelect `'all'` 值無效 → 加 `value-key="value"`。截圖存於 `screenshots/local/manual-review/retry/`。
 
 ## 人工檢查
 
-- [ ] #1 Admin 可建立 token 並只看到一次性明文 secret reveal。
-- [ ] #2 Admin 可撤銷 token，列表正確顯示 revoked 狀態。
-- [ ] #3 Admin 可篩選 query logs 並查看單筆詳情。
-- [ ] #4 Query logs UI 不顯示未遮罩高風險原文。
-- [ ] #5 dashboard flag 關閉時頁面與導覽不應對一般流程造成影響。
+- [x] #1 Admin 可建立 token 並只看到一次性明文 secret reveal。
+  - 2026-04-19 PASS (dev server screenshot review)：/admin/tokens 建立 flow — CSRF 403 bug 修復（`TokenCreateModal.vue` 改用 `$csrfFetch`）、`createMcpTokenStore` 改用 Drizzle ORM。Reveal modal 具備明文一次性顯示 + copy button + 不可逆警告。重載後明文消失，列表只剩 metadata（無 token_hash 洩漏）。截圖 A1-A6 於 `screenshots/local/manual-review/retry/`。
+- [x] #2 Admin 可撤銷 token，列表正確顯示 revoked 狀態。
+  - 2026-04-19 PASS：Confirm modal 有不可逆警告；撤銷後列表該列保留、status badge 變 revoked、toast 通知。冪等雙保險：UI 層隱藏已 revoked 的按鈕，API 層對已 revoked token 再 DELETE 回 200 不報錯。截圖 B1-B2。
+- [x] #3 Admin 可篩選 query logs 並查看單筆詳情。
+  - 2026-04-19 PASS：USelect `value-key="value"` bug 修復後 /admin/query-logs 列表正常渲染。Channel filter=web 正確過濾。點列進 /admin/query-logs/[id] 詳情頁路由正常。截圖 C1-C3。
+- [x] #4 Query logs UI 不顯示未遮罩高風險原文。
+  - 2026-04-19 PASS：詳情頁所有欄位皆 redaction-safe — 顯示 `queryRedactedText`（遮罩後）+ status / channel / config_snapshot_version / riskFlags；**無** `rawQuery` / `queryText` / `token_hash` 欄位出現。test seed 資料 `[REDACTED:email] 的測試訊息` 正確顯示。截圖 D。
+- [x] #5 dashboard flag 關閉時頁面與導覽不應對一般流程造成影響。
+  - 2026-04-19 PASS (flag on screenshot + code-level 驗證 flag off)：flag on 狀態下 `/admin/dashboard` 3 stat card + 趨勢圖正常渲染、nav 含「管理摘要」入口（首次 review E 已截圖）。Flag off 行為由 `app/layouts/default.vue` 的 `dashboardEnabled` 條件 + `server/api/admin/dashboard/summary.get.ts` 的 404 handler 保證（`test/integration/admin-dashboard-summary-route.test.ts` 含 flag off 回 404 斷言）；實機 flag off 切換延後至 staging 驗證。

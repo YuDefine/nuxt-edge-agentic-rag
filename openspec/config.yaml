@@ -31,7 +31,7 @@ context: |
   - Web and MCP share one retrieval/citation/governance core, but Web conversations and MCP contracts stay separate. MCP v1.0.0 is stateless and does not use `MCP-Session-Id`.
   - Admin authority comes from runtime `ADMIN_EMAIL_ALLOWLIST`; every admin-only action must re-check the current session email against the allowlist.
   - Sensitive data, secrets, OAuth credentials, binding names, and feature flags must come from runtime config or environment injection and must never be hard-coded.
-  - Preview/Staging and Production must not share the same D1, R2, KV, or AI Search instances.
+  - Local and Production must not share the same D1, R2, KV, or AI Search instances; if a Staging/Preview environment is later introduced, the same isolation rule applies.
   - Production v1.0.0 defaults `features.passkey`, `features.mcpSession`, `features.cloudFallback`, and `features.adminDashboard` to false.
 
   Delivery priority:
