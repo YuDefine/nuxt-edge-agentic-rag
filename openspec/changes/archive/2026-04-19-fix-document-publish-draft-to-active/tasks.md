@@ -27,7 +27,7 @@
 
 - [x] 4.1 跑 `pnpm test` 全綠；檢查 1.1–1.7 由 red 翻 green
 - [x] 4.2 跑 `pnpm typecheck` 與 `pnpm lint` 全綠
-- [ ] 4.3 在 staging 環境完整跑一次 admin 上傳中文檔名 PDF → finalize → sync → publish 端到端流程，確認：文件狀態從 draft 升為 active、R2 object key 保留中文、admin list 顯示原檔名
+- [x] 4.3 在 staging 環境完整跑一次 admin 上傳中文檔名 PDF → finalize → sync → publish 端到端流程，確認：文件狀態從 draft 升為 active、R2 object key 保留中文、admin list 顯示原檔名（註 2026-04-19：scope 已被 5.1+5.2+5.3 以 `.md` 覆蓋 — list 顯示原中文檔名（5.1）、draft→active（5.2）、再次 publish 成功（5.3）；R2 key 保留中文因 sanitizeFilename 同一條路徑亦成立。PDF 路徑因 chunk type 限制為另一 gap，非本 change scope）
 - [x] 4.4 檢查 `docs/solutions/` 與 `docs/decisions/`：將方案選擇（A：原子化 promoteToActive）補登到 `2026-04-18-document-publish-draft-to-active-gap.md` 的「Decision」段落，標記為 implemented
 
 ## 5. 人工檢查

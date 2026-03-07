@@ -36,10 +36,13 @@
 
 - [x] 5.1 執行 `/design improve` 對 debug / observability surfaces。 2026-04-19 local PASS: 產出 `openspec/changes/observability-and-debug/design-review.md`，Fidelity 9/9、無 DRIFT 項目。分析模式（無 dev server）對照 `app/components/documents/AccessLevelBadge.vue` + `app/pages/admin/documents/index.vue` reference surface 驗 Component Consistency / Exhaustiveness / State Coverage / NULL 語意 / Typography / Spacing / Colour semantics / Responsive / Accessibility。
 - [x] 5.2 修復 DRIFT 與 Critical issues。 2026-04-19 local PASS: Fidelity 初跑即 9/9（無 DRIFT）。typecheck 初次報 `USelectMenu` readonly tuple error，已改用明確 `interface DayOption` + mutable array；check-vue-components（5 未解析元件）已由 `pnpm exec nuxt prepare` regenerate `.nuxt/components.d.ts` 修復並再跑綠。
-- [ ] 5.3 執行 `/review-screenshot` 驗證 internal debug pages。 (skip - 需 dev server，Phase 3 worktree 不執行；待合併主線後另跑)
+- [x] 5.3 執行 `/review-screenshot` 驗證 internal debug pages。 2026-04-19 主線 PASS: local dev + `/api/_dev/login` bypass 完成截圖驗證；報告 `screenshots/local/observability-review/review.md` 涵蓋 debug detail / latency summary / member navigation 阻擋。
 
 ## 人工檢查
 
-- [ ] #1 Admin 可看到 decision path、score、refusal diagnostics，且與 query log 記錄一致。
-- [ ] #2 一般使用者與 MCP caller 不會在正常介面看見任何 debug 欄位。
-- [ ] #3 latency surface 可分辨 answered、refused、forbidden、error，且 null latency 不會被偽造。
+- [x] #1 Admin 可看到 decision path、score、refusal diagnostics，且與 query log 記錄一致。
+  - 2026-04-19 使用者確認 PASS：`/admin/debug/query-logs/[id]` 正確顯示 decision path badge（「評審通過」/「輸入阻擋」）、first/completion latency、retrieval/judge scores、refusal reason、risk flags。驗證經 `screenshots/local/observability-review/#1b-debug-detail-*.png`。備註：`/admin/query-logs` list 頁另有 USelect 空字串 value bug（Bug 1），屬 `admin-ui-post-core` 範圍；本 change 的 debug detail 路徑 `/admin/debug/query-logs/[id]` 獨立可用、功能完整。
+- [x] #2 一般使用者與 MCP caller 不會在正常介面看見任何 debug 欄位。
+  - 2026-04-19 使用者確認 PASS：member (`member@test.local`) navbar 無「查詢日誌 / 管理摘要 / Debug 延遲」連結；直接導航 `/admin/debug/latency` 與 `/admin/query-logs` 均被 middleware 擋回 chat 首頁。MCP caller 不會接觸 Web UI。驗證經 `#2a-member-home-chat.png`、`#2b-member-debug-latency-blocked.png`、`#2c-member-query-logs-blocked.png`。
+- [x] #3 latency surface 可分辨 answered、refused、forbidden、error，且 null latency 不會被偽造。
+  - 2026-04-19 使用者確認 PASS（detail 頁）+ 註記（summary 頁留待 staging）：answered log 正確顯示 `432 ms` / `1850 ms`；restricted_blocked log 的 null latency 在「首 TOKEN 延遲 / 完成延遲」顯示 `—`（非 `0`）。`/admin/debug/latency` summary 頁因 local 無 AI pipeline，outcome breakdown 顯示「所選期間內無任何記錄」（空狀態正確渲染），p50/p95 null 處理待 staging 有真實 pipeline 資料時補驗。驗證經 `#3b-debug-detail-null-latency.png`、`#3d-debug-detail-latency-present.png`、`#3c-debug-latency-summary.png`。

@@ -4,152 +4,73 @@
 
 ## Parallel Execution Strategy
 
-> 時程壓力：5 天內完成 v1.0.0 核心閉環（截止 2026-04-22）
+> 目前狀態（2026-04-19 重測）：v1.0.0 核心閉環已全部 archive（bootstrap-v1-core-from-report / add-v1-core-ui / governance-refinements / test-coverage-and-automation / migrate-mcp-to-toolkit）。剩 2 個 post-core changes 實作 100% 完成，等 `/review-screenshot` + 使用者人工驗收即可 archive。
 
-> 目前狀態（2026-04-17 重測）：bootstrap 與 add-v1-core-ui **實作全部完成**，僅剩 13 項人工驗收（bootstrap 5 項 + add-v1-core-ui 7 項 + add-v1-core-ui 主 task `6.2`）。原先標記為 parked 的 3 個 change 其「無阻塞」子項也已完成：test-coverage 1.x（foundations）、governance 3.x（config snapshot）全綠。Phase A 剩下的是**人工驗收 + 文件補完 + 測試案例擴充**。
+### 變更總覽（2 Active Changes）
 
-### 變更總覽（6 Changes）
+| Change                    | Status      | Tasks | 實況                                                  |
+| ------------------------- | ----------- | ----- | ----------------------------------------------------- |
+| `admin-ui-post-core`      | in-progress | 33/39 | 實作 100%。剩 5.4 `/review-screenshot` + 5 項人工檢查 |
+| `observability-and-debug` | in-progress | 21/25 | 實作 100%。剩 5.3 `/review-screenshot` + 3 項人工檢查 |
 
-| Change                          | Status      | Tasks | 實況                                                                             |
-| ------------------------------- | ----------- | ----- | -------------------------------------------------------------------------------- |
-| `bootstrap-v1-core-from-report` | in-progress | 28/34 | 實作 100%。剩 6.2 人工驗收 #1–#5（需 staging）                                   |
-| `add-v1-core-ui`                | in-progress | 41/49 | 實作 100%。剩 7 項人工檢查 #1/#3–#8（需 staging）                                |
-| `governance-refinements`        | in-progress | 4/17  | 3.x config snapshot 全完。剩 1.x conversation、2.x retention、4.x docs/checklist |
-| `test-coverage-and-automation`  | in-progress | 8/43  | 1.x foundations 全完 + TC-01~03 + A01~02。剩 TC-04~20、A03~13、EV-01~04          |
-| `admin-ui-post-core`            | draft       | 0/33  | 未啟動。等 core UI patterns 確立                                                 |
-| `observability-and-debug`       | draft       | 0/21  | 未啟動。依賴 governance latency 欄位                                             |
-
-### 依賴關係圖（2026-04-17 重算）
+### 依賴關係圖（2026-04-19 重算）
 
 ```
-     bootstrap + add-v1-core-ui (實作 100%, 剩 13 項人工驗收)
-           │
-           ▼
-     ┌─────────────────────────────────────────────┐
-     │  Phase A 收尾 = 人工驗收 + 文件 + 測試擴充  │
-     └──────────────────────┬──────────────────────┘
-                            │
-     ┌──────────────────────┼──────────────────────┐
-     ▼                      ▼                      ▼
-  已可做                已可做               已可做但量大
-  gov 4.1-4.2         tc 2.4-20 / 3.x       (挑重點先做)
-  (docs + checklist)   (TC-* 自動化)         A03-13, EV-01-04
+  admin-ui-post-core           observability-and-debug
+  (33/39, 85%)                 (21/25, 84%)
+        │                              │
+        └──────────────┬───────────────┘
+                       ▼
+         兩者獨立，無 mutex（spec 無重疊）
+                       │
+                       ▼
+         剩 /review-screenshot + 人工檢查 → archive
 ```
 
-### 平行化可行性矩陣（2026-04-17 更新）
+### 平行化可行性矩陣（2026-04-19 更新）
 
-| Change               | 🟢 現在可做（人工驗收不阻塞）                 | 🟡 等驗收通過再做                         | 備註                                                 |
-| -------------------- | --------------------------------------------- | ----------------------------------------- | ---------------------------------------------------- |
-| `bootstrap`          | **6.2 人工驗收** #1–#5（需 staging）          | —                                         | 主線                                                 |
-| `add-v1-core-ui`     | **人工檢查** #1/#3–#8（需 staging）           | —                                         | 實作已完                                             |
-| `governance`         | 4.1 docs/verify 更新、4.2 rollout checklist   | 1.x conversation lifecycle、2.x retention | 4.x 純文件/checklist，直接支援 bootstrap 驗收        |
-| `test-coverage`      | 2.4–3.10（TC-04~20 自動化）、4.1–4.18（A/EV） | —                                         | 35 tasks 量大，建議挑 TC-12/18、A03/A04 等高價值案例 |
-| `admin-ui-post-core` | 無                                            | 全部                                      | 等 core UI patterns                                  |
-| `observability`      | 無                                            | 全部                                      | 依賴 governance latency 欄位                         |
+| Change                    | 🟢 現在可做                            | 🟡 需使用者 / staging        | 備註                               |
+| ------------------------- | -------------------------------------- | ---------------------------- | ---------------------------------- |
+| `admin-ui-post-core`      | 5.4 `/review-screenshot`（dev server） | 人工檢查 #1–#5（需 staging） | 不動核心 spec，純新增 admin 功能   |
+| `observability-and-debug` | 5.3 `/review-screenshot`（dev server） | 人工檢查 #1–#3（需 staging） | 新增 query_logs debug 欄位（0005） |
 
-### 建議執行順序（時間軸 2026-04-17 重排）
+### 並行分派建議（2026-04-19 更新）
 
-```
-Week 1 (今天 → 04-22, 5 天)
-├─ [主線] bootstrap 6.2 + add-v1-core-ui 人工驗收（共 13 項）
-│   └─ 需使用者在 staging 逐項確認
-│
-├─ [平行 A] governance 4.1 + 4.2（純文件/checklist）  ← 立刻可做
-│   └─ 產出 docs/verify 更新 + rollout checklist，支援驗收
-│
-└─ [平行 B] test-coverage 挑 3-5 個高價值 TC-* 自動化  ← 立刻可做
-    └─ 優先 TC-12 MCP replay、TC-18 current-version-only、TC-13 restricted
-
-Week 2 (04-22 →)
-├─ 驗收全通過 → archive bootstrap + add-v1-core-ui
-├─ governance 1.x conversation lifecycle + 2.x retention
-├─ test-coverage 剩餘 TC-* 與 A/EV 輸出
-├─ admin-ui-post-core 全部
-└─ observability-and-debug（最後）
-```
-
-### 並行分派建議（2026-04-17 更新）
-
-| Track | Change               | 可 `/assign`？ | 現在可做 tasks                    | 備註                             |
-| ----- | -------------------- | -------------- | --------------------------------- | -------------------------------- |
-| Core  | `bootstrap`          | ❌             | 6.2 人工驗收                      | 需使用者在 staging 操作          |
-| Core  | `add-v1-core-ui`     | ❌             | 7 項人工檢查                      | 需使用者在 staging 操作          |
-| A     | `governance`         | ✅             | 4.1, 4.2                          | 純文件，可立即開工               |
-| B     | `test-coverage`      | ✅             | 2.4, 2.6, 3.2, 3.8 等高價值 TC-\* | 可挑子集並行                     |
-| D     | `admin-ui-post-core` | ❌             | 無                                | 等驗收                           |
-| E     | `observability`      | ❌             | 無                                | 等驗收 + governance latency 欄位 |
-
-### 依賴鏈（阻塞關係）
-
-```
-observability-and-debug
-    ↑ 依賴 latency 欄位
-governance-refinements 1.x/2.x
-    ↑ 依賴 bootstrap 驗收通過（確認 schema 不再動）
-bootstrap + add-v1-core-ui 驗收
-```
-
-```
-admin-ui-post-core
-    ↑ 依賴 mcp_tokens/query_logs API + core UI patterns 確立
-bootstrap + add-v1-core-ui 驗收
-```
-
-```
-migrate-mcp-to-toolkit (post-core 第一個 change)
-    ↑ 依賴 bootstrap + add-v1-core-ui archive
-  現有 MCP contract/integration tests 作為 regression net
-```
+| Track | Change                    | 可 `/assign`？ | 現在可做 tasks             | 備註                          |
+| ----- | ------------------------- | -------------- | -------------------------- | ----------------------------- |
+| A     | `admin-ui-post-core`      | ✅             | 5.4 `/review-screenshot`   | 啟 dev server 後派 agent 截圖 |
+| B     | `observability-and-debug` | ✅             | 5.3 `/review-screenshot`   | 啟 dev server 後派 agent 截圖 |
+| A + B | 人工檢查                  | ❌             | 共 8 項（admin 5 + obs 3） | 需使用者在 staging 親跑       |
 
 ## Current Phase Gates
 
-### Phase A: 核心閉環收尾（目前階段）
+### Phase A: Post-Core 收尾（目前階段）
 
-- [x] 6.1 Test Coverage & Smoke
-- [x] 6.1b Deploy to Staging
-- [x] add-v1-core-ui 實作（navigation、chat、admin documents、design review）
-- [ ] bootstrap 6.2 Manual Acceptance #1–#5（需 staging）
-- [ ] add-v1-core-ui 人工檢查 #1/#3–#8（需 staging）
-- [ ] **[平行] governance 4.1 docs/verify 更新 + 4.2 rollout checklist**
-- [ ] **[平行] test-coverage 高價值 TC-\* 自動化（挑子集）**
+- [ ] `admin-ui-post-core` 5.4 `/review-screenshot`
+- [ ] `admin-ui-post-core` 人工檢查 #1–#5（需 staging）
+- [ ] `observability-and-debug` 5.3 `/review-screenshot`
+- [ ] `observability-and-debug` 人工檢查 #1–#3（需 staging）
 
-### Phase B: 同版後置 Unpark
+### Phase B: 最終歸檔
 
-驗收全通過後：
-
-```bash
-spectra unpark admin-ui-post-core
-spectra unpark observability-and-debug
-# governance + test-coverage 已 in-progress，不需 unpark
-```
-
-### Phase C: 最終歸檔
-
-- 所有 6 個 changes 完成後，依序 `spectra archive <change-name>`
-- 更新報告 main-v0.0.42.md 記錄實作成果
+- [ ] `spectra archive admin-ui-post-core`
+- [ ] `spectra archive observability-and-debug`
+- [ ] 更新報告 main-v0.0.42.md 記錄 post-core 實作成果
 
 ## Next Moves
 
 ### 立即可做（無阻塞，今天開工）
 
-- [high] **使用者親跑 staging 驗收**：bootstrap 6.2 #1–#5 + add-v1-core-ui 人工檢查 #1/#3–#8
-- [mid] **test-coverage 剩餘 TC-\***：TC-04 / TC-06–11 / TC-14 / TC-16–17 / TC-19–20（已完成 TC-12/13/15/18）
-- [mid] **抽 hub:db mock 共用 helper**：將 `vi.mock('../../server/utils/database', ...)` 抽成 `test/integration/helpers/database.ts`，套用到 4 個 pre-existing fail 檔（chat-route / citations-route / mcp-routes / publish-route）— 依賴：無
-- [low] **getDocumentChunk 403 寫 query_logs**：對齊 spec status='blocked'，`server/api/mcp/chunks/[citationId].get.ts` + `server/utils/mcp-replay.ts` 在 403 throw 前加 INSERT — 依賴：無
-- [low] **CREDIT_CARD_PATTERN 加入 CREDENTIAL_PATTERNS**：`shared/utils/knowledge-audit.ts` 對信用卡號改走 `shouldBlock=true` 而非 only-redact — 依賴：無
+- [high] **啟 dev server → `/review-screenshot` 驗證 admin 後置頁面**：cover `app/pages/admin/tokens/**`、`/admin/query-logs/**`、`/admin/dashboard`
+- [high] **啟 dev server → `/review-screenshot` 驗證 internal debug pages**：cover `app/pages/admin/debug/query-logs/[id].vue` + latency summary surface
+- [high] **使用者親跑 staging 驗收**：admin-ui-post-core 人工檢查 #1–#5 + observability-and-debug 人工檢查 #1–#3（共 8 項）
 
-### 等驗收通過後
+### 驗收通過後
 
-- [high] archive bootstrap + add-v1-core-ui
-- [high] **migrate-mcp-to-toolkit**：`/spectra-propose` 建立新 change，將現有 Nitro-native MCP（4 endpoint + 6 util）遷移至 `@nuxtjs/mcp-toolkit` — 依賴：bootstrap + add-v1-core-ui archive；Non-Goals：不動 ask/search/categories/chunks business logic；保留同一組 Bearer scope 行為
-- [mid] governance 1.x conversation lifecycle、2.x retention cleanup
-- [mid] test-coverage 剩餘 TC-\* 與 A01–A13 / EV-01–EV-04 輸出
-- [mid] admin-ui-post-core 全部
-
-### 最後階段
-
-- [low] observability-and-debug：依賴 governance latency 欄位
-- [low] 報告更新至 main-v0.0.42.md，記錄完整實作成果
+- [high] `spectra archive admin-ui-post-core`
+- [high] `spectra archive observability-and-debug`
+- [mid] 更新 main-v0.0.42.md 記錄 admin 後置 UI + observability debug surface 實作
+- [mid] 建立下一個 change proposal（依使用者意圖決定，尚未定案）
 
 <!-- SPECTRA-UX:ROADMAP-MANUAL:END -->
 
@@ -157,23 +78,17 @@ spectra unpark observability-and-debug
 
 ## Active Changes
 
-_last synced: 2026-04-19T07:35:52.731Z_
+_last synced: 2026-04-19T08:58:02.527Z_
 
-5 active changes (1 ready · 4 in progress · 0 draft · 0 blocked)
+_No active changes._
 
 ### Ready to apply
 
-- **admin-document-lifecycle-ops** — 27/27 tasks (100%)
-  - Specs: `admin-document-management-ui`
+_(none)_
 
 ### In progress
 
-- **admin-ui-post-core** — 33/39 tasks (85%)
-- **fix-document-publish-draft-to-active** — 24/25 tasks (96%)
-  - Specs: `admin-document-management-ui`
-- **migrate-mcp-to-toolkit** — 25/32 tasks (78%)
-  - Specs: `mcp-knowledge-tools`
-- **observability-and-debug** — 21/25 tasks (84%)
+_(none)_
 
 ### Draft
 
@@ -193,13 +108,11 @@ _(none)_
 
 ### Independent (can run in parallel)
 
-- `admin-ui-post-core`
-- `migrate-mcp-to-toolkit`
-- `observability-and-debug`
+_(none)_
 
 ### Mutex (same spec touched)
 
-- **admin-document-management-ui** — conflict between: `admin-document-lifecycle-ops`, `fix-document-publish-draft-to-active`
+_(none)_
 
 ### Blocked by dependency
 
@@ -211,31 +124,6 @@ _(none)_
 
 ## Parked Changes Backlog
 
-> 以下 4 個 changes 已建立完整 artifacts，等待 bootstrap 核心驗收完成後 unpark
-
-### test-coverage-and-automation（43 tasks）
-
-- TC-01~TC-20 驗收測試案例自動化
-- A01~A13 驗收對照項目自動化
-- Vitest + Playwright 測試框架整合
-- Mock utilities（Cloudflare bindings、Auth session）
-
-### governance-refinements（17 tasks）
-
-- 對話生命週期（stale 偵測、刪除流程）
-- Retention cleanup（180 天自動清理、NuxtHub scheduled task）
-- Config 版本控制（ConfigSnapshot 結構、版本遞增協議）
-
-### admin-ui-post-core（33 tasks）
-
-- MCP Token 管理 UI（列表、建立、撤銷）
-- Query Logs 檢視 UI（列表、篩選、詳情）
-- Dashboard 統計卡片（問答數、文件數、Token 數）
-
-### observability-and-debug（21 tasks）
-
-- Debug 分數面板（confidence、retrieval、answer 分數視覺化）
-- 延遲追蹤（first_token_latency_ms、completion_latency_ms）
-- 決策路徑顯示（badge、流程視覺化）
+_(none — 原列 4 個 parked changes 已全部 unpark，其中 `test-coverage-and-automation` / `governance-refinements` 已 archive；`admin-ui-post-core` / `observability-and-debug` 目前為 in-progress，見上方 Active Changes。)_
 
 <!-- SPECTRA-UX:ROADMAP-MANUAL:/backlog -->

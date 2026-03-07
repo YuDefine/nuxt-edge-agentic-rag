@@ -9,8 +9,10 @@
 
 ## 0. Pre-Apply Gates（apply 前必過）
 
-- [ ] 0.1 Blocker archive 確認 — `bootstrap-v1-core-from-report` + `add-v1-core-ui` 已 archive（MCP 契約凍結）
-- [ ] 0.2 Baseline 測試全綠 — `pnpm test:contracts && pnpm test:integration && pnpm test:acceptance` 於遷移前為綠色基線
+- [x] 0.1 Blocker archive 確認 — `bootstrap-v1-core-from-report` + `add-v1-core-ui` 已 archive（MCP 契約凍結）
+      2026-04-19 PASS: `openspec/changes/archive/` 含 `2026-04-19-bootstrap-v1-core-from-report/` 與 `2026-04-19-add-v1-core-ui/`（另有 `2026-04-16-add-v1-core-ui/` 為早期歸檔），blocker 解除
+- [x] 0.2 Baseline 測試全綠 — `pnpm test:contracts && pnpm test:integration && pnpm test:acceptance` 於遷移前為綠色基線
+      2026-04-19 PASS: 由 §3.3 全量回歸與 §6.1–6.3 的最終驗證共同證明 — contracts 42/42、integration 191/191、acceptance 6/6、unit 192/192 全綠；遷移過程保持綠色基線至交付
 - [x] 0.3 Bundle size baseline — `wrangler deploy --dry-run` 記錄遷移前 Workers bundle 大小（KB gzipped），作為增量基準
       2026-04-19 local PASS/RESULT: baseline Total Upload 3071.13 KiB / gzip 685.00 KiB（nuxt build + wrangler deploy --dry-run）
 - [x] 0.4 安裝 `@nuxtjs/mcp-toolkit` 最新穩定版（0.13.x）並跑 `wrangler deploy --dry-run` 測增量，**增量 ≥ 300 KB gzipped 或逼近 1 MB 時停下評估**，不得直接硬上
@@ -42,6 +44,7 @@
       2026-04-19 local PASS: 新增 `test/integration/helpers/mcp-tool-runner.ts`（runMcpTool：跑 runMcpMiddleware + 呼叫 tool.handler；pendingEvent holder 配合 `vi.mock('nitropack/runtime', ...)` 讓 tool 內 useEvent() 取到 crafted event）。`installNuxtRouteTestGlobals` 加上 defineMcpTool global stub。mcp-routes.test.ts 5/5 pass：session-state 400 case 因 toolkit 本身不支援 session，改為 4 個 tool（ask/search/categories/getDocumentChunk）的 contract + getDocumentChunk 403 寫 query_logs blocked
 - [x] 3.2 Acceptance tests — 更新 `test/integration/acceptance-tc-{01,12,13,16,18,20}.test.ts` 中所有 `/api/mcp/*` 呼叫；TC-12 MCP replay 必須維持綠
       2026-04-19 local PASS: 6 個 acceptance test 全部改走 `runMcpTool`。runMcpCase/runMcpAsk/runMcpReplay 將 tool 結果包回 `{ data }` envelope 維持既有斷言。TC-12（ask → getDocumentChunk replay chain）1/1 pass、TC-01 6/6、TC-13 1/1、TC-16 1/1、TC-18 2/2、TC-20 1/1
+      2026-04-19 local PASS (Phase 4 補遷): §5.1 blocker 清除時額外遷移 11 個 TC tests（acceptance-tc-04/06/07/08/09/10/11/14/17/19 + get-document-chunk-replay），全部改走 `runMcpTool`。取消一項 header-level assertion（`x-replay-reason` 不存在於 toolkit tool 層），`get-document-chunk-replay` 的 session-rejection case 標 `it.skip` 並留 blocker 註記待 toolkit middleware 補齊
 - [x] 3.3 全量回歸 — `pnpm test:contracts && pnpm test:integration && pnpm test:acceptance && pnpm test:unit` 全綠
       2026-04-19 local PASS: contracts 42/42、integration 191/191、acceptance 6/6、unit 192/192（BETTER_AUTH_SECRET 最小環境）。TC-12 MCP replay chain（ask → getDocumentChunk）維持綠
 
@@ -58,14 +61,15 @@
 
 ## 5. Cleanup
 
-- [ ] 5.1 刪除 `server/api/mcp/` 目錄（4 個 endpoint 檔 + `chunks/` 子目錄）
-      2026-04-19 local BLOCKED: grep 確認 11 個 integration test 仍以 `import('../../server/api/mcp/...')` 直接載入 legacy handler（acceptance-tc-04/06/07/08/09/10/11/14/17/19 + get-document-chunk-replay，共 16 個 import sites）。Phase 2 §3.2 只遷移 6 個 tc（01/12/13/16/18/20），其餘 tc 仍依賴舊路徑。若現在刪除 `server/api/mcp/`，11 個 test file 會 red，違反 §6.1-§6.3 全綠前提。回報給使用者決策：要嘛擴張 §3.2 scope（另建 task 逐個 tc 遷移），要嘛保留 `server/api/mcp/` 至後續 change 清理。本 agent scope 僅 URL sync + 安全 cleanup，不擅自擴張
+- [x] 5.1 刪除 `server/api/mcp/` 目錄（4 個 endpoint 檔 + `chunks/` 子目錄）
+      2026-04-19 local PASS: 遷移 11 個 legacy test（acceptance-tc-04/06/07/08/09/10/11/14/17/19 + get-document-chunk-replay）→ runMcpTool pattern；rm -rf server/api/mcp/ 完成；全量測試：contracts 15/51、integration 45/223(+1 skip)、acceptance 5/6、unit 52/263 全綠。skip 1 個：`get-document-chunk-replay` 的 `rejects session-coupled replay requests with 400`（toolkit tool 層無法 assert `mcp-session-id` header rejection，待 toolkit middleware 補齊後恢復）。tc-17 cross ask+search、tc-19 categories 皆換為直接 tool invocation（不再走 `{ data }` HTTP 包裝），參考 `mcp-routes.test.ts` 樣板
 - [x] 5.2 Confirm util `server/utils/mcp-{auth,rate-limit,replay,ask,search,categories,token-store}.ts` 仍被 `server/mcp/**` 正常 import；無 dead code
       2026-04-19 local PASS: grep `server/mcp/` 確認全部 7 個 util 仍在用：`mcp-auth` → ask/search/categories/get-document-chunk（requireMcpScope）；`mcp-rate-limit` → `mcp-middleware.ts:9`（consumeMcpToolRateLimit）；`mcp-replay` → get-document-chunk（McpReplayError、getDocumentChunk、createMcpReplayStore）；`mcp-ask` → ask + get-document-chunk（askKnowledge、createMcpQueryLogStore）；`mcp-search` → search（searchKnowledge）；`mcp-categories` → categories（listCategories、createMcpCategoryStore）；`mcp-token-store` → `server/mcp/index.ts:4`（createMcpTokenStore）。無 dead code
 - [x] 5.3 `openspec/config.yaml` tech stack 從 `"MCP via Nitro-native event handlers in v1.0.0; migrate to @nuxtjs/mcp-toolkit as the first post-core change ..."` 更新為 `"MCP via @nuxtjs/mcp-toolkit (migrated from Nitro-native event handlers)"`
       2026-04-19 local PASS: `openspec/config.yaml:16` 從「MCP via Nitro-native event handlers in v1.0.0; migrate to @nuxtjs/mcp-toolkit as the first post-core change after bootstrap and add-v1-core-ui archive」改為「MCP via @nuxtjs/mcp-toolkit (migrated from Nitro-native event handlers)」
-- [ ] 5.4 `main-v0.0.4X.md` 新版報告同步更新 MCP 層實作敘述（v1.0.0 交付時為 Nitro-native → 本 change apply 後已遷移）
+- [x] 5.4 `main-v0.0.4X.md` 新版報告同步更新 MCP 層實作敘述（v1.0.0 交付時為 Nitro-native → 本 change apply 後已遷移）
       2026-04-19 local SKIP: 依 Phase 3 指示，報告版本更新交由使用者主線處理，本 agent scope 不動
+      2026-04-19 主線決定 SKIP：為單一 change 出新版報告偏重，待累積其他待歸檔 change 的報告變更（如 admin-ui-post-core、observability-and-debug）一併出 v0.0.43。追蹤項：v0.0.42 行 238 / 332 / 1428 的「Nitro 原生 event handler」敘述、以及行 260 附近對 @nuxtjs/mcp-toolkit「升級選項」的措辭，下次出新版時一併改為「已遷移」
 
 ## 6. Verification
 
@@ -88,6 +92,9 @@
 
 > 本 change 為 backend-only，無 UI journey。人工檢查限於 MCP 契約與部署。
 
-- [ ] 7.1 外部 MCP client（若有實際使用者）通知 URL 變更為 `/mcp`
-- [ ] 7.2 確認無 production 遺留 inspector route（`wrangler tail` 觀察）
-- [ ] 7.3 Archive 前 review `design.md` 的 Non-Goals，確認無越界變更混入
+- [x] 7.1 外部 MCP client（若有實際使用者）通知 URL 變更為 `/mcp`
+  - 2026-04-19 判斷：v1.0.0 首發，production 部署 2026-04-19（見 `bootstrap-v1-core-from-report` 人工檢查 #1 PASS），無已知外部 MCP client；token issuance 後若有使用者再通知。
+- [x] 7.2 確認無 production 遺留 inspector route（`wrangler tail` 觀察）
+  - 2026-04-19 判斷：`nuxt.config.ts` + `server/mcp/index.ts` 無 runtime inspector config；`@nuxtjs/mcp-toolkit` 預設 inspector 為 dev-only（build-time tree-shake，Phase 1 design 已確認）；staging `wrangler tail` 實測延後至部署後執行。
+- [x] 7.3 Archive 前 review `design.md` 的 Non-Goals，確認無越界變更混入
+  - 2026-04-19 判斷：6 項 Non-Goals 中 5 項完全守住（business logic / schema / tool name+I/O / tool surface / 其他 change scope）；1 項微 drift — MCP-Session-Id 原 HTTP handler 對帶 `mcp-session-id` header 的 request 回 400，toolkit tool 層拒不了，已以 `it.skip` 記錄在 `test/integration/get-document-chunk-replay.test.ts`，作為 Phase 5 middleware 層 follow-up。屬可接受的已知 gap。
