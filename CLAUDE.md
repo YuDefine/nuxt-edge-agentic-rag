@@ -21,7 +21,7 @@ discuss? → propose → apply ⇄ ingest → archive
 
 ## Project Report
 
-**Current Version**: `main-v0.0.42.md`
+**Current Version**: `main-v0.0.43.md`
 
 專題報告作為本專案的 Single Source of Truth，包含：討論紀錄、提案內容、實作成果、結論總結。
 
