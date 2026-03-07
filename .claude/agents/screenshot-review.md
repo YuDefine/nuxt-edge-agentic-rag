@@ -49,11 +49,31 @@ done
 
 ### 2. 登入測試帳號
 
-依專案 auth 設定登入：
+依專案 auth 設定登入（依序嘗試）：
+
+- 有 `server/api/_dev/login.post.ts`（本專案：better-auth + POST bypass）：
+
+  ```bash
+  # admin session（email 需在 ADMIN_EMAIL_ALLOWLIST）
+  curl -X POST http://localhost:<port>/api/_dev/login \
+    -H "Content-Type: application/json" \
+    -d '{"email":"<allowlist-email>","password":"testpass123"}' \
+    -c /tmp/admin-cookies.txt
+
+  # non-admin session（email 不在 allowlist → 自動派 role='user'）
+  curl -X POST http://localhost:<port>/api/_dev/login \
+    -H "Content-Type: application/json" \
+    -d '{"email":"member@test.local","password":"testpass123"}' \
+    -c /tmp/user-cookies.txt
+
+  # allowlist 來源：grep ADMIN_EMAIL_ALLOWLIST .env
+  # 然後以 browser-use 注入 cookie（`better-auth.session_token` 等）到 browser session
+  ```
 
 - 有 `server/routes/auth/_dev-login.get.ts` → `browser-use open "http://localhost:<port>/auth/_dev-login?redirect=/"`
 - 有 `server/routes/auth/__test-login.get.ts` → `browser-use open "http://localhost:<port>/auth/__test-login?email=test@test.local&role=admin&redirect=/"`
 - 有 email/password 表單 → 填表登入
+- **其他情況皆為 OAuth-only / client-side guard → 回報主 session 需使用者手動登入**，不要嘗試自動化 OAuth
 
 ### 3. Color Mode 處理
 

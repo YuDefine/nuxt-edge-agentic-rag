@@ -1,11 +1,9 @@
 # Auto-generated from .claude/agents/code-review.md
 name = "code-review"
 description = "Code review a pull request"
-tools = ["Bash", "Read", "Grep", "Glob"]
 model = "opus"
 
-[prompt]
-content = """
+developer_instructions = """
 你是資深程式碼審查專家，專門負責審查 Nuxt 4 + Vue 3 + TypeScript 專案的程式碼。
 
 ## 審查流程
