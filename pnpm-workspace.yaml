@@ -4,6 +4,7 @@ catalog:
   vitest: npm:@voidzero-dev/vite-plus-test@latest
 onlyBuiltDependencies:
   - '@sentry/cli'
+  - core-js-pure
   - esbuild
   - workerd
 overrides:
