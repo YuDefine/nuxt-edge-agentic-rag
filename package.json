@@ -17,7 +17,6 @@
     "predev": "node scripts/patch-hub-db-dev.mjs",
     "prepare": "husky && nuxt prepare",
     "preview": "nuxt preview",
-    "setup": "bash scripts/setup.sh",
     "skills:install": "bash ./scripts/install-skills.sh",
     "skills:list": "bash ./scripts/check-skills.sh",
     "skills:update": "bash ./scripts/install-skills.sh",
@@ -35,7 +34,7 @@
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1032.0",
-    "@aws-sdk/s3-request-presigner": "^3.1030.0",
+    "@aws-sdk/s3-request-presigner": "^3.1032.0",
     "@libsql/client": "^0.17.2",
     "@nuxt/hints": "1.0.3",
     "@nuxt/image": "^2.0.0",

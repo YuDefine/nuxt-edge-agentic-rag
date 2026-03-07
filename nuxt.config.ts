@@ -86,6 +86,10 @@ export default defineNuxtConfig({
     typeCheck: true,
   },
 
+  experimental: {
+    serverAppConfig: false,
+  },
+
   runtimeConfig: {
     knowledge: knowledgeRuntimeConfig,
     oauth: {
@@ -100,20 +104,19 @@ export default defineNuxtConfig({
     },
     // Admin summary dashboard feature gate (server-side truth).
     //
-    // Defaults to true for local/staging/preview so admin can validate the
-    // surface; set `NUXT_ADMIN_DASHBOARD_ENABLED=false` to hide the page
-    // and navigation entry. The API 404s when this is false.
+    // Defaults to true for local so admin can validate the surface; set
+    // `NUXT_ADMIN_DASHBOARD_ENABLED=false` to hide the page and navigation
+    // entry. The API 404s when this is false.
     //
     // Kept separate from `knowledge.features.adminDashboard` (which tracks
     // the production v1.0.0 release flag) so this post-core change can
-    // toggle independently for preview environments without editing the
-    // governance schema.
+    // toggle independently without editing the governance schema.
     adminDashboardEnabled:
       (process.env.NUXT_ADMIN_DASHBOARD_ENABLED ?? 'true').toLowerCase() !== 'false',
     // observability-and-debug §1.3 — production kill-switch for the debug
-    // surfaces. Non-prod environments (local/staging) ignore this flag and
-    // serve the debug UI to any admin. In production, the flag must be true
-    // for `requireInternalDebugAccess()` to grant access; defaults to false.
+    // surfaces. Local environment ignores this flag and serves the debug UI
+    // to any admin. In production, the flag must be true for
+    // `requireInternalDebugAccess()` to grant access; defaults to false.
     debugSurfaceEnabled: process.env.NUXT_DEBUG_SURFACE_ENABLED === 'true',
     public: {
       adminContactEmail: process.env.NUXT_PUBLIC_ADMIN_CONTACT_EMAIL || '',
