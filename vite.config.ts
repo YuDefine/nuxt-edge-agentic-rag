@@ -79,6 +79,7 @@ export default defineConfig({
       'dist/**',
       'node_modules/**',
       'pnpm-lock.yaml',
+      '.spectra/**',
       '.agents/**',
       '.claude/**',
       '.github/**',
