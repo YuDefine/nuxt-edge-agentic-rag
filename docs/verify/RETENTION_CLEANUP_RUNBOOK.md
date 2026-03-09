@@ -16,7 +16,7 @@ Cleanup 由以下兩條路徑觸發：
 
    ```ts
    scheduledTasks: {
-     '0 3 * * *': ['retention-cleanup'],
+      '0 3 * * *': ['retention-cleanup'],
    }
    ```
 

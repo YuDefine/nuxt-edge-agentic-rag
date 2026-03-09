@@ -25,7 +25,7 @@ const log = consola.withTag('scheduled-retention-cleanup')
 
 export default defineTask({
   meta: {
-    name: 'retention:cleanup',
+    name: 'retention-cleanup',
     description:
       'Run coordinated retention cleanup for query_logs, citation_records, source_chunks.chunk_text and revoked/expired mcp_tokens.',
   },
