@@ -1,5 +1,6 @@
+import { randomBytes, scryptSync } from 'node:crypto'
 import { z } from 'zod'
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { getRuntimeAdminAccess } from '#server/utils/knowledge-runtime'
 
 /**
@@ -32,9 +33,70 @@ async function updateUserRole(userId: string, role: string): Promise<void> {
   await db.update(schema.user).set({ role }).where(eq(schema.user.id, userId))
 }
 
+function hashCredentialPassword(password: string): string {
+  const salt = randomBytes(16).toString('hex')
+  const key = scryptSync(password.normalize('NFKC'), salt, 64, {
+    N: 16384,
+    p: 1,
+    r: 16,
+    maxmem: 128 * 16384 * 16 * 2,
+  })
+
+  return `${salt}:${key.toString('hex')}`
+}
+
+async function ensureCredentialAccount(email: string, password: string): Promise<void> {
+  const normalizedEmail = email.toLowerCase()
+  const { db, schema } = await import('hub:db')
+
+  const [existingUser] = await db
+    .select({ id: schema.user.id })
+    .from(schema.user)
+    .where(eq(schema.user.email, normalizedEmail))
+    .limit(1)
+
+  if (!existingUser) {
+    return
+  }
+
+  const [credentialAccount] = await db
+    .select({ id: schema.account.id })
+    .from(schema.account)
+    .where(
+      and(eq(schema.account.userId, existingUser.id), eq(schema.account.providerId, 'credential'))
+    )
+    .limit(1)
+
+  if (credentialAccount) {
+    return
+  }
+
+  const now = new Date()
+  try {
+    await db.insert(schema.account).values({
+      id: crypto.randomUUID(),
+      accountId: existingUser.id,
+      providerId: 'credential',
+      userId: existingUser.id,
+      password: hashCredentialPassword(password),
+      createdAt: now,
+      updatedAt: now,
+    })
+  } catch (error) {
+    // Tolerate concurrent dev-login races where another request inserted the
+    // credential account between the SELECT and INSERT. SQLite raises
+    // SQLITE_CONSTRAINT (`UNIQUE constraint failed`) in that case; surface
+    // anything else.
+    const message = error instanceof Error ? error.message : ''
+    if (!/unique constraint/i.test(message)) {
+      throw error
+    }
+  }
+}
+
 const bodySchema = z.object({
   email: z.string().email('Invalid email'),
-  password: z.string().min(8, 'Password must be at least 8 characters'),
+  password: z.string().min(8, 'Password must be at least 8 characters').optional(),
   name: z.string().min(1).optional(),
 })
 
@@ -51,6 +113,8 @@ export default defineEventHandler(async (event) => {
   }
 
   const body = await readValidatedBody(event, bodySchema.parse)
+  const password = body.password ?? runtimeConfig.devLoginPassword
+
   const auth = serverAuth(event)
 
   // Determine role based on admin allowlist
@@ -58,12 +122,14 @@ export default defineEventHandler(async (event) => {
   const role = isAdmin ? 'admin' : 'user'
   const displayName = body.name ?? (body.email.split('@')[0] as string)
 
+  await ensureCredentialAccount(body.email, password)
+
   // Try to sign in first (user might already exist)
   try {
     const signInResponse = await auth.api.signInEmail({
       body: {
         email: body.email,
-        password: body.password,
+        password,
       },
       asResponse: true,
     })
@@ -103,7 +169,7 @@ export default defineEventHandler(async (event) => {
     const signUpResponse = await auth.api.signUpEmail({
       body: {
         email: body.email,
-        password: body.password,
+        password,
         name: displayName,
       },
       asResponse: true,
