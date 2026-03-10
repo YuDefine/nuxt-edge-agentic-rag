@@ -2,11 +2,13 @@
 
 > **建立時間**：2026-04-19
 > **觸發**：`/commit` Step 0 品質檢查發現大量 issues，token limit 即將不夠完成清理 → 交接給下個 session
-> **接手後**：直接從下方「4. 接續 `/commit` Step 1+」開始；Critical 修復、Warning 清理與完整驗證都已完成。
+> **接手後**：直接從下方「4. 接續 `/commit` Step 1+」開始；Critical 修復、Warning 清理、`pnpm dev` / `pnpm build` cleanup 與完整驗證都已完成。
 
 ## In Progress
 
 正在執行 `/commit`，已完成 Step 0-A（兩 reviewer 平行 audit）+ Step 0-B。下方 **1.1 / 1.2 / 1.3 / 2.1 / 2.2 / 2.3 / 3** 全部已完成；`pnpm check` 與 `pnpm exec vp test run` 已全綠。先前 MCP integration 因 `hub:db` 無法在 Vitest resolve 而失敗的 blocker 已排除：**`createMcpTokenStore()` 的 auth path 改回走 `getD1Database()` raw D1，admin list/revoke store 維持 Drizzle/`hub:db`**。現在可直接接續 `/commit` Step 1 做分組與 commit。
+
+補充：`pnpm dev` / `pnpm build` 的後續報措也已清掉。Vite+ tooling config 已從 root `vite.config.ts` 拆到 `.oxlintrc.json` / `.oxfmtrc.json` + `scripts/pre-commit-vp.sh`，Nuxt 不再警告 `vite.config.ts`；Nitro 排程 key 已改成 `retention-cleanup`，不再警告 `retention:cleanup`；`build` script 已加 Node heap 上限並過濾已知上游 sourcemap / mime noise，`pnpm build` 可直接通過。後續再補上：`/api/_dev/login` 在 local 缺 password 時會 fallback 到 `runtimeConfig.devLoginPassword`，且若既有 local user 缺 `credential` account，會自動補一條 Better Auth 相容的 scrypt-hash credential account 後再 sign-in，避免 `Credential account not found` / `User already exists` 422；Nitro `onwarn` 也已精準過濾 upstream circular dependency warning——包含 `nitropack` internal app/cache/utils、`@nuxtjs/mcp-toolkit`、`nuxt-security`、`@nuxt/hints`、`@nuxthub/core`、`@nuxt/image`、`@nuxt/nitro-server`、`@onmax/nuxt-better-auth` 等 node_modules-only cycles，但不會吃掉專案自身 `app/` / `server/` / `shared/` 的循環依賴。另外，`server/mcp/tools/{ask,categories,get-document-chunk,search}.ts` 已把 `useEvent()` 改為 handler 內動態載入，避免 tool 模組在 `tools.mjs` 載入階段直接形成 Nitro runtime cycle。
 
 當前 changeset：
 
@@ -37,6 +39,14 @@
 - ✅ 發現全域 `vp`（0.1.11）與 repo 內 `pnpm exec vp` / `pnpm check` 使用的版本（vite-plus 0.1.18）不同；後續驗證**必須只用** `pnpm exec vp ...` 或 `pnpm check`
 - ✅ `createMcpTokenStore()` 已保留「無參數」介面，但 auth path 改回 `getD1Database()` raw D1，修復 Vitest 中 `hub:db` 無法 resolve 的 MCP integration blocker
 - ✅ `pnpm exec vp test run` 已全綠（2026-04-19 本 session 重跑）
+- ✅ `pnpm dev` 不再警告 `vite.config.ts` / `retention:cleanup`，且可正常啟動於 `3010`
+- ✅ `pnpm build` 已改為可直接通過（含 Node heap 上限）；已知 `vite.config.ts` / scheduled task / chunk size / mime warning signature 均不再出現
+- ✅ `pnpm dev` 啟動時不再出現 `/api/_dev/login` 缺 `password` 的 400 error
+- ✅ `pnpm dev` 不再出現 `@nuxtjs/mcp-toolkit` 特定 circular dependency warning
+- ✅ `pnpm dev` 不再出現 `Credential account not found` / `/api/_dev/login 422 User already exists`
+- ✅ `pnpm dev` 不再出現 `nuxt-security` / `@nuxt/hints` 特定 circular dependency warning
+- ✅ `pnpm dev` 不再出現 `nitropack` internal、`@nuxthub/core`、`@nuxt/image`、`@nuxt/nitro-server`、`@onmax/nuxt-better-auth` 等 node_modules-only circular dependency warning
+- ✅ `pnpm dev` 不再出現 `server/mcp/tools/{ask,categories,get-document-chunk,search}.ts` 相關 circular dependency warning
 
 ## Blocked（目前無）
 
