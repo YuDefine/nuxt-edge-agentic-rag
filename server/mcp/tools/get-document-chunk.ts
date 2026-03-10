@@ -1,7 +1,7 @@
-import { useEvent } from 'nitropack/runtime'
 import { useLogger } from 'evlog'
 import { z } from 'zod'
 
+import { getCurrentMcpEvent } from '#server/utils/current-mcp-event'
 import { getRequiredKvBinding } from '#server/utils/cloudflare-bindings'
 import { getD1Database } from '#server/utils/database'
 import { auditKnowledgeText } from '#server/utils/knowledge-audit'
@@ -23,7 +23,7 @@ export default defineMcpTool({
     'Fetch the original chunk text for a citation id previously returned by askKnowledge / searchKnowledge.',
   inputSchema: inputShape,
   handler: async (args: { citationId: string }) => {
-    const event = useEvent()
+    const event = await getCurrentMcpEvent()
     const auth = requireMcpAuth(event)
 
     requireMcpScope(auth, 'knowledge.citation.read')

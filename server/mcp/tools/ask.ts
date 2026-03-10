@@ -1,6 +1,6 @@
-import { useEvent } from 'nitropack/runtime'
 import { z } from 'zod'
 
+import { getCurrentMcpEvent } from '#server/utils/current-mcp-event'
 import {
   createCloudflareAiSearchClient,
   type CloudflareAiBindingLike,
@@ -28,7 +28,7 @@ export default defineMcpTool({
     'Answer a natural-language question from the governed knowledge base, returning a grounded response and citations.',
   inputSchema: inputShape,
   handler: async (args: { query: string }) => {
-    const event = useEvent()
+    const event = await getCurrentMcpEvent()
     const auth = requireMcpAuth(event)
 
     requireMcpScope(auth, 'knowledge.ask')
