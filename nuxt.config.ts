@@ -1,5 +1,44 @@
 import { createKnowledgeRuntimeConfig } from './shared/schemas/knowledge-runtime'
 
+const upstreamCircularDependencyPackages = [
+  'node_modules/.pnpm/nitropack@',
+  'node_modules/.pnpm/@nuxt+nitro-server@',
+  'node_modules/.pnpm/@nuxthub+core@',
+  'node_modules/.pnpm/@nuxt+image@',
+  'node_modules/.pnpm/@onmax+nuxt-better-auth@',
+  'node_modules/.pnpm/@nuxt+hints@',
+  'node_modules/.pnpm/nuxt-security@',
+  'node_modules/.pnpm/@nuxtjs+mcp-toolkit@',
+] as const
+
+function shouldIgnoreUpstreamCircularDependencyWarning(warning: {
+  code?: string
+  message?: string
+}): boolean {
+  if (warning.code !== 'CIRCULAR_DEPENDENCY') {
+    return false
+  }
+
+  const message = typeof warning.message === 'string' ? warning.message : ''
+  const mentionsProjectCode = /(^| -> )(app|server|shared|scripts)[\\/]/.test(message)
+  const mentionsKnownUpstreamPackage = upstreamCircularDependencyPackages.some((signature) =>
+    message.includes(signature)
+  )
+  const mentionsNitroVirtualModule =
+    message.includes('virtual:#nitro-internal-virtual') ||
+    message.includes('virtual:#internal/nuxt/island-renderer.mjs') ||
+    message.includes('virtual:#imports')
+  const mentionsNitroRuntimeCore =
+    message.includes('nitropack/dist/runtime/internal/app.mjs') ||
+    message.includes('nitropack/dist/runtime/index.mjs')
+
+  return (
+    !mentionsProjectCode &&
+    mentionsKnownUpstreamPackage &&
+    (mentionsNitroVirtualModule || mentionsNitroRuntimeCore)
+  )
+}
+
 // https://nuxt.com/docs/api/configuration/nuxt-config
 const knowledgeRuntimeConfig = createKnowledgeRuntimeConfig({
   adminEmailAllowlist: process.env.ADMIN_EMAIL_ALLOWLIST,
@@ -31,7 +70,7 @@ const knowledgeRuntimeConfig = createKnowledgeRuntimeConfig({
 })
 
 export default defineNuxtConfig({
-  compatibilityDate: '2025-05-15',
+  compatibilityDate: '2025-07-15',
   ssr: false,
 
   modules: [
@@ -118,6 +157,9 @@ export default defineNuxtConfig({
     // to any admin. In production, the flag must be true for
     // `requireInternalDebugAccess()` to grant access; defaults to false.
     debugSurfaceEnabled: process.env.NUXT_DEBUG_SURFACE_ENABLED === 'true',
+    // Local-only convenience password used by `/api/_dev/login` when browser-
+    // initiated test helpers omit the field. Keep aligned with `e2e/helpers.ts`.
+    devLoginPassword: process.env.E2E_PASSWORD || 'testpass123',
     public: {
       adminContactEmail: process.env.NUXT_PUBLIC_ADMIN_CONTACT_EMAIL || '',
       // Client-visible mirror of `runtimeConfig.adminDashboardEnabled`.
@@ -175,7 +217,27 @@ export default defineNuxtConfig({
     }),
   },
   sourcemap: {
-    client: 'hidden',
+    client: false,
+  },
+
+  vite: {
+    build: {
+      rollupOptions: {
+        onwarn(warning, defaultHandler) {
+          const message = typeof warning.message === 'string' ? warning.message : ''
+
+          if (
+            message.includes('Sourcemap is likely to be incorrect') &&
+            (message.includes('nuxt:module-preload-polyfill') ||
+              message.includes('@tailwindcss/vite:generate:build'))
+          ) {
+            return
+          }
+
+          defaultHandler(warning)
+        },
+      },
+    },
   },
   evlog: {
     env: { service: 'nuxt-edge-agentic-rag' },
@@ -200,7 +262,24 @@ export default defineNuxtConfig({
     // both must stay in sync.
     scheduledTasks: {
       // Daily at 03:00 UTC.
-      '0 3 * * *': ['retention:cleanup'],
+      '0 3 * * *': ['retention-cleanup'],
+    },
+    rollupConfig: {
+      onwarn(warning, defaultHandler) {
+        if (shouldIgnoreUpstreamCircularDependencyWarning(warning)) {
+          return
+        }
+
+        if (
+          warning.code === 'THIS_IS_UNDEFINED' &&
+          typeof warning.id === 'string' &&
+          warning.id.includes('/mime/dist/src/Mime.js')
+        ) {
+          return
+        }
+
+        defaultHandler(warning)
+      },
     },
   },
 })

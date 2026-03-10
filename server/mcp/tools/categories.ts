@@ -1,6 +1,6 @@
-import { useEvent } from 'nitropack/runtime'
 import { z } from 'zod'
 
+import { getCurrentMcpEvent } from '#server/utils/current-mcp-event'
 import { getRequiredKvBinding } from '#server/utils/cloudflare-bindings'
 import { getD1Database } from '#server/utils/database'
 import { getAllowedAccessLevels, getKnowledgeRuntimeConfig } from '#server/utils/knowledge-runtime'
@@ -24,7 +24,7 @@ export default defineMcpTool({
     'List the knowledge categories visible to the caller, optionally including document counts per category.',
   inputSchema: inputShape,
   handler: async (args: { includeCounts?: boolean }) => {
-    const event = useEvent()
+    const event = await getCurrentMcpEvent()
     const auth = requireMcpAuth(event)
 
     requireMcpScope(auth, 'knowledge.category.list')

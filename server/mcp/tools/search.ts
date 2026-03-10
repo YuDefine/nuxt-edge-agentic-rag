@@ -1,6 +1,6 @@
-import { useEvent } from 'nitropack/runtime'
 import { z } from 'zod'
 
+import { getCurrentMcpEvent } from '#server/utils/current-mcp-event'
 import { createCloudflareAiSearchClient } from '#server/utils/ai-search'
 import { getCloudflareEnv, getRequiredKvBinding } from '#server/utils/cloudflare-bindings'
 import { getD1Database } from '#server/utils/database'
@@ -27,7 +27,7 @@ export default defineMcpTool({
     'Search governed knowledge sources for the most relevant passages given a natural-language query.',
   inputSchema: inputShape,
   handler: async (args: { query: string }) => {
-    const event = useEvent()
+    const event = await getCurrentMcpEvent()
     const auth = requireMcpAuth(event)
 
     requireMcpScope(auth, 'knowledge.search')
