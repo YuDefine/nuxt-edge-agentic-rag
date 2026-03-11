@@ -45,6 +45,7 @@ const chatRouteMocks = vi.hoisted(() => {
     getRequiredKvBinding: vi.fn().mockReturnValue({ get: vi.fn(), put: vi.fn() }),
     getRuntimeAdminAccess: vi.fn().mockReturnValue(false),
     readValidatedBody: vi.fn(),
+    requireRole: vi.fn(),
     requireUserSession: vi.fn(),
   }
 })
@@ -102,6 +103,10 @@ vi.mock('../../server/utils/knowledge-runtime', () => ({
   getRuntimeAdminAccess: chatRouteMocks.getRuntimeAdminAccess,
 }))
 
+vi.mock('../../server/utils/require-role', () => ({
+  requireRole: chatRouteMocks.requireRole,
+}))
+
 vi.mock('../../server/utils/web-chat', () => ({
   ChatRateLimitExceededError: chatRouteMocks.MockChatRateLimitExceededError,
   chatWithKnowledge: chatRouteMocks.chatWithKnowledge,
@@ -126,6 +131,21 @@ describe('/api/chat route', () => {
       })
     )
     chatRouteMocks.readValidatedBody.mockResolvedValue({ query: 'What changed?' })
+    chatRouteMocks.requireRole.mockResolvedValue({
+      role: 'member',
+      session: {
+        user: {
+          email: 'user@example.com',
+          id: 'user-1',
+        },
+      },
+      fullSession: {
+        user: {
+          email: 'user@example.com',
+          id: 'user-1',
+        },
+      },
+    })
     chatRouteMocks.requireUserSession.mockResolvedValue({
       user: {
         email: 'user@example.com',
@@ -257,5 +277,48 @@ describe('/api/chat route', () => {
         refused: false,
       },
     })
+  })
+
+  it('derives isAdmin from requireRole result instead of the narrow session snapshot', async () => {
+    chatRouteMocks.requireRole.mockResolvedValueOnce({
+      role: 'admin',
+      session: {
+        user: {
+          email: 'admin@example.com',
+          id: 'user-1',
+          role: 'admin',
+        },
+      },
+      fullSession: {
+        user: {
+          email: 'admin@example.com',
+          id: 'user-1',
+        },
+      },
+    })
+    chatRouteMocks.requireUserSession.mockResolvedValueOnce({
+      user: {
+        email: 'admin@example.com',
+        id: 'user-1',
+      },
+    })
+    chatRouteMocks.chatWithKnowledge.mockResolvedValueOnce({
+      answer: 'admin answer',
+      citations: [],
+      refused: false,
+    })
+
+    const { default: handler } = await import('../../server/api/chat.post')
+    await handler(createRouteEvent())
+
+    expect(chatRouteMocks.chatWithKnowledge).toHaveBeenCalledWith(
+      expect.objectContaining({
+        auth: expect.objectContaining({
+          isAdmin: true,
+          userId: 'user-1',
+        }),
+      }),
+      expect.any(Object)
+    )
   })
 })

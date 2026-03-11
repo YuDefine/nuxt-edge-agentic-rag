@@ -7,6 +7,11 @@ import {
   createKvRateLimitStore,
   McpRateLimitExceededError,
 } from '#server/utils/mcp-rate-limit'
+import {
+  createDefaultUserRoleLookup,
+  gateMcpToolAccess,
+  McpRoleGateError,
+} from '#server/utils/mcp-role-gate'
 import { FIXED_WINDOW_RATE_LIMIT_PRESETS } from '#server/utils/rate-limiter'
 
 import type { McpTokenRecord } from '#shared/types/knowledge'
@@ -22,12 +27,22 @@ export interface McpAuthContext {
   tokenId: string
 }
 
+export interface UserRoleLookupLike {
+  lookupRoleByUserId(userId: string): Promise<'admin' | 'member' | 'guest' | null>
+}
+
 export interface RunMcpMiddlewareDeps {
   environment: string
   extractToolNames: (event: H3Event) => Promise<string[]>
   kvBindingName: string
   now?: number
   tokenStore: McpTokenStoreLike
+  /**
+   * Optional override for B16 §6.2.b role gate lookup. Production defaults to
+   * `createDefaultUserRoleLookup()` (JOIN `user.role` via drizzle); tests can
+   * stub this without touching better-auth state.
+   */
+  userRoleLookup?: UserRoleLookupLike
 }
 
 type RateLimitPresetName = keyof typeof FIXED_WINDOW_RATE_LIMIT_PRESETS
@@ -108,6 +123,26 @@ export async function runMcpMiddleware(
       throw createError({
         statusCode: error.statusCode,
         statusMessage: 'Too Many Requests',
+        message: error.message,
+      })
+    }
+
+    throw error
+  }
+
+  // B16 §6.2.b — Role × guest_policy gate. Runs after auth + rate-limit so
+  // rate-limit counters still tick for abusive clients even when gated.
+  try {
+    await gateMcpToolAccess(event as unknown as H3Event, {
+      auth,
+      toolName: toolNames[0],
+      userRoleLookup: deps.userRoleLookup ?? createDefaultUserRoleLookup(),
+    })
+  } catch (error) {
+    if (error instanceof McpRoleGateError) {
+      throw createError({
+        statusCode: error.statusCode,
+        statusMessage: error.code,
         message: error.message,
       })
     }

@@ -3,6 +3,7 @@ import { z } from 'zod'
 
 import { createConversationStore } from '#server/utils/conversation-store'
 import { getD1Database } from '#server/utils/database'
+import { requireRole } from '#server/utils/require-role'
 
 const querySchema = z
   .object({
@@ -14,7 +15,18 @@ export default defineEventHandler(async function listConversationsHandler(event)
   const log = useLogger(event)
 
   try {
-    const session = await requireUserSession(event)
+    // B16 §6.1: Member-level gate. Admin / Member always pass; Guest
+    // passes iff `guest_policy === 'same_as_member'`. Browse-only and
+    // no-access Guests get a 403 with the user-facing message from
+    // `require-role.ts` — the conversation list is not viewable to
+    // Guests under those policies.
+    //
+    // Destructure `fullSession` (= `Awaited<ReturnType<typeof
+    // requireUserSession>>`) so downstream stores get the narrow
+    // `AuthUser` shape (`id: string`) without a second `requireUserSession`
+    // call. Each `requireUserSession` re-invokes `auth.api.getSession`,
+    // so avoiding the duplicate saves one session parse per request.
+    const { fullSession: session } = await requireRole(event, 'member')
 
     log.set({
       operation: 'conversations-list',

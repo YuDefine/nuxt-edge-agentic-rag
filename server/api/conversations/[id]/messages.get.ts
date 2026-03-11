@@ -3,6 +3,7 @@ import { z } from 'zod'
 
 import { createConversationStore } from '#server/utils/conversation-store'
 import { getD1Database } from '#server/utils/database'
+import { requireRole } from '#server/utils/require-role'
 
 const paramsSchema = z.object({
   id: z.string().uuid(),
@@ -12,7 +13,10 @@ export default defineEventHandler(async function listConversationMessagesHandler
   const log = useLogger(event)
 
   try {
-    const session = await requireUserSession(event)
+    // B16 §6.1: Member-level gate. Message content is a Member-and-up
+    // surface; Guests under browse_only / no_access see a 403 here
+    // rather than an empty list, to match the chat.post.ts contract.
+    const { fullSession: session } = await requireRole(event, 'member')
     const params = await getValidatedRouterParams(event, paramsSchema.parse)
 
     log.set({

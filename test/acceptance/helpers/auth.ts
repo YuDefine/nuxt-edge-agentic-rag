@@ -33,6 +33,7 @@ export interface AcceptanceActorFixture {
       email: string
       id: string
       name: string
+      role: 'admin' | 'member' | 'guest'
     }
   }
 }
@@ -45,6 +46,7 @@ export function createAcceptanceActorFixture(preset: string): AcceptanceActorFix
   const scopes = resolvePresetScopes(preset)
   const provisionedToken = buildProvisionedMcpToken(
     {
+      createdByUserId: `${preset}-user`,
       environment: 'local',
       expiresAt: null,
       name: `Acceptance ${preset}`,
@@ -91,6 +93,7 @@ export function createAcceptanceActorFixture(preset: string): AcceptanceActorFix
         email,
         id: `${preset}-user`,
         name: `Acceptance ${preset}`,
+        role: isAdmin ? 'admin' : 'member',
       },
     },
   }
