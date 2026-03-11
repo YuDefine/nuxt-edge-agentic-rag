@@ -13,7 +13,8 @@ import { createConversationStore } from '#server/utils/conversation-store'
 import { auditKnowledgeText, createKnowledgeAuditStore } from '#server/utils/knowledge-audit'
 import { createKnowledgeEvidenceStore } from '#server/utils/knowledge-evidence-store'
 import { retrieveVerifiedEvidence } from '#server/utils/knowledge-retrieval'
-import { getKnowledgeRuntimeConfig, getRuntimeAdminAccess } from '#server/utils/knowledge-runtime'
+import { getKnowledgeRuntimeConfig } from '#server/utils/knowledge-runtime'
+import { requireRole } from '#server/utils/require-role'
 import {
   ChatRateLimitExceededError,
   chatWithKnowledge,
@@ -31,7 +32,18 @@ export default defineEventHandler(async function chatHandler(event) {
   const log = useLogger(event)
 
   try {
-    const session = await requireUserSession(event)
+    // B16 §6.1: Member-level gate. Admin / Member always pass; Guest
+    // passes iff `guest_policy === 'same_as_member'`. Browse-only
+    // Guests receive 403 "訪客僅可瀏覽，無法提問"; no-access Guests
+    // receive 403 "帳號待管理員審核". The UI consumes these messages
+    // directly (see Phase 4/5 `GuestAccessGate.vue`).
+    //
+    // `fullSession` carries the canonical better-auth `AuthUser` shape
+    // (`id: string`) that downstream stores expect. Avoid calling
+    // `requireUserSession(event)` again here — `requireRole` already ran
+    // it, and each call re-invokes `auth.api.getSession(headers)`.
+    const { session: sessionWithRole, fullSession: session } = await requireRole(event, 'member')
+    const sessionUser = sessionWithRole.user
     log.set({
       operation: 'web-chat',
       user: {
@@ -94,7 +106,12 @@ export default defineEventHandler(async function chatHandler(event) {
     const result = await chatWithKnowledge(
       {
         auth: {
-          isAdmin: getRuntimeAdminAccess(session.user.email ?? null),
+          // B16 Q2=A: role is the single source of truth. The allowlist
+          // already fed `session.user.role` via the better-auth hook
+          // (see `server/auth.config.ts`); re-reading the env var here
+          // would be both redundant and a regression to the Phase-0
+          // two-source model.
+          isAdmin: sessionUser.role === 'admin',
           userId: session.user.id,
         },
         conversationId: effectiveConversationId,

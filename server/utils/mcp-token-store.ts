@@ -51,6 +51,7 @@ function defaultCreateSecret(): string {
 
 export function buildProvisionedMcpToken(
   input: {
+    createdByUserId: string | null
     environment: string
     expiresAt: string | null
     name: string
@@ -72,6 +73,7 @@ export function buildProvisionedMcpToken(
     plaintextToken,
     record: {
       createdAt,
+      createdByUserId: input.createdByUserId,
       environment: input.environment,
       expiresAt: input.expiresAt,
       id: (options.createId ?? defaultCreateId)(),
@@ -94,8 +96,8 @@ export function createMcpTokenStore() {
         .prepare(
           [
             'INSERT INTO mcp_tokens (',
-            '  id, token_hash, name, scopes_json, environment, status, expires_at, last_used_at, revoked_at, revoked_reason, created_at',
-            ') VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            '  id, token_hash, name, scopes_json, environment, status, expires_at, last_used_at, revoked_at, revoked_reason, created_at, created_by_user_id',
+            ') VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
           ].join('\n')
         )
         .bind(
@@ -109,7 +111,8 @@ export function createMcpTokenStore() {
           record.lastUsedAt,
           record.revokedAt,
           record.revokedReason,
-          record.createdAt
+          record.createdAt,
+          record.createdByUserId
         )
         .run()
     },
@@ -123,7 +126,7 @@ export function createMcpTokenStore() {
         .prepare(
           [
             'SELECT',
-            '  id, token_hash, name, scopes_json, environment, status, expires_at, last_used_at, revoked_at, revoked_reason, created_at',
+            '  id, token_hash, name, scopes_json, environment, status, expires_at, last_used_at, revoked_at, revoked_reason, created_at, created_by_user_id',
             'FROM mcp_tokens',
             'WHERE token_hash = ?',
             '  AND environment = ?',
@@ -134,6 +137,7 @@ export function createMcpTokenStore() {
         .bind(tokenHash, environment)
         .first<{
           created_at: string
+          created_by_user_id: string | null
           environment: string
           expires_at: string | null
           id: string
@@ -156,6 +160,7 @@ export function createMcpTokenStore() {
 
       return {
         createdAt: row.created_at,
+        createdByUserId: row.created_by_user_id,
         environment: row.environment,
         expiresAt: row.expires_at,
         id: row.id,

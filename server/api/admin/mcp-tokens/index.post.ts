@@ -45,10 +45,11 @@ export default defineEventHandler(async (event) => {
     : null
 
   const { plaintextToken, record } = buildProvisionedMcpToken({
-    name: body.name,
-    scopes: body.scopes,
+    createdByUserId: session.user.id ?? null,
     environment,
     expiresAt,
+    name: body.name,
+    scopes: body.scopes,
   })
 
   await tokenStore.createToken(record)
