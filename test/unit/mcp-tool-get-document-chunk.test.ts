@@ -7,10 +7,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 //    field matching the legacy `[citationId].get.ts` endpoint.
 // 2. Call `requireMcpScope` for `knowledge.citation.read`.
 // 3. Delegate to the existing `getDocumentChunk` util.
-// 4. CRITICAL: when the util throws an `McpReplayError` with `statusCode === 403`,
-//    the tool MUST write a `query_logs` row with `status='blocked'` BEFORE
-//    re-throwing, matching the spec in `mcp-knowledge-tools` and the legacy
-//    replay HTTP surface that existed before the toolkit migration.
+// 4. CRITICAL (`mcp-restricted-audit-trail` spec): the blocked query_log row
+//    is now written BY the util (`getDocumentChunk`) via the
+//    `onRestrictedScopeViolation` hook, BEFORE the 403 throw — not by the
+//    handler's catch block. The handler supplies the closure so the util
+//    stays domain-pure. The row MUST include `risk_flags_json` containing
+//    `restricted_scope_violation`, hence the dedicated
+//    `createBlockedRestrictedScopeQueryLog` method (not `createAcceptedQueryLog`).
 
 class MockMcpReplayError extends Error {
   readonly reason: string
@@ -25,12 +28,15 @@ class MockMcpReplayError extends Error {
 
 describe('mcp get-document-chunk tool definition', () => {
   const getDocumentChunkUtilMock = vi.fn()
+  const createBlockedRestrictedScopeQueryLogMock = vi.fn()
   const createAcceptedQueryLogMock = vi.fn()
   const useEventMock = vi.fn()
 
   beforeEach(() => {
     vi.resetModules()
     getDocumentChunkUtilMock.mockReset()
+    createBlockedRestrictedScopeQueryLogMock.mockReset()
+    createBlockedRestrictedScopeQueryLogMock.mockResolvedValue('log-1')
     createAcceptedQueryLogMock.mockReset()
     createAcceptedQueryLogMock.mockResolvedValue('log-1')
     useEventMock.mockReset()
@@ -51,6 +57,7 @@ describe('mcp get-document-chunk tool definition', () => {
     vi.doMock('#server/utils/mcp-ask', () => ({
       createMcpQueryLogStore: vi.fn().mockReturnValue({
         createAcceptedQueryLog: createAcceptedQueryLogMock,
+        createBlockedRestrictedScopeQueryLog: createBlockedRestrictedScopeQueryLogMock,
       }),
     }))
     vi.doMock('#server/utils/cloudflare-bindings', () => ({
@@ -143,16 +150,26 @@ describe('mcp get-document-chunk tool definition', () => {
       citationLocator: 'lines 1-3',
     })
     expect(createAcceptedQueryLogMock).not.toHaveBeenCalled()
+    expect(createBlockedRestrictedScopeQueryLogMock).not.toHaveBeenCalled()
   })
 
-  it('writes a blocked query_logs row BEFORE re-throwing the 403 replay error', async () => {
-    getDocumentChunkUtilMock.mockRejectedValue(
-      new MockMcpReplayError(
+  it('writes a blocked query_logs row via onRestrictedScopeViolation hook BEFORE the 403 throw', async () => {
+    // Simulate the real `getDocumentChunk` util contract: invoke the
+    // `onRestrictedScopeViolation` hook provided by the handler, then reject
+    // with a 403 McpReplayError. This mirrors the hook contract defined in
+    // `server/utils/mcp-replay.ts::getDocumentChunk`.
+    getDocumentChunkUtilMock.mockImplementation(async (_input, options) => {
+      await options.onRestrictedScopeViolation?.({
+        attemptedCitationId: _input.citationId,
+        tokenId: _input.auth.tokenId,
+        tokenScopes: _input.auth.scopes,
+      })
+      throw new MockMcpReplayError(
         'The requested citation requires knowledge.restricted.read',
         403,
         'restricted_scope_required'
       )
-    )
+    })
 
     const mod = await import('#server/mcp/tools/get-document-chunk')
     const tool = mod.default
@@ -172,14 +189,20 @@ describe('mcp get-document-chunk tool definition', () => {
       { statusCode: 403 }
     )
 
-    expect(createAcceptedQueryLogMock).toHaveBeenCalledTimes(1)
-    expect(createAcceptedQueryLogMock).toHaveBeenCalledWith(
+    // The handler now routes audit writes through the dedicated
+    // `createBlockedRestrictedScopeQueryLog` method so the row lands with
+    // `risk_flags_json` containing `restricted_scope_violation`
+    // (verified end-to-end in acceptance-tc-13).
+    expect(createBlockedRestrictedScopeQueryLogMock).toHaveBeenCalledTimes(1)
+    expect(createBlockedRestrictedScopeQueryLogMock).toHaveBeenCalledWith(
       expect.objectContaining({
         queryText: 'getDocumentChunk:cid-restricted',
-        status: 'blocked',
         tokenId: 'token-blocked',
       })
     )
+    // The legacy accepted-path method must NOT be invoked on the 403 path,
+    // keeping Scenario 3 of `mcp-restricted-audit-trail` spec intact.
+    expect(createAcceptedQueryLogMock).not.toHaveBeenCalled()
   })
 
   it('does NOT write a query_logs row when the replay error is 404', async () => {
@@ -206,5 +229,6 @@ describe('mcp get-document-chunk tool definition', () => {
     })
 
     expect(createAcceptedQueryLogMock).not.toHaveBeenCalled()
+    expect(createBlockedRestrictedScopeQueryLogMock).not.toHaveBeenCalled()
   })
 })

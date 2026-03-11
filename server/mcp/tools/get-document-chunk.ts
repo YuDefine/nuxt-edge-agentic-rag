@@ -34,6 +34,12 @@ export default defineMcpTool({
     // Touch KV binding to mirror the legacy handler's binding-health signal.
     getRequiredKvBinding(event, runtimeConfig.bindings.rateLimitKv)
 
+    // `mcp-restricted-audit-trail` spec — emit the blocked audit row INSIDE
+    // `getDocumentChunk` (before 403 throw) instead of wrapping the call in a
+    // post-hoc catch. Scenario 3 of the spec forbids duplicate audit rows on
+    // successful restricted access: the hook only fires on the 403 path, so
+    // accepted replays inherit the ask handler's `status='accepted'` row
+    // without this layer writing a second one.
     try {
       return await getDocumentChunk(
         {
@@ -42,33 +48,41 @@ export default defineMcpTool({
         },
         {
           replayStore: createMcpReplayStore(database),
+          onRestrictedScopeViolation: async ({ attemptedCitationId, tokenId, tokenScopes }) => {
+            try {
+              await createMcpQueryLogStore(database).createBlockedRestrictedScopeQueryLog({
+                allowedAccessLevels: getAllowedAccessLevels({
+                  channel: 'mcp',
+                  isAuthenticated: true,
+                  tokenScopes,
+                }),
+                configSnapshotVersion: runtimeConfig.governance.configSnapshotVersion,
+                environment: runtimeConfig.environment,
+                // Encode the attempted citation id in `query_redacted_text`
+                // so the schema needs no new column while still preserving
+                // the attempted-citation audit trail. `auditKnowledgeText`
+                // keeps the string governance-safe in case the id ever
+                // contains PII-adjacent content.
+                queryText: auditKnowledgeText(`getDocumentChunk:${attemptedCitationId}`)
+                  .redactedText,
+                tokenId,
+              })
+            } catch (logError) {
+              const log = useLogger(event as Parameters<typeof useLogger>[0])
+              log.error(logError as Error, {
+                operation: 'mcp-replay-blocked-log',
+                tokenId,
+                attemptedCitationId,
+              })
+              // Re-throw so `getDocumentChunk` knows the audit attempt failed.
+              // The util's best-effort wrapper swallows it again to preserve
+              // the 403 throw path.
+              throw logError
+            }
+          },
         }
       )
     } catch (replayError) {
-      // Preserve the legacy handler's invariant: when replay returns 403, we
-      // write a `query_logs` row with `status='blocked'` BEFORE re-throwing.
-      // See `server/api/mcp/chunks/[citationId].get.ts` and the
-      // `mcp-knowledge-tools` spec (Stateless Ask And Replay).
-      if (replayError instanceof McpReplayError && replayError.statusCode === 403) {
-        try {
-          await createMcpQueryLogStore(database).createAcceptedQueryLog({
-            allowedAccessLevels: getAllowedAccessLevels({
-              channel: 'mcp',
-              isAuthenticated: true,
-              tokenScopes: auth.scopes,
-            }),
-            configSnapshotVersion: runtimeConfig.governance.configSnapshotVersion,
-            environment: runtimeConfig.environment,
-            queryText: auditKnowledgeText(`getDocumentChunk:${args.citationId}`).redactedText,
-            status: 'blocked',
-            tokenId: auth.tokenId,
-          })
-        } catch (logError) {
-          const log = useLogger(event as Parameters<typeof useLogger>[0])
-          log.error(logError as Error, { operation: 'mcp-replay-blocked-log' })
-        }
-      }
-
       if (replayError instanceof McpReplayError) {
         throw createError({
           statusCode: replayError.statusCode,

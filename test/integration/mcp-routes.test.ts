@@ -237,15 +237,30 @@ describe('mcp tool contract handlers (toolkit-native)', () => {
   })
 
   it('records a blocked query_log when getDocumentChunk tool returns 403', async () => {
+    // `mcp-restricted-audit-trail` spec — the blocked row is now written
+    // through the dedicated `createBlockedRestrictedScopeQueryLog` method so
+    // the row lands with `risk_flags_json = ["restricted_scope_violation"]`.
+    // The handler wires that write into the `onRestrictedScopeViolation`
+    // hook of `getDocumentChunk`; we simulate that contract here by
+    // invoking the hook on the mocked util before rejecting with 403.
+    const createBlockedRestrictedScopeQueryLog = vi.fn().mockResolvedValue('log-1')
     const createAcceptedQueryLog = vi.fn().mockResolvedValue('log-1')
-    mcpRouteMocks.createMcpQueryLogStore.mockReturnValue({ createAcceptedQueryLog })
-    mcpRouteMocks.getDocumentChunk.mockRejectedValue(
-      new mcpRouteMocks.MockMcpReplayError(
+    mcpRouteMocks.createMcpQueryLogStore.mockReturnValue({
+      createAcceptedQueryLog,
+      createBlockedRestrictedScopeQueryLog,
+    })
+    mcpRouteMocks.getDocumentChunk.mockImplementation(async (_input, options) => {
+      await options.onRestrictedScopeViolation?.({
+        attemptedCitationId: _input.citationId,
+        tokenId: _input.auth.tokenId,
+        tokenScopes: _input.auth.scopes,
+      })
+      throw new mcpRouteMocks.MockMcpReplayError(
         'The requested citation requires knowledge.restricted.read',
         403,
         'restricted_scope_required'
       )
-    )
+    })
 
     const { default: tool } = await import('#server/mcp/tools/get-document-chunk')
 
@@ -261,14 +276,16 @@ describe('mcp tool contract handlers (toolkit-native)', () => {
       )
     ).rejects.toMatchObject({ statusCode: 403 })
 
-    expect(createAcceptedQueryLog).toHaveBeenCalledTimes(1)
-    expect(createAcceptedQueryLog).toHaveBeenCalledWith(
+    expect(createBlockedRestrictedScopeQueryLog).toHaveBeenCalledTimes(1)
+    expect(createBlockedRestrictedScopeQueryLog).toHaveBeenCalledWith(
       expect.objectContaining({
         queryText: 'getDocumentChunk:citation-restricted',
-        status: 'blocked',
         tokenId: 'token-1',
       })
     )
+    // Spec Scenario 3: the legacy accepted-path writer must NOT fire on the
+    // 403 branch so auditors never see two rows for the same blocked call.
+    expect(createAcceptedQueryLog).not.toHaveBeenCalled()
   })
 
   it('returns filtered search results through the searchKnowledge tool', async () => {

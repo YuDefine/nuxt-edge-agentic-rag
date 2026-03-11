@@ -214,3 +214,123 @@ pnpm test test/unit/knowledge-governance.test.ts test/unit/knowledge-runtime-con
 - 手動改 `thresholds.judgeMin` 但忘記升版 → 舊 log 仍顯示舊 version，後續比對才發現；改前先跑 `pnpm test test/unit/knowledge-governance.test.ts`
 - 把 `config_snapshot_version` 當 free-form 字串寫進 handler → drift guard test 抓不到（drift guard 檢查的是 decision threshold 硬碼，非 version 字串本身），應在 code review 時特別留意
 - Web / MCP response 的 version 與 query_logs 不同 → 多半是 builder 被 clone 而非共用，governance 3.1 FAIL
+
+## 8. Risk Flags Audit Trail
+
+> 由 `tc-acceptance-followups` 新增。`query_logs.risk_flags_json` 現在記錄兩個新 flag：MCP 越權的 `restricted_scope_violation` 與高風險 PII 的 `pii_credit_card`。本節說明觸發條件、wrangler 查法、與誤判評估 SOP。
+
+### 8.1 `restricted_scope_violation` — MCP 越權稽核
+
+**觸發條件**：MCP 客戶端持有未包含 `knowledge.restricted.read` 的 token，呼叫 `getDocumentChunk` 嘗試 replay 一筆 `source_chunks.access_level='restricted'` 的 citation。
+
+**寫入路徑**：
+
+| 位置                                                                 | 行為                                                                    |
+| -------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| `server/utils/mcp-replay.ts::getDocumentChunk`                       | 在 throw `McpReplayError(403, 'restricted_scope_required')` 前呼叫 hook |
+| `server/mcp/tools/get-document-chunk.ts::onRestrictedScopeViolation` | 呼叫 `createBlockedRestrictedScopeQueryLog` INSERT query_logs           |
+| `server/utils/mcp-ask.ts::createBlockedRestrictedScopeQueryLog`      | 綁定 `risk_flags_json=["restricted_scope_violation"]`                   |
+
+**Row shape**：
+
+```text
+channel                 = 'mcp'
+status                  = 'blocked'
+risk_flags_json         = '["restricted_scope_violation"]'
+mcp_token_id            = <violating token id>
+query_redacted_text     = 'getDocumentChunk:<citationId>'
+config_snapshot_version = <same chain as accepted rows>
+decision_path           = 'restricted_blocked'
+refusal_reason          = 'restricted_scope'
+```
+
+**Schema drift 說明**：`query_logs` 目前沒有專屬 `attempted_citation_id` 欄位，改將 `getDocumentChunk:<citationId>` 編碼進 `query_redacted_text`。這保留「哪張 citation 被嘗試存取」的稽核軌跡而不需要 migration；`getDocumentChunk:` prefix 讓 auditor 用 `LIKE` 過濾即可還原 attempted citation id。
+
+**Wrangler 查詢**：
+
+```bash
+# 最近 10 筆越權記錄（含 token id + attempted citation + timestamp）
+wrangler d1 execute agentic-rag-db --remote --command \
+  "SELECT id, mcp_token_id, query_redacted_text, config_snapshot_version, created_at \
+   FROM query_logs \
+   WHERE risk_flags_json LIKE '%restricted_scope_violation%' \
+   ORDER BY created_at DESC LIMIT 10;"
+```
+
+```bash
+# 特定 token 的越權次數
+wrangler d1 execute agentic-rag-db --remote --command \
+  "SELECT mcp_token_id, COUNT(*) AS violations \
+   FROM query_logs \
+   WHERE risk_flags_json LIKE '%restricted_scope_violation%' \
+     AND created_at >= datetime('now', '-7 days') \
+   GROUP BY mcp_token_id ORDER BY violations DESC;"
+```
+
+**PASS 條件（spec scenarios）**：
+
+- Scenario 1：越權 call 後至少有 1 筆 row，`status='blocked'`、`risk_flags_json` 含 `restricted_scope_violation`
+- Scenario 2：audit INSERT 失敗時，handler 仍回 HTTP 403；Workers logs 可見 `operation: 'mcp-replay-blocked-log'` 的 `log.error`
+- Scenario 3：授權 token（含 `knowledge.restricted.read`）成功 replay 不應在此查詢出現——accepted 路徑由 ask handler 寫 `status='accepted'`，replay 層不重複寫
+
+### 8.2 `pii_credit_card` — 高風險 PII 拒答稽核
+
+**觸發條件**：使用者查詢（Web `/api/chat` 或 MCP `askKnowledge`）含以下任一模式：
+
+- Visa / Mastercard / Discover 16-digit（可帶 `-` 或空格 separator）
+- Amex 15-digit 4-6-5 grouping
+- Generic 13-19 digit run with at least one in-digit `-` 或空格 separator（catch unknown 卡別）
+
+pattern 定義在 `server/utils/knowledge-audit.ts`，走 `auditKnowledgeText` → `shouldBlock=true` 路徑。**未做 Luhn 驗證**（治理目標是「看起來像卡號就拒答」，不是「真的是有效卡號才拒答」）。
+
+**寫入路徑**：`auditKnowledgeText` 回傳 `riskFlags: ['pii_credit_card']` 與 `redactedText: '[BLOCKED:credit_card]'`。web-chat / mcp-ask handler 將 `risk_flags_json` 寫進 `query_logs`，raw query 不落地；`messages.content_redacted` 也只存遮罩版。
+
+**Wrangler 查詢**：
+
+```bash
+# 最近 7 天的信用卡 block 記錄
+wrangler d1 execute agentic-rag-db --remote --command \
+  "SELECT id, channel, user_profile_id, mcp_token_id, query_redacted_text, created_at \
+   FROM query_logs \
+   WHERE risk_flags_json LIKE '%pii_credit_card%' \
+     AND created_at >= datetime('now', '-7 days') \
+   ORDER BY created_at DESC LIMIT 50;"
+```
+
+```bash
+# 觸發頻率每日統計（用於評估誤判率趨勢）
+wrangler d1 execute agentic-rag-db --remote --command \
+  "SELECT date(created_at) AS day, COUNT(*) AS blocks \
+   FROM query_logs \
+   WHERE risk_flags_json LIKE '%pii_credit_card%' \
+   GROUP BY day ORDER BY day DESC LIMIT 14;"
+```
+
+**Admin UI 過濾路徑**：目前無專屬信用卡 admin UI。現有 query logs UI（規劃於 `admin-ui-post-core`，尚未交付）實作時應將 `risk_flags_json LIKE '%pii_credit_card%'` 加入 filter dropdown，與既有的 `credential` / `pii:email` flag 並列。在 admin UI 上線前，以上面的 wrangler 查詢作為唯一稽核介面。
+
+**誤判邊界評估 SOP**：
+
+- **已知可能誤判**：SOP 文件中的訂單編號、序號格式、IP prefix 等 13-19 位數字串
+- **已加入 pattern 防護**：必須 separator 出現在 digit 之間（`\d[ -]\d`），plain 長 digit run 不觸發。驗證：`'order id 4111111111111111234 shipped'` 不觸發（見 `test/unit/knowledge-audit.test.ts::does not match 16-digit prefix inside longer digit runs`）
+- **上線後 1 週檢視**：
+  1. 跑上方每日統計查詢取得觸發頻率
+  2. 隨機抽 10 筆 `query_redacted_text='[BLOCKED:credit_card]'` 的 row，詢問使用者實際內容（由使用者回報，非系統）
+  3. 若多筆為訂單編號（非真實卡號），回 design 調整 pattern（例如改 require `[- ]` 出現 ≥ 2 次）
+  4. 記錄調整決策到 `docs/decisions/YYYY-MM-DD-pii-credit-card-pattern-adjust.md`
+- **不擴張 PII pattern**：`tc-acceptance-followups` Non-Goals 明確排除電話、email、身分證號的 block pattern（email/phone 保持 `[REDACTED:*]` 路徑），誤判時不能以「再加一個 pattern」為由擴張
+
+### 8.3 與 `config_snapshot_version` 的關係
+
+兩個新 flag 都走既有 audit chain，`config_snapshot_version` 仍綁原值（從 `runtimeConfig.governance.configSnapshotVersion` 取得）。這代表：
+
+- 同一 governance 配置變更時段內，`risk_flags_json` 觸發規則一致
+- 升版後 (`config_snapshot_version` 改變) 的 blocked row 可與舊版分流比對（例如檢測新增 pattern 是否提高拒答頻率）
+- 查詢時建議順帶 `GROUP BY config_snapshot_version` 以區分版本：
+
+```bash
+wrangler d1 execute agentic-rag-db --remote --command \
+  "SELECT config_snapshot_version, COUNT(*) AS blocks \
+   FROM query_logs \
+   WHERE risk_flags_json LIKE '%pii_credit_card%' \
+   GROUP BY config_snapshot_version ORDER BY blocks DESC;"
+```

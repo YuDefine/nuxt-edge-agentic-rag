@@ -13,15 +13,93 @@ type MessageRole = 'system' | 'user' | 'assistant' | 'tool'
 
 const EMAIL_PATTERN = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi
 const PHONE_PATTERN = /\b(?:\+?\d[\d -]{8,}\d)\b/g
-const CREDENTIAL_PATTERNS = [
-  /\bapi[_ -]?key\s*[:=]\s*\S+/i,
-  /\bpassword\s*[:=]\s*\S+/i,
-  /\bsecret\s*[:=]\s*\S+/i,
-  /\btoken\s*[:=]\s*\S+/i,
-  /\bsk-[A-Za-z0-9]{10,}\b/,
-  /(?<!\d)(?:4\d{3}|5[1-5]\d{2}|6(?:011|5\d{2}))[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}(?!\d)/,
-  /(?<!\d)3[47]\d{2}[\s-]?\d{6}[\s-]?\d{5}(?!\d)/,
+
+/**
+ * `tc-acceptance-followups` §5 — split the credential flag into two buckets:
+ *
+ *   - `credential`      → API keys, passwords, secrets, Bearer tokens, OpenAI
+ *                         `sk-...` keys. These are developer / service
+ *                         credentials that must never land in logs.
+ *   - `pii_credit_card` → card numbers. These are PII governed by PCI DSS
+ *                         and must be treated as a distinct risk bucket so
+ *                         auditors can filter by
+ *                         `risk_flags_json LIKE '%pii_credit_card%'`.
+ *
+ * Rules for the generic 13-19 digit fallback (entry 8 below):
+ *
+ *   - Does NOT do Luhn validation — treasure-hunting real card numbers is
+ *     not the goal. The goal is "string looks like a card → block". Wider
+ *     false-positive rate is accepted in exchange for guaranteed coverage
+ *     of future card issuers / test numbers.
+ *   - Does NOT carry `/g`: `.test()` against a `/g` regex advances
+ *     `lastIndex` and causes the next `.test()` to miss, which would leak
+ *     a card number on a subsequent call with the same input string.
+ *   - Kept last in the array so specific issuer patterns match first.
+ */
+interface CredentialPattern {
+  readonly flag: 'credential' | 'pii_credit_card'
+  readonly pattern: RegExp
+}
+
+const CREDENTIAL_PATTERNS: readonly CredentialPattern[] = [
+  { flag: 'credential', pattern: /\bapi[_ -]?key\s*[:=]\s*\S+/i },
+  { flag: 'credential', pattern: /\bpassword\s*[:=]\s*\S+/i },
+  { flag: 'credential', pattern: /\bsecret\s*[:=]\s*\S+/i },
+  { flag: 'credential', pattern: /\btoken\s*[:=]\s*\S+/i },
+  { flag: 'credential', pattern: /\bsk-[A-Za-z0-9]{10,}\b/ },
+  // Visa / Mastercard / Discover 16-digit with optional spaces or hyphens.
+  // Negative-lookbehind/lookahead guard prevents matching a 16-digit prefix
+  // inside longer digit runs (e.g. order id 4111111111111111234).
+  {
+    flag: 'pii_credit_card',
+    pattern: /(?<!\d)(?:4\d{3}|5[1-5]\d{2}|6(?:011|5\d{2}))[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}(?!\d)/,
+  },
+  // Amex 15-digit 4-6-5 grouping.
+  {
+    flag: 'pii_credit_card',
+    pattern: /(?<!\d)3[47]\d{2}[\s-]?\d{6}[\s-]?\d{5}(?!\d)/,
+  },
 ]
+
+/**
+ * Generic 13-19 digit credit card fallback. `CREDENTIAL_PATTERNS` above
+ * handles specific issuer prefixes (Visa / Mastercard / Discover / Amex);
+ * this catcher fires when the digits look like a card but don't match any
+ * known prefix (future issuers, test numbers, region-specific cards).
+ *
+ * Design constraint (`tc-acceptance-followups` design.md §Risks):
+ *   - 寬鬆 regex 誤判 SOP 文件中的訂單編號
+ *   - Mitigation: 限定 13-19 位 + **連續 separator** 才匹配
+ *
+ * The guard enforces the separator requirement — plain digit runs like
+ * order id `4111111111111111234` (19 digits) do NOT match because no
+ * space/hyphen separator appears inside the run. Real card numbers in the
+ * wild are almost always displayed with 4-digit groups.
+ */
+const GENERIC_CREDIT_CARD_PATTERN = /\b(?:\d[ -]?){13,19}\b/
+
+function matchesGenericCreditCard(text: string): boolean {
+  const match = text.match(GENERIC_CREDIT_CARD_PATTERN)
+  if (!match) {
+    return false
+  }
+
+  // Require at least one space/hyphen separator BETWEEN two digits inside
+  // the matched run — trailing separators (e.g. `...1234 shipped`) don't
+  // count. This keeps plain long digit strings like order id
+  // `4111111111111111234` out of the blocked set while still catching real
+  // card formats like `4111-1111-1111-1111` or `4111 1111 1111 1111`.
+  return /\d[ -]\d/.test(match[0])
+}
+
+// Redaction marker precedence. When a single prompt trips both `credential`
+// and `pii_credit_card` buckets, the marker follows `pii_credit_card` because
+// the PII disclosure is the higher-severity risk; the `credential` flag is
+// still emitted alongside in `risk_flags_json` so auditors see both signals.
+const REDACTION_MARKER: Record<CredentialPattern['flag'], string> = {
+  credential: '[BLOCKED:credential]',
+  pii_credit_card: '[BLOCKED:credit_card]',
+}
 
 export function auditKnowledgeText(text: string): {
   redactedText: string
@@ -30,20 +108,37 @@ export function auditKnowledgeText(text: string): {
   shouldBlock: boolean
 } {
   const normalizedText = text.trim()
-  const riskFlags: string[] = []
-  const hasCredential = CREDENTIAL_PATTERNS.some((pattern) => pattern.test(normalizedText))
+  const blockedFlags = new Set<CredentialPattern['flag']>()
 
-  if (hasCredential) {
-    riskFlags.push('credential')
+  for (const entry of CREDENTIAL_PATTERNS) {
+    if (entry.pattern.test(normalizedText)) {
+      blockedFlags.add(entry.flag)
+    }
+  }
+
+  // Generic credit card fallback — fires when specific issuer prefixes above
+  // miss but a 13-19 digit run with separators is still present.
+  if (matchesGenericCreditCard(normalizedText)) {
+    blockedFlags.add('pii_credit_card')
+  }
+
+  if (blockedFlags.size > 0) {
+    // Preserve a deterministic ordering so `risk_flags_json` reads the same
+    // across runs regardless of which pattern fires first.
+    const riskFlags = Array.from(blockedFlags).toSorted()
+    const markerFlag: CredentialPattern['flag'] = blockedFlags.has('pii_credit_card')
+      ? 'pii_credit_card'
+      : 'credential'
 
     return {
-      redactedText: '[BLOCKED:credential]',
+      redactedText: REDACTION_MARKER[markerFlag],
       redactionApplied: true,
       riskFlags,
       shouldBlock: true,
     }
   }
 
+  const riskFlags: string[] = []
   let redactedText = normalizedText
 
   if (EMAIL_PATTERN.test(redactedText)) {
