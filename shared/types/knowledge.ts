@@ -1,3 +1,5 @@
+import type { AdminSource, Role } from './auth'
+
 /**
  * Document with current version info for list display.
  * Used by both client (DocumentListTable) and server (document-list-store).
@@ -104,6 +106,7 @@ export interface QueryLogRecord {
 
 export interface McpTokenRecord {
   createdAt: string
+  createdByUserId: string | null
   environment: string
   expiresAt: string | null
   id: string
@@ -117,11 +120,11 @@ export interface McpTokenRecord {
 }
 
 export interface UserProfileRecord {
-  adminSource: string
+  adminSource: AdminSource
   createdAt: string
   displayName: string | null
   emailNormalized: string
   id: string
-  roleSnapshot: string
+  roleSnapshot: Role
   updatedAt: string
 }
