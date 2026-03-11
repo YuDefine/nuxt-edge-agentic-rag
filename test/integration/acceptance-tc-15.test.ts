@@ -54,10 +54,11 @@ vi.mock('../../server/utils/knowledge-runtime', async (importOriginal) => {
   }
 })
 
-// hub:db 在測試環境無法 resolve，轉由 fake D1 binding 提供底層資料庫
-vi.mock('../../server/utils/database', () => ({
-  getD1Database: async () => (tc15Mocks.bindings ?? {}).DB,
-}))
+vi.mock('../../server/utils/database', async () => {
+  const { createHubDbMock } = await import('./helpers/database')
+
+  return createHubDbMock({ database: () => (tc15Mocks.bindings ?? {}).DB })
+})
 
 installNuxtRouteTestGlobals()
 
@@ -102,12 +103,27 @@ describe('acceptance high-risk redaction does not persist raw text (TC-15)', () 
     expect(fixture.expectedOutcome).toBe('refused')
     expect(fixture.channel).toBe('web')
 
-    // fixture prompt 必須含 credential pattern，才能命中 shouldBlock 路徑
-    expect(
+    // fixture prompt 必須含 credential 或 credit card pattern，才能命中 shouldBlock
+    // 路徑。`tc-acceptance-followups` §5 — TC-15 現在覆蓋兩類高風險輸入：
+    //   1. developer credentials（api_key / sk- / Bearer / password / secret）
+    //   2. PII credit card numbers（Visa/Master/Discover/Amex/generic fallback）
+    // 兩者走同一 shouldBlock 路徑，但 risk_flags_json + redaction marker 分兩 bucket。
+    const hasCredentialPattern =
       /sk-[A-Za-z0-9]{10,}|api[_ -]?key\s*[:=]|password\s*[:=]|secret\s*[:=]|\btoken\s*[:=]/i.test(
         fixture.prompt
       )
-    ).toBe(true)
+    const hasCreditCardPattern =
+      /(?<!\d)(?:4\d{3}|5[1-5]\d{2}|6(?:011|5\d{2}))[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}(?!\d)/.test(
+        fixture.prompt
+      ) || /(?<!\d)3[47]\d{2}[\s-]?\d{6}[\s-]?\d{5}(?!\d)/.test(fixture.prompt)
+
+    expect(hasCredentialPattern || hasCreditCardPattern).toBe(true)
+
+    // Flag / marker split follows the `auditKnowledgeText` contract:
+    //   credit card → flag `pii_credit_card`, marker `[BLOCKED:credit_card]`
+    //   credential  → flag `credential`,      marker `[BLOCKED:credential]`
+    const expectedFlag = hasCreditCardPattern ? 'pii_credit_card' : 'credential'
+    const expectedMarker = hasCreditCardPattern ? '[BLOCKED:credit_card]' : '[BLOCKED:credential]'
 
     const { default: handler } = await import('../../server/api/chat.post')
     const result = await handler(createRouteEvent())
@@ -143,13 +159,11 @@ describe('acceptance high-risk redaction does not persist raw text (TC-15)', () 
 
     // 必須寫入 query_logs，且 status='blocked'、redaction_applied=1、query_redacted_text 為遮罩版
     expect(queryLogInsert).toBeDefined()
-    expect(queryLogInsert?.values).toEqual(
-      expect.arrayContaining(['blocked', '[BLOCKED:credential]', 1])
-    )
+    expect(queryLogInsert?.values).toEqual(expect.arrayContaining(['blocked', expectedMarker, 1]))
 
     // query_redacted_text 欄位位置（第 6 個 bind 參數）
     const queryRedactedText = queryLogInsert?.values[5]
-    expect(queryRedactedText).toBe('[BLOCKED:credential]')
+    expect(queryRedactedText).toBe(expectedMarker)
     expect(typeof queryRedactedText).toBe('string')
     // query_logs 的原始文字不得落地
     assertDoesNotContainRawPrompt(queryRedactedText as string, fixture.prompt)
@@ -157,7 +171,7 @@ describe('acceptance high-risk redaction does not persist raw text (TC-15)', () 
     const riskFlagsJson = queryLogInsert?.values[6]
     expect(typeof riskFlagsJson).toBe('string')
     const riskFlags = JSON.parse(riskFlagsJson as string) as string[]
-    expect(riskFlags).toContain('credential')
+    expect(riskFlags).toContain(expectedFlag)
 
     // messages.content_redacted 必須是遮罩版；檢查所有 bind value 均不含原文
     expect(messageInsert).toBeDefined()

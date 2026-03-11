@@ -59,6 +59,27 @@ export async function getDocumentChunk(
         citationLocator: string
       } | null>
     }
+    /**
+     * Best-effort audit hook invoked immediately before a
+     * `restricted_scope_required` 403 is thrown. The handler supplies a
+     * closure that INSERTs into `query_logs` with
+     * `risk_flags_json` containing `'restricted_scope_violation'` and the
+     * attempted citation id encoded in `query_redacted_text`.
+     *
+     * Per `mcp-restricted-audit-trail` spec:
+     *   - Write happens BEFORE the 403 throw so no response can succeed
+     *     without a matching audit row.
+     *   - If the hook throws, the error is swallowed (caller is responsible
+     *     for log.error via its own try/catch) — the 403 still surfaces.
+     *
+     * Leave undefined when callers don't need the audit trail (e.g. unit
+     * tests that only assert the throw behavior).
+     */
+    onRestrictedScopeViolation?: (input: {
+      attemptedCitationId: string
+      tokenId: string
+      tokenScopes: string[]
+    }) => Promise<void>
   }
 ): Promise<{
   chunkText: string
@@ -82,6 +103,23 @@ export async function getDocumentChunk(
   })
 
   if (!allowedAccessLevels.includes(citation.accessLevel)) {
+    // `mcp-restricted-audit-trail` spec — Audit write failure does not mask
+    // the 403: swallow any error from the audit hook so the 403 still throws
+    // cleanly. The handler owns `log.error` via its own try/catch inside the
+    // closure.
+    if (options.onRestrictedScopeViolation) {
+      try {
+        await options.onRestrictedScopeViolation({
+          attemptedCitationId: input.citationId,
+          tokenId: input.auth.tokenId,
+          tokenScopes: input.auth.scopes,
+        })
+      } catch {
+        // Best-effort audit — never mask the refusal even when audit write
+        // itself fails. The closure is expected to log.error on its own.
+      }
+    }
+
     throw new McpReplayError(
       'The requested citation requires knowledge.restricted.read',
       403,

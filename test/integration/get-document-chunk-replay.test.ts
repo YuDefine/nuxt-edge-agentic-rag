@@ -75,6 +75,7 @@ const replayRouteMocks = vi.hoisted(() => {
     })),
     consumeMcpToolRateLimit: vi.fn().mockResolvedValue({ allowed: true }),
     createAcceptedQueryLog: vi.fn().mockResolvedValue('log-1'),
+    createBlockedRestrictedScopeQueryLog: vi.fn().mockResolvedValue('log-1'),
     createKvRateLimitStore: vi.fn().mockReturnValue({}),
     createMcpQueryLogStore: vi.fn(),
     createMcpReplayStore: vi.fn().mockReturnValue({
@@ -160,6 +161,7 @@ function prepareRuntimeConfig() {
 function prepareQueryLogStore() {
   replayRouteMocks.createMcpQueryLogStore.mockReturnValue({
     createAcceptedQueryLog: replayRouteMocks.createAcceptedQueryLog,
+    createBlockedRestrictedScopeQueryLog: replayRouteMocks.createBlockedRestrictedScopeQueryLog,
   })
 }
 
@@ -196,6 +198,13 @@ describe('MCP getDocumentChunk — retention replay contract', () => {
     })
     // [Phase 4 migration] toolkit tool layer does not emit x-replay-reason;
     // header-level assertion is not applicable under the new MCP wire format.
+
+    // `mcp-restricted-audit-trail` spec Scenario 3: a successful replay MUST
+    // NOT write a `restricted_scope_violation` audit row. The ask handler
+    // (upstream) already emitted `status='accepted'` for the originating
+    // request; this layer stays silent so auditors see no duplicate entries.
+    expect(replayRouteMocks.createBlockedRestrictedScopeQueryLog).not.toHaveBeenCalled()
+    expect(replayRouteMocks.createAcceptedQueryLog).not.toHaveBeenCalled()
   })
 
   it('case 2: returns 404 chunk_not_found when the citation row is missing', async () => {
@@ -268,13 +277,22 @@ describe('MCP getDocumentChunk — retention replay contract', () => {
   })
 
   it('case 4: returns 403 restricted_scope_required and records a blocked query_log', async () => {
-    replayRouteMocks.getDocumentChunk.mockRejectedValueOnce(
-      new replayRouteMocks.MockMcpReplayError(
+    // `mcp-restricted-audit-trail` spec — the blocked row is now written by
+    // the util via the `onRestrictedScopeViolation` hook. Simulate that
+    // contract here: invoke the hook passed by the handler, then reject
+    // with the 403 replay error.
+    replayRouteMocks.getDocumentChunk.mockImplementationOnce(async (_input, options) => {
+      await options.onRestrictedScopeViolation?.({
+        attemptedCitationId: _input.citationId,
+        tokenId: _input.auth.tokenId,
+        tokenScopes: _input.auth.scopes,
+      })
+      throw new replayRouteMocks.MockMcpReplayError(
         'The requested citation requires knowledge.restricted.read',
         403,
         'restricted_scope_required'
       )
-    )
+    })
 
     const { default: tool } = await import('#server/mcp/tools/get-document-chunk')
 
@@ -294,14 +312,17 @@ describe('MCP getDocumentChunk — retention replay contract', () => {
       statusCode: 403,
     })
 
-    expect(replayRouteMocks.createAcceptedQueryLog).toHaveBeenCalledTimes(1)
-    expect(replayRouteMocks.createAcceptedQueryLog).toHaveBeenCalledWith(
+    // Spec Scenario 1: blocked row must route through the dedicated method
+    // that binds `risk_flags_json = ["restricted_scope_violation"]`, NOT
+    // through the legacy accepted-path method.
+    expect(replayRouteMocks.createBlockedRestrictedScopeQueryLog).toHaveBeenCalledTimes(1)
+    expect(replayRouteMocks.createBlockedRestrictedScopeQueryLog).toHaveBeenCalledWith(
       expect.objectContaining({
         queryText: 'getDocumentChunk:citation-restricted',
-        status: 'blocked',
         tokenId: 'token-1',
       })
     )
+    expect(replayRouteMocks.createAcceptedQueryLog).not.toHaveBeenCalled()
     // [Phase 4 migration] x-replay-reason header assertion no longer applies;
     // restricted_scope_required surfaces via blocked query_log record instead.
   })
@@ -335,6 +356,7 @@ describe('MCP getDocumentChunk — retention replay contract', () => {
       citationLocator: 'lines 10-12',
     })
     expect(replayRouteMocks.createAcceptedQueryLog).not.toHaveBeenCalled()
+    expect(replayRouteMocks.createBlockedRestrictedScopeQueryLog).not.toHaveBeenCalled()
   })
 
   // [Phase 4 migration blocker] Session-rejection used to live in the legacy

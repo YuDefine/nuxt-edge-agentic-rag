@@ -62,10 +62,11 @@ vi.mock('../../server/utils/knowledge-runtime', async (importOriginal) => {
   }
 })
 
-// hub:db 在測試環境中無法 resolve，改成回傳 fake D1 binding
-vi.mock('../../server/utils/database', () => ({
-  getD1Database: async () => (tc13Mocks.bindings ?? {}).DB,
-}))
+vi.mock('../../server/utils/database', async () => {
+  const { createHubDbMock } = await import('./helpers/database')
+
+  return createHubDbMock({ database: () => (tc13Mocks.bindings ?? {}).DB })
+})
 
 installNuxtRouteTestGlobals()
 
@@ -161,6 +162,86 @@ describe('acceptance restricted citation scope (TC-13)', () => {
         expect(value).not.toContain(RESTRICTED_DOCUMENT_TITLE)
       }
     }
+
+    // `mcp-restricted-audit-trail` spec Scenario 1: 403 path must write ONE
+    // query_logs row with `status='blocked'` + `risk_flags_json` containing
+    // `restricted_scope_violation`, and the attempted citation id must be
+    // captured in `query_redacted_text` so auditors can trace which
+    // restricted resource was probed.
+    const queryLogInserts = d1.calls.filter((call) => call.query.includes('INSERT INTO query_logs'))
+
+    expect(queryLogInserts).toHaveLength(1)
+    const blockedRow = queryLogInserts[0]
+    expect(blockedRow?.values).toEqual(
+      expect.arrayContaining([
+        'mcp',
+        'blocked',
+        'local',
+        JSON.stringify(['restricted_scope_violation']),
+      ])
+    )
+
+    // token_id must match the violating token, not be null
+    expect(blockedRow?.values[3]).toBe(tc13Mocks.actor?.mcpAuth.tokenId)
+    // query_redacted_text must encode the attempted citation id
+    expect(blockedRow?.values[5]).toBe(`getDocumentChunk:${RESTRICTED_CITATION_ID}`)
+    // config_snapshot_version lines up with the active audit chain
+    expect(blockedRow?.values[9]).toBe(tc13Mocks.runtimeConfig?.governance.configSnapshotVersion)
+  })
+
+  // `mcp-restricted-audit-trail` spec Scenario 2: audit write failure MUST
+  // NOT mask the 403 refusal. Simulate a D1 transient error on the
+  // `INSERT INTO query_logs` path and confirm:
+  //   - the handler still throws 403
+  //   - the response body contains no restricted content
+  //   - the audit failure is surfaced via log.error (not silent)
+  it('still returns 403 with no leakage when the audit INSERT fails', async () => {
+    const logErrorSpy = vi.fn()
+    const evlogModule = await import('evlog')
+    vi.spyOn(evlogModule, 'useLogger').mockReturnValue({
+      error: logErrorSpy,
+      set: vi.fn(),
+    } as unknown as ReturnType<typeof evlogModule.useLogger>)
+
+    tc13Mocks.bindings = createTc13BindingsWithFailingAudit(
+      tc13Mocks.actor as ReturnType<typeof createAcceptanceActorFixture>
+    )
+
+    const { default: tool } = await import('#server/mcp/tools/get-document-chunk')
+
+    let thrown: unknown = null
+    try {
+      await runMcpTool(
+        tool,
+        { citationId: RESTRICTED_CITATION_ID },
+        {
+          authorizationHeader: tc13Mocks.actor?.mcpToken.authorizationHeader ?? '',
+          cloudflareEnv: tc13Mocks.bindings ?? {},
+          params: { citationId: RESTRICTED_CITATION_ID },
+          pendingEvent,
+        }
+      )
+    } catch (error) {
+      thrown = error
+    }
+
+    // 403 must still surface even though the audit INSERT failed
+    expect(thrown).toMatchObject({ statusCode: 403 })
+    const errorMessage = (thrown as { message?: string }).message ?? ''
+    expect(errorMessage).not.toContain(RESTRICTED_CHUNK_TEXT)
+    expect(errorMessage).not.toContain(RESTRICTED_DOCUMENT_TITLE)
+    expect(errorMessage).not.toContain(RESTRICTED_LOCATOR)
+
+    // log.error must be called exactly once with the audit operation tag so
+    // operators can detect the fail-open audit chain from logs
+    expect(logErrorSpy).toHaveBeenCalledTimes(1)
+    const [loggedError, loggedContext] = logErrorSpy.mock.calls[0] ?? []
+    expect(loggedError).toBeInstanceOf(Error)
+    expect(loggedContext).toMatchObject({
+      operation: 'mcp-replay-blocked-log',
+      tokenId: tc13Mocks.actor?.mcpAuth.tokenId,
+      attemptedCitationId: RESTRICTED_CITATION_ID,
+    })
   })
 })
 
@@ -208,6 +289,71 @@ function createTc13Bindings(actor: ReturnType<typeof createAcceptanceActorFixtur
                 },
               }
             : { first: null },
+      },
+    ],
+  })
+  const kv = createKvBindingFake()
+
+  return createCloudflareBindingsFixture({
+    d1,
+    kv,
+  })
+}
+
+// Variant that simulates a D1 transient error on the restricted audit INSERT
+// so we can exercise `mcp-restricted-audit-trail` spec Scenario 2 (audit
+// write failure does not mask the 403 response).
+function createTc13BindingsWithFailingAudit(
+  actor: ReturnType<typeof createAcceptanceActorFixture>
+) {
+  const d1 = createD1BindingFake({
+    responders: [
+      {
+        match: /FROM mcp_tokens/,
+        resolve: ({ values }) => ({
+          first:
+            values[0] === actor.mcpToken.record.tokenHash && values[1] === 'local'
+              ? {
+                  created_at: '2026-04-16T00:00:00.000Z',
+                  environment: 'local',
+                  expires_at: null,
+                  id: actor.mcpAuth.tokenId,
+                  last_used_at: null,
+                  name: actor.mcpToken.record.name,
+                  revoked_at: null,
+                  revoked_reason: null,
+                  scopes_json: actor.mcpToken.record.scopesJson,
+                  status: 'active',
+                  token_hash: actor.mcpToken.record.tokenHash,
+                }
+              : null,
+        }),
+      },
+      {
+        match: /UPDATE mcp_tokens/,
+        resolve: () => ({
+          run: { success: true },
+        }),
+      },
+      {
+        match: /FROM citation_records cr/,
+        resolve: ({ values }) =>
+          values[0] === RESTRICTED_CITATION_ID
+            ? {
+                first: {
+                  access_level: 'restricted',
+                  chunk_text_snapshot: RESTRICTED_CHUNK_TEXT,
+                  citation_id: RESTRICTED_CITATION_ID,
+                  citation_locator: RESTRICTED_LOCATOR,
+                },
+              }
+            : { first: null },
+      },
+      {
+        match: /INSERT INTO query_logs/,
+        resolve: () => {
+          throw new Error('D1 transient failure on query_logs INSERT')
+        },
       },
     ],
   })

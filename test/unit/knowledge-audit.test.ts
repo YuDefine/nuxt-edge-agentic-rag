@@ -21,18 +21,47 @@ describe('knowledge audit', () => {
     ['Discover (compact)', 'disc 6011111111111117 here'],
     ['Amex (spaces)', 'amex 3782 822463 10005 here'],
   ])('blocks credit-card numbers (%s)', (_label, input) => {
+    // `tc-acceptance-followups` §5 — credit card numbers now emit a
+    // dedicated `pii_credit_card` flag and `[BLOCKED:credit_card]` marker,
+    // separating PCI-DSS-governed PII from generic developer credentials
+    // (`api_key`, `sk-...`, `Bearer <token>`) that still flag `credential`.
     const result = auditKnowledgeText(input)
 
     expect(result.shouldBlock).toBe(true)
-    expect(result.redactedText).toBe('[BLOCKED:credential]')
-    expect(result.riskFlags).toEqual(['credential'])
+    expect(result.redactedText).toBe('[BLOCKED:credit_card]')
+    expect(result.riskFlags).toEqual(['pii_credit_card'])
+  })
+
+  it('blocks generic 13-19 digit runs with separators as pii_credit_card', () => {
+    // Generic fallback for unknown card issuers — 14 digits, not matching
+    // Visa/Mastercard/Discover/Amex prefixes, but grouped with hyphens.
+    const result = auditKnowledgeText('unknown issuer 1234-5678-9012-34')
+
+    expect(result.shouldBlock).toBe(true)
+    expect(result.redactedText).toBe('[BLOCKED:credit_card]')
+    expect(result.riskFlags).toEqual(['pii_credit_card'])
   })
 
   it('does not match 16-digit prefix inside longer digit runs', () => {
+    // Plain 19-digit order id — no separators, so the generic fallback does
+    // NOT fire (design.md false-positive mitigation). Specific Visa pattern
+    // also passes thanks to its negative-lookbehind/lookahead guard.
     const result = auditKnowledgeText('order id 4111111111111111234 shipped')
 
     expect(result.shouldBlock).toBe(false)
     expect(result.riskFlags).not.toContain('credential')
+    expect(result.riskFlags).not.toContain('pii_credit_card')
+  })
+
+  it('flags both pii_credit_card and credential when a prompt trips both buckets', () => {
+    // A prompt that contains BOTH a card number and an api_key string must
+    // emit both flags so auditors see the combined signal; the marker
+    // follows the higher-severity PII bucket (`pii_credit_card`).
+    const result = auditKnowledgeText('card 4111-1111-1111-1111 api_key=abc123')
+
+    expect(result.shouldBlock).toBe(true)
+    expect(result.redactedText).toBe('[BLOCKED:credit_card]')
+    expect(result.riskFlags).toEqual(['credential', 'pii_credit_card'])
   })
 
   it('stores only redacted query_logs and messages content', async () => {

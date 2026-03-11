@@ -461,6 +461,69 @@ export function createMcpQueryLogStore(database: D1DatabaseLike) {
     },
 
     /**
+     * `mcp-restricted-audit-trail` spec — write a `query_logs` row for an
+     * MCP request that was refused with 403 because the caller's token
+     * lacks `knowledge.restricted.read` for the attempted citation.
+     *
+     * Differs from `createAcceptedQueryLog` in two ways:
+     *   - `risk_flags_json` contains `["restricted_scope_violation"]` so
+     *     auditors can filter via
+     *     `SELECT * FROM query_logs WHERE risk_flags_json LIKE '%restricted_scope_violation%'`.
+     *   - `decision_path` / `refusal_reason` are persisted at INSERT time
+     *     (`restricted_blocked` / `restricted_scope`), matching the shape
+     *     that `mcp-ask.ts` writes for audit-blocked `askKnowledge` runs.
+     *
+     * `query_redacted_text` is bound verbatim from the caller — the
+     * handler passes a pre-redacted string that encodes the attempted
+     * `citationId` so the schema needs no new column while still meeting
+     * the spec's "captures attempted citation_id" requirement.
+     */
+    async createBlockedRestrictedScopeQueryLog(input: {
+      allowedAccessLevels: string[]
+      configSnapshotVersion: string
+      environment: string
+      now?: Date
+      queryText: string
+      tokenId: string
+    }): Promise<string> {
+      const queryLogId = crypto.randomUUID()
+      const now = (input.now ?? new Date()).toISOString()
+
+      await database
+        .prepare(
+          [
+            'INSERT INTO query_logs (',
+            '  id, channel, user_profile_id, mcp_token_id, environment, query_redacted_text, risk_flags_json, allowed_access_levels_json, redaction_applied, config_snapshot_version, status, created_at,',
+            '  first_token_latency_ms, completion_latency_ms, retrieval_score, judge_score, decision_path, refusal_reason',
+            ') VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          ].join('\n')
+        )
+        .bind(
+          queryLogId,
+          'mcp',
+          null,
+          input.tokenId,
+          input.environment,
+          input.queryText,
+          JSON.stringify(['restricted_scope_violation']),
+          JSON.stringify(input.allowedAccessLevels),
+          0,
+          input.configSnapshotVersion,
+          'blocked',
+          now,
+          null,
+          null,
+          null,
+          null,
+          'restricted_blocked',
+          'restricted_scope'
+        )
+        .run()
+
+      return queryLogId
+    },
+
+    /**
      * observability-and-debug §1.2 — parallel `updateQueryLog` contract to
      * `knowledge-audit.ts::createKnowledgeAuditStore`. Used only when
      * mcp-ask runs without the richer auditStore (fallback path in older
