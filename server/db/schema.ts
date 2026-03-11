@@ -102,6 +102,18 @@ export const mcpTokens = sqliteTable('mcp_tokens', {
   revokedAt: text('revoked_at'),
   revokedReason: text('revoked_reason'),
   createdAt: text('created_at').notNull().default(timestampNow),
+  /**
+   * B16 member-and-permission-management (migration 0006): better-auth
+   * `user.id` of the admin who provisioned this token. NULL for tokens
+   * created before 0006; MCP middleware treats NULL as `'admin'` (legacy
+   * system seed) for backward compatibility.
+   *
+   * **No `.references()`**: the `user` table is owned by better-auth in
+   * `hub:db` and is not declared in this drizzle schema. The FK constraint
+   * exists at the SQL layer (migration 0006); runtime validation lives in
+   * Zod / Phase 3 Admin API.
+   */
+  createdByUserId: text('created_by_user_id'),
 })
 
 export const queryLogs = sqliteTable(
@@ -220,4 +232,42 @@ export const citationRecords = sqliteTable(
     index('citation_records_query_log_idx').on(table.queryLogId),
     index('citation_records_expires_idx').on(table.expiresAt),
   ]
+)
+
+/**
+ * B16 member-and-permission-management: single-row-per-key settings store.
+ *
+ * `value` is a scalar string; the enum / shape contract lives in
+ * `shared/types/auth.ts` (e.g. `guestPolicySchema`). `updated_by` accepts
+ * a better-auth `user.id` or one of the sentinels `'system'` / `'db-direct'`.
+ */
+export const systemSettings = sqliteTable('system_settings', {
+  key: text('key').primaryKey(),
+  value: text('value').notNull(),
+  updatedAt: text('updated_at').notNull().default(timestampNow),
+  updatedBy: text('updated_by').notNull(),
+})
+
+/**
+ * B16 member-and-permission-management: role-change audit trail.
+ *
+ * Writer contract: every write MUST go through
+ * `server/utils/member-role-changes.ts` → `recordRoleChange` (Q3=A "唯一
+ * 入口"). No UI read surface in v1.0.0 — admin-ui-post-core owns that.
+ *
+ * `userId` / `changedBy` are better-auth `user.id` strings; `changedBy`
+ * additionally accepts the sentinels documented in migration 0006.
+ */
+export const memberRoleChanges = sqliteTable(
+  'member_role_changes',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id').notNull(),
+    fromRole: text('from_role').notNull(),
+    toRole: text('to_role').notNull(),
+    changedBy: text('changed_by').notNull(),
+    reason: text('reason'),
+    createdAt: text('created_at').notNull().default(timestampNow),
+  },
+  (table) => [index('idx_member_role_changes_user_created').on(table.userId, table.createdAt)]
 )
