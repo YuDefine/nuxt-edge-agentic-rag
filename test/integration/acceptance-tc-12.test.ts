@@ -72,9 +72,11 @@ vi.mock('../../server/utils/cloudflare-bindings', () => ({
   getRequiredKvBinding: () => (tc12Mocks.bindings ?? {}).KV,
 }))
 
-vi.mock('../../server/utils/database', () => ({
-  getD1Database: async () => (tc12Mocks.bindings ?? {}).DB,
-}))
+vi.mock('../../server/utils/database', async () => {
+  const { createHubDbMock } = await import('./helpers/database')
+
+  return createHubDbMock({ database: () => (tc12Mocks.bindings ?? {}).DB })
+})
 
 vi.mock('../../server/utils/knowledge-runtime', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../server/utils/knowledge-runtime')>()
