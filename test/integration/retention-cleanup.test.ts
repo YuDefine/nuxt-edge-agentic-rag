@@ -63,126 +63,109 @@ function iso(date: string | Date): string {
   return (date instanceof Date ? date : new Date(date)).toISOString()
 }
 
+function createPreparedStatement(
+  runWithValues: (...values: unknown[]) => Promise<{ meta: { changes: number } }>
+) {
+  return {
+    bind(...values: unknown[]) {
+      return createPreparedStatement(async () => runWithValues(...values))
+    },
+    async run() {
+      return runWithValues()
+    },
+  }
+}
+
 function createFakeDatabase(state: FakeState) {
   return {
     prepare(query: string) {
       const normalized = query.replace(/\s+/g, ' ').trim()
 
       if (normalized.startsWith('DELETE FROM citation_records')) {
-        return {
-          bind(expiresAtBound: string) {
-            return {
-              async run() {
-                state.callOrder.push('citationRecords')
-                if (state.failOn?.citationRecords) {
-                  throw state.failOn.citationRecords
-                }
-                const cutoff = new Date(expiresAtBound).getTime()
-                const before = state.citationRecords.length
-                state.citationRecords = state.citationRecords.filter(
-                  (row) => new Date(row.expiresAt).getTime() > cutoff
-                )
-                const changes = before - state.citationRecords.length
-                return { meta: { changes } }
-              },
-            }
-          },
-        }
+        return createPreparedStatement(async (expiresAtBound = '') => {
+          state.callOrder.push('citationRecords')
+          if (state.failOn?.citationRecords) {
+            throw state.failOn.citationRecords
+          }
+          const cutoff = new Date(String(expiresAtBound)).getTime()
+          const before = state.citationRecords.length
+          state.citationRecords = state.citationRecords.filter(
+            (row) => new Date(row.expiresAt).getTime() > cutoff
+          )
+          const changes = before - state.citationRecords.length
+          return { meta: { changes } }
+        })
       }
 
       if (normalized.startsWith('DELETE FROM query_logs')) {
-        return {
-          bind(cutoffBound: string) {
-            return {
-              async run() {
-                state.callOrder.push('queryLogs')
-                if (state.failOn?.queryLogs) {
-                  throw state.failOn.queryLogs
-                }
-                const cutoff = new Date(cutoffBound).getTime()
-                const before = state.queryLogs.length
-                // Emulate FK ON DELETE CASCADE: citation_records rows with
-                // query_log_id matching a deleted query_log also vanish. The
-                // retention cleanup already deleted expired citations in the
-                // previous step, so this cascade typically affects nothing.
-                const deletedIds = new Set(
-                  state.queryLogs
-                    .filter((row) => new Date(row.createdAt).getTime() <= cutoff)
-                    .map((row) => row.id)
-                )
-                state.queryLogs = state.queryLogs.filter(
-                  (row) => new Date(row.createdAt).getTime() > cutoff
-                )
-                state.citationRecords = state.citationRecords.filter(
-                  (cr) => !deletedIds.has(cr.queryLogId)
-                )
-                const changes = before - state.queryLogs.length
-                return { meta: { changes } }
-              },
-            }
-          },
-        }
+        return createPreparedStatement(async (cutoffBound = '') => {
+          state.callOrder.push('queryLogs')
+          if (state.failOn?.queryLogs) {
+            throw state.failOn.queryLogs
+          }
+          const cutoff = new Date(String(cutoffBound)).getTime()
+          const before = state.queryLogs.length
+          // Emulate FK ON DELETE CASCADE: citation_records rows with
+          // query_log_id matching a deleted query_log also vanish. The
+          // retention cleanup already deleted expired citations in the
+          // previous step, so this cascade typically affects nothing.
+          const deletedIds = new Set(
+            state.queryLogs
+              .filter((row) => new Date(row.createdAt).getTime() <= cutoff)
+              .map((row) => row.id)
+          )
+          state.queryLogs = state.queryLogs.filter(
+            (row) => new Date(row.createdAt).getTime() > cutoff
+          )
+          state.citationRecords = state.citationRecords.filter(
+            (cr) => !deletedIds.has(cr.queryLogId)
+          )
+          const changes = before - state.queryLogs.length
+          return { meta: { changes } }
+        })
       }
 
       if (normalized.startsWith('UPDATE source_chunks')) {
-        return {
-          bind(cutoffBound: string) {
-            return {
-              async run() {
-                state.callOrder.push('sourceChunks')
-                if (state.failOn?.sourceChunks) {
-                  throw state.failOn.sourceChunks
-                }
-                const cutoff = new Date(cutoffBound).getTime()
-                let changes = 0
-                for (const row of state.sourceChunks) {
-                  if (new Date(row.createdAt).getTime() <= cutoff && row.chunkText !== '') {
-                    row.chunkText = ''
-                    changes++
-                  }
-                }
-                return { meta: { changes } }
-              },
+        return createPreparedStatement(async (cutoffBound = '') => {
+          state.callOrder.push('sourceChunks')
+          if (state.failOn?.sourceChunks) {
+            throw state.failOn.sourceChunks
+          }
+          const cutoff = new Date(String(cutoffBound)).getTime()
+          let changes = 0
+          for (const row of state.sourceChunks) {
+            if (new Date(row.createdAt).getTime() <= cutoff && row.chunkText !== '') {
+              row.chunkText = ''
+              changes++
             }
-          },
-        }
+          }
+          return { meta: { changes } }
+        })
       }
 
       if (normalized.startsWith('UPDATE mcp_tokens')) {
-        return {
-          bind(cutoffBound: string) {
-            return {
-              async run() {
-                state.callOrder.push('mcpTokens')
-                if (state.failOn?.mcpTokens) {
-                  throw state.failOn.mcpTokens
-                }
-                const cutoff = new Date(cutoffBound).getTime()
-                let changes = 0
-                for (const token of state.mcpTokens) {
-                  const governingIso = token.revokedAt ?? token.expiresAt ?? token.createdAt
-                  const isNonLive =
-                    token.status === 'revoked' ||
-                    token.status === 'expired' ||
-                    token.expiresAt !== null
-                  const notAlreadyRedacted = !token.tokenHash.startsWith('redacted:')
-                  if (
-                    new Date(governingIso).getTime() <= cutoff &&
-                    isNonLive &&
-                    notAlreadyRedacted
-                  ) {
-                    token.tokenHash = `redacted:${token.id}`
-                    token.name = '[redacted]'
-                    token.scopesJson = '[]'
-                    token.revokedReason = token.revokedReason ?? 'retention-expired'
-                    changes++
-                  }
-                }
-                return { meta: { changes } }
-              },
+        return createPreparedStatement(async (cutoffBound = '') => {
+          state.callOrder.push('mcpTokens')
+          if (state.failOn?.mcpTokens) {
+            throw state.failOn.mcpTokens
+          }
+          const cutoff = new Date(String(cutoffBound)).getTime()
+          let changes = 0
+          for (const token of state.mcpTokens) {
+            const governingIso = token.revokedAt ?? token.expiresAt ?? token.createdAt
+            const isNonLive =
+              token.status === 'revoked' || token.status === 'expired' || token.expiresAt !== null
+            const notAlreadyRedacted = !token.tokenHash.startsWith('redacted:')
+            if (new Date(governingIso).getTime() <= cutoff && isNonLive && notAlreadyRedacted) {
+              token.tokenHash = `redacted:${token.id}`
+              token.name = '[redacted]'
+              token.scopesJson = '[]'
+              token.revokedReason = token.revokedReason ?? 'retention-expired'
+              changes++
             }
-          },
-        }
+          }
+          return { meta: { changes } }
+        })
       }
 
       throw new Error(`unexpected query in fake D1: ${normalized}`)

@@ -54,6 +54,12 @@ function getConfigSnapshotVersion(): string {
   }).governance.configSnapshotVersion
 }
 
+function firstRecord<T>(records: readonly T[]): T {
+  const record = records[0]
+  expect(record).toBeDefined()
+  return record as T
+}
+
 describe('acceptance evidence exporters', () => {
   it('A01 deploy smoke exporter emits records with governance snapshot and deploy pointers', () => {
     const configSnapshotVersion = getConfigSnapshotVersion()
@@ -190,7 +196,7 @@ describe('acceptance evidence exporters', () => {
     expect(parseAcceptanceEvidenceExport(payload)).toBeTruthy()
     expect(payload.records).toHaveLength(1)
 
-    const record = payload.records[0]
+    const record = firstRecord(payload.records)
 
     expect(record.acceptanceId).toBe('A03')
     expect(record.status).toBe('passed')
@@ -219,7 +225,7 @@ describe('acceptance evidence exporters', () => {
       ],
     })
 
-    const record = payload.records[0]
+    const record = firstRecord(payload.records)
 
     expect(record.status).toBe('failed')
     expect(record.decisionPath).toBe('replay-drift')
@@ -290,7 +296,7 @@ describe('acceptance evidence exporters', () => {
     expect(payload.acceptanceId).toBe('A04')
     expect(payload.records).toHaveLength(1)
 
-    const record = payload.records[0]
+    const record = firstRecord(payload.records)
 
     expect(record.status).toBe('passed')
     expect(record.decisionPath).toBe('cutover-current-only')
@@ -332,7 +338,7 @@ describe('acceptance evidence exporters', () => {
       ],
     })
 
-    const record = payload.records[0]
+    const record = firstRecord(payload.records)
 
     expect(record.status).toBe('failed')
     expect(record.decisionPath).toBe('cutover-drift')
@@ -384,7 +390,7 @@ describe('acceptance evidence exporters', () => {
     expect(parseAcceptanceEvidenceExport(payload)).toBeTruthy()
     expect(payload.acceptanceId).toBe('A05')
 
-    const record = payload.records[0]
+    const record = firstRecord(payload.records)
 
     expect(record.status).toBe('passed')
     expect(record.decisionPath).toBe('self_corrected')
@@ -426,7 +432,7 @@ describe('acceptance evidence exporters', () => {
       ],
     })
 
-    const record = payload.records[0]
+    const record = firstRecord(payload.records)
 
     expect(record.status).toBe('failed')
     expect(record.notes).toMatch(/retry score.*did not improve/i)
@@ -456,7 +462,7 @@ describe('acceptance evidence exporters', () => {
     expect(parseAcceptanceEvidenceExport(payload)).toBeTruthy()
     expect(payload.acceptanceId).toBe('A06')
 
-    const record = payload.records[0]
+    const record = firstRecord(payload.records)
 
     expect(record.status).toBe('passed')
     expect(record.decisionPath).toBe('refused')
@@ -485,7 +491,7 @@ describe('acceptance evidence exporters', () => {
       ],
     })
 
-    const record = payload.records[0]
+    const record = firstRecord(payload.records)
 
     expect(record.status).toBe('failed')
     expect(record.notes).toMatch(/emitted citations/i)
@@ -512,7 +518,7 @@ describe('acceptance evidence exporters', () => {
       ],
     })
 
-    const record = payload.records[0]
+    const record = firstRecord(payload.records)
 
     expect(record.status).toBe('failed')
     expect(record.notes).toMatch(/persisted raw content/i)

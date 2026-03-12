@@ -1,3 +1,5 @@
+import type { EventHandlerRequest, H3Event } from 'h3'
+
 import { afterEach, beforeEach, vi } from 'vitest'
 
 export function installNuxtRouteTestGlobals() {
@@ -23,10 +25,20 @@ export function installNuxtRouteTestGlobals() {
   })
 }
 
-export function createRouteEvent(overrides: Record<string, unknown> = {}) {
+export function createRouteEvent(
+  overrides: Record<string, unknown> = {}
+): H3Event<EventHandlerRequest> {
   const { context: contextOverride, headers: headersOverride, ...restOverrides } = overrides
   const overrideContext = (contextOverride as Record<string, unknown> | undefined) ?? {}
   const overrideHeaders = headersOverride
+  const headerEntries = Object.entries(
+    (overrideHeaders as Record<string, string | undefined> | undefined) ?? {}
+  ).reduce<Array<[string, string]>>((entries, [key, value]) => {
+    if (typeof value === 'string') {
+      entries.push([key, value])
+    }
+    return entries
+  }, [])
 
   return {
     context: {
@@ -36,14 +48,7 @@ export function createRouteEvent(overrides: Record<string, unknown> = {}) {
       params: {},
       ...overrideContext,
     },
-    headers:
-      overrideHeaders instanceof Headers
-        ? overrideHeaders
-        : new Headers(
-            Object.entries(
-              (overrideHeaders as Record<string, string | undefined> | undefined) ?? {}
-            ).flatMap(([key, value]) => (typeof value === 'string' ? [[key, value]] : []))
-          ),
+    headers: overrideHeaders instanceof Headers ? overrideHeaders : new Headers(headerEntries),
     ...restOverrides,
-  }
+  } as unknown as H3Event<EventHandlerRequest>
 }
