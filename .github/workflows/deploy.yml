@@ -1,14 +1,50 @@
+# Deploy workflow for nuxt-edge-agentic-rag
+#
+# 對應 docs/verify/DEPLOYMENT_RUNBOOK.md 與報告附錄 D-2。
+#
+# ⚠️ 此檔為「建議版本」。`.github/workflows/` 目錄受 Claude Code guard 永久保護，
+#    必須由使用者手動 copy-paste 此檔覆寫 `.github/workflows/deploy.yml` 後執行
+#    `git diff .github/workflows/deploy.yml` 檢查差異。
+#
+# 與既有 deploy.yml 的差異：
+#   1. 新增 workflow_dispatch inputs.target（production / staging）
+#   2. 新增 D1 migrations apply step（部署 code 前先 apply schema）
+#   3. 拆分 `deploy-production` / `deploy-staging` 兩個 job（後者預設 `if: false`）
+#   4. 新增 `BETTER_AUTH_SECRET` / `ADMIN_EMAIL_ALLOWLIST` / `AUTO_RAG_API_TOKEN`
+#      / `UPLOADS_*` 等被 production-deploy-checklist.md 標記為必要但原 workflow
+#      漏掉的 secrets
+#   5. 所有 secrets 名稱補上 PROD_ / STAGING_ prefix，避免跨環境覆寫
+#
+# 觸發策略：
+#   - push tag v*       → production deploy（透過 needs: ci）
+#   - workflow_dispatch → 可選 production 或 staging
+#
+# STAGING 區塊為 illustrative — 若尚未建立 staging 環境，可將 `deploy-staging`
+# job 保留為註解或維持 `if: false` 避免觸發失敗。啟用步驟見
+# docs/verify/DEPLOYMENT_RUNBOOK.md §2.6（Staging 環境）。
 name: Deploy
 
 on:
   push:
     tags: ['v*']
   workflow_dispatch:
+    inputs:
+      target:
+        description: 'Deployment target'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+          - production
+          - staging
 
 permissions:
   contents: read
 
 jobs:
+  # ---------------------------------------------------------------------------
+  # CI gate — 所有 deploy target 前置條件
+  # ---------------------------------------------------------------------------
   ci:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -39,12 +75,107 @@ jobs:
       - name: Run tests
         run: pnpm test
 
-  deploy:
+  # ---------------------------------------------------------------------------
+  # PRODUCTION deploy — 由 tag push 或 workflow_dispatch(target=production) 觸發
+  # ---------------------------------------------------------------------------
+  deploy-production:
     needs: ci
+    if: |
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.target == 'production')
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
+    environment: production
     concurrency:
-      group: deploy
+      group: deploy-production
+      cancel-in-progress: false
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # D1 migrations 必須 deploy code 之前 apply，否則新 code 會命中舊 schema
+      # 報錯 D1_ERROR: no such column。若 migration 已是最新，wrangler 會印
+      # 「No migrations to apply」並以 exit 0 結束，不影響 pipeline。
+      - name: Apply D1 migrations (production)
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: d1 migrations apply agentic-rag-db --remote
+
+      - name: Build
+        run: pnpm build
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
+          NUXT_PUBLIC_SENTRY_DSN: ${{ secrets.NUXT_PUBLIC_SENTRY_DSN }}
+          NUXT_PUBLIC_SITE_URL: ${{ secrets.PROD_SITE_URL }}
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+
+      # Secrets 逐一列在 `secrets:` 後，wrangler-action 會把對應 env 注入
+      # Cloudflare secret storage。已存在的 secret 會被覆蓋為 env 值，未列的
+      # secret 保留原值。詳見 docs/verify/DEPLOYMENT_RUNBOOK.md §1.3。
+      - name: Deploy to Cloudflare Workers (production)
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: .output/server
+          command: deploy
+          secrets: |
+            NUXT_SESSION_PASSWORD
+            BETTER_AUTH_SECRET
+            NUXT_OAUTH_GOOGLE_CLIENT_ID
+            NUXT_OAUTH_GOOGLE_CLIENT_SECRET
+            ADMIN_EMAIL_ALLOWLIST
+            NUXT_KNOWLEDGE_AUTO_RAG_API_TOKEN
+            NUXT_KNOWLEDGE_UPLOADS_ACCOUNT_ID
+            NUXT_KNOWLEDGE_UPLOADS_BUCKET_NAME
+            NUXT_KNOWLEDGE_UPLOADS_ACCESS_KEY_ID
+            NUXT_KNOWLEDGE_UPLOADS_SECRET_ACCESS_KEY
+        env:
+          NUXT_SESSION_PASSWORD: ${{ secrets.PROD_NUXT_SESSION_PASSWORD }}
+          BETTER_AUTH_SECRET: ${{ secrets.PROD_BETTER_AUTH_SECRET }}
+          NUXT_OAUTH_GOOGLE_CLIENT_ID: ${{ secrets.PROD_NUXT_OAUTH_GOOGLE_CLIENT_ID }}
+          NUXT_OAUTH_GOOGLE_CLIENT_SECRET: ${{ secrets.PROD_NUXT_OAUTH_GOOGLE_CLIENT_SECRET }}
+          ADMIN_EMAIL_ALLOWLIST: ${{ secrets.PROD_ADMIN_EMAIL_ALLOWLIST }}
+          NUXT_KNOWLEDGE_AUTO_RAG_API_TOKEN: ${{ secrets.PROD_NUXT_KNOWLEDGE_AUTO_RAG_API_TOKEN }}
+          NUXT_KNOWLEDGE_UPLOADS_ACCOUNT_ID: ${{ secrets.PROD_NUXT_KNOWLEDGE_UPLOADS_ACCOUNT_ID }}
+          NUXT_KNOWLEDGE_UPLOADS_BUCKET_NAME: ${{ secrets.PROD_NUXT_KNOWLEDGE_UPLOADS_BUCKET_NAME }}
+          NUXT_KNOWLEDGE_UPLOADS_ACCESS_KEY_ID: ${{ secrets.PROD_NUXT_KNOWLEDGE_UPLOADS_ACCESS_KEY_ID }}
+          NUXT_KNOWLEDGE_UPLOADS_SECRET_ACCESS_KEY: ${{ secrets.PROD_NUXT_KNOWLEDGE_UPLOADS_SECRET_ACCESS_KEY }}
+
+  # ---------------------------------------------------------------------------
+  # STAGING deploy — illustrative
+  # ---------------------------------------------------------------------------
+  # 啟用前提（見 docs/verify/DEPLOYMENT_RUNBOOK.md §2.6）：
+  #   1. 已建立 staging D1/R2/KV 資源（各加 -staging 後綴）
+  #   2. 已建立 wrangler.staging.jsonc 或以 --env staging 區分
+  #   3. GitHub 已設定 STAGING_* prefix 的 secrets
+  # 啟用方式：把 `if: false` 移除，並 workflow_dispatch 時選 target=staging
+  deploy-staging:
+    needs: ci
+    if: |
+      false &&
+      github.event_name == 'workflow_dispatch' &&
+      github.event.inputs.target == 'staging'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: staging
+    concurrency:
+      group: deploy-staging
       cancel-in-progress: true
     steps:
       - name: Checkout
@@ -61,34 +192,59 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build
+      - name: Apply D1 migrations (staging)
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          # 注意 database name 為 staging 專用；視 wrangler 設定採 --env staging
+          # 或 --config wrangler.staging.jsonc 其一
+          command: d1 migrations apply agentic-rag-db-staging --remote
+
+      - name: Build (staging)
         run: pnpm build
         env:
           NODE_OPTIONS: --max-old-space-size=4096
           NUXT_PUBLIC_SENTRY_DSN: ${{ secrets.NUXT_PUBLIC_SENTRY_DSN }}
-          NUXT_PUBLIC_SITE_URL: ${{ secrets.PROD_SITE_URL }}
-          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
-          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
-          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+          NUXT_PUBLIC_SITE_URL: ${{ secrets.STAGING_SITE_URL }}
 
-      - name: Deploy to Cloudflare Workers
+      - name: Deploy to Cloudflare Workers (staging)
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: .output/server
-          command: deploy
+          # 視實際設定：若用多 env 則改為 `deploy --env staging`
+          command: deploy --config ../../wrangler.staging.jsonc
           secrets: |
             NUXT_SESSION_PASSWORD
+            BETTER_AUTH_SECRET
             NUXT_OAUTH_GOOGLE_CLIENT_ID
             NUXT_OAUTH_GOOGLE_CLIENT_SECRET
+            ADMIN_EMAIL_ALLOWLIST
+            NUXT_KNOWLEDGE_AUTO_RAG_API_TOKEN
+            NUXT_KNOWLEDGE_UPLOADS_ACCOUNT_ID
+            NUXT_KNOWLEDGE_UPLOADS_BUCKET_NAME
+            NUXT_KNOWLEDGE_UPLOADS_ACCESS_KEY_ID
+            NUXT_KNOWLEDGE_UPLOADS_SECRET_ACCESS_KEY
         env:
-          NUXT_SESSION_PASSWORD: ${{ secrets.PROD_NUXT_SESSION_PASSWORD }}
-          NUXT_OAUTH_GOOGLE_CLIENT_ID: ${{ secrets.PROD_NUXT_OAUTH_GOOGLE_CLIENT_ID }}
-          NUXT_OAUTH_GOOGLE_CLIENT_SECRET: ${{ secrets.PROD_NUXT_OAUTH_GOOGLE_CLIENT_SECRET }}
+          NUXT_SESSION_PASSWORD: ${{ secrets.STAGING_NUXT_SESSION_PASSWORD }}
+          BETTER_AUTH_SECRET: ${{ secrets.STAGING_BETTER_AUTH_SECRET }}
+          NUXT_OAUTH_GOOGLE_CLIENT_ID: ${{ secrets.STAGING_NUXT_OAUTH_GOOGLE_CLIENT_ID }}
+          NUXT_OAUTH_GOOGLE_CLIENT_SECRET: ${{ secrets.STAGING_NUXT_OAUTH_GOOGLE_CLIENT_SECRET }}
+          ADMIN_EMAIL_ALLOWLIST: ${{ secrets.STAGING_ADMIN_EMAIL_ALLOWLIST }}
+          NUXT_KNOWLEDGE_AUTO_RAG_API_TOKEN: ${{ secrets.STAGING_NUXT_KNOWLEDGE_AUTO_RAG_API_TOKEN }}
+          NUXT_KNOWLEDGE_UPLOADS_ACCOUNT_ID: ${{ secrets.STAGING_NUXT_KNOWLEDGE_UPLOADS_ACCOUNT_ID }}
+          NUXT_KNOWLEDGE_UPLOADS_BUCKET_NAME: ${{ secrets.STAGING_NUXT_KNOWLEDGE_UPLOADS_BUCKET_NAME }}
+          NUXT_KNOWLEDGE_UPLOADS_ACCESS_KEY_ID: ${{ secrets.STAGING_NUXT_KNOWLEDGE_UPLOADS_ACCESS_KEY_ID }}
+          NUXT_KNOWLEDGE_UPLOADS_SECRET_ACCESS_KEY: ${{ secrets.STAGING_NUXT_KNOWLEDGE_UPLOADS_SECRET_ACCESS_KEY }}
 
+  # ---------------------------------------------------------------------------
+  # Smoke test — 部署後 health check
+  # ---------------------------------------------------------------------------
   smoke-test:
-    needs: deploy
+    needs: [deploy-production]
+    if: always() && needs.deploy-production.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
@@ -102,11 +258,14 @@ jobs:
             echo "::error::Health check failed: HTTP $STATUS"
             exit 1
           fi
-          echo "✅ Healthy (HTTP $STATUS)"
+          echo "Healthy (HTTP $STATUS)"
 
+  # ---------------------------------------------------------------------------
+  # Notify — Discord webhook（失敗時通知 stakeholders）
+  # ---------------------------------------------------------------------------
   notify:
     if: always()
-    needs: [ci, deploy, smoke-test]
+    needs: [ci, deploy-production, smoke-test]
     runs-on: ubuntu-latest
     timeout-minutes: 1
     steps:
@@ -115,13 +274,14 @@ jobs:
         env:
           WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           CI_RESULT: ${{ needs.ci.result }}
-          DEPLOY_RESULT: ${{ needs.deploy.result }}
+          DEPLOY_RESULT: ${{ needs.deploy-production.result }}
+          SMOKE_RESULT: ${{ needs.smoke-test.result }}
         run: |
           TAG="${GITHUB_REF_NAME}"
-          if [ "$CI_RESULT" = "success" ] && [ "$DEPLOY_RESULT" = "success" ]; then
-            COLOR=3066993; STATUS="✅ 部署成功 — ${TAG}"
+          if [ "$CI_RESULT" = "success" ] && [ "$DEPLOY_RESULT" = "success" ] && [ "$SMOKE_RESULT" = "success" ]; then
+            COLOR=3066993; STATUS="Deploy succeeded — ${TAG}"
           else
-            COLOR=15158332; STATUS="❌ 部署失敗 — ${TAG}"
+            COLOR=15158332; STATUS="Deploy failed — ${TAG}"
           fi
 
           RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
