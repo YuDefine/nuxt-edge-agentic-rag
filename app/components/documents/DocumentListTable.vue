@@ -24,13 +24,69 @@
   const pendingAction = ref<PendingAction | null>(null)
   const confirmOpen = ref(false)
 
+  // responsive-and-a11y-foundation §4 — Hybrid Table Fallback Below md.
+  // Desktop keeps the full UTable. On < md we hide secondary columns via
+  // per-column meta.class `hidden md:table-cell`, and surface the hidden
+  // metadata inside a USlideover detail drawer triggered by a per-row
+  // `[開啟詳情]` button (design.md Open Question #1 candidate B).
+  const detailOpen = ref(false)
+  const detailRow = shallowRef<DocumentWithCurrentVersion | null>(null)
+  const detailTriggerRef = ref<HTMLElement | null>(null)
+
+  function openMobileDetail(row: DocumentWithCurrentVersion, event: MouseEvent) {
+    // Remember the trigger so we can restore focus on close (a11y requirement).
+    const target = event.currentTarget
+    if (target instanceof HTMLElement) {
+      detailTriggerRef.value = target
+    }
+    detailRow.value = row
+    detailOpen.value = true
+  }
+
+  // Restore focus to the originating trigger when the drawer closes.
+  // USlideover uses Reka UI's focus-scope which normally returns focus on
+  // close; we watch the ref anyway to stay robust across future Nuxt UI
+  // upgrades and to keep the contract observable from unit tests.
+  watch(detailOpen, (next) => {
+    if (!next) {
+      const trigger = detailTriggerRef.value
+      if (trigger) {
+        queueMicrotask(() => trigger.focus())
+      }
+    }
+  })
+
   const columns: TableColumn<DocumentWithCurrentVersion>[] = [
+    // Primary columns stay visible on all viewports.
     { accessorKey: 'title', header: '標題' },
-    { accessorKey: 'categorySlug', header: '分類' },
-    { accessorKey: 'accessLevel', header: '權限' },
+    {
+      accessorKey: 'categorySlug',
+      header: '分類',
+      meta: { class: { td: 'hidden md:table-cell', th: 'hidden md:table-cell' } },
+    },
+    {
+      accessorKey: 'accessLevel',
+      header: '權限',
+      meta: { class: { td: 'hidden md:table-cell', th: 'hidden md:table-cell' } },
+    },
     { accessorKey: 'status', header: '狀態' },
-    { accessorKey: 'currentVersion', header: '目前版本' },
-    { accessorKey: 'updatedAt', header: '更新時間' },
+    {
+      accessorKey: 'currentVersion',
+      header: '目前版本',
+      meta: { class: { td: 'hidden md:table-cell', th: 'hidden md:table-cell' } },
+    },
+    {
+      accessorKey: 'updatedAt',
+      header: '更新時間',
+      meta: { class: { td: 'hidden md:table-cell', th: 'hidden md:table-cell' } },
+    },
+    // mobileDetail column: button visible only on < md. Placed before
+    // `actions` so it lands next to the status badge for thumb reach.
+    {
+      id: 'mobileDetail',
+      header: '',
+      meta: { class: { td: 'md:hidden', th: 'md:hidden' } },
+    },
     { id: 'actions', header: '' },
   ]
 
@@ -186,6 +242,22 @@
       <span class="text-sm text-muted">{{ formatDate(row.original.updatedAt) }}</span>
     </template>
 
+    <template #mobileDetail-cell="{ row }">
+      <div class="flex justify-end md:hidden">
+        <UButton
+          color="neutral"
+          variant="ghost"
+          size="xs"
+          icon="i-lucide-chevron-right"
+          trailing
+          :aria-label="`開啟「${row.original.title}」詳情`"
+          @click="(event: MouseEvent) => openMobileDetail(row.original, event)"
+        >
+          開啟詳情
+        </UButton>
+      </div>
+    </template>
+
     <template #actions-cell="{ row }">
       <div class="flex justify-end">
         <UDropdownMenu :items="buildMenuItems(row.original)">
@@ -200,6 +272,62 @@
       </div>
     </template>
   </UTable>
+
+  <!-- Hybrid Table Fallback Below md — detail drawer exposing secondary columns -->
+  <USlideover
+    v-model:open="detailOpen"
+    :title="detailRow?.title ?? '文件詳情'"
+    :ui="{ content: 'md:hidden' }"
+  >
+    <template #body>
+      <div v-if="detailRow" class="flex flex-col gap-4">
+        <div>
+          <p class="text-xs font-medium text-muted">標題</p>
+          <p class="mt-1 text-sm text-default">{{ detailRow.title }}</p>
+          <p class="mt-0.5 text-xs text-muted">{{ detailRow.slug }}</p>
+        </div>
+        <div>
+          <p class="text-xs font-medium text-muted">分類</p>
+          <p class="mt-1 text-sm text-default">{{ detailRow.categorySlug || '-' }}</p>
+        </div>
+        <div>
+          <p class="text-xs font-medium text-muted">權限</p>
+          <DocumentsAccessLevelBadge :level="detailRow.accessLevel" class="mt-1" />
+        </div>
+        <div>
+          <p class="text-xs font-medium text-muted">狀態</p>
+          <DocumentsDocumentStatusBadge :status="detailRow.status" class="mt-1" />
+        </div>
+        <div v-if="detailRow.currentVersion">
+          <p class="text-xs font-medium text-muted">目前版本</p>
+          <div class="mt-1 flex items-center gap-2">
+            <span class="text-sm font-medium text-default">
+              v{{ detailRow.currentVersion.versionNumber }}
+            </span>
+            <DocumentsVersionSyncBadge :status="detailRow.currentVersion.syncStatus ?? 'pending'" />
+            <DocumentsVersionIndexBadge
+              :status="detailRow.currentVersion.indexStatus ?? 'pending'"
+            />
+          </div>
+        </div>
+        <div>
+          <p class="text-xs font-medium text-muted">更新時間</p>
+          <p class="mt-1 text-sm text-default">{{ formatDate(detailRow.updatedAt) }}</p>
+        </div>
+        <div class="pt-2">
+          <UButton
+            color="neutral"
+            variant="outline"
+            block
+            icon="i-lucide-eye"
+            :to="`/admin/documents/${detailRow.id}`"
+          >
+            檢視完整詳情
+          </UButton>
+        </div>
+      </div>
+    </template>
+  </USlideover>
 
   <DocumentsLifecycleConfirmDialog
     v-if="pendingAction"

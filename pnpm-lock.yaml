@@ -118,6 +118,9 @@ importers:
       husky:
         specifier: ^9.1.7
         version: 9.1.7
+      nuxt-a11y:
+        specifier: ^0.1.0
+        version: 0.1.0(magicast@0.5.2)
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
@@ -4899,6 +4902,10 @@ packages:
     resolution: {integrity: sha512-NZKeq9AfyQvEeNlN0zSYAaWrmBffJh3IELMZfRpJVWgrpEbtEpnjvzqBPf+mxoI287JohRDoa+/nsfqqiZmF6g==}
     engines: {node: '>= 6.0.0'}
 
+  axe-core@4.11.3:
+    resolution: {integrity: sha512-zBQouZixDTbo3jMGqHKyePxYxr1e5W8UdTmBQ7sNtaA9M2bE32daxxPLS/jojhKOHxQ7LWwPjfiwf/fhaJWzlg==}
+    engines: {node: '>=4'}
+
   b4a@1.8.0:
     resolution: {integrity: sha512-qRuSmNSkGQaHwNbM7J78Wwy+ghLEYF1zNrSeMxj4Kgw6y33O3mXcQ6Ie9fRvfU/YnxWkOchPXbaLb73TkIsfdg==}
     peerDependencies:
@@ -7319,6 +7326,9 @@ packages:
 
   nth-check@2.1.1:
     resolution: {integrity: sha512-lqjrjmaOoAnWfMmBPL+XNnynZh2+swxiX3WUE0s4yEHI6m+AwrK2UZOimIRl3X/4QctVqS8AiZjFqyOGrMXb/w==}
+
+  nuxt-a11y@0.1.0:
+    resolution: {integrity: sha512-sOZ4531hwoYjLbqjKmFUzzWrrry7Fsd2z1j+/EtgI4/eXFZku7AW6hYJ7ZHoVXY4zO58s7xovC4SX8EyOglQOA==}
 
   nuxt-charts@2.1.4:
     resolution: {integrity: sha512-uoTj+2zWc8ctAGNJw5buHobw/EGMM0qZw/Js+cySX8/3B6R6hwJ47KgeMQJt3LPSaQ2i4H7x8DmJPPSdUFhdJQ==}
@@ -14279,6 +14289,8 @@ snapshots:
 
   aws-ssl-profiles@1.1.2: {}
 
+  axe-core@4.11.3: {}
+
   b4a@1.8.0: {}
 
   babel-plugin-macros@3.1.0:
@@ -16598,6 +16610,13 @@ snapshots:
   nth-check@2.1.1:
     dependencies:
       boolbase: 1.0.0
+
+  nuxt-a11y@0.1.0(magicast@0.5.2):
+    dependencies:
+      '@nuxt/kit': 3.21.2(magicast@0.5.2)
+      axe-core: 4.11.3
+    transitivePeerDependencies:
+      - magicast
 
   nuxt-charts@2.1.4(vue@3.5.32(typescript@5.9.3)):
     dependencies:

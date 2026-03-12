@@ -3,6 +3,12 @@
 
 @theme {
   --font-sans: 'Noto Sans TC', sans-serif;
+  /*
+   * Breakpoint Token Tiers (responsive-and-a11y-foundation)
+   * `xs: 360px` baseline for modern Android handsets (Galaxy A / Xiaomi / iPhone SE 2 at 375).
+   * Default Tailwind breakpoints (sm 640, md 768, lg 1024, xl 1280, 2xl 1536) remain untouched.
+   */
+  --breakpoint-xs: 360px;
 }
 
 :root {

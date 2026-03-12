@@ -772,7 +772,9 @@
             </div>
           </div>
 
-          <div class="grid gap-4 sm:grid-cols-2">
+          <!-- responsive-and-a11y-foundation §5.1 —
+               < md: single-column stack; >= md: two-column grid. -->
+          <div class="grid gap-4 md:grid-cols-2">
             <UFormField
               label="文件標題"
               name="title"
@@ -838,11 +840,23 @@
           </div>
         </div>
 
-        <div class="flex justify-end gap-2">
-          <UButton type="button" color="neutral" variant="ghost" @click="emit('cancel')">
+        <!-- responsive-and-a11y-foundation §5.1 —
+             < md: buttons stack full-width (primary above cancel so thumb
+             reaches it first on tall phones); >= md: right-aligned inline. -->
+        <div class="flex flex-col-reverse gap-2 md:flex-row md:justify-end">
+          <UButton
+            type="button"
+            color="neutral"
+            variant="ghost"
+            block
+            class="md:w-auto"
+            @click="emit('cancel')"
+          >
             取消
           </UButton>
-          <UButton type="submit" color="neutral" :loading="isProcessing">開始上傳</UButton>
+          <UButton type="submit" color="neutral" block class="md:w-auto" :loading="isProcessing">
+            開始上傳
+          </UButton>
         </div>
       </UForm>
     </div>
@@ -858,9 +872,20 @@
         </div>
         <h3 class="mb-2 text-lg font-medium text-default">索引處理未完成</h3>
         <p class="mb-6 max-w-sm text-sm text-muted">{{ indexingError }}</p>
-        <div class="flex gap-2">
-          <UButton color="neutral" variant="outline" @click="emit('cancel')">返回列表</UButton>
-          <UButton color="neutral" variant="solid" @click="reset">重新開始</UButton>
+        <!-- responsive-and-a11y-foundation §5.1 — button row stacks < md. -->
+        <div class="flex w-full max-w-sm flex-col-reverse gap-2 md:w-auto md:flex-row">
+          <UButton
+            color="neutral"
+            variant="outline"
+            block
+            class="md:w-auto"
+            @click="emit('cancel')"
+          >
+            返回列表
+          </UButton>
+          <UButton color="neutral" variant="solid" block class="md:w-auto" @click="reset">
+            重新開始
+          </UButton>
         </div>
       </template>
       <template v-else>
@@ -894,9 +919,19 @@
       <p class="mb-6 max-w-sm text-sm text-muted">
         文件已成功處理並編入索引。點擊下方按鈕發布至知識庫。
       </p>
-      <div class="flex gap-2">
-        <UButton color="neutral" variant="outline" @click="emit('cancel')">稍後發布</UButton>
-        <UButton color="neutral" variant="solid" :loading="isProcessing" @click="publishDocument">
+      <!-- responsive-and-a11y-foundation §5.1 — button row stacks < md. -->
+      <div class="flex w-full max-w-sm flex-col-reverse gap-2 md:w-auto md:flex-row">
+        <UButton color="neutral" variant="outline" block class="md:w-auto" @click="emit('cancel')">
+          稍後發布
+        </UButton>
+        <UButton
+          color="neutral"
+          variant="solid"
+          block
+          class="md:w-auto"
+          :loading="isProcessing"
+          @click="publishDocument"
+        >
           立即發布
         </UButton>
       </div>
@@ -911,9 +946,14 @@
       </div>
       <h3 class="mb-2 text-lg font-medium text-default">發布成功</h3>
       <p class="mb-6 max-w-sm text-sm text-muted">文件已成功發布至知識庫，使用者現在可以查詢。</p>
-      <div class="flex gap-2">
-        <UButton color="neutral" variant="outline" @click="reset">上傳更多</UButton>
-        <UButton color="neutral" variant="solid" @click="emit('cancel')">返回列表</UButton>
+      <!-- responsive-and-a11y-foundation §5.1 — button row stacks < md. -->
+      <div class="flex w-full max-w-sm flex-col-reverse gap-2 md:w-auto md:flex-row">
+        <UButton color="neutral" variant="outline" block class="md:w-auto" @click="reset">
+          上傳更多
+        </UButton>
+        <UButton color="neutral" variant="solid" block class="md:w-auto" @click="emit('cancel')">
+          返回列表
+        </UButton>
       </div>
     </div>
 

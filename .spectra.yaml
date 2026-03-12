@@ -27,11 +27,17 @@ design:
     - '**/*.vue'
 
   # Design Review checkpoints (injected into tasks when ui_paths touched)
+  # `responsive_check` + `a11y_check` added by
+  # responsive-and-a11y-foundation §8.1 — they run after targeted_skills
+  # but before audit so any drift/regressions are caught before the
+  # audit-critical gate.
   review_steps:
     - check_impeccable: '/impeccable teach if .impeccable.md missing'
     - design_improve: '/design improve [affected files]'
     - fix_drift: 'Fidelity Score must reach 8/8, max 2 rounds'
     - targeted_skills: 'Execute /design plan in canonical order'
+    - responsive_check: 'Capture xs (360) / md (768) / xl (1280) screenshots; verify no horizontal overflow and primary interactions reachable on each breakpoint'
+    - a11y_check: 'Review nuxt-a11y devtools report + keyboard walkthrough (Tab / Esc / focus ring) for the affected journey'
     - audit: '/audit — Critical must be 0'
     - screenshot: '/review-screenshot — visual QA'
 
