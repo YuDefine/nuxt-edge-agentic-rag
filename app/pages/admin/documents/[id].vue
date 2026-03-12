@@ -272,7 +272,10 @@
           </div>
         </template>
 
-        <div class="grid gap-4 sm:grid-cols-2">
+        <!-- responsive-and-a11y-foundation §5.4 —
+             < md: single-column stack so metadata rows breathe on phones;
+             >= md: two-column grid. -->
+        <div class="grid gap-4 md:grid-cols-2">
           <div>
             <p class="text-xs font-medium text-muted">分類</p>
             <p class="mt-1 text-sm text-default">{{ document.categorySlug || '（未分類）' }}</p>
@@ -315,17 +318,20 @@
         </div>
 
         <div v-else class="divide-y divide-default">
+          <!-- responsive-and-a11y-foundation §5.4 —
+               < md: version row stacks (metadata above actions) so buttons get
+               full rowwidth and don't collide with timestamps; >= md: inline. -->
           <div
             v-for="version in document.versions"
             :key="version.id"
-            class="flex items-center justify-between py-4 first:pt-0 last:pb-0"
+            class="flex flex-col gap-3 py-4 first:pt-0 last:pb-0 md:flex-row md:items-center md:justify-between md:gap-4"
           >
             <div class="flex items-center gap-4">
-              <div class="flex size-10 items-center justify-center rounded-full bg-muted">
+              <div class="flex size-10 shrink-0 items-center justify-center rounded-full bg-muted">
                 <span class="text-sm font-semibold text-default">v{{ version.versionNumber }}</span>
               </div>
-              <div>
-                <div class="flex items-center gap-2">
+              <div class="min-w-0">
+                <div class="flex flex-wrap items-center gap-2">
                   <span class="font-medium text-default">版本 {{ version.versionNumber }}</span>
                   <UBadge v-if="version.isCurrent" color="neutral" variant="solid" size="xs">
                     目前版本
@@ -340,7 +346,7 @@
               </div>
             </div>
 
-            <div class="flex items-center gap-2">
+            <div class="flex flex-wrap items-center gap-2">
               <DocumentsVersionSyncBadge :status="version.syncStatus" />
               <DocumentsVersionIndexBadge :status="version.indexStatus" />
 

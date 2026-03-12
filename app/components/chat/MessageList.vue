@@ -83,9 +83,13 @@
       />
 
       <!-- Regular messages (user or successful assistant) -->
+      <!-- responsive-and-a11y-foundation §5.2 —
+           < md: tighter padding (px-3 py-2) so bubble keeps breathing room in
+           narrow viewports; >= md: restore original px-4 py-3.
+           Max-width stays 85% on mobile and 2xl on sm+. -->
       <div
         v-else
-        class="max-w-[85%] rounded-lg border border-default px-4 py-3 sm:max-w-2xl"
+        class="max-w-[85%] rounded-lg border border-default px-3 py-2 sm:max-w-2xl md:px-4 md:py-3"
         :class="getMessageRoleConfig(message.role).bgClass"
       >
         <div class="mb-1 flex items-center gap-2">
@@ -98,7 +102,13 @@
           {{ message.content }}
         </div>
 
-        <div v-if="hasCitations(message)" class="mt-2 flex flex-wrap gap-1">
+        <!-- responsive-and-a11y-foundation §5.2 —
+             Citation markers become a horizontal scroll strip < md so they
+             never push the bubble past viewport; wraps normally >= md. -->
+        <div
+          v-if="hasCitations(message)"
+          class="mt-2 flex gap-1 overflow-x-auto whitespace-nowrap md:flex-wrap md:overflow-visible md:whitespace-normal"
+        >
           <LazyChatCitationMarker
             v-for="(citation, index) in message.citations"
             :key="citation.citationId"
