@@ -570,7 +570,7 @@ describe('acceptance evidence exporters', () => {
       ],
     })
 
-    const record = payload.records[0]
+    const record = firstRecord(payload.records)
 
     expect(record.status).toBe('failed')
     expect(record.notes).toMatch(/contract snapshot drift/i)
@@ -617,7 +617,7 @@ describe('acceptance evidence exporters', () => {
       ],
     })
 
-    const record = payload.records[0]
+    const record = firstRecord(payload.records)
 
     expect(record.status).toBe('failed')
     expect(record.notes).toMatch(/admin routes/i)
@@ -666,7 +666,7 @@ describe('acceptance evidence exporters', () => {
       ],
     })
 
-    const record = payload.records[0]
+    const record = firstRecord(payload.records)
 
     expect(record.status).toBe('failed')
     expect(record.notes).toMatch(
@@ -696,7 +696,7 @@ describe('acceptance evidence exporters', () => {
       ],
     })
 
-    const record = payload.records[0]
+    const record = firstRecord(payload.records)
 
     expect(record.status).toBe('failed')
     expect(record.notes).toMatch(/sensitive tokens still present/i)
@@ -710,7 +710,7 @@ describe('acceptance evidence exporters', () => {
     expect(payload.acceptanceId).toBe('A10')
     expect(payload.records).toHaveLength(1)
 
-    const record = payload.records[0]
+    const record = firstRecord(payload.records)
 
     expect(record.channel).toBe('shared')
     expect(record.testCaseId).toBe('TC-14')
@@ -761,7 +761,7 @@ describe('acceptance evidence exporters', () => {
       ],
     })
 
-    const record = payload.records[0]
+    const record = firstRecord(payload.records)
 
     expect(record.status).toBe('failed')
     expect(record.notes).toMatch(
@@ -826,7 +826,7 @@ describe('acceptance evidence exporters', () => {
       ],
     })
 
-    const record = payload.records[0]
+    const record = firstRecord(payload.records)
 
     expect(record.status).toBe('failed')
     expect(record.notes).toMatch(/query_logs\.query_text leaked|messages\.content_text leaked/i)
@@ -869,7 +869,7 @@ describe('acceptance evidence exporters', () => {
       ],
     })
 
-    const record = payload.records[0]
+    const record = firstRecord(payload.records)
 
     expect(record.status).toBe('failed')
     expect(record.notes).toMatch(/citation_records row was written/i)
@@ -913,7 +913,7 @@ describe('acceptance evidence exporters', () => {
       ],
     })
 
-    const record = payload.records[0]
+    const record = firstRecord(payload.records)
 
     expect(record.status).toBe('failed')
     expect(record.notes).toMatch(/forbidden internal diagnostic keys/i)
@@ -927,7 +927,7 @@ describe('acceptance evidence exporters', () => {
     expect(payload.acceptanceId).toBe('A13')
     expect(payload.records).toHaveLength(1)
 
-    const record = payload.records[0]
+    const record = firstRecord(payload.records)
 
     expect(record.channel).toBe('shared')
     expect(record.testCaseId).toBeNull()
@@ -972,7 +972,7 @@ describe('acceptance evidence exporters', () => {
       ],
     })
 
-    const record = payload.records[0]
+    const record = firstRecord(payload.records)
 
     expect(record.status).toBe('failed')
     expect(record.notes).toMatch(/replay chain inconsistent/i)
@@ -986,7 +986,7 @@ describe('acceptance evidence exporters', () => {
     expect(payload.acceptanceId).toBe('EV-01')
     expect(payload.records).toHaveLength(1)
 
-    const record = payload.records[0]
+    const record = firstRecord(payload.records)
 
     expect(record.channel).toBe('shared')
     expect(record.testCaseId).toBeNull()
@@ -1045,7 +1045,7 @@ describe('acceptance evidence exporters', () => {
       ],
     })
 
-    const record = payload.records[0]
+    const record = firstRecord(payload.records)
 
     expect(record.status).toBe('failed')
     expect(record.notes).toMatch(/publish stage failed/i)
@@ -1059,7 +1059,7 @@ describe('acceptance evidence exporters', () => {
     expect(payload.acceptanceId).toBe('EV-02')
     expect(payload.records).toHaveLength(1)
 
-    const record = payload.records[0]
+    const record = firstRecord(payload.records)
 
     expect(record.channel).toBe('web')
     expect(record.configSnapshotVersion).toBe(configSnapshotVersion)
@@ -1092,7 +1092,7 @@ describe('acceptance evidence exporters', () => {
       ],
     })
 
-    const record = payload.records[0]
+    const record = firstRecord(payload.records)
 
     expect(record.status).toBe('failed')
     expect(record.notes).toMatch(/role recomputation drift|allowlist membership/i)
@@ -1106,7 +1106,7 @@ describe('acceptance evidence exporters', () => {
     expect(payload.acceptanceId).toBe('EV-03')
     expect(payload.records).toHaveLength(1)
 
-    const record = payload.records[0]
+    const record = firstRecord(payload.records)
 
     expect(record.channel).toBe('shared')
     expect(record.configSnapshotVersion).toBe(configSnapshotVersion)
@@ -1146,7 +1146,7 @@ describe('acceptance evidence exporters', () => {
       ],
     })
 
-    const record = payload.records[0]
+    const record = firstRecord(payload.records)
 
     expect(record.status).toBe('failed')
     expect(record.notes).toMatch(/cutover.*archived|leaks archived version/i)
@@ -1160,7 +1160,7 @@ describe('acceptance evidence exporters', () => {
     expect(payload.acceptanceId).toBe('EV-04')
     expect(payload.records.length).toBeGreaterThanOrEqual(1)
 
-    const record = payload.records[0]
+    const record = firstRecord(payload.records)
 
     expect(record.channel).toBe('shared')
     expect(record.configSnapshotVersion).toBe(configSnapshotVersion)
@@ -1266,7 +1266,7 @@ describe('acceptance evidence exporters', () => {
       ],
     })
 
-    const record = payload.records[0]
+    const record = firstRecord(payload.records)
 
     expect(record.status).toBe('failed')
     expect(record.notes).toMatch(/UI state drift/i)

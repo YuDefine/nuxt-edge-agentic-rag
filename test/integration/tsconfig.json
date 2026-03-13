@@ -1,4 +1,20 @@
 {
   "extends": "../tsconfig.json",
-  "include": ["./**/*.ts"]
+  "include": [
+    "../../.nuxt/**/*.d.ts",
+    "../../app/**/*",
+    "../../server/**/*",
+    "../../shared/**/*",
+    "../**/*",
+    "../../*.d.ts",
+    "../../nuxt.config.ts",
+    "../../vitest.config.ts",
+    "../../vitest.vscode.config.ts"
+  ],
+  "exclude": [
+    "../../e2e/**",
+    "../../node_modules/**",
+    "../../coverage/**",
+    "../../test-results/**"
+  ]
 }
