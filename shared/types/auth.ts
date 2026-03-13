@@ -1,5 +1,7 @@
 import { z } from 'zod'
 
+import { assertNever } from '../utils/assert-never'
+
 /**
  * Three-tier role model introduced by B16 (member-and-permission-management).
  *
@@ -77,6 +79,25 @@ export const ADMIN_SOURCE_VALUES = ['allowlist', 'none'] as const
 export type AdminSource = (typeof ADMIN_SOURCE_VALUES)[number]
 
 export const adminSourceSchema = z.enum(ADMIN_SOURCE_VALUES)
+
+/**
+ * Single source of truth for the human-readable Chinese label of a role.
+ * Use this everywhere a UI surface renders a role name so the wording
+ * stays consistent and a new enum value triggers a compile error here
+ * first instead of silently rendering the raw enum string downstream.
+ */
+export function roleLabel(role: Role): string {
+  switch (role) {
+    case 'admin':
+      return '管理員'
+    case 'member':
+      return '正式成員'
+    case 'guest':
+      return '訪客'
+    default:
+      return assertNever(role, 'roleLabel')
+  }
+}
 
 /**
  * Example usage of exhaustive role / guest-policy handling:
