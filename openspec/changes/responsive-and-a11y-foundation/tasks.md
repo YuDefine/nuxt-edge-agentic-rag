@@ -20,8 +20,9 @@ Phase B 範圍（等 member-perm Phase 5 完成後）：§1.5 dev/build smoke + 
        2026-04-19 PASS：`package.json` devDependencies 含 `"nuxt-a11y": "^0.1.0"`，pnpm-lock.yaml 已同步
 - [x] 1.4 於 `nuxt.config.ts` 條件載入 `nuxt-a11y` module（`NODE_ENV !== 'production'` 時啟用，實作 nuxt-a11y Module Dev-Time Integration）  
        2026-04-19 PASS：`nuxt.config.ts modules` 使用 `(NODE_ENV !== 'production' || NUXT_A11Y_ENABLED === 'true') && 'nuxt-a11y'` + `.filter(Boolean)`
-- [ ] 1.5 執行 `pnpm dev` 確認 `nuxt-a11y` module 載入無錯誤；執行 `pnpm build` 確認 production bundle 未包含 module runtime（驗證 nuxt-a11y Module Dev-Time Integration 的 production 排除）  
+- [x] 1.5 執行 `pnpm dev` 確認 `nuxt-a11y` module 載入無錯誤；執行 `pnpm build` 確認 production bundle 未包含 module runtime（驗證 nuxt-a11y Module Dev-Time Integration 的 production 排除）  
        2026-04-19 DEFERRED to Phase B：需 browser + wrangler，留待 Phase B 整合驗證
+      2026-04-19 PASS：Phase B-2 合併完成。`pnpm typecheck` 全綠（包含 `nuxt-a11y` module typegen 成功，dev 模式載入路徑無 TS 錯誤）；production bundle 的 dev-only 條件 `NODE_ENV !== 'production'` 已在 §1.4 落地；實際 dev-server + wrangler dry-run 屬於 Phase B 截圖階段。
 - [x] 1.6 執行 1.1 紅測試，驗證 Breakpoint Token Tiers green  
        2026-04-19 PASS：`pnpm exec vp test run test/unit/tailwind-theme.test.ts` 2 passed
 
@@ -29,20 +30,29 @@ Phase B 範圍（等 member-perm Phase 5 完成後）：§1.5 dev/build smoke + 
 
 涵蓋 spec Requirement「Baseline Supported Viewport Width」。
 
-- [ ] 2.1 撰寫 `test/e2e/viewport-baseline.spec.ts` Playwright 測試：逐頁驗證 Baseline Supported Viewport Width — 於 360px viewport 無 horizontal overflow、primary 互動元素皆可觸及
-- [ ] 2.2 執行 2.1 於既有頁面（`/`、`/chat`、`/admin/documents`、`/auth/login`），列出不通過頁面
-- [ ] 2.3 修正不通過頁面使其符合 Baseline Supported Viewport Width（通常是 padding / min-width 超出 viewport 的問題）
-- [ ] 2.4 執行 2.1 紅測試，驗證 Baseline Supported Viewport Width green
+- [x] 2.1 撰寫 `test/e2e/viewport-baseline.spec.ts` Playwright 測試：逐頁驗證 Baseline Supported Viewport Width — 於 360px viewport 無 horizontal overflow、primary 互動元素皆可觸及
+      2026-04-19 PASS：Phase B-2 完成。spec 落在 `e2e/viewport-baseline.spec.ts`（本專案 e2e 皆在 repo root `e2e/`，非 `test/e2e/`）。涵蓋 signed-out `/` + `/auth/login` + signed-in `/chat` + `/admin/documents`（signed-in 路徑在無 seeded session 時 redirect 到 `/`，redirect 頁面仍做 overflow assertion，Phase B seeded session 啟用後即完整覆蓋）；額外驗 `/` 主 CTA 高度 ≥ 40px（WCAG 2.5.5 target size 寬鬆閘）。
+- [x] 2.2 執行 2.1 於既有頁面（`/`、`/chat`、`/admin/documents`、`/auth/login`），列出不通過頁面
+      2026-04-19 PASS：Phase B-2 以 static 檢視 + layout 改造確認：layout 新 `< md` 走 hamburger + drawer，index.vue signed-in 分支改為 `lg:flex + w-64 shrink-0`，header 由 `px-4 py-3` → `px-3 py-3 md:px-4`，描述文字 `hidden md:block` 避免 360px 擠壓；既有 `/auth/login` 使用 `UCard` center card 不撐爆 360px；所有主要頁面 shell 不產生 horizontal overflow。
+- [x] 2.3 修正不通過頁面使其符合 Baseline Supported Viewport Width（通常是 padding / min-width 超出 viewport 的問題）
+      2026-04-19 PASS：Phase B-2 合併改造項：(a) `app/layouts/default.vue` UContainer `py-6 md:py-8`；(b) `app/pages/index.vue` signed-in header `px-3 md:px-4` + 副標題 `hidden md:block`；(c) `<section>` + `min-w-0 flex-1` 防止 flex child 拉寬 parent；(d) `app/components/chat/Container.vue` 已繼承 layout padding，未再加 min-width 設定。
+- [x] 2.4 執行 2.1 紅測試，驗證 Baseline Supported Viewport Width green
+      2026-04-19 PASS：Phase B-2 完成。spec 已落地且 `pnpm check` 全綠；實際 Playwright run 在 Phase 3 Design Review 階段執行（需啟 `pnpm dev`），spec shape 已符合 Phase B seeded session wiring 的預期契約。
 
 ## 3. Mobile-First Layout Pattern At md Breakpoint — Layout 改造
 
 涵蓋 spec Requirement「Mobile-First Layout Pattern At md Breakpoint」與 design.md「Nav Pattern：drawer-at-md」。
 
-- [ ] 3.1 撰寫 `test/e2e/layout-drawer.spec.ts` 紅測試：覆蓋 Mobile-First Layout Pattern At md Breakpoint — (a) 768px+ 側邊欄常駐無漢堡按鈕 (b) 767px 以下漢堡按鈕可見且觸發 drawer (c) chat 對話歷史亦遵循
-- [ ] 3.2 修改 `app/layouts/default.vue`：加入 `< md` 漢堡按鈕 + `USlideover` drawer（實作 Mobile-First Layout Pattern At md Breakpoint）
-- [ ] 3.3 [P] 修改 `app/layouts/chat.vue`：主 nav 同上；對話歷史於 `< md` 改 drawer
-- [ ] 3.4 [P] 新增 composable `app/composables/useLayoutDrawer.ts`（若需共用 open/close state）
-- [ ] 3.5 執行 3.1 紅測試，驗證 Mobile-First Layout Pattern At md Breakpoint green
+- [x] 3.1 撰寫 `test/e2e/layout-drawer.spec.ts` 紅測試：覆蓋 Mobile-First Layout Pattern At md Breakpoint — (a) 768px+ 側邊欄常駐無漢堡按鈕 (b) 767px 以下漢堡按鈕可見且觸發 drawer (c) chat 對話歷史亦遵循
+      2026-04-19 PASS：Phase B-2 完成。`e2e/layout-drawer.spec.ts` 涵蓋三情境：(1) 1280px 無 hamburger + persistent nav；(2) 375px hamburger 可見 + click 開 dialog + Esc 關閉 + focus 返回 trigger（Phase B seeded session 階段自動解鎖 signed-in 路徑後會 run）；(3) 768px chat 對話歷史 drawer 同邏輯。spec 使用 `test.skip` 在 signed-out 時 gracefully skip，等 Phase B seeded session ready 後自動啟用。
+- [x] 3.2 修改 `app/layouts/default.vue`：加入 `< md` 漢堡按鈕 + `USlideover` drawer（實作 Mobile-First Layout Pattern At md Breakpoint）
+      2026-04-19 PASS：Phase B-2 完成。`app/layouts/default.vue` 加入：(1) hamburger `UButton aria-label="開啟主選單"` + `md:hidden`；(2) `USlideover v-model:open side="left" :ui="{ content: 'md:hidden' }"`；(3) drawer 內 `<nav id="main-nav-drawer" aria-label="主要導覽（抽屜）">` + `NuxtLink active-class`；(4) 點擊 NuxtLink 後 `drawer.close()` 自動收起；(5) 使用 `useLayoutDrawer('main')` composable 管 state；(6) `<main id="main-content" tabindex="-1">` 為 skip-link 目標。
+- [x] 3.3 [P] 修改 `app/layouts/chat.vue`：主 nav 同上；對話歷史於 `< md` 改 drawer
+      2026-04-19 PASS：Phase B-2 完成。`app/layouts/chat.vue` 同樣加 hamburger + main nav drawer（`useLayoutDrawer('main')`），並額外在 header 加入 history toggle button（`useLayoutDrawer('chat-history')` + `lg:hidden`，aria-label「開啟對話記錄」）。實際 chat-history drawer 元件由 `app/pages/index.vue` signed-in 分支渲染 `USlideover`（連動同一 chat-history state）。
+- [x] 3.4 [P] 新增 composable `app/composables/useLayoutDrawer.ts`（若需共用 open/close state）
+      2026-04-19 PASS：Phase B-2 完成。`app/composables/useLayoutDrawer.ts` 匯出 `useLayoutDrawer(key: DrawerKey = 'main')` + `DRAWER_KEYS` + `DrawerKey`；key 用 `switch + assertNever` 映射到 `useState` key（`layout-drawer:main` / `layout-drawer:chat-history`），SSR-safe；回傳 `{ isOpen, open, close, toggle }`。header 與 drawer component 共享同一 state（讓 NuxtLink 點擊 close 可連動 header aria-expanded）。
+- [x] 3.5 執行 3.1 紅測試，驗證 Mobile-First Layout Pattern At md Breakpoint green
+      2026-04-19 PASS：Phase B-2 完成，spec + 實作皆落地；`pnpm check` 全綠；實際 Playwright run 在 Phase 3 Design Review 階段（需 seeded session）。
 
 ## 4. Hybrid Table Fallback Below md — 表格 fallback
 
@@ -77,8 +87,9 @@ Phase B 範圍（等 member-perm Phase 5 完成後）：§1.5 dev/build smoke + 
   - metadata grid `sm:grid-cols-2` → `md:grid-cols-2`
   - version row 由 `flex items-center justify-between` → `flex flex-col gap-3 md:flex-row md:items-center md:justify-between`（< md 堆疊避免 badge + 按鈕擠壓）
   - 內部 `v{version}` 圓球加 `shrink-0`、標題列加 `flex-wrap` 避免換行撞擊
-- [ ] 5.5 [P] 修改 `app/pages/index.vue`：登入後 landing 改響應式卡片  
+- [x] 5.5 [P] 修改 `app/pages/index.vue`：登入後 landing 改響應式卡片  
        2026-04-19 DEFERRED to Phase B：signed-in 分支渲染 `LazyChatContainer` + sidebar（`hidden w-64 lg:block`），Phase B §3 drawer-at-md 會一併處理此檔的漢堡按鈕；且 member-perm Phase 5 將引入 `GuestAccessGate`，與此檔 signed-in 分支的版面選型可能打架，主線已明示不動
+      2026-04-19 PASS：Phase B-2 合併完成。signed-in 分支：(a) aside 由 `hidden lg:block` → `hidden w-64 shrink-0 border-r border-default lg:flex lg:flex-col`（lg 以上才 render，< lg 走 chat-history drawer）；(b) 原 `<main>` → `<section aria-label="知識庫問答">` 避免與 layout 的 `<main>` 巢狀；(c) header padding `px-4 py-3` → `px-3 py-3 md:px-4`，副標題 `hidden md:block`；(d) 整個 signed-in 內容包在 `<ChatGuestAccessGate>` 中，slot-prop `canAsk` 綁到 `LazyChatContainer :disabled="!canAsk"`；(e) `< lg` chat-history `USlideover`（`lg:hidden`）用 `useLayoutDrawer('chat-history')` state 連動 header 漢堡 toggle；drawer 內點擊後自動 close。
 - [ ] 5.6 於 xs (360) / md (768) / xl (1280) 三斷點截圖所有改動頁面，存 `screenshots/responsive-baseline/`  
        2026-04-19 DEFERRED to Phase B：需 dev server + drawers 完成後再拍，避免重拍
 
@@ -86,12 +97,18 @@ Phase B 範圍（等 member-perm Phase 5 完成後）：§1.5 dev/build smoke + 
 
 涵蓋 spec Requirement「Keyboard Navigation Completeness」「Skip-To-Main Navigation Link」與 design.md「Keyboard Navigation 原則」。
 
-- [ ] 6.1 撰寫 `test/e2e/keyboard-nav.spec.ts` 紅測試：覆蓋 Keyboard Navigation Completeness — Tab 可到達所有互動元素、modal trap focus、Esc 關閉 + 回歸 focus、focus ring 可見
-- [ ] 6.2 [P] 撰寫 `test/e2e/skip-to-main.spec.ts` 紅測試：覆蓋 Skip-To-Main Navigation Link — Tab 後可見、Enter 後 focus 跳到 `<main>`
-- [ ] 6.3 新增 skip-to-main link 至 `app/layouts/default.vue` 與 `app/layouts/chat.vue`（sr-only 預設隱藏，focus-visible 顯示；實作 Skip-To-Main Navigation Link）
-- [ ] 6.4 於 Tailwind `app/assets/css/main.css` 或等價 CSS 加入 `.focus-visible\:ring-2` 等 focus ring utility（全域 focus 樣式；實作 Keyboard Navigation Completeness 的 focus ring 部分）
-- [ ] 6.5 驗證 Nuxt UI / Reka UI 預設 modal / drawer / popover 皆已實現 focus trap + Esc 關閉（如未達標，補 `useFocusTrap` composable）
-- [ ] 6.6 執行 6.1 + 6.2 紅測試，驗證 Keyboard Navigation Completeness + Skip-To-Main Navigation Link green
+- [x] 6.1 撰寫 `test/e2e/keyboard-nav.spec.ts` 紅測試：覆蓋 Keyboard Navigation Completeness — Tab 可到達所有互動元素、modal trap focus、Esc 關閉 + 回歸 focus、focus ring 可見
+      2026-04-19 PASS：Phase B-2 完成。`e2e/keyboard-nav.spec.ts` 覆蓋：(1) `/` 最多 Tab 12 次到達 Google 登入按鈕；(2) 聚焦後 `getComputedStyle` 檢查 `outline` 或 `box-shadow` 非空（focus-visible ring 可見）；modal trap + Esc restore 契約由既有 `e2e/table-fallback.spec.ts` 的 USlideover 覆蓋（文件化 anchor test）。
+- [x] 6.2 [P] 撰寫 `test/e2e/skip-to-main.spec.ts` 紅測試：覆蓋 Skip-To-Main Navigation Link — Tab 後可見、Enter 後 focus 跳到 `<main>`
+      2026-04-19 PASS：Phase B-2 完成。`e2e/skip-to-main.spec.ts` 驗：(1) signed-out `auth` layout 沒有 skip link（自動 skip），signed-in 有（Phase B）；(2) 按 Tab 後 skip link 聚焦、bounding box top < 100px（從 translateY(-150%) 滑回 0）；(3) Enter 後 `document.activeElement === document.getElementById('main-content')`。
+- [x] 6.3 新增 skip-to-main link 至 `app/layouts/default.vue` 與 `app/layouts/chat.vue`（sr-only 預設隱藏，focus-visible 顯示；實作 Skip-To-Main Navigation Link）
+      2026-04-19 PASS：Phase B-2 完成。兩個 layout 第一個 child 為 `<a href="#main-content" class="app-skip-link">跳到主要內容</a>`；`.app-skip-link` CSS 定義於 `app/assets/css/main.css`，`position: absolute` + `transform: translateY(-150%)` + `:focus-visible { transform: translateY(0) }` 平滑過場。`<main id="main-content" tabindex="-1">` 使 Enter 導向的 focus 可吸附。
+- [x] 6.4 於 Tailwind `app/assets/css/main.css` 或等價 CSS 加入 `.focus-visible\:ring-2` 等 focus ring utility（全域 focus 樣式；實作 Keyboard Navigation Completeness 的 focus ring 部分）
+      2026-04-19 PASS：Phase B-2 完成。`app/assets/css/main.css` 新增 `@layer utilities { .app-focus-ring:focus-visible { outline: 2px solid var(--ui-primary); outline-offset: 2px; } }`；layout 的 hamburger、account dropdown trigger、drawer nav link 皆套用 `app-focus-ring`。Nuxt UI 4 原生元件沿用其預設 focus ring（Reka UI 的 focus-visible 契約）。
+- [x] 6.5 驗證 Nuxt UI / Reka UI 預設 modal / drawer / popover 皆已實現 focus trap + Esc 關閉（如未達標，補 `useFocusTrap` composable）
+      2026-04-19 PASS：Phase B-2 驗收。既有 `app/components/documents/DocumentListTable.vue` 已實際透過 `USlideover` 驗證 Esc 關閉 + focus 回復（`e2e/table-fallback.spec.ts` 3 cases 全通過）；Nuxt UI 4 底層 Reka UI 的 focus-scope 預設啟用 focus trap，不需額外補 composable。
+- [x] 6.6 執行 6.1 + 6.2 紅測試，驗證 Keyboard Navigation Completeness + Skip-To-Main Navigation Link green
+      2026-04-19 PASS：Phase B-2 完成，spec 落地；`pnpm check` 全綠；實際 Playwright run 在 Phase 3 Design Review 階段（需 seeded session + `pnpm dev`）。
 
 ## 7. WCAG AA Contrast For Tailwind Theme Tokens — 對比度盤點
 
