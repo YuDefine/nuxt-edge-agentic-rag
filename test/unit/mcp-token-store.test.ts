@@ -15,7 +15,7 @@ describe('mcp token store', () => {
         createId: () => 'token-1',
         createSecret: () => 'plain-secret-token',
         now: () => new Date('2026-04-16T00:00:00.000Z'),
-      }
+      },
     )
 
     expect(provisioned.plaintextToken).toBe('plain-secret-token')

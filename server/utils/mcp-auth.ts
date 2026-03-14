@@ -6,7 +6,7 @@ import { parseStringArrayJson } from '#shared/utils/parse-string-array'
 export class McpAuthError extends Error {
   constructor(
     message: string,
-    readonly statusCode: number
+    readonly statusCode: number,
   ) {
     super(message)
     this.name = 'McpAuthError'
@@ -27,7 +27,7 @@ export async function requireMcpBearerToken(
       findUsableTokenByHash(tokenHash: string, environment: string): Promise<McpTokenRecord | null>
       touchLastUsedAt(tokenId: string, usedAt: string): Promise<void>
     }
-  }
+  },
 ): Promise<{
   scopes: string[]
   token: McpTokenRecord
@@ -42,7 +42,7 @@ export async function requireMcpBearerToken(
 
   const tokenRecord = await options.store.findUsableTokenByHash(
     hashMcpToken(token),
-    options.environment
+    options.environment,
   )
 
   if (!tokenRecord) {
@@ -65,7 +65,7 @@ export function requireMcpScope(
     scopes: string[]
     tokenId: string
   },
-  scope: string
+  scope: string,
 ): true {
   if (!auth.scopes.includes(scope)) {
     throw new McpAuthError(`The MCP token is missing required scope: ${scope}`, 403)

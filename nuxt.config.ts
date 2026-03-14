@@ -22,7 +22,7 @@ function shouldIgnoreUpstreamCircularDependencyWarning(warning: {
   const message = typeof warning.message === 'string' ? warning.message : ''
   const mentionsProjectCode = /(^| -> )(app|server|shared|scripts)[\\/]/.test(message)
   const mentionsKnownUpstreamPackage = upstreamCircularDependencyPackages.some((signature) =>
-    message.includes(signature)
+    message.includes(signature),
   )
   const mentionsNitroVirtualModule =
     message.includes('virtual:#nitro-internal-virtual') ||

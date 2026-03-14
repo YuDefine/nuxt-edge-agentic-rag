@@ -35,7 +35,7 @@ describe('mcp auth', () => {
       {
         environment: 'local',
         store,
-      }
+      },
     )
 
     expect(store.findUsableTokenByHash).toHaveBeenCalledWith(hashMcpToken('secret-token'), 'local')
@@ -55,8 +55,8 @@ describe('mcp auth', () => {
             findUsableTokenByHash: vi.fn(),
             touchLastUsedAt: vi.fn(),
           },
-        }
-      )
+        },
+      ),
     ).rejects.toThrowError(new McpAuthError('A valid Bearer token is required', 401))
   })
 
@@ -67,8 +67,8 @@ describe('mcp auth', () => {
           scopes: ['knowledge.search'],
           tokenId: 'token-1',
         },
-        'knowledge.ask'
-      )
+        'knowledge.ask',
+      ),
     ).toThrowError(new McpAuthError('The MCP token is missing required scope: knowledge.ask', 403))
   })
 })

@@ -23,7 +23,7 @@ import { describe, expect, it } from 'vitest'
  */
 
 const MIGRATION_PATH = fileURLToPath(
-  new URL('../../server/database/migrations/0004_content_text_purge.sql', import.meta.url)
+  new URL('../../server/database/migrations/0004_content_text_purge.sql', import.meta.url),
 )
 
 function loadMigrationSql(): string {
@@ -86,7 +86,7 @@ describe('migration 0004 — content_text purge (governance §1.4 / §1.5)', () 
     // Simulate the backfill UPDATE: content_text = content_redacted WHERE
     // conversation_id IS NOT NULL AND conversation_id in active-conversation ids.
     const activeConversationIds = new Set(
-      conversations.filter((c) => c.deleted_at === null).map((c) => c.id)
+      conversations.filter((c) => c.deleted_at === null).map((c) => c.id),
     )
     const messagesPost = messagesPre.map((row) => {
       if (row.conversation_id !== null && activeConversationIds.has(row.conversation_id)) {
@@ -96,7 +96,7 @@ describe('migration 0004 — content_text purge (governance §1.4 / §1.5)', () 
     })
 
     expect(messagesPost.find((m) => m.id === 'msg-under-active')?.content_text).toBe(
-      'active body (redacted)'
+      'active body (redacted)',
     )
     expect(messagesPost.find((m) => m.id === 'msg-under-deleted')?.content_text).toBeNull()
     expect(messagesPost.find((m) => m.id === 'msg-no-conversation')?.content_text).toBeNull()

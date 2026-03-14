@@ -18,7 +18,7 @@ export async function searchKnowledge(
       evidence: VerifiedKnowledgeEvidence[]
       normalizedQuery: string
     }>
-  }
+  },
 ): Promise<{ results: McpSearchResult[] }> {
   if (input.allowedAccessLevels.length === 0) {
     return { results: [] }

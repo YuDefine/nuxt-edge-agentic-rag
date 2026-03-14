@@ -47,7 +47,7 @@ function createFakeDatabase(input: { messages: MessageRow[]; versions: VersionRo
                 const match = input.messages
                   .filter(
                     (message) =>
-                      message.conversation_id === conversationId && message.role === 'assistant'
+                      message.conversation_id === conversationId && message.role === 'assistant',
                   )
                   .toSorted((left, right) => right.created_at.localeCompare(left.created_at))[0]
 

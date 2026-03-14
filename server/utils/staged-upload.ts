@@ -53,7 +53,7 @@ export interface UploadedObjectMetadata {
 export class StagedUploadValidationError extends Error {
   constructor(
     message: string,
-    readonly statusCode: number
+    readonly statusCode: number,
   ) {
     super(message)
     this.name = 'StagedUploadValidationError'
@@ -190,13 +190,13 @@ export async function signR2UploadUrl(input: {
     {
       expiresIn: input.expiresInSeconds,
       unhoistableHeaders: new Set(['x-amz-checksum-sha256']),
-    }
+    },
   )
 }
 
 export async function createStagedUploadTarget(
   input: CreateStagedUploadTargetInput,
-  options: CreateStagedUploadTargetOptions = {}
+  options: CreateStagedUploadTargetOptions = {},
 ): Promise<StagedUploadTarget> {
   const uploadId = (options.createUploadId ?? defaultCreateUploadId)()
   const objectKey = createStagedUploadObjectKey({

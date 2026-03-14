@@ -12,7 +12,7 @@ export interface DocumentDeletabilityResult {
 }
 
 export function evaluateDocumentDeletability(
-  input: DocumentDeletabilityInput
+  input: DocumentDeletabilityInput,
 ): DocumentDeletabilityResult {
   switch (input.documentStatus) {
     case 'active':

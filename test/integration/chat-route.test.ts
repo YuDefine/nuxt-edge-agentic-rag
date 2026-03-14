@@ -9,7 +9,7 @@ const chatRouteMocks = vi.hoisted(() => {
     constructor(
       message: string,
       readonly statusCode: number,
-      readonly retryAfterMs: number
+      readonly retryAfterMs: number,
     ) {
       super(message)
       this.name = 'ChatRateLimitExceededError'
@@ -128,7 +128,7 @@ describe('/api/chat route', () => {
           rateLimitKv: 'RATE_LIMITS',
         },
         environment: 'local',
-      })
+      }),
     )
     chatRouteMocks.readValidatedBody.mockResolvedValue({ query: 'What changed?' })
     chatRouteMocks.requireRole.mockResolvedValue({
@@ -216,8 +216,8 @@ describe('/api/chat route', () => {
       new chatRouteMocks.MockChatRateLimitExceededError(
         'Rate limit exceeded for /api/chat',
         429,
-        240_000
-      )
+        240_000,
+      ),
     )
 
     const { default: handler } = await import('../../server/api/chat.post')
@@ -318,7 +318,7 @@ describe('/api/chat route', () => {
           userId: 'user-1',
         }),
       }),
-      expect.any(Object)
+      expect.any(Object),
     )
   })
 })

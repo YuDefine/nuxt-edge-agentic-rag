@@ -53,7 +53,7 @@
       query: { days },
       watch: [days],
       key: 'debug-latency-summary',
-    }
+    },
   )
 
   const summary = computed(() => data.value?.data ?? null)

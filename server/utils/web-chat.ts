@@ -15,7 +15,7 @@ export class ChatRateLimitExceededError extends Error {
   constructor(
     message: string,
     readonly statusCode: number,
-    readonly retryAfterMs: number
+    readonly retryAfterMs: number,
   ) {
     super(message)
     this.name = 'ChatRateLimitExceededError'
@@ -149,7 +149,7 @@ export async function chatWithKnowledge(
       shouldAnswer: boolean
     }>
     persistCitations?: (
-      input: WebCitationPersistenceInput
+      input: WebCitationPersistenceInput,
     ) => Promise<Array<{ citationId: string; documentVersionId: string; sourceChunkId: string }>>
     /**
      * Resolves whether `input.conversationId` is stale (governance §1.1).
@@ -170,7 +170,7 @@ export async function chatWithKnowledge(
       evidence: VerifiedKnowledgeEvidence[]
       normalizedQuery: string
     }>
-  }
+  },
 ): Promise<{
   answer: string | null
   citations: Array<{ citationId: string; documentVersionId: string; sourceChunkId: string }>
@@ -199,7 +199,7 @@ export async function chatWithKnowledge(
     throw new ChatRateLimitExceededError(
       'Rate limit exceeded for /api/chat',
       429,
-      rateLimit.retryAfterMs
+      rateLimit.retryAfterMs,
     )
   }
 
@@ -221,7 +221,7 @@ export async function chatWithKnowledge(
     if (!options.resolveStaleness) {
       throw new Error(
         'chatWithKnowledge: conversationId provided without options.resolveStaleness — ' +
-          'the stale conversation resolver is required (governance §1.1)'
+          'the stale conversation resolver is required (governance §1.1)',
       )
     }
 
@@ -360,7 +360,7 @@ export async function chatWithKnowledge(
           return options.persistCitations(payload)
         },
         retrieve: options.retrieve,
-      }
+      },
     )
   } catch (error) {
     if (options.auditStore?.updateQueryLog && queryLogId) {
@@ -413,7 +413,7 @@ export async function chatWithKnowledge(
     await options.auditStore.createMessage({
       channel: 'web',
       citationsJson: JSON.stringify(
-        citedDocumentVersionIds.map((documentVersionId) => ({ documentVersionId }))
+        citedDocumentVersionIds.map((documentVersionId) => ({ documentVersionId })),
       ),
       content: result.answer,
       conversationId: input.conversationId ?? null,

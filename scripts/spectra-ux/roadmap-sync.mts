@@ -128,7 +128,7 @@ function parseArgs(argv: string[]): CliOptions {
         'Usage: roadmap-sync.mts [--check] [--force] [--json]\n' +
           '  --check   Validate only; do not write. Exit 1 if roadmap is stale.\n' +
           '  --force   Skip mtime fast path and regenerate unconditionally.\n' +
-          '  --json    Emit report as JSON instead of the normal summary.'
+          '  --json    Emit report as JSON instead of the normal summary.',
       )
       process.exit(0)
     } else {
@@ -331,7 +331,7 @@ function extractBlockedReason(content: string): string | null {
 function classifyStage(
   tasks: { done: number; total: number },
   hasTasksFile: boolean,
-  blockedReason: string | null
+  blockedReason: string | null,
 ): Stage {
   if (blockedReason) return 'blocked'
   if (!hasTasksFile || tasks.total === 0) return 'draft'
@@ -474,7 +474,7 @@ function collectParkedChanges(): {
     return { parked, source: 'cli' }
   } catch (err) {
     console.warn(
-      `roadmap-sync: spectra CLI unavailable, parked block will render empty (${(err as Error).message})`
+      `roadmap-sync: spectra CLI unavailable, parked block will render empty (${(err as Error).message})`,
     )
     return { parked: [], source: 'unavailable' }
   }
@@ -548,7 +548,7 @@ function renderParallelismBlock(report: ParallelismReport): string {
     ? report.mutex
         .map(
           (m) =>
-            `- **${m.spec}** — conflict between: ${m.changes.map((c) => `\`${c}\``).join(', ')}`
+            `- **${m.spec}** — conflict between: ${m.changes.map((c) => `\`${c}\``).join(', ')}`,
         )
         .join('\n')
     : ''
@@ -622,7 +622,7 @@ function replaceBetween(
   startMarker: string,
   endMarker: string,
   body: string,
-  insertBefore?: string
+  insertBefore?: string,
 ): string {
   const startIdx = content.indexOf(startMarker)
   const endIdx = content.indexOf(endMarker)
@@ -750,7 +750,7 @@ function syncRoadmap(): SyncReport {
     content,
     MARKERS.parallelismStart,
     MARKERS.parallelismEnd,
-    parallelismBody
+    parallelismBody,
   )
   // First-time installs land the parked block right above the MANUAL backlog
   // so the rendering order is: active → parallelism → parked → backlog.
@@ -759,7 +759,7 @@ function syncRoadmap(): SyncReport {
     MARKERS.parkedStart,
     MARKERS.parkedEnd,
     parkedBody,
-    MARKERS.backlogStart
+    MARKERS.backlogStart,
   )
 
   // Ensure the manual block exists so users/agents have somewhere to write.
@@ -810,8 +810,8 @@ function emitJson(report: SyncReport): void {
         },
       },
       null,
-      2
-    )
+      2,
+    ),
   )
 }
 
@@ -845,7 +845,7 @@ function emitText(report: SyncReport): void {
         ? ' · parked unavailable'
         : ''
   console.log(
-    `✓ roadmap-sync: ${verb} (${active} change${active === 1 ? '' : 's'}: ${ready} ready · ${wip} wip · ${draft} draft · ${blocked} blocked${parkedSegment})`
+    `✓ roadmap-sync: ${verb} (${active} change${active === 1 ? '' : 's'}: ${ready} ready · ${wip} wip · ${draft} draft · ${blocked} blocked${parkedSegment})`,
   )
   if (mutex > 0) {
     console.log(`  ⚠ ${mutex} spec collision${mutex === 1 ? '' : 's'} — check Parallel Tracks`)

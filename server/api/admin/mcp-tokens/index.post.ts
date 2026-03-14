@@ -28,7 +28,7 @@ export default defineEventHandler(async (event) => {
 
   // Validate scopes
   const invalidScopes = body.scopes.filter(
-    (s) => !VALID_SCOPES.includes(s as (typeof VALID_SCOPES)[number])
+    (s) => !VALID_SCOPES.includes(s as (typeof VALID_SCOPES)[number]),
   )
   if (invalidScopes.length > 0) {
     throw createError({

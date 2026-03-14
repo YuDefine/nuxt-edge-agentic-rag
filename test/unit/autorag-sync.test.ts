@@ -25,7 +25,7 @@ describe('autorag sync', () => {
         expect.objectContaining({
           headers: expect.objectContaining({ Authorization: 'Bearer cf-token' }),
           method: 'POST',
-        })
+        }),
       )
       expect(result).toEqual({ jobId: 'job-123' })
     })
@@ -38,7 +38,7 @@ describe('autorag sync', () => {
       })
 
       await expect(
-        triggerAutoRagSync(config, { fetch: fetchFake as unknown as typeof fetch })
+        triggerAutoRagSync(config, { fetch: fetchFake as unknown as typeof fetch }),
       ).rejects.toThrow(/HTTP 503/)
     })
 
@@ -49,7 +49,7 @@ describe('autorag sync', () => {
       })
 
       await expect(
-        triggerAutoRagSync(config, { fetch: fetchFake as unknown as typeof fetch })
+        triggerAutoRagSync(config, { fetch: fetchFake as unknown as typeof fetch }),
       ).rejects.toThrow(/job id/)
     })
   })
@@ -79,7 +79,7 @@ describe('autorag sync', () => {
         expect.objectContaining({
           headers: expect.objectContaining({ Authorization: 'Bearer cf-token' }),
           method: 'GET',
-        })
+        }),
       )
       expect(result).toEqual({ jobId: 'job-123', status: 'completed' })
     })

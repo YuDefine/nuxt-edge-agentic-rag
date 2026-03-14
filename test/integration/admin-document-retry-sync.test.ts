@@ -43,7 +43,7 @@ function makeChainableSelect(state: MockDb) {
                       normalizedTextR2Key: state.version.normalizedTextR2Key,
                     },
                   ]
-                : []
+                : [],
             ),
         }),
       }),
@@ -126,7 +126,7 @@ describe('POST /api/admin/documents/[id]/versions/[versionId]/retry-sync', () =>
     vi.stubGlobal(
       'getValidatedRouterParams',
       async (_event: unknown, parse: (v: unknown) => unknown) =>
-        parse(retrySyncMocks.getRouterParams())
+        parse(retrySyncMocks.getRouterParams()),
     )
     vi.stubGlobal('requireRuntimeAdminSession', retrySyncMocks.requireRuntimeAdminSession)
   })
@@ -213,7 +213,7 @@ describe('POST /api/admin/documents/[id]/versions/[versionId]/retry-sync', () =>
 
   it('rejects non-admin callers', async () => {
     retrySyncMocks.requireRuntimeAdminSession.mockRejectedValueOnce(
-      Object.assign(new Error('Forbidden'), { statusCode: 403 })
+      Object.assign(new Error('Forbidden'), { statusCode: 403 }),
     )
 
     const { default: handler } =

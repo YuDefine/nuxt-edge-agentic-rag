@@ -49,13 +49,13 @@ export function useDocumentLifecycle() {
 
   async function retrySync(
     documentId: string,
-    versionId: string
+    versionId: string,
   ): Promise<LifecycleResult<RetryDocumentSyncResponse['data']>> {
     isPending.value = true
     try {
       const response = await $csrfFetch<RetryDocumentSyncResponse>(
         `/api/admin/documents/${documentId}/versions/${versionId}/retry-sync`,
-        { method: 'POST' }
+        { method: 'POST' },
       )
       toast.add({
         title: '已觸發重新同步',
@@ -73,7 +73,7 @@ export function useDocumentLifecycle() {
   }
 
   async function deleteDocument(
-    documentId: string
+    documentId: string,
   ): Promise<LifecycleResult<DeleteDocumentResponse['data']>> {
     isPending.value = true
     try {
@@ -96,13 +96,13 @@ export function useDocumentLifecycle() {
   }
 
   async function archive(
-    documentId: string
+    documentId: string,
   ): Promise<LifecycleResult<ArchiveDocumentResponse['data']>> {
     isPending.value = true
     try {
       const response = await $csrfFetch<ArchiveDocumentResponse>(
         `/api/admin/documents/${documentId}/archive`,
-        { method: 'POST' }
+        { method: 'POST' },
       )
       toast.add({
         title: response.data.noOp ? '文件已是封存狀態' : '文件已封存',
@@ -121,7 +121,7 @@ export function useDocumentLifecycle() {
 
   async function setAsCurrentVersion(
     documentId: string,
-    versionId: string
+    versionId: string,
   ): Promise<LifecycleResult<{ documentId: string; alreadyCurrent: boolean }>> {
     isPending.value = true
     try {
@@ -151,13 +151,13 @@ export function useDocumentLifecycle() {
   }
 
   async function unarchive(
-    documentId: string
+    documentId: string,
   ): Promise<LifecycleResult<UnarchiveDocumentResponse['data']>> {
     isPending.value = true
     try {
       const response = await $csrfFetch<UnarchiveDocumentResponse>(
         `/api/admin/documents/${documentId}/unarchive`,
-        { method: 'POST' }
+        { method: 'POST' },
       )
       toast.add({
         title: response.data.noOp ? '文件已是啟用狀態' : '文件已解除封存',

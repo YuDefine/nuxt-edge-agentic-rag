@@ -62,7 +62,7 @@ export default defineMcpTool({
             }).search,
             store: createKnowledgeEvidenceStore(database),
           }),
-      }
+      },
     )
   },
 })

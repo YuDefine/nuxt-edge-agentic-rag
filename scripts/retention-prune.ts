@@ -121,7 +121,7 @@ async function main(): Promise<void> {
     // Conservative warning; server will reject regardless.
     console.warn(
       'Warning: --retention-days override against what looks like the production host. ' +
-        'The server will reject the override; rerun against local or drop the flag.'
+        'The server will reject the override; rerun against local or drop the flag.',
     )
   }
 

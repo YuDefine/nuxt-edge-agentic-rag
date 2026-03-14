@@ -107,7 +107,7 @@ export function createQueryLogAdminStore() {
     },
 
     async countQueryLogs(
-      filter: Omit<AdminQueryLogListFilter, 'limit' | 'offset'>
+      filter: Omit<AdminQueryLogListFilter, 'limit' | 'offset'>,
     ): Promise<number> {
       const { db, schema } = await import('hub:db')
       const { and, count } = await import('drizzle-orm')

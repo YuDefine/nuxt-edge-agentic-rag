@@ -65,7 +65,7 @@ function createFakeDatabase(input: { conversations: ConversationRow[]; messages?
                   .filter(
                     (conversation) =>
                       conversation.user_profile_id === userProfileId &&
-                      conversation.deleted_at === null
+                      conversation.deleted_at === null,
                   )
                   .toSorted((left, right) => right.updated_at.localeCompare(left.updated_at))
                   .slice(0, limit)
@@ -108,7 +108,7 @@ function createFakeDatabase(input: { conversations: ConversationRow[]; messages?
                   (conversation) =>
                     conversation.id === conversationId &&
                     conversation.user_profile_id === userProfileId &&
-                    conversation.deleted_at === null
+                    conversation.deleted_at === null,
                 )
 
                 if (!match) {
@@ -218,7 +218,7 @@ function createFakeDatabase(input: { conversations: ConversationRow[]; messages?
                 const match = conversations.find(
                   (conversation) =>
                     conversation.id === conversationId &&
-                    conversation.user_profile_id === userProfileId
+                    conversation.user_profile_id === userProfileId,
                 )
 
                 if (!match) {
@@ -251,7 +251,7 @@ function createFakeDatabase(input: { conversations: ConversationRow[]; messages?
             return {
               async run() {
                 const index = conversations.findIndex(
-                  (conversation) => conversation.id === conversationId
+                  (conversation) => conversation.id === conversationId,
                 )
 
                 if (index !== -1 && conversations[index]) {
@@ -287,7 +287,7 @@ function createFakeDatabase(input: { conversations: ConversationRow[]; messages?
             accessLevel: string,
             title: string,
             createdAt: string,
-            updatedAt: string
+            updatedAt: string,
           ) {
             return {
               async run() {
@@ -330,7 +330,7 @@ function createFakeDatabase(input: { conversations: ConversationRow[]; messages?
                   (conversation) =>
                     conversation.id === conversationId &&
                     conversation.user_profile_id === userProfileId &&
-                    conversation.deleted_at === null
+                    conversation.deleted_at === null,
                 )
 
                 return match ? ({ exists_flag: 1 } as unknown as T) : null
@@ -566,7 +566,7 @@ describe('conversation store — isVisibleForUser', () => {
     const store = createConversationStore(database)
 
     await expect(
-      store.isVisibleForUser({ conversationId: 'conv-a', userProfileId: 'user-1' })
+      store.isVisibleForUser({ conversationId: 'conv-a', userProfileId: 'user-1' }),
     ).resolves.toBe(true)
   })
 
@@ -583,7 +583,7 @@ describe('conversation store — isVisibleForUser', () => {
     const store = createConversationStore(database)
 
     await expect(
-      store.isVisibleForUser({ conversationId: 'conv-a', userProfileId: 'user-1' })
+      store.isVisibleForUser({ conversationId: 'conv-a', userProfileId: 'user-1' }),
     ).resolves.toBe(false)
   })
 
@@ -594,7 +594,7 @@ describe('conversation store — isVisibleForUser', () => {
     const store = createConversationStore(database)
 
     await expect(
-      store.isVisibleForUser({ conversationId: 'conv-a', userProfileId: 'user-other' })
+      store.isVisibleForUser({ conversationId: 'conv-a', userProfileId: 'user-other' }),
     ).resolves.toBe(false)
   })
 })
@@ -623,7 +623,7 @@ describe('conversation store — createForUser (governance §1.7)', () => {
     // The inserted row should be visible to the owner immediately — proves
     // we are not accidentally writing `deleted_at` on create.
     await expect(
-      store.isVisibleForUser({ conversationId: 'conv-explicit', userProfileId: 'user-1' })
+      store.isVisibleForUser({ conversationId: 'conv-explicit', userProfileId: 'user-1' }),
     ).resolves.toBe(true)
   })
 
@@ -653,7 +653,7 @@ describe('conversation store — createForUser (governance §1.7)', () => {
     // Basic shape check — we trust `crypto.randomUUID()` to be a uuid.
     expect(result.id).toMatch(/^[0-9a-f-]{36}$/i)
     await expect(
-      store.isVisibleForUser({ conversationId: result.id, userProfileId: 'user-1' })
+      store.isVisibleForUser({ conversationId: result.id, userProfileId: 'user-1' }),
     ).resolves.toBe(true)
   })
 })

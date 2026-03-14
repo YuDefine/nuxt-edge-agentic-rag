@@ -139,7 +139,7 @@ function compareRefusalSample(sample: A06RefusalSample): RefusalComparison {
 }
 
 export function runA06RefusalAccuracyExporter(
-  input: A06ExporterInput = {}
+  input: A06ExporterInput = {},
 ): AcceptanceEvidenceExport {
   const context = createEvidenceExporterContext(input)
   const samples = input.samples ?? buildDefaultSamples()
@@ -173,7 +173,7 @@ export function runA06RefusalAccuracyExporter(
 
     if (!comparison.refusalMatchesExpectation) {
       notesParts.push(
-        `refusal expectation drift (expected=${sample.expectedRefused}, actual=${sample.actualRefused})`
+        `refusal expectation drift (expected=${sample.expectedRefused}, actual=${sample.actualRefused})`,
       )
     }
 
@@ -187,7 +187,7 @@ export function runA06RefusalAccuracyExporter(
 
     if (isStubbed && passed) {
       notesParts.push(
-        'Stubbed refusal observations — rerun TC-07/08/09/15 against live orchestration to capture real payloads.'
+        'Stubbed refusal observations — rerun TC-07/08/09/15 against live orchestration to capture real payloads.',
       )
     }
 

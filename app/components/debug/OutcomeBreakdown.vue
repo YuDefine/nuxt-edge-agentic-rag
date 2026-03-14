@@ -24,7 +24,7 @@
       props.outcomes.answered +
       props.outcomes.refused +
       props.outcomes.forbidden +
-      props.outcomes.error
+      props.outcomes.error,
   )
 
   interface Row {

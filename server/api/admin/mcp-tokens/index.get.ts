@@ -32,6 +32,6 @@ export default defineEventHandler(async function listMcpTokensHandler(event) {
       count: () => store.countTokensForAdmin({ status: query.status }),
       list: ({ limit, offset }) =>
         store.listTokensForAdmin({ limit, offset, status: query.status }),
-    }
+    },
   )
 })

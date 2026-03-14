@@ -63,7 +63,7 @@ async function ensureCredentialAccount(email: string, password: string): Promise
     .select({ id: schema.account.id })
     .from(schema.account)
     .where(
-      and(eq(schema.account.userId, existingUser.id), eq(schema.account.providerId, 'credential'))
+      and(eq(schema.account.userId, existingUser.id), eq(schema.account.providerId, 'credential')),
     )
     .limit(1)
 

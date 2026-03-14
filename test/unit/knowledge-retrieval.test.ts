@@ -63,7 +63,7 @@ describe('knowledge retrieval', () => {
         governance,
         search,
         store,
-      }
+      },
     )
 
     expect(search).toHaveBeenCalledWith({

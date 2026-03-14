@@ -26,7 +26,7 @@ vi.mock('#server/utils/guest-policy', () => ({
 function installGlobals() {
   vi.stubGlobal('requireUserSession', mocks.requireUserSession)
   vi.stubGlobal('createError', (input: { statusCode: number; message: string }) =>
-    Object.assign(new Error(input.message), input)
+    Object.assign(new Error(input.message), input),
   )
 }
 
@@ -100,7 +100,7 @@ describe('requireRole (B16 §9.1)', () => {
         // Admin / Member short-circuit before calling getGuestPolicy —
         // this keeps the chat hot-path from paying the KV read.
         expect(mocks.getGuestPolicy).not.toHaveBeenCalled()
-      }
+      },
     )
   })
 
@@ -114,7 +114,7 @@ describe('requireRole (B16 §9.1)', () => {
         const result = await requireRole(fakeEvent(), 'member')
         expect(result.role).toBe('member')
         expect(mocks.getGuestPolicy).not.toHaveBeenCalled()
-      }
+      },
     )
   })
 

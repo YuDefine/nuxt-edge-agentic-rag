@@ -9,7 +9,7 @@ export class McpRateLimitExceededError extends Error {
   constructor(
     message: string,
     readonly statusCode: number,
-    readonly retryAfterMs: number
+    readonly retryAfterMs: number,
   ) {
     super(message)
     this.name = 'McpRateLimitExceededError'
@@ -59,7 +59,7 @@ export async function consumeMcpToolRateLimit(input: {
     throw new McpRateLimitExceededError(
       `Rate limit exceeded for ${input.tool}`,
       429,
-      result.retryAfterMs
+      result.retryAfterMs,
     )
   }
 

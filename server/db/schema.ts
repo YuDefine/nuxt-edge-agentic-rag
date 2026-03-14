@@ -49,10 +49,10 @@ export const documentVersions = sqliteTable(
   (table) => [
     uniqueIndex('document_versions_document_version_unique').on(
       table.documentId,
-      table.versionNumber
+      table.versionNumber,
     ),
     index('document_versions_document_current_idx').on(table.documentId, table.isCurrent),
-  ]
+  ],
 )
 
 export const sourceChunks = sqliteTable(
@@ -73,7 +73,7 @@ export const sourceChunks = sqliteTable(
   (table) => [
     uniqueIndex('source_chunks_version_chunk_unique').on(table.documentVersionId, table.chunkIndex),
     index('source_chunks_version_locator_idx').on(table.documentVersionId, table.citationLocator),
-  ]
+  ],
 )
 
 export const conversations = sqliteTable(
@@ -87,7 +87,7 @@ export const conversations = sqliteTable(
     updatedAt: text('updated_at').notNull().default(timestampNow),
     deletedAt: text('deleted_at'),
   },
-  (table) => [index('conversations_user_created_idx').on(table.userProfileId, table.createdAt)]
+  (table) => [index('conversations_user_created_idx').on(table.userProfileId, table.createdAt)],
 )
 
 export const mcpTokens = sqliteTable('mcp_tokens', {
@@ -172,7 +172,7 @@ export const queryLogs = sqliteTable(
      */
     refusalReason: text('refusal_reason'),
   },
-  (table) => [index('query_logs_channel_created_idx').on(table.channel, table.createdAt)]
+  (table) => [index('query_logs_channel_created_idx').on(table.channel, table.createdAt)],
 )
 
 export const messages = sqliteTable(
@@ -207,7 +207,7 @@ export const messages = sqliteTable(
   (table) => [
     index('messages_query_log_idx').on(table.queryLogId),
     index('messages_conversation_created_idx').on(table.conversationId, table.createdAt),
-  ]
+  ],
 )
 
 export const citationRecords = sqliteTable(
@@ -231,7 +231,7 @@ export const citationRecords = sqliteTable(
   (table) => [
     index('citation_records_query_log_idx').on(table.queryLogId),
     index('citation_records_expires_idx').on(table.expiresAt),
-  ]
+  ],
 )
 
 /**
@@ -269,5 +269,5 @@ export const memberRoleChanges = sqliteTable(
     reason: text('reason'),
     createdAt: text('created_at').notNull().default(timestampNow),
   },
-  (table) => [index('idx_member_role_changes_user_created').on(table.userId, table.createdAt)]
+  (table) => [index('idx_member_role_changes_user_created').on(table.userId, table.createdAt)],
 )

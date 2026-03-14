@@ -22,7 +22,7 @@ interface R2BucketWithList {
     options: {
       customMetadata?: Record<string, string>
       httpMetadata?: { contentType?: string }
-    }
+    },
   ): Promise<unknown>
 }
 
@@ -31,7 +31,7 @@ export type VersionState = 'current' | 'previous'
 export async function rewriteVersionMetadata(
   event: H3Event,
   versionId: string,
-  versionState: VersionState
+  versionState: VersionState,
 ): Promise<void> {
   const bindingName = getKnowledgeRuntimeConfig().bindings.documentsBucket
   const bucket = getRequiredR2Binding(event, bindingName) as unknown as R2BucketWithList
@@ -61,6 +61,6 @@ export async function rewriteVersionMetadata(
         },
         customMetadata: newMeta,
       })
-    })
+    }),
   )
 }

@@ -50,7 +50,7 @@ export interface R2ObjectAccess {
     key: string,
     value: string,
     contentType: string,
-    customMetadata?: Record<string, string>
+    customMetadata?: Record<string, string>,
   ): Promise<void>
 }
 

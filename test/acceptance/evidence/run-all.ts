@@ -60,7 +60,7 @@ export function runAllEvidenceExporters(options: RunAllEvidenceExportersOptions 
           directory: 'acceptance',
           filename: `${payload.acceptanceId}.json`,
         },
-        payload.reportVersion
+        payload.reportVersion,
       )
 
       writeEvidenceJson(target, payload)
@@ -86,7 +86,7 @@ export function runAllEvExporters(options: RunAllEvidenceExportersOptions = {}) 
           directory: 'evidence',
           filename: `${payload.acceptanceId}.json`,
         },
-        payload.reportVersion
+        payload.reportVersion,
       )
 
       writeEvidenceJson(target, payload)
@@ -97,7 +97,7 @@ export function runAllEvExporters(options: RunAllEvidenceExportersOptions = {}) 
 }
 
 export function runFullEvidenceSummary(
-  options: RunAllEvidenceExportersOptions = {}
+  options: RunAllEvidenceExportersOptions = {},
 ): EvidenceSummaryTable[] {
   const acceptanceExports = runAllEvidenceExporters({ ...options, write: false })
   const evExports = runAllEvExporters({ ...options, write: false })
@@ -110,7 +110,7 @@ export function runFullEvidenceSummary(
           directory: 'summary',
           filename: `${table.chapterRef}.json`,
         },
-        table.reportVersion
+        table.reportVersion,
       )
 
       writeEvidenceJson(target, table)

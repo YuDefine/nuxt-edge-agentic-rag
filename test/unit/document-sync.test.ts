@@ -46,7 +46,7 @@ describe('document sync', () => {
     const loadSourceText = vi
       .fn()
       .mockResolvedValue(
-        ['# Quarterly Report', '', '## Executive Summary', 'Revenue grew 20%.'].join('\n')
+        ['# Quarterly Report', '', '## Executive Summary', 'Revenue grew 20%.'].join('\n'),
       )
     const writeChunkObjects = vi.fn().mockResolvedValue(undefined)
 
@@ -70,7 +70,7 @@ describe('document sync', () => {
         now: () => new Date('2026-04-16T00:00:00.000Z'),
         store,
         writeChunkObjects,
-      }
+      },
     )
 
     expect(store.findDocumentBySlug).toHaveBeenCalledWith('quarterly-report')
@@ -120,7 +120,7 @@ describe('document sync', () => {
           chunkIndex: 0,
           citationLocator: 'lines 1-3',
         }),
-      ])
+      ]),
     )
     expect(result.document.id).toBe('doc-1')
     expect(result.version.id).toBe('ver-1')
@@ -181,7 +181,7 @@ describe('document sync', () => {
         loadSourceText: () => Promise.resolve('Ops Playbook\nEscalate incidents quickly.'),
         store,
         writeChunkObjects: () => Promise.resolve(),
-      }
+      },
     )
 
     expect(store.createDocument).not.toHaveBeenCalled()
@@ -191,7 +191,7 @@ describe('document sync', () => {
         documentId: 'doc-1',
         id: 'ver-2',
         versionNumber: 3,
-      })
+      }),
     )
   })
 })

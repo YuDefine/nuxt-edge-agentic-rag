@@ -62,7 +62,7 @@ const tc06Mocks = vi.hoisted(
     readBody: vi.fn(),
     readZodBody: vi.fn(),
     runtimeConfig: null,
-  })
+  }),
 )
 
 vi.mock('evlog', () => ({
@@ -106,7 +106,7 @@ vi.mock('../../server/utils/knowledge-answering', async (importOriginal) => {
     ...actual,
     async answerKnowledgeQuery(
       input: Parameters<typeof realAnswer>[0],
-      options: Parameters<typeof realAnswer>[1]
+      options: Parameters<typeof realAnswer>[1],
     ) {
       return realAnswer(input, {
         ...options,
@@ -129,7 +129,7 @@ installNuxtRouteTestGlobals()
 
 describe('acceptance cross-document comparison (TC-06)', () => {
   const cases = loadAcceptanceFixtureDataset('seed').cases.filter(
-    (entry) => entry.registryId === 'TC-06'
+    (entry) => entry.registryId === 'TC-06',
   )
   const scenario = getTc06Scenario()
 
@@ -173,7 +173,7 @@ describe('acceptance cross-document comparison (TC-06)', () => {
 
       tc06Mocks.bindings = createTc06Bindings(
         tc06Mocks.actor as ReturnType<typeof createAcceptanceActorFixture>,
-        scenario
+        scenario,
       )
       tc06Mocks.readBody.mockResolvedValue({ query: fixture.prompt })
       tc06Mocks.readZodBody.mockResolvedValue({ query: fixture.prompt })
@@ -214,7 +214,7 @@ describe('acceptance cross-document comparison (TC-06)', () => {
         expect.arrayContaining([
           scenario.purchasing.sourceChunkId,
           scenario.returning.sourceChunkId,
-        ])
+        ]),
       )
 
       // Answer 同時涵蓋兩份文件的關鍵詞
@@ -223,7 +223,7 @@ describe('acceptance cross-document comparison (TC-06)', () => {
 
       // citation_records 寫入兩筆，且 documentVersionId 為兩份不同文件
       const citationInserts = d1.calls.filter((call) =>
-        call.query.includes('INSERT INTO citation_records')
+        call.query.includes('INSERT INTO citation_records'),
       )
 
       expect(citationInserts).toHaveLength(2)
@@ -254,9 +254,9 @@ describe('acceptance cross-document comparison (TC-06)', () => {
           'local',
           tc06Mocks.runtimeConfig?.governance.configSnapshotVersion,
           'accepted',
-        ])
+        ]),
       )
-    }
+    },
   )
 })
 
@@ -275,7 +275,7 @@ async function runMcpCase(authorizationHeader: string, query: string) {
       authorizationHeader,
       cloudflareEnv: tc06Mocks.bindings ?? {},
       pendingEvent,
-    }
+    },
   )
 
   return { data }
@@ -311,7 +311,7 @@ function getTc06Scenario(): Tc06Scenario {
 
 function createTc06Bindings(
   actor: ReturnType<typeof createAcceptanceActorFixture>,
-  scenario: Tc06Scenario
+  scenario: Tc06Scenario,
 ) {
   const facets: Tc06DocumentFacet[] = [scenario.purchasing, scenario.returning]
 
@@ -351,7 +351,7 @@ function createTc06Bindings(
           const match = facets.find(
             (facet) =>
               facet.documentVersionId === documentVersionId &&
-              facet.citationLocator === citationLocator
+              facet.citationLocator === citationLocator,
           )
 
           if (!match) {

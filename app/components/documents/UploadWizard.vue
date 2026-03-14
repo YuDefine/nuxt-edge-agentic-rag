@@ -121,7 +121,7 @@
   const { pause: pauseIndexingPoll, resume: resumeIndexingPoll } = useIntervalFn(
     () => pollIndexStatus(),
     POLLING_INTERVAL_MS,
-    { immediate: false, immediateCallback: false }
+    { immediate: false, immediateCallback: false },
   )
 
   async function pollIndexStatus() {
@@ -130,7 +130,7 @@
       const response = await $fetch<{
         data: { indexStatus: string; syncStatus: string; versionId: string }
       }>(
-        `/api/documents/${syncResult.value.documentId}/versions/${syncResult.value.versionId}/index-status`
+        `/api/documents/${syncResult.value.documentId}/versions/${syncResult.value.versionId}/index-status`,
       )
       indexingStatus.value = {
         indexStatus: response.data.indexStatus,
@@ -263,7 +263,7 @@
     try {
       const { data } = await $fetch<{ data: { available: boolean } }>(
         '/api/admin/documents/check-slug',
-        { query: { slug } }
+        { query: { slug } },
       )
       // Race protection: 只在當前輸入仍等於送出查詢的 slug 時才更新
       if (documentMeta.slug.trim() === slug) {
@@ -289,7 +289,7 @@
         return
       }
       debouncedCheckSlug(trimmed)
-    }
+    },
   )
 
   function getStepStatus(step: WizardStep): StepStatus {
@@ -338,8 +338,8 @@
   const currentStepIndex = computed(() =>
     Math.max(
       0,
-      steps.findIndex((s) => s.key === currentStep.value)
-    )
+      steps.findIndex((s) => s.key === currentStep.value),
+    ),
   )
   const currentStepConfig = computed(() => steps.find((s) => s.key === currentStep.value))
 
@@ -466,7 +466,7 @@
         if (e.lengthComputable && e.total > 0) {
           uploadProgressPercent.value = Math.min(
             100,
-            Math.max(0, Math.round((e.loaded / e.total) * 100))
+            Math.max(0, Math.round((e.loaded / e.total) * 100)),
           )
         }
       })
@@ -593,7 +593,7 @@
         `/api/documents/${syncResult.value.documentId}/versions/${syncResult.value.versionId}/publish`,
         {
           method: 'POST',
-        }
+        },
       )
 
       currentStep.value = 'complete'

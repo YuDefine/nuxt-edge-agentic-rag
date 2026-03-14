@@ -51,7 +51,7 @@ describe('GET /api/admin/mcp-tokens', () => {
 
   it('rejects requests without an authenticated session (401)', async () => {
     mocks.requireRuntimeAdminSession.mockRejectedValueOnce(
-      Object.assign(new Error('Unauthorized'), { statusCode: 401 })
+      Object.assign(new Error('Unauthorized'), { statusCode: 401 }),
     )
 
     const { default: handler } = await import('../../server/api/admin/mcp-tokens/index.get')
@@ -61,7 +61,7 @@ describe('GET /api/admin/mcp-tokens', () => {
 
   it('rejects non-admin sessions with 403', async () => {
     mocks.requireRuntimeAdminSession.mockRejectedValueOnce(
-      Object.assign(new Error('Forbidden'), { statusCode: 403 })
+      Object.assign(new Error('Forbidden'), { statusCode: 403 }),
     )
 
     const { default: handler } = await import('../../server/api/admin/mcp-tokens/index.get')
@@ -126,25 +126,25 @@ describe('DELETE /api/admin/mcp-tokens/[id]', () => {
 
   it('rejects unauthenticated requests with 401', async () => {
     mocks.requireRuntimeAdminSession.mockRejectedValueOnce(
-      Object.assign(new Error('Unauthorized'), { statusCode: 401 })
+      Object.assign(new Error('Unauthorized'), { statusCode: 401 }),
     )
 
     const { default: handler } = await import('../../server/api/admin/mcp-tokens/[id].delete')
 
     await expect(
-      handler(createRouteEvent({ context: { params: { id: 'tok-1' }, cloudflare: { env: {} } } }))
+      handler(createRouteEvent({ context: { params: { id: 'tok-1' }, cloudflare: { env: {} } } })),
     ).rejects.toMatchObject({ statusCode: 401 })
   })
 
   it('rejects non-admin sessions with 403', async () => {
     mocks.requireRuntimeAdminSession.mockRejectedValueOnce(
-      Object.assign(new Error('Forbidden'), { statusCode: 403 })
+      Object.assign(new Error('Forbidden'), { statusCode: 403 }),
     )
 
     const { default: handler } = await import('../../server/api/admin/mcp-tokens/[id].delete')
 
     await expect(
-      handler(createRouteEvent({ context: { params: { id: 'tok-1' }, cloudflare: { env: {} } } }))
+      handler(createRouteEvent({ context: { params: { id: 'tok-1' }, cloudflare: { env: {} } } })),
     ).rejects.toMatchObject({ statusCode: 403 })
   })
 
@@ -154,7 +154,7 @@ describe('DELETE /api/admin/mcp-tokens/[id]', () => {
     const { default: handler } = await import('../../server/api/admin/mcp-tokens/[id].delete')
 
     await expect(
-      handler(createRouteEvent({ context: { params: { id: 'tok-1' }, cloudflare: { env: {} } } }))
+      handler(createRouteEvent({ context: { params: { id: 'tok-1' }, cloudflare: { env: {} } } })),
     ).rejects.toMatchObject({ statusCode: 404 })
   })
 
@@ -170,7 +170,7 @@ describe('DELETE /api/admin/mcp-tokens/[id]', () => {
 
     const { default: handler } = await import('../../server/api/admin/mcp-tokens/[id].delete')
     const result = await handler(
-      createRouteEvent({ context: { params: { id: 'tok-1' }, cloudflare: { env: {} } } })
+      createRouteEvent({ context: { params: { id: 'tok-1' }, cloudflare: { env: {} } } }),
     )
 
     expect(result).toEqual({
@@ -195,7 +195,7 @@ describe('DELETE /api/admin/mcp-tokens/[id]', () => {
 
     const { default: handler } = await import('../../server/api/admin/mcp-tokens/[id].delete')
     const result = await handler(
-      createRouteEvent({ context: { params: { id: 'tok-1' }, cloudflare: { env: {} } } })
+      createRouteEvent({ context: { params: { id: 'tok-1' }, cloudflare: { env: {} } } }),
     )
 
     expect(result).toEqual({

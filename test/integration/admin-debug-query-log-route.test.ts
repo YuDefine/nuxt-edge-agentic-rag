@@ -57,25 +57,25 @@ describe('GET /api/admin/debug/query-logs/[id]', () => {
 
   it('rejects non-admin (delegate 401/403 from guard)', async () => {
     mocks.requireInternalDebugAccess.mockRejectedValueOnce(
-      Object.assign(new Error('Unauthorized'), { statusCode: 401 })
+      Object.assign(new Error('Unauthorized'), { statusCode: 401 }),
     )
 
     const { default: handler } = await import('../../server/api/admin/debug/query-logs/[id].get')
 
     await expect(
-      handler(createRouteEvent({ context: { params: { id: 'log-1' }, cloudflare: { env: {} } } }))
+      handler(createRouteEvent({ context: { params: { id: 'log-1' }, cloudflare: { env: {} } } })),
     ).rejects.toMatchObject({ statusCode: 401 })
   })
 
   it('rejects admin in production with flag off → 403', async () => {
     mocks.requireInternalDebugAccess.mockRejectedValueOnce(
-      Object.assign(new Error('Forbidden'), { statusCode: 403 })
+      Object.assign(new Error('Forbidden'), { statusCode: 403 }),
     )
 
     const { default: handler } = await import('../../server/api/admin/debug/query-logs/[id].get')
 
     await expect(
-      handler(createRouteEvent({ context: { params: { id: 'log-1' }, cloudflare: { env: {} } } }))
+      handler(createRouteEvent({ context: { params: { id: 'log-1' }, cloudflare: { env: {} } } })),
     ).rejects.toMatchObject({ statusCode: 403 })
   })
 
@@ -102,7 +102,7 @@ describe('GET /api/admin/debug/query-logs/[id]', () => {
 
     const { default: handler } = await import('../../server/api/admin/debug/query-logs/[id].get')
     const result = (await handler(
-      createRouteEvent({ context: { params: { id: 'log-1' }, cloudflare: { env: {} } } })
+      createRouteEvent({ context: { params: { id: 'log-1' }, cloudflare: { env: {} } } }),
     )) as { data: Record<string, unknown> }
 
     expect(result.data).toMatchObject({
@@ -146,7 +146,7 @@ describe('GET /api/admin/debug/query-logs/[id]', () => {
 
     const { default: handler } = await import('../../server/api/admin/debug/query-logs/[id].get')
     const result = (await handler(
-      createRouteEvent({ context: { params: { id: 'log-2' }, cloudflare: { env: {} } } })
+      createRouteEvent({ context: { params: { id: 'log-2' }, cloudflare: { env: {} } } }),
     )) as { data: Record<string, unknown> }
 
     expect(result.data.firstTokenLatencyMs).toBeNull()
@@ -163,7 +163,7 @@ describe('GET /api/admin/debug/query-logs/[id]', () => {
     const { default: handler } = await import('../../server/api/admin/debug/query-logs/[id].get')
 
     await expect(
-      handler(createRouteEvent({ context: { params: { id: 'log-1' }, cloudflare: { env: {} } } }))
+      handler(createRouteEvent({ context: { params: { id: 'log-1' }, cloudflare: { env: {} } } })),
     ).rejects.toMatchObject({ statusCode: 404 })
   })
 })

@@ -59,7 +59,7 @@ function baseOptions(
       createMessage: ReturnType<typeof vi.fn>
       createQueryLog: ReturnType<typeof vi.fn>
     }
-  } = {}
+  } = {},
 ) {
   const retrieve =
     overrides.retrieve ??
@@ -102,7 +102,7 @@ describe('chatWithKnowledge — conversation follow-up', () => {
 
     const result = await chatWithKnowledge(
       { ...baseInput(), conversationId: 'conv-1' },
-      baseOptions({ resolveStaleness })
+      baseOptions({ resolveStaleness }),
     )
 
     expect(resolveStaleness).toHaveBeenCalledWith({ conversationId: 'conv-1' })
@@ -131,7 +131,7 @@ describe('chatWithKnowledge — conversation follow-up', () => {
 
     const result = await chatWithKnowledge(
       { ...baseInput(), conversationId: 'conv-1' },
-      baseOptions({ resolveStaleness })
+      baseOptions({ resolveStaleness }),
     )
 
     expect(result.followUp).toEqual({
@@ -165,7 +165,7 @@ describe('chatWithKnowledge — conversation follow-up', () => {
 
     await chatWithKnowledge(
       { ...baseInput(), conversationId: 'conv-1' },
-      baseOptions({ resolveStaleness, retrieve })
+      baseOptions({ resolveStaleness, retrieve }),
     )
 
     expect(order.indexOf('resolveStaleness')).toBeLessThan(order.indexOf('retrieve'))
@@ -175,8 +175,8 @@ describe('chatWithKnowledge — conversation follow-up', () => {
     await expect(
       chatWithKnowledge(
         { ...baseInput(), conversationId: 'conv-1' },
-        baseOptions({ resolveStaleness: undefined })
-      )
+        baseOptions({ resolveStaleness: undefined }),
+      ),
     ).rejects.toThrow(/stale conversation resolver is required/)
   })
 
@@ -200,8 +200,8 @@ describe('chatWithKnowledge — conversation follow-up', () => {
         {
           ...baseOptions({ resolveStaleness, retrieve }),
           rateLimitStore: createChatKvRateLimitStore(kv),
-        }
-      )
+        },
+      ),
     ).rejects.toThrow(/Rate limit exceeded/)
 
     expect(resolveStaleness).not.toHaveBeenCalled()
@@ -227,7 +227,7 @@ describe('chatWithKnowledge — conversation follow-up', () => {
 
     const result = await chatWithKnowledge(
       { ...baseInput(), conversationId: 'conv-1' },
-      baseOptions({ resolveStaleness, auditStore })
+      baseOptions({ resolveStaleness, auditStore }),
     )
 
     expect(result.answer).toBe('Launch moved to Tuesday.')
@@ -242,14 +242,14 @@ describe('chatWithKnowledge — conversation follow-up', () => {
         content: 'What is the new launch timing?',
         conversationId: 'conv-1',
         role: 'user',
-      })
+      }),
     )
 
     // Assistant message MUST carry conversationId AND a citationsJson that
     // contains the cited document_version_id values, so governance §1.1
     // stale resolver can re-validate on the next follow-up turn.
     const assistantCall = createMessage.mock.calls.find(
-      ([arg]) => (arg as { role: string }).role === 'assistant'
+      ([arg]) => (arg as { role: string }).role === 'assistant',
     )
     expect(assistantCall).toBeDefined()
     const assistantArg = assistantCall?.[0] as {
@@ -280,7 +280,7 @@ describe('chatWithKnowledge — conversation follow-up', () => {
         conversationId: 'conv-1',
         query: 'password=hunter2',
       },
-      baseOptions({ resolveStaleness, retrieve })
+      baseOptions({ resolveStaleness, retrieve }),
     )
 
     expect(result.refused).toBe(true)

@@ -83,7 +83,7 @@ function compareReplaySample(sample: A03CitationReplaySample): ReplayComparison 
 }
 
 export function runA03CitationReplayExporter(
-  input: A03ExporterInput = {}
+  input: A03ExporterInput = {},
 ): AcceptanceEvidenceExport {
   const context = createEvidenceExporterContext(input)
   const samples = input.samples ?? buildDefaultSamples()

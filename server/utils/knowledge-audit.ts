@@ -213,7 +213,7 @@ export function createKnowledgeAuditStore(database: D1DatabaseLike) {
             '  content_redacted, content_text, citations_json, risk_flags_json,',
             '  redaction_applied, created_at',
             ') VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-          ].join('\n')
+          ].join('\n'),
         )
         .bind(
           messageId,
@@ -227,7 +227,7 @@ export function createKnowledgeAuditStore(database: D1DatabaseLike) {
           input.citationsJson ?? '[]',
           JSON.stringify(audit.riskFlags),
           audit.redactionApplied ? 1 : 0,
-          now
+          now,
         )
         .run()
 
@@ -275,7 +275,7 @@ export function createKnowledgeAuditStore(database: D1DatabaseLike) {
             '  id, channel, user_profile_id, mcp_token_id, environment, query_redacted_text, risk_flags_json, allowed_access_levels_json, redaction_applied, config_snapshot_version, status, created_at,',
             '  first_token_latency_ms, completion_latency_ms, retrieval_score, judge_score, decision_path, refusal_reason',
             ') VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-          ].join('\n')
+          ].join('\n'),
         )
         .bind(
           queryLogId,
@@ -298,7 +298,7 @@ export function createKnowledgeAuditStore(database: D1DatabaseLike) {
           input.retrievalScore ?? null,
           input.judgeScore ?? null,
           input.decisionPath ?? null,
-          input.refusalReason ?? null
+          input.refusalReason ?? null,
         )
         .run()
 
@@ -337,7 +337,7 @@ export function createKnowledgeAuditStore(database: D1DatabaseLike) {
             '    decision_path = ?,',
             '    refusal_reason = ?',
             'WHERE id = ?',
-          ].join('\n')
+          ].join('\n'),
         )
         .bind(
           input.firstTokenLatencyMs ?? null,
@@ -346,7 +346,7 @@ export function createKnowledgeAuditStore(database: D1DatabaseLike) {
           input.judgeScore ?? null,
           input.decisionPath ?? null,
           input.refusalReason ?? null,
-          input.queryLogId
+          input.queryLogId,
         )
         .run()
     },

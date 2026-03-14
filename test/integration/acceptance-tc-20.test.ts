@@ -57,7 +57,7 @@ const tc20Mocks = vi.hoisted(
     bindings: null,
     readBody: vi.fn(),
     runtimeConfig: null,
-  })
+  }),
 )
 
 vi.mock('evlog', () => ({
@@ -91,7 +91,7 @@ installNuxtRouteTestGlobals()
 
 describe('acceptance MCP no-internal-diagnostics contract (TC-20)', () => {
   const cases = loadAcceptanceFixtureDataset('seed').cases.filter(
-    (entry) => entry.registryId === 'TC-20'
+    (entry) => entry.registryId === 'TC-20',
   )
 
   beforeEach(() => {
@@ -130,7 +130,7 @@ describe('acceptance MCP no-internal-diagnostics contract (TC-20)', () => {
     expect(fixture.channel).toBe('mcp')
 
     tc20Mocks.bindings = createTc20Bindings(
-      tc20Mocks.actor as ReturnType<typeof createAcceptanceActorFixture>
+      tc20Mocks.actor as ReturnType<typeof createAcceptanceActorFixture>,
     )
     tc20Mocks.readBody.mockResolvedValue({ query: fixture.prompt })
 
@@ -143,7 +143,7 @@ describe('acceptance MCP no-internal-diagnostics contract (TC-20)', () => {
         authorizationHeader: tc20Mocks.actor?.mcpToken.authorizationHeader ?? '',
         cloudflareEnv: tc20Mocks.bindings ?? {},
         pendingEvent,
-      }
+      },
     )) as { results: Array<Record<string, unknown>> }
 
     assertNoInternalDiagnostics('search envelope', searchResult)
@@ -154,7 +154,7 @@ describe('acceptance MCP no-internal-diagnostics contract (TC-20)', () => {
       for (const key of Object.keys(row)) {
         expect(
           ALLOWED_SEARCH_RESULT_KEYS,
-          `search result[${index}] exposes unknown key "${key}"`
+          `search result[${index}] exposes unknown key "${key}"`,
         ).toContain(key)
       }
     }
@@ -168,7 +168,7 @@ describe('acceptance MCP no-internal-diagnostics contract (TC-20)', () => {
         authorizationHeader: tc20Mocks.actor?.mcpToken.authorizationHeader ?? '',
         cloudflareEnv: tc20Mocks.bindings ?? {},
         pendingEvent,
-      }
+      },
     )) as { categories: Array<Record<string, unknown>> }
 
     assertNoInternalDiagnostics('categories envelope', categoriesResult)
@@ -188,7 +188,7 @@ function assertNoInternalDiagnostics(label: string, payload: Record<string, unkn
   for (const leakingKey of INTERNAL_DIAGNOSTIC_KEYS) {
     expect(
       Object.keys(payload),
-      `${label} must not expose internal diagnostic "${leakingKey}"`
+      `${label} must not expose internal diagnostic "${leakingKey}"`,
     ).not.toContain(leakingKey)
   }
 }

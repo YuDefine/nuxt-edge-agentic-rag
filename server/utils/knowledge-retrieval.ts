@@ -93,7 +93,7 @@ export async function retrieveVerifiedEvidence(
     governance: Pick<KnowledgeGovernanceConfig, 'retrieval'>
     search: SearchKnowledgeClient['search']
     store: ResolveCurrentEvidenceStore
-  }
+  },
 ): Promise<{
   evidence: VerifiedKnowledgeEvidence[]
   normalizedQuery: string

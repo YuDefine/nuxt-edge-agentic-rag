@@ -65,22 +65,22 @@ describe('acceptance auth helpers', () => {
     expect(user?.allowedAccessLevels.web).toEqual(['internal'])
     expect(user?.allowedAccessLevels.mcp).toEqual(['internal'])
     expect(
-      hasRuntimeAdminAccess(user?.webSession.user.email, user?.adminEmailAllowlist ?? [])
+      hasRuntimeAdminAccess(user?.webSession.user.email, user?.adminEmailAllowlist ?? []),
     ).toBe(false)
 
     expect(admin?.allowedAccessLevels.web).toEqual(['internal', 'restricted'])
     expect(
-      hasRuntimeAdminAccess(admin?.webSession.user.email, admin?.adminEmailAllowlist ?? [])
+      hasRuntimeAdminAccess(admin?.webSession.user.email, admin?.adminEmailAllowlist ?? []),
     ).toBe(true)
 
     expect(restricted?.allowedAccessLevels.mcp).toEqual(['internal', 'restricted'])
     expect(() =>
-      requireMcpScope(restricted?.mcpAuth ?? { scopes: [], tokenId: '' }, 'knowledge.ask')
+      requireMcpScope(restricted?.mcpAuth ?? { scopes: [], tokenId: '' }, 'knowledge.ask'),
     ).not.toThrow()
 
     expect(noScope?.mcpToken.authorizationHeader).toContain('Bearer ')
     expect(() =>
-      requireMcpScope(noScope?.mcpAuth ?? { scopes: [], tokenId: '' }, 'knowledge.ask')
+      requireMcpScope(noScope?.mcpAuth ?? { scopes: [], tokenId: '' }, 'knowledge.ask'),
     ).toThrowError('The MCP token is missing required scope: knowledge.ask')
   })
 })

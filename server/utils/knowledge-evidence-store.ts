@@ -50,7 +50,7 @@ export function createKnowledgeEvidenceStore(database: D1DatabaseLike) {
             '  AND v.is_current = 1',
             `  AND s.access_level IN (${placeholders})`,
             'LIMIT 1',
-          ].join('\n')
+          ].join('\n'),
         )
         .bind(input.documentVersionId, input.citationLocator, ...input.allowedAccessLevels)
         .first<{

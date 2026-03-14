@@ -90,7 +90,7 @@ export function createDocumentSyncStore(database: D1DatabaseLike) {
             'INSERT INTO documents (',
             '  id, slug, title, category_slug, access_level, status, created_by_user_id, created_at, updated_at',
             ') VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-          ].join('\n')
+          ].join('\n'),
         )
         .bind(
           id,
@@ -101,7 +101,7 @@ export function createDocumentSyncStore(database: D1DatabaseLike) {
           input.status,
           input.createdByUserId,
           now,
-          now
+          now,
         )
         .run()
 
@@ -129,7 +129,7 @@ export function createDocumentSyncStore(database: D1DatabaseLike) {
         chunkText: string
         citationLocator: string
         metadata: Record<string, number>
-      }>
+      }>,
     ): Promise<void> {
       for (const chunk of chunks) {
         await database
@@ -138,7 +138,7 @@ export function createDocumentSyncStore(database: D1DatabaseLike) {
               'INSERT INTO source_chunks (',
               '  id, document_version_id, chunk_index, chunk_hash, chunk_text, citation_locator, access_level, metadata_json',
               ') VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-            ].join('\n')
+            ].join('\n'),
           )
           .bind(
             crypto.randomUUID(),
@@ -148,7 +148,7 @@ export function createDocumentSyncStore(database: D1DatabaseLike) {
             chunk.chunkText,
             chunk.citationLocator,
             chunk.accessLevel,
-            JSON.stringify(chunk.metadata)
+            JSON.stringify(chunk.metadata),
           )
           .run()
       }
@@ -173,7 +173,7 @@ export function createDocumentSyncStore(database: D1DatabaseLike) {
             'INSERT INTO document_versions (',
             '  id, document_id, version_number, source_r2_key, normalized_text_r2_key, metadata_json, smoke_test_queries_json, index_status, sync_status, created_at, updated_at',
             ') VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-          ].join('\n')
+          ].join('\n'),
         )
         .bind(
           input.id,
@@ -186,7 +186,7 @@ export function createDocumentSyncStore(database: D1DatabaseLike) {
           input.indexStatus,
           input.syncStatus,
           now,
-          now
+          now,
         )
         .run()
 
@@ -216,7 +216,7 @@ export function createDocumentSyncStore(database: D1DatabaseLike) {
             'FROM documents',
             'WHERE slug = ?',
             'LIMIT 1',
-          ].join('\n')
+          ].join('\n'),
         )
         .bind(slug)
         .first<{
@@ -245,7 +245,7 @@ export function createDocumentSyncStore(database: D1DatabaseLike) {
             'FROM documents',
             'WHERE id = ?',
             'LIMIT 1',
-          ].join('\n')
+          ].join('\n'),
         )
         .bind(documentId)
         .first<{
@@ -272,7 +272,7 @@ export function createDocumentSyncStore(database: D1DatabaseLike) {
             'SELECT COALESCE(MAX(version_number), 0) AS current_max',
             'FROM document_versions',
             'WHERE document_id = ?',
-          ].join('\n')
+          ].join('\n'),
         )
         .bind(documentId)
         .first<{ current_max: number }>()
@@ -289,7 +289,7 @@ export function createDocumentSyncStore(database: D1DatabaseLike) {
             'FROM document_versions',
             'WHERE id = ?',
             'LIMIT 1',
-          ].join('\n')
+          ].join('\n'),
         )
         .bind(versionId)
         .first<{
@@ -313,7 +313,7 @@ export function createDocumentSyncStore(database: D1DatabaseLike) {
 
     async setVersionIndexingStatus(
       versionId: string,
-      input: { indexStatus: string; syncStatus: string }
+      input: { indexStatus: string; syncStatus: string },
     ): Promise<void> {
       await database
         .prepare(
@@ -321,7 +321,7 @@ export function createDocumentSyncStore(database: D1DatabaseLike) {
             'UPDATE document_versions',
             'SET index_status = ?, sync_status = ?, updated_at = ?',
             'WHERE id = ?',
-          ].join('\n')
+          ].join('\n'),
         )
         .bind(input.indexStatus, input.syncStatus, new Date().toISOString(), versionId)
         .run()
@@ -341,7 +341,7 @@ export function createDocumentSyncStore(database: D1DatabaseLike) {
               'UPDATE document_versions',
               'SET is_current = 0, updated_at = ?',
               'WHERE document_id = ? AND is_current = 1',
-            ].join('\n')
+            ].join('\n'),
           )
           .bind(input.publishedAt, input.documentId),
         database
@@ -350,14 +350,14 @@ export function createDocumentSyncStore(database: D1DatabaseLike) {
               'UPDATE document_versions',
               'SET is_current = 1, published_at = ?, updated_at = ?',
               'WHERE id = ? AND document_id = ?',
-            ].join('\n')
+            ].join('\n'),
           )
           .bind(input.publishedAt, input.publishedAt, input.versionId, input.documentId),
         database
           .prepare(
             ['UPDATE documents', 'SET current_version_id = ?, updated_at = ?', 'WHERE id = ?'].join(
-              '\n'
-            )
+              '\n',
+            ),
           )
           .bind(input.versionId, input.publishedAt, input.documentId),
       ]
@@ -370,9 +370,9 @@ export function createDocumentSyncStore(database: D1DatabaseLike) {
                 'UPDATE documents',
                 "SET status = 'active', updated_at = ?",
                 "WHERE id = ? AND status = 'draft'",
-              ].join('\n')
+              ].join('\n'),
             )
-            .bind(input.publishedAt, input.documentId)
+            .bind(input.publishedAt, input.documentId),
         )
       }
 

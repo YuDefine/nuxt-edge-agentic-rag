@@ -28,7 +28,7 @@ export interface EvidenceExporterOptions {
 }
 
 export function createEvidenceExporterContext(
-  options: EvidenceExporterOptions = {}
+  options: EvidenceExporterOptions = {},
 ): EvidenceExporterContext {
   const now = options.now ?? (() => new Date().toISOString())
   const runtimeConfig = createKnowledgeRuntimeConfig({
@@ -53,7 +53,7 @@ export function createEvidenceExporterContext(
 export function createEvidenceExport(
   acceptanceId: string,
   records: AcceptanceEvidenceRecord[],
-  context: EvidenceExporterContext
+  context: EvidenceExporterContext,
 ): AcceptanceEvidenceExport {
   return acceptanceEvidenceExportSchema.parse({
     acceptanceId,
@@ -70,7 +70,7 @@ export interface EvidenceOutputLocation {
 
 export function resolveEvidenceOutputPath(
   location: EvidenceOutputLocation,
-  reportVersion: string
+  reportVersion: string,
 ): string {
   return resolve(process.cwd(), 'evidence', reportVersion, location.directory, location.filename)
 }

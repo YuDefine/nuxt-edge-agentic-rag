@@ -28,8 +28,8 @@ describe('mcp categories', () => {
         },
         {
           store,
-        }
-      )
+        },
+      ),
     ).resolves.toEqual({
       categories: [{ name: 'alpha' }, { name: 'finance' }, { name: 'zeta' }],
     })
@@ -42,8 +42,8 @@ describe('mcp categories', () => {
         },
         {
           store,
-        }
-      )
+        },
+      ),
     ).resolves.toEqual({
       categories: [
         { count: 5, name: 'alpha' },

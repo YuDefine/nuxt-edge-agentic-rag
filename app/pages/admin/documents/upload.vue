@@ -30,7 +30,7 @@
   })
 
   const isLockedLoading = computed(
-    () => targetDocumentId !== null && targetStatus.value === 'pending'
+    () => targetDocumentId !== null && targetStatus.value === 'pending',
   )
 
   const lockedDocument = computed(() => {

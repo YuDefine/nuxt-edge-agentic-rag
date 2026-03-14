@@ -28,7 +28,7 @@ const tc15Mocks = vi.hoisted(
     bindings: null,
     readBody: vi.fn(),
     runtimeConfig: null,
-  })
+  }),
 )
 
 vi.mock('evlog', () => ({
@@ -64,7 +64,7 @@ installNuxtRouteTestGlobals()
 
 describe('acceptance high-risk redaction does not persist raw text (TC-15)', () => {
   const cases = loadAcceptanceFixtureDataset('seed').cases.filter(
-    (entry) => entry.registryId === 'TC-15'
+    (entry) => entry.registryId === 'TC-15',
   )
 
   beforeEach(() => {
@@ -110,11 +110,11 @@ describe('acceptance high-risk redaction does not persist raw text (TC-15)', () 
     // 兩者走同一 shouldBlock 路徑，但 risk_flags_json + redaction marker 分兩 bucket。
     const hasCredentialPattern =
       /sk-[A-Za-z0-9]{10,}|api[_ -]?key\s*[:=]|password\s*[:=]|secret\s*[:=]|\btoken\s*[:=]/i.test(
-        fixture.prompt
+        fixture.prompt,
       )
     const hasCreditCardPattern =
       /(?<!\d)(?:4\d{3}|5[1-5]\d{2}|6(?:011|5\d{2}))[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}(?!\d)/.test(
-        fixture.prompt
+        fixture.prompt,
       ) || /(?<!\d)3[47]\d{2}[\s-]?\d{6}[\s-]?\d{5}(?!\d)/.test(fixture.prompt)
 
     expect(hasCredentialPattern || hasCreditCardPattern).toBe(true)

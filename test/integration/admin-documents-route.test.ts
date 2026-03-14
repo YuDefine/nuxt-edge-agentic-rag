@@ -32,7 +32,7 @@ describe('GET /api/admin/documents', () => {
 
   it('requires admin session', async () => {
     adminDocumentsMocks.requireRuntimeAdminSession.mockRejectedValueOnce(
-      Object.assign(new Error('Unauthorized'), { statusCode: 401 })
+      Object.assign(new Error('Unauthorized'), { statusCode: 401 }),
     )
 
     const { default: handler } = await import('../../server/api/admin/documents/index.get')

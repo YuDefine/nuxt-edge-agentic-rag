@@ -54,14 +54,14 @@ export async function answerKnowledgeQuery(
         citationLocator: string
         documentVersionId: string
         sourceChunkId: string
-      }>
+      }>,
     ) => Promise<Array<{ citationId: string; documentVersionId: string; sourceChunkId: string }>>
     governance: Pick<KnowledgeGovernanceConfig, 'models' | 'thresholds'>
     retrieve: (input: { allowedAccessLevels: string[]; query: string }) => Promise<{
       evidence: VerifiedKnowledgeEvidence[]
       normalizedQuery: string
     }>
-  }
+  },
 ): Promise<{
   answer: string | null
   citations: Array<{ citationId: string; documentVersionId: string; sourceChunkId: string }>
@@ -87,7 +87,7 @@ export async function answerKnowledgeQuery(
       initialScore,
       options.governance,
       options.answer,
-      options.persistCitations
+      options.persistCitations,
     )
   }
 
@@ -125,7 +125,7 @@ export async function answerKnowledgeQuery(
       initialScore,
       options.governance,
       options.answer,
-      options.persistCitations
+      options.persistCitations,
     )
   }
 
@@ -158,7 +158,7 @@ export async function answerKnowledgeQuery(
       retryScore,
       options.governance,
       options.answer,
-      options.persistCitations
+      options.persistCitations,
     )
   }
 
@@ -202,8 +202,8 @@ async function answerWithCitations(
       citationLocator: string
       documentVersionId: string
       sourceChunkId: string
-    }>
-  ) => Promise<Array<{ citationId: string; documentVersionId: string; sourceChunkId: string }>>
+    }>,
+  ) => Promise<Array<{ citationId: string; documentVersionId: string; sourceChunkId: string }>>,
 ): Promise<{
   answer: string
   citations: Array<{ citationId: string; documentVersionId: string; sourceChunkId: string }>
@@ -222,7 +222,7 @@ async function answerWithCitations(
       citationLocator: item.citationLocator,
       documentVersionId: item.documentVersionId,
       sourceChunkId: item.sourceChunkId,
-    }))
+    })),
   )
 
   return {
@@ -249,7 +249,7 @@ function refuse(retrievalScore: number): {
 
 function selectAnswerModelRole(
   evidence: VerifiedKnowledgeEvidence[],
-  modelRoles: KnowledgeGovernanceConfig['models']
+  modelRoles: KnowledgeGovernanceConfig['models'],
 ): string {
   const distinctDocuments = new Set(evidence.map((item) => item.documentId))
 

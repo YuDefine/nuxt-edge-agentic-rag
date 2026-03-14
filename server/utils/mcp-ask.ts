@@ -185,7 +185,7 @@ export async function askKnowledge(
     query: string
     retentionDays?: number
   },
-  options: McpAskDependencies
+  options: McpAskDependencies,
 ): Promise<McpAskResult> {
   const allowedAccessLevels = getAllowedAccessLevels({
     channel: 'mcp',
@@ -339,7 +339,7 @@ export async function askKnowledge(
           return options.citationStore.persistCitations(payload)
         },
         retrieve: options.retrieve,
-      }
+      },
     )
   } catch (error) {
     await maybeUpdateQueryLog({
@@ -431,7 +431,7 @@ export function createMcpQueryLogStore(database: D1DatabaseLike) {
             '  id, channel, user_profile_id, mcp_token_id, environment, query_redacted_text, risk_flags_json, allowed_access_levels_json, redaction_applied, config_snapshot_version, status, created_at,',
             '  first_token_latency_ms, completion_latency_ms, retrieval_score, judge_score, decision_path, refusal_reason',
             ') VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-          ].join('\n')
+          ].join('\n'),
         )
         .bind(
           queryLogId,
@@ -453,7 +453,7 @@ export function createMcpQueryLogStore(database: D1DatabaseLike) {
           input.retrievalScore ?? null,
           input.judgeScore ?? null,
           input.decisionPath ?? null,
-          input.refusalReason ?? null
+          input.refusalReason ?? null,
         )
         .run()
 
@@ -496,7 +496,7 @@ export function createMcpQueryLogStore(database: D1DatabaseLike) {
             '  id, channel, user_profile_id, mcp_token_id, environment, query_redacted_text, risk_flags_json, allowed_access_levels_json, redaction_applied, config_snapshot_version, status, created_at,',
             '  first_token_latency_ms, completion_latency_ms, retrieval_score, judge_score, decision_path, refusal_reason',
             ') VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-          ].join('\n')
+          ].join('\n'),
         )
         .bind(
           queryLogId,
@@ -516,7 +516,7 @@ export function createMcpQueryLogStore(database: D1DatabaseLike) {
           null,
           null,
           'restricted_blocked',
-          'restricted_scope'
+          'restricted_scope',
         )
         .run()
 
@@ -549,7 +549,7 @@ export function createMcpQueryLogStore(database: D1DatabaseLike) {
             '    decision_path = ?,',
             '    refusal_reason = ?',
             'WHERE id = ?',
-          ].join('\n')
+          ].join('\n'),
         )
         .bind(
           input.firstTokenLatencyMs ?? null,
@@ -558,7 +558,7 @@ export function createMcpQueryLogStore(database: D1DatabaseLike) {
           input.judgeScore ?? null,
           input.decisionPath ?? null,
           input.refusalReason ?? null,
-          input.queryLogId
+          input.queryLogId,
         )
         .run()
     },

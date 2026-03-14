@@ -34,7 +34,7 @@ vi.mock('../../server/utils/mcp-replay', () => ({
   McpReplayError: class McpReplayError extends Error {
     constructor(
       message: string,
-      readonly statusCode: number
+      readonly statusCode: number,
     ) {
       super(message)
       this.name = 'McpReplayError'
@@ -55,7 +55,7 @@ describe('GET /api/citations/:citationId', () => {
 
   it('requires authentication', async () => {
     citationMocks.requireUserSession.mockRejectedValueOnce(
-      Object.assign(new Error('Unauthorized'), { statusCode: 401 })
+      Object.assign(new Error('Unauthorized'), { statusCode: 401 }),
     )
     citationMocks.getRouterParam.mockReturnValue('cite-1')
 

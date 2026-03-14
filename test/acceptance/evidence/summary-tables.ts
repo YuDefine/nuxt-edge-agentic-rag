@@ -63,7 +63,7 @@ function toSummaryRow(record: AcceptanceEvidenceRecord): EvidenceSummaryRow {
 }
 
 export function buildEvidenceSummaryTables(
-  exports: AcceptanceEvidenceExport[]
+  exports: AcceptanceEvidenceExport[],
 ): EvidenceSummaryTable[] {
   if (exports.length === 0) {
     return []
@@ -124,7 +124,7 @@ export function summaryTablesIncludeConfigSnapshotVersion(tables: EvidenceSummar
       table.rows.length > 0 &&
       table.rows.every(
         (row) =>
-          typeof row.configSnapshotVersion === 'string' && row.configSnapshotVersion.length > 0
-      )
+          typeof row.configSnapshotVersion === 'string' && row.configSnapshotVersion.length > 0,
+      ),
   )
 }

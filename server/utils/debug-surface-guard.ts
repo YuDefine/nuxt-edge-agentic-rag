@@ -29,7 +29,7 @@ export interface DebugSurfaceAccessContext {
 }
 
 export async function requireInternalDebugAccess(
-  event: Parameters<typeof requireRuntimeAdminSession>[0]
+  event: Parameters<typeof requireRuntimeAdminSession>[0],
 ): Promise<DebugSurfaceAccessContext> {
   // Order matters: surface 403 for non-admins before probing env/flag so the
   // flag never leaks to unauthenticated callers.

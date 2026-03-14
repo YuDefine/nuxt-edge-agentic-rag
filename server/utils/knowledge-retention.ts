@@ -44,7 +44,7 @@ function extractChangeCount(runResult: unknown): number {
 async function runStep(
   step: RetentionPolicyKey,
   fn: () => Promise<number>,
-  result: RetentionCleanupResult
+  result: RetentionCleanupResult,
 ): Promise<void> {
   try {
     const changes = await fn()
@@ -118,7 +118,7 @@ export async function runRetentionCleanup(input: {
         .run()
       return extractChangeCount(runResult)
     },
-    result
+    result,
   )
 
   // Step 2: expire query_logs by `created_at <= cutoff`.
@@ -131,7 +131,7 @@ export async function runRetentionCleanup(input: {
         .run()
       return extractChangeCount(runResult)
     },
-    result
+    result,
   )
 
   // Step 3: scrub source_chunks.chunk_text beyond retention window. Keep the
@@ -146,13 +146,13 @@ export async function runRetentionCleanup(input: {
     async () => {
       const runResult = await input.database
         .prepare(
-          "UPDATE source_chunks SET chunk_text = '' WHERE created_at <= ? AND chunk_text <> ''"
+          "UPDATE source_chunks SET chunk_text = '' WHERE created_at <= ? AND chunk_text <> ''",
         )
         .bind(cutoff)
         .run()
       return extractChangeCount(runResult)
     },
-    result
+    result,
   )
 
   // Step 4: redact revoked/expired mcp_tokens metadata once past retention.
@@ -172,13 +172,13 @@ export async function runRetentionCleanup(input: {
             'WHERE COALESCE(revoked_at, expires_at, created_at) <= ?',
             "  AND (status = 'revoked' OR status = 'expired' OR expires_at IS NOT NULL)",
             "  AND token_hash NOT LIKE 'redacted:%'",
-          ].join('\n')
+          ].join('\n'),
         )
         .bind(cutoff)
         .run()
       return extractChangeCount(runResult)
     },
-    result
+    result,
   )
 
   log.info(
@@ -188,7 +188,7 @@ export async function runRetentionCleanup(input: {
       deleted: result.deleted,
       errors: result.errors.length,
     },
-    'retention cleanup completed'
+    'retention cleanup completed',
   )
 
   return result
@@ -228,7 +228,7 @@ export async function pruneKnowledgeRetentionWindow(input: {
         "    revoked_reason = COALESCE(revoked_reason, 'retention-expired')",
         'WHERE COALESCE(revoked_at, expires_at, created_at) <= ?',
         "  AND (status = 'revoked' OR status = 'expired' OR expires_at IS NOT NULL)",
-      ].join('\n')
+      ].join('\n'),
     )
     .bind(cutoff)
     .run()

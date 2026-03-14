@@ -79,7 +79,7 @@ describe('createDocumentSyncStore.publishVersionAtomic', () => {
       (entry) =>
         /UPDATE\s+documents/i.test(entry.sql) &&
         /SET[^]*status\s*=\s*'active'/i.test(entry.sql) &&
-        /WHERE[^]*status\s*=\s*'draft'/i.test(entry.sql)
+        /WHERE[^]*status\s*=\s*'draft'/i.test(entry.sql),
     )
 
     expect(promoteStatements).toHaveLength(1)
@@ -104,7 +104,7 @@ describe('createDocumentSyncStore.publishVersionAtomic', () => {
     expect(batchedStatements).toHaveLength(3)
 
     const promoteStatements = mock.captured.filter((entry) =>
-      /SET[^]*status\s*=\s*'active'/i.test(entry.sql)
+      /SET[^]*status\s*=\s*'active'/i.test(entry.sql),
     )
     expect(promoteStatements).toHaveLength(0)
   })

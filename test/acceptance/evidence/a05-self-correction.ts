@@ -102,7 +102,7 @@ function compareSelfCorrection(sample: A05SelfCorrectionSample): SelfCorrectionC
 }
 
 export function runA05SelfCorrectionExporter(
-  input: A05ExporterInput = {}
+  input: A05ExporterInput = {},
 ): AcceptanceEvidenceExport {
   const context = createEvidenceExporterContext(input)
   const samples = input.samples ?? buildDefaultSamples()
@@ -136,13 +136,13 @@ export function runA05SelfCorrectionExporter(
 
     if (!comparison.decisionPathMatches) {
       notesParts.push(
-        `decision path did not transition to self_corrected (observed=${sample.finalDecisionPath})`
+        `decision path did not transition to self_corrected (observed=${sample.finalDecisionPath})`,
       )
     }
 
     if (!comparison.retryImprovedOverInitial) {
       notesParts.push(
-        `retry score (${sample.retry.aiSearchScore}) did not improve over initial (${sample.initial.aiSearchScore})`
+        `retry score (${sample.retry.aiSearchScore}) did not improve over initial (${sample.initial.aiSearchScore})`,
       )
     }
 
@@ -152,7 +152,7 @@ export function runA05SelfCorrectionExporter(
 
     if (isStubbed && passed) {
       notesParts.push(
-        'Stubbed self-correction payloads — rerun TC-04 against live orchestration to capture real AI Search rounds.'
+        'Stubbed self-correction payloads — rerun TC-04 against live orchestration to capture real AI Search rounds.',
       )
     }
 

@@ -143,7 +143,7 @@ export function createConversationStore(database: D1DatabaseLike) {
           '  AND deleted_at IS NULL',
           'ORDER BY updated_at DESC',
           'LIMIT ?',
-        ].join('\n')
+        ].join('\n'),
       )
       .bind(options.userProfileId, limit)
       .all<{
@@ -178,7 +178,7 @@ export function createConversationStore(database: D1DatabaseLike) {
           '  AND user_profile_id = ?',
           '  AND deleted_at IS NULL',
           'LIMIT 1',
-        ].join('\n')
+        ].join('\n'),
       )
       .bind(input.conversationId, input.userProfileId)
       .first<{
@@ -201,7 +201,7 @@ export function createConversationStore(database: D1DatabaseLike) {
           'FROM messages',
           'WHERE conversation_id = ?',
           'ORDER BY created_at ASC',
-        ].join('\n')
+        ].join('\n'),
       )
       .bind(conversationRow.id)
       .all<{
@@ -246,7 +246,7 @@ export function createConversationStore(database: D1DatabaseLike) {
           'WHERE id = ?',
           '  AND user_profile_id = ?',
           'LIMIT 1',
-        ].join('\n')
+        ].join('\n'),
       )
       .bind(input.conversationId, input.userProfileId)
       .first<{ id: string; deleted_at: string | null }>()
@@ -319,7 +319,7 @@ export function createConversationStore(database: D1DatabaseLike) {
           'INSERT INTO conversations',
           '  (id, user_profile_id, access_level, title, created_at, updated_at, deleted_at)',
           'VALUES (?, ?, ?, ?, ?, ?, NULL)',
-        ].join('\n')
+        ].join('\n'),
       )
       .bind(id, input.userProfileId, accessLevel, title, createdAt, createdAt)
       .run()
@@ -353,7 +353,7 @@ export function createConversationStore(database: D1DatabaseLike) {
           '  AND user_profile_id = ?',
           '  AND deleted_at IS NULL',
           'LIMIT 1',
-        ].join('\n')
+        ].join('\n'),
       )
       .bind(input.conversationId, input.userProfileId)
       .first<{ exists_flag: number }>()

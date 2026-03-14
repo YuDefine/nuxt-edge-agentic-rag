@@ -70,7 +70,7 @@ const testCaseRegistryEntries: AcceptanceCaseRegistryEntry[] = [
     ['web', 'mcp'],
     1759,
     '200',
-    'direct'
+    'direct',
   ),
   createTestCaseEntry('TC-02', '庫存不足 SOP 題', ['A02'], ['web', 'mcp'], 1760, '200', 'direct'),
   createTestCaseEntry('TC-03', '報表欄位定義題', ['A02'], ['web', 'mcp'], 1761, '200', 'direct'),
@@ -81,7 +81,7 @@ const testCaseRegistryEntries: AcceptanceCaseRegistryEntry[] = [
     ['web', 'mcp'],
     1762,
     '200',
-    'self_corrected'
+    'self_corrected',
   ),
   createTestCaseEntry('TC-05', 'Web 多輪追問語境延續', ['A02'], ['web'], 1763, '200', 'direct'),
   createTestCaseEntry('TC-06', '跨文件比較題', ['A02'], ['web', 'mcp'], 1764, '200', 'judge_pass'),
@@ -94,7 +94,7 @@ const testCaseRegistryEntries: AcceptanceCaseRegistryEntry[] = [
     ['web', 'mcp'],
     1767,
     '200',
-    'refused'
+    'refused',
   ),
   createTestCaseEntry('TC-10', '制度查詢題', ['A02'], ['web', 'mcp'], 1768, '200', 'direct'),
   createTestCaseEntry('TC-11', '條件式程序題', ['A02'], ['web', 'mcp'], 1769, '200', 'direct'),
@@ -105,7 +105,7 @@ const testCaseRegistryEntries: AcceptanceCaseRegistryEntry[] = [
     ['mcp'],
     1770,
     '200 / 200',
-    'direct'
+    'direct',
   ),
   createTestCaseEntry(
     'TC-13',
@@ -114,7 +114,7 @@ const testCaseRegistryEntries: AcceptanceCaseRegistryEntry[] = [
     ['mcp'],
     1771,
     '403',
-    '403'
+    '403',
   ),
   createTestCaseEntry(
     'TC-14',
@@ -123,7 +123,7 @@ const testCaseRegistryEntries: AcceptanceCaseRegistryEntry[] = [
     ['web'],
     1772,
     '200',
-    'direct'
+    'direct',
   ),
   createTestCaseEntry(
     'TC-15',
@@ -132,7 +132,7 @@ const testCaseRegistryEntries: AcceptanceCaseRegistryEntry[] = [
     ['web'],
     1773,
     '200',
-    'refused'
+    'refused',
   ),
   createTestCaseEntry(
     'TC-16',
@@ -141,7 +141,7 @@ const testCaseRegistryEntries: AcceptanceCaseRegistryEntry[] = [
     ['mcp'],
     1774,
     '200',
-    '200_empty'
+    '200_empty',
   ),
   createTestCaseEntry(
     'TC-17',
@@ -150,7 +150,7 @@ const testCaseRegistryEntries: AcceptanceCaseRegistryEntry[] = [
     ['mcp'],
     1775,
     '200',
-    'refused_or_empty'
+    'refused_or_empty',
   ),
   createTestCaseEntry(
     'TC-18',
@@ -159,7 +159,7 @@ const testCaseRegistryEntries: AcceptanceCaseRegistryEntry[] = [
     ['web', 'mcp'],
     1776,
     '200',
-    'refused_or_new_version_only'
+    'refused_or_new_version_only',
   ),
   createTestCaseEntry('TC-19', 'listCategories 計數規則', ['A07'], ['mcp'], 1777, '200', 'direct'),
   createTestCaseEntry(
@@ -169,7 +169,7 @@ const testCaseRegistryEntries: AcceptanceCaseRegistryEntry[] = [
     ['mcp'],
     1778,
     '200',
-    'direct'
+    'direct',
   ),
   createTestCaseEntry(
     'TC-UI-01',
@@ -178,7 +178,7 @@ const testCaseRegistryEntries: AcceptanceCaseRegistryEntry[] = [
     ['web'],
     1779,
     '200',
-    'empty_state'
+    'empty_state',
   ),
   createTestCaseEntry(
     'TC-UI-02',
@@ -187,7 +187,7 @@ const testCaseRegistryEntries: AcceptanceCaseRegistryEntry[] = [
     ['web'],
     1780,
     '200',
-    'loading_state'
+    'loading_state',
   ),
   createTestCaseEntry(
     'TC-UI-03',
@@ -196,7 +196,7 @@ const testCaseRegistryEntries: AcceptanceCaseRegistryEntry[] = [
     ['web'],
     1781,
     '4xx_or_5xx',
-    'error_state'
+    'error_state',
   ),
   createTestCaseEntry(
     'TC-UI-04',
@@ -205,7 +205,7 @@ const testCaseRegistryEntries: AcceptanceCaseRegistryEntry[] = [
     ['web'],
     1782,
     '200',
-    'success_state'
+    'success_state',
   ),
   createTestCaseEntry(
     'TC-UI-05',
@@ -214,7 +214,7 @@ const testCaseRegistryEntries: AcceptanceCaseRegistryEntry[] = [
     ['web'],
     1783,
     '401_or_403',
-    'unauthorized_state'
+    'unauthorized_state',
   ),
 ]
 
@@ -226,7 +226,7 @@ const acceptanceRegistryEntries: AcceptanceGoalRegistryEntry[] = [
     ['EV-01'],
     ['TC-01', 'TC-04', 'TC-06'],
     ['1.2.1', '2.1.2'],
-    1471
+    1471,
   ),
   createAcceptanceEntry(
     'A03',
@@ -234,7 +234,7 @@ const acceptanceRegistryEntries: AcceptanceGoalRegistryEntry[] = [
     ['EV-03'],
     ['TC-12'],
     ['2.2.1', '2.2.5'],
-    1472
+    1472,
   ),
   createAcceptanceEntry(
     'A04',
@@ -242,7 +242,7 @@ const acceptanceRegistryEntries: AcceptanceGoalRegistryEntry[] = [
     ['EV-03'],
     ['TC-18'],
     ['1.3.2', '2.2.4'],
-    1473
+    1473,
   ),
   createAcceptanceEntry(
     'A05',
@@ -250,7 +250,7 @@ const acceptanceRegistryEntries: AcceptanceGoalRegistryEntry[] = [
     [],
     ['TC-04'],
     ['2.1.2', '2.4.4'],
-    1474
+    1474,
   ),
   createAcceptanceEntry(
     'A06',
@@ -258,7 +258,7 @@ const acceptanceRegistryEntries: AcceptanceGoalRegistryEntry[] = [
     [],
     ['TC-07', 'TC-08', 'TC-09', 'TC-15'],
     ['1.2.2', '2.4.1'],
-    1475
+    1475,
   ),
   createAcceptanceEntry(
     'A07',
@@ -266,7 +266,7 @@ const acceptanceRegistryEntries: AcceptanceGoalRegistryEntry[] = [
     [],
     ['TC-12', 'TC-16', 'TC-17', 'TC-19', 'TC-20'],
     ['2.2.2', '3.2.2'],
-    1476
+    1476,
   ),
   createAcceptanceEntry(
     'A08',
@@ -274,7 +274,7 @@ const acceptanceRegistryEntries: AcceptanceGoalRegistryEntry[] = [
     ['EV-02'],
     [],
     ['2.4.1', '3.2.2'],
-    1477
+    1477,
   ),
   createAcceptanceEntry(
     'A09',
@@ -282,7 +282,7 @@ const acceptanceRegistryEntries: AcceptanceGoalRegistryEntry[] = [
     [],
     ['TC-13', 'TC-15', 'TC-17'],
     ['2.4.1', '2.4.4'],
-    1478
+    1478,
   ),
   createAcceptanceEntry(
     'A10',
@@ -290,7 +290,7 @@ const acceptanceRegistryEntries: AcceptanceGoalRegistryEntry[] = [
     [],
     ['TC-14'],
     ['2.4.1', '3.3.1'],
-    1479
+    1479,
   ),
   createAcceptanceEntry(
     'A11',
@@ -298,7 +298,7 @@ const acceptanceRegistryEntries: AcceptanceGoalRegistryEntry[] = [
     [],
     ['TC-15'],
     ['2.4.1', '2.4.4'],
-    1480
+    1480,
   ),
   createAcceptanceEntry(
     'A12',
@@ -306,7 +306,7 @@ const acceptanceRegistryEntries: AcceptanceGoalRegistryEntry[] = [
     [],
     ['TC-20'],
     ['2.2.2', '附錄 A'],
-    1481
+    1481,
   ),
   createAcceptanceEntry('A13', 'rate limit 與保留期限規則可被驗證', ['EV-04'], [], ['2.4.1'], 1482),
 ]
@@ -317,35 +317,35 @@ const evidenceRegistryEntries: AcceptanceEvidenceRegistryEntry[] = [
     '部署成功與核心閉環 smoke',
     ['A01', 'A02'],
     '部署紀錄、架構圖、上傳到問答的閉環操作錄影或截圖',
-    1453
+    1453,
   ),
   createEvidenceEntry(
     'EV-02',
     'OAuth 與 allowlist 權限重算',
     ['A08'],
     '登入截圖、Session 權限比對紀錄、allowlist 異動前後操作結果',
-    1454
+    1454,
   ),
   createEvidenceEntry(
     'EV-03',
     '發布流程、版本切換與 rollback',
     ['A03', 'A04'],
     'publish no-op、失敗 transaction、版本切換前後查詢紀錄',
-    1455
+    1455,
   ),
   createEvidenceEntry(
     'EV-04',
     'rate limit 與 retention 清理',
     ['A13'],
     '`429` 測試紀錄、backdated record、清理作業日誌',
-    1456
+    1456,
   ),
   createEvidenceEntry(
     'EV-UI-01',
     'UI 四態 + unauthorized 覆蓋（表 3-5）',
     [],
     'TC-UI-01 到 TC-UI-05 的 state-machine 驗證、screenshot 指標與對應 network log',
-    1457
+    1457,
   ),
 ]
 
@@ -381,7 +381,7 @@ export function listAcceptanceRegistryEntries(): Array<
 }
 
 export function getAcceptanceRegistryEntry(
-  id: string
+  id: string,
 ):
   | AcceptanceCaseRegistryEntry
   | AcceptanceEvidenceRegistryEntry
@@ -396,7 +396,7 @@ export function createAcceptanceRegistryMap(): AcceptanceRegistryEntryMap {
 
 export function createAcceptanceExportRow(
   input: Omit<AcceptanceExportRow, 'configSnapshotVersion'>,
-  runtimeConfigInput: KnowledgeRuntimeConfigInput = {}
+  runtimeConfigInput: KnowledgeRuntimeConfigInput = {},
 ): AcceptanceExportRow {
   return {
     ...input,
@@ -412,7 +412,7 @@ function createTestCaseEntry(
   channels: string[],
   sourceLine: number,
   expectedHttpStatus: string,
-  primaryOutcome: string
+  primaryOutcome: string,
 ): AcceptanceCaseRegistryEntry {
   return {
     acceptanceIds,
@@ -433,7 +433,7 @@ function createAcceptanceEntry(
   evidenceIds: string[],
   caseIds: string[],
   chapterRefs: string[],
-  sourceLine: number
+  sourceLine: number,
 ): AcceptanceGoalRegistryEntry {
   return {
     caseIds,
@@ -452,7 +452,7 @@ function createEvidenceEntry(
   title: string,
   acceptanceIds: string[],
   evidenceForm: string,
-  sourceLine: number
+  sourceLine: number,
 ): AcceptanceEvidenceRegistryEntry {
   return {
     acceptanceIds,

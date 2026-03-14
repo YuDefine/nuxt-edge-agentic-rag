@@ -149,7 +149,7 @@ describe('loadKnowledgeUploadsConfig', () => {
     })
 
     expect(() => loadKnowledgeUploadsConfig()).toThrowError(
-      /bindings\.documentsBucket.*uploads\.accountId.*uploads\.secretAccessKey/
+      /bindings\.documentsBucket.*uploads\.accountId.*uploads\.secretAccessKey/,
     )
   })
 })
@@ -161,7 +161,7 @@ describe('createR2ObjectAccess', () => {
 
   it('throws 503 when the R2 binding is not available', () => {
     expect(() => createR2ObjectAccess(makeEvent(undefined))).toThrowError(
-      /R2 binding "BLOB" is not available/
+      /R2 binding "BLOB" is not available/,
     )
   })
 

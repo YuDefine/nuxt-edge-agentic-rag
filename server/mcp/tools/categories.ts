@@ -48,7 +48,7 @@ export default defineMcpTool({
       },
       {
         store: createMcpCategoryStore(database),
-      }
+      },
     )
   },
 })

@@ -134,7 +134,7 @@ export function runA07McpContractExporter(input: A07ExporterInput = {}): Accepta
 
     if (isStubbed && passed) {
       notesParts.push(
-        'Stubbed inspector/contract snapshot — rerun MCP Inspector and diff against stored contract for real evidence.'
+        'Stubbed inspector/contract snapshot — rerun MCP Inspector and diff against stored contract for real evidence.',
       )
     }
 

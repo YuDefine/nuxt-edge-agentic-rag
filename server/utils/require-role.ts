@@ -138,7 +138,7 @@ export interface RequireRoleResult {
  */
 export async function requireRole(
   event: EventLike,
-  role: RequiredRole
+  role: RequiredRole,
 ): Promise<RequireRoleResult> {
   const fullSession = await requireUserSession(event)
   // Narrow via `unknown` — `AuthUser` and `SessionWithRole.user` differ

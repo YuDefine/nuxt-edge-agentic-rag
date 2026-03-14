@@ -43,7 +43,7 @@ describe('token status badge logic', () => {
 
   it('throws for unknown status values (exhaustiveness)', () => {
     expect(() => getTokenStatusConfig('unknown' as TokenStatus)).toThrow(
-      /Unhandled value in TokenStatusBadge/
+      /Unhandled value in TokenStatusBadge/,
     )
   })
 })
@@ -89,7 +89,7 @@ describe('token scope labelling', () => {
 
   it('throws for unknown scope values (exhaustiveness)', () => {
     expect(() => getScopeLabel('unknown.scope' as TokenScope)).toThrow(
-      /Unhandled value in getScopeLabel/
+      /Unhandled value in getScopeLabel/,
     )
   })
 })

@@ -69,7 +69,7 @@ export default defineEventHandler(async function deleteDocumentHandler(event) {
     .from(schema.sourceChunks)
     .innerJoin(
       schema.documentVersions,
-      eq(schema.sourceChunks.documentVersionId, schema.documentVersions.id)
+      eq(schema.sourceChunks.documentVersionId, schema.documentVersions.id),
     )
     .where(eq(schema.documentVersions.documentId, params.id))
 
@@ -86,8 +86,8 @@ export default defineEventHandler(async function deleteDocumentHandler(event) {
       and(
         eq(schema.documents.id, params.id),
         eq(schema.documents.status, 'draft'),
-        sql`NOT EXISTS (SELECT 1 FROM ${schema.documentVersions} WHERE ${schema.documentVersions.documentId} = ${schema.documents.id} AND ${schema.documentVersions.publishedAt} IS NOT NULL)`
-      )
+        sql`NOT EXISTS (SELECT 1 FROM ${schema.documentVersions} WHERE ${schema.documentVersions.documentId} = ${schema.documents.id} AND ${schema.documentVersions.publishedAt} IS NOT NULL)`,
+      ),
     )
     .returning({ id: schema.documents.id })
 

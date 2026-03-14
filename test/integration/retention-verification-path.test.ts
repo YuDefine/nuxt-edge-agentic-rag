@@ -95,7 +95,7 @@ describe('POST /api/admin/retention/prune — verification path (governance §2.
     result: unknown
   }> {
     const handler = (await import('../../server/api/admin/retention/prune.post')).default as (
-      event: unknown
+      event: unknown,
     ) => Promise<unknown>
 
     // Inject readBody via event shape the handler expects. We stub the global
@@ -237,7 +237,7 @@ describe('seedBackdatedRetentionRecord utility (governance §2.4)', () => {
         ageDays: 200,
         documentVersionId: 'dv-123',
         sourceChunkId: 'sc-123',
-      })
+      }),
     ).rejects.toThrow(/production/i)
 
     expect(db.prepare).not.toHaveBeenCalled()
@@ -255,7 +255,7 @@ describe('seedBackdatedRetentionRecord utility (governance §2.4)', () => {
         ageDays: 0,
         documentVersionId: 'dv-123',
         sourceChunkId: 'sc-123',
-      })
+      }),
     ).rejects.toThrow(/ageDays/)
 
     await expect(
@@ -265,7 +265,7 @@ describe('seedBackdatedRetentionRecord utility (governance §2.4)', () => {
         ageDays: -1,
         documentVersionId: 'dv-123',
         sourceChunkId: 'sc-123',
-      })
+      }),
     ).rejects.toThrow(/ageDays/)
   })
 })

@@ -58,7 +58,7 @@ const tc05Mocks = vi.hoisted(
     bindings: null,
     readBody: vi.fn(),
     runtimeConfig: null,
-  })
+  }),
 )
 
 vi.mock('evlog', () => ({
@@ -92,7 +92,7 @@ installNuxtRouteTestGlobals()
 
 describe('acceptance multi-turn continuity and stale protection (TC-05)', () => {
   const cases = loadAcceptanceFixtureDataset('seed').cases.filter(
-    (entry) => entry.registryId === 'TC-05'
+    (entry) => entry.registryId === 'TC-05',
   )
   const scenario = getTc05Scenario()
 
@@ -166,7 +166,7 @@ describe('acceptance multi-turn continuity and stale protection (TC-05)', () => 
       // 第二輪只能引用 current 版本，stale sourceChunk 不得出現
       expect(secondResult.data.citations[0]?.sourceChunkId).toBe(scenario.secondTurn.sourceChunkId)
       expect(secondResult.data.citations.map((item) => item.sourceChunkId)).not.toContain(
-        scenario.staleSourceChunkId
+        scenario.staleSourceChunkId,
       )
 
       const aiBinding = (tc05Mocks.bindings ?? {}).AI as ReturnType<
@@ -212,7 +212,7 @@ describe('acceptance multi-turn continuity and stale protection (TC-05)', () => 
         (call) =>
           call.query.includes('FROM source_chunks s') &&
           call.query.includes('INNER JOIN document_versions v') &&
-          call.query.includes('v.is_current = 1')
+          call.query.includes('v.is_current = 1'),
       )
       const lookupVersionIds = evidenceLookups.map((call) => call.values[0] as string)
 
@@ -221,7 +221,7 @@ describe('acceptance multi-turn continuity and stale protection (TC-05)', () => 
 
       // citation_records 一共寫入兩筆（每輪一筆），皆為 current 版本
       const citationInserts = d1.calls.filter((call) =>
-        call.query.includes('INSERT INTO citation_records')
+        call.query.includes('INSERT INTO citation_records'),
       )
 
       expect(citationInserts).toHaveLength(2)
@@ -233,7 +233,7 @@ describe('acceptance multi-turn continuity and stale protection (TC-05)', () => 
 
       // 兩筆 query_logs 共用同一 configSnapshotVersion（跨輪 governance 版本未飄移）
       const queryLogInserts = d1.calls.filter((call) =>
-        call.query.includes('INSERT INTO query_logs')
+        call.query.includes('INSERT INTO query_logs'),
       )
 
       expect(queryLogInserts).toHaveLength(2)
@@ -243,10 +243,10 @@ describe('acceptance multi-turn continuity and stale protection (TC-05)', () => 
             'local',
             tc05Mocks.runtimeConfig?.governance.configSnapshotVersion,
             'accepted',
-          ])
+          ]),
         )
       }
-    }
+    },
   )
 })
 

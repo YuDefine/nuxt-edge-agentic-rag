@@ -57,7 +57,7 @@ describe('knowledge answering', () => {
         judge,
         persistCitations,
         retrieve,
-      }
+      },
     )
 
     expect(judge).not.toHaveBeenCalled()
@@ -65,7 +65,7 @@ describe('knowledge answering', () => {
       expect.objectContaining({
         modelRole: 'defaultAnswer',
         retrievalScore: 0.85,
-      })
+      }),
     )
     expect(persistCitations).toHaveBeenCalledWith(
       expect.arrayContaining([
@@ -74,7 +74,7 @@ describe('knowledge answering', () => {
           documentVersionId: 'ver-2',
           sourceChunkId: 'chunk-1',
         }),
-      ])
+      ]),
     )
     expect(result).toEqual({
       answer: 'Revenue grew 20% and margins improved.',
@@ -147,7 +147,7 @@ describe('knowledge answering', () => {
         judge,
         persistCitations,
         retrieve,
-      }
+      },
     )
 
     expect(judge).toHaveBeenCalledTimes(1)

@@ -65,7 +65,7 @@ export default defineMcpTool({
             search: aiSearchClient.search,
             store: evidenceStore,
           }),
-      }
+      },
     )
   },
 })

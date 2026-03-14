@@ -67,7 +67,7 @@ export type RetentionPolicyEntry = (typeof RETENTION_POLICY)[RetentionPolicyKey]
  */
 export function computeRetentionCutoff(
   policy: Pick<RetentionPolicyEntry, 'retentionDays'>,
-  now: Date = new Date()
+  now: Date = new Date(),
 ): string {
   const millis = now.getTime() - policy.retentionDays * 24 * 60 * 60 * 1000
   return new Date(millis).toISOString()

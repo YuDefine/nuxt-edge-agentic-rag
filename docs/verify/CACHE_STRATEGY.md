@@ -34,7 +34,7 @@ export default cachedEventHandler(
   {
     maxAge: 60, // 60 秒快取
     swr: true, // Stale-While-Revalidate
-  }
+  },
 )
 ```
 

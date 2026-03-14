@@ -59,9 +59,9 @@ describe('acceptance bindings fakes', () => {
     await expect(
       (
         await (r2 as { get(key: string): Promise<{ text(): Promise<string> }> }).get(
-          'chunks/chunk-1.txt'
+          'chunks/chunk-1.txt',
         )
-      ).text()
+      ).text(),
     ).resolves.toBe('Launch moved to Tuesday.')
 
     const aiBinding = module?.createAiSearchBindingFake({
@@ -97,7 +97,7 @@ describe('acceptance bindings fakes', () => {
           score_threshold: governance.retrieval.minScore,
         },
         rewrite_query: false,
-      })
+      }),
     ).resolves.toEqual([
       {
         accessLevel: 'internal',
@@ -119,7 +119,7 @@ describe('acceptance bindings fakes', () => {
     await expect(
       workersAi?.run('@cf/meta/llama-3.1-8b-instruct', {
         prompt: 'hello',
-      })
+      }),
     ).resolves.toEqual({ response: 'ok' })
 
     expect(
@@ -128,7 +128,7 @@ describe('acceptance bindings fakes', () => {
         kv,
         r2,
         workersAi,
-      })
+      }),
     ).toMatchObject({
       AI: aiBinding,
       DOCUMENTS: r2,

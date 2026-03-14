@@ -27,7 +27,7 @@ export async function devLogin(page: Page, loginEmail: string): Promise<void> {
       const body = await response.json().catch(() => null)
       return { body, ok: response.ok, status: response.status }
     },
-    { loginEmail, password: PASSWORD }
+    { loginEmail, password: PASSWORD },
   )) as DevLoginResult
 
   if (!result.ok) {

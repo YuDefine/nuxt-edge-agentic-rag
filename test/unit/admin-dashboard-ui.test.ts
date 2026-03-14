@@ -72,7 +72,7 @@ function buildAdminNavLinks(input: { dashboardEnabled: boolean; isAdmin: boolean
     items.push(
       { label: '文件管理', to: '/admin/documents' },
       { label: 'Token 管理', to: '/admin/tokens' },
-      { label: '查詢日誌', to: '/admin/query-logs' }
+      { label: '查詢日誌', to: '/admin/query-logs' },
     )
     if (input.dashboardEnabled) {
       items.push({ label: '管理摘要', to: '/admin/dashboard' })

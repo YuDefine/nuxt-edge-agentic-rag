@@ -21,7 +21,7 @@ describe('mcp replay', () => {
             citationLocator: 'lines 4-8',
           }),
         },
-      }
+      },
     )
 
     expect(result).toEqual({
@@ -50,14 +50,14 @@ describe('mcp replay', () => {
               citationLocator: 'lines 1-2',
             }),
           },
-        }
-      )
+        },
+      ),
     ).rejects.toEqual(
       new McpReplayError(
         'The requested citation requires knowledge.restricted.read',
         403,
-        'restricted_scope_required'
-      )
+        'restricted_scope_required',
+      ),
     )
   })
 
@@ -75,10 +75,10 @@ describe('mcp replay', () => {
           replayStore: {
             findReplayableCitationById: vi.fn().mockResolvedValue(null),
           },
-        }
-      )
+        },
+      ),
     ).rejects.toEqual(
-      new McpReplayError('The requested citation was not found', 404, 'chunk_not_found')
+      new McpReplayError('The requested citation was not found', 404, 'chunk_not_found'),
     )
   })
 
@@ -107,7 +107,7 @@ describe('mcp replay', () => {
               citationLocator: 'lines 1-2',
             }),
           },
-        }
+        },
       )
     } catch (error) {
       caught = error
@@ -133,7 +133,7 @@ describe('mcp replay', () => {
           replayStore: {
             findReplayableCitationById: vi.fn().mockResolvedValue(null),
           },
-        }
+        },
       )
     } catch (error) {
       caught = error
@@ -159,7 +159,7 @@ describe('mcp replay', () => {
               citationLocator: 'lines 1-2',
             }),
           },
-        }
+        },
       )
     } catch (error) {
       caught = error

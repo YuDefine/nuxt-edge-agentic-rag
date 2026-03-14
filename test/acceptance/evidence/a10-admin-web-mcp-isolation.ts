@@ -132,7 +132,7 @@ function compareIsolationSample(sample: A10IsolationSample): IsolationComparison
 }
 
 export function runA10AdminWebMcpIsolationExporter(
-  input: A10ExporterInput = {}
+  input: A10ExporterInput = {},
 ): AcceptanceEvidenceExport {
   const context = createEvidenceExporterContext(input)
   const samples = input.samples ?? buildDefaultSamples()
@@ -169,19 +169,19 @@ export function runA10AdminWebMcpIsolationExporter(
 
     if (!comparison.webCanReadRestricted) {
       notesParts.push(
-        'web-admin path failed to read restricted citation — possible over-redaction or misconfigured access level'
+        'web-admin path failed to read restricted citation — possible over-redaction or misconfigured access level',
       )
     }
 
     if (!comparison.mcpRefusedCorrectly) {
       notesParts.push(
-        `mcp path did not refuse correctly (refused=${sample.mcpPath.refused}, citations=${sample.mcpPath.citationCount})`
+        `mcp path did not refuse correctly (refused=${sample.mcpPath.refused}, citations=${sample.mcpPath.citationCount})`,
       )
     }
 
     if (!comparison.mcpScopeIsolated) {
       notesParts.push(
-        'mcp token carries restricted scope — scope isolation broken between web and mcp channels'
+        'mcp token carries restricted scope — scope isolation broken between web and mcp channels',
       )
     }
 
@@ -191,13 +191,13 @@ export function runA10AdminWebMcpIsolationExporter(
 
     if (!comparison.configSnapshotsAligned) {
       notesParts.push(
-        `config_snapshot_version drift between channels (web=${sample.webPath.configSnapshotVersion}, mcp=${sample.mcpPath.configSnapshotVersion})`
+        `config_snapshot_version drift between channels (web=${sample.webPath.configSnapshotVersion}, mcp=${sample.mcpPath.configSnapshotVersion})`,
       )
     }
 
     if (isStubbed && passed) {
       notesParts.push(
-        'Stubbed access matrix + channel snapshots — rerun TC-14 with real Admin OAuth session + MCP token to capture live payloads.'
+        'Stubbed access matrix + channel snapshots — rerun TC-14 with real Admin OAuth session + MCP token to capture live payloads.',
       )
     }
 

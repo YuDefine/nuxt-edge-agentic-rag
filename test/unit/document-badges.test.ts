@@ -5,7 +5,7 @@ import { assertNever } from '../../shared/utils/assert-never'
 describe('assertNever utility', () => {
   it('throws error with context when called', () => {
     expect(() => assertNever('unknown' as never, 'TestContext')).toThrowError(
-      'Unhandled value in TestContext: "unknown"'
+      'Unhandled value in TestContext: "unknown"',
     )
   })
 
@@ -76,7 +76,7 @@ describe('version sync badge logic', () => {
 
 describe('version index badge logic', () => {
   const getIndexStatusConfig = (
-    status: 'pending' | 'preprocessing' | 'indexing' | 'indexed' | 'failed'
+    status: 'pending' | 'preprocessing' | 'indexing' | 'indexed' | 'failed',
   ) => {
     switch (status) {
       case 'pending':

@@ -36,7 +36,7 @@ const tc13Mocks = vi.hoisted(
     actor: null,
     bindings: null,
     runtimeConfig: null,
-  })
+  }),
 )
 
 vi.mock('evlog', () => ({
@@ -72,7 +72,7 @@ installNuxtRouteTestGlobals()
 
 describe('acceptance restricted citation scope (TC-13)', () => {
   const cases = loadAcceptanceFixtureDataset('seed').cases.filter(
-    (entry) => entry.registryId === 'TC-13'
+    (entry) => entry.registryId === 'TC-13',
   )
 
   beforeEach(() => {
@@ -98,7 +98,7 @@ describe('acceptance restricted citation scope (TC-13)', () => {
     } | null
 
     tc13Mocks.bindings = createTc13Bindings(
-      tc13Mocks.actor as ReturnType<typeof createAcceptanceActorFixture>
+      tc13Mocks.actor as ReturnType<typeof createAcceptanceActorFixture>,
     )
 
     expect(registryEntry).toMatchObject({
@@ -124,7 +124,7 @@ describe('acceptance restricted citation scope (TC-13)', () => {
           cloudflareEnv: tc13Mocks.bindings ?? {},
           params: { citationId: RESTRICTED_CITATION_ID },
           pendingEvent,
-        }
+        },
       )
     } catch (error) {
       thrown = error
@@ -178,7 +178,7 @@ describe('acceptance restricted citation scope (TC-13)', () => {
         'blocked',
         'local',
         JSON.stringify(['restricted_scope_violation']),
-      ])
+      ]),
     )
 
     // token_id must match the violating token, not be null
@@ -204,7 +204,7 @@ describe('acceptance restricted citation scope (TC-13)', () => {
     } as unknown as ReturnType<typeof evlogModule.useLogger>)
 
     tc13Mocks.bindings = createTc13BindingsWithFailingAudit(
-      tc13Mocks.actor as ReturnType<typeof createAcceptanceActorFixture>
+      tc13Mocks.actor as ReturnType<typeof createAcceptanceActorFixture>,
     )
 
     const { default: tool } = await import('#server/mcp/tools/get-document-chunk')
@@ -219,7 +219,7 @@ describe('acceptance restricted citation scope (TC-13)', () => {
           cloudflareEnv: tc13Mocks.bindings ?? {},
           params: { citationId: RESTRICTED_CITATION_ID },
           pendingEvent,
-        }
+        },
       )
     } catch (error) {
       thrown = error
@@ -304,7 +304,7 @@ function createTc13Bindings(actor: ReturnType<typeof createAcceptanceActorFixtur
 // so we can exercise `mcp-restricted-audit-trail` spec Scenario 2 (audit
 // write failure does not mask the 403 response).
 function createTc13BindingsWithFailingAudit(
-  actor: ReturnType<typeof createAcceptanceActorFixture>
+  actor: ReturnType<typeof createAcceptanceActorFixture>,
 ) {
   const d1 = createD1BindingFake({
     responders: [

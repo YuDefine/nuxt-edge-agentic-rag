@@ -103,7 +103,7 @@
       error: (error.value as { statusCode?: number } | null) ?? null,
       itemCount: logs.value.length,
       status: fetchStatus.value,
-    })
+    }),
   )
 
   function formatDate(dateString: string): string {

@@ -122,7 +122,9 @@ test.describe('Desktop citation UI @ 1920x1080', () => {
     await page.waitForSelector('button:has-text("引用 1")', { timeout: 15_000 })
 
     // Screenshot: response + citation chips
-    await page.screenshot({ path: `${SCREENSHOT_DIR}/desktop/02-response-with-citation-chips.png` })
+    await page.screenshot({
+      path: `${SCREENSHOT_DIR}/desktop/02-response-with-citation-chips.png`,
+    })
 
     // ✅ Check 1: Only citation chips, no expanded card list below message
     const chips = page.locator('button').filter({ hasText: /^引用 \d+$/ })
@@ -130,14 +132,14 @@ test.describe('Desktop citation UI @ 1920x1080', () => {
 
     // Check no old-style expanded card list
     const expandedList = page.locator(
-      '[data-testid="citation-card-list"], .citation-cards, details:has(.citation-card)'
+      '[data-testid="citation-card-list"], .citation-cards, details:has(.citation-card)',
     )
     await expect(expandedList).toHaveCount(0)
 
     // ✅ Check 2: Chip style — has file-text icon + "引用 N" text
     const firstChip = chips.first()
     await expect(
-      firstChip.locator('.i-lucide-file-text, [class*="lucide:file-text"], svg')
+      firstChip.locator('.i-lucide-file-text, [class*="lucide:file-text"], svg'),
     ).toBeVisible()
 
     // Click citation chip 1
@@ -234,7 +236,7 @@ test.describe('Mobile citation UI @ 375x667', () => {
     // It renders with [role=dialog] + [data-state=open] or [data-vaul-drawer-visible]
     const drawerOrModal = page
       .locator(
-        '[role="dialog"][data-state="open"], [role="dialog"]:visible, [data-vaul-drawer-visible="true"]'
+        '[role="dialog"][data-state="open"], [role="dialog"]:visible, [data-vaul-drawer-visible="true"]',
       )
       .first()
     await expect(drawerOrModal).toBeVisible({ timeout: 8_000 })

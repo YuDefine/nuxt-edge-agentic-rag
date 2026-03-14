@@ -31,8 +31,8 @@ export default defineEventHandler(async function retryDocumentSyncHandler(event)
     .where(
       and(
         eq(schema.documentVersions.id, params.versionId),
-        eq(schema.documentVersions.documentId, params.id)
-      )
+        eq(schema.documentVersions.documentId, params.id),
+      ),
     )
     .limit(1)
 
@@ -107,8 +107,8 @@ export default defineEventHandler(async function retryDocumentSyncHandler(event)
     .where(
       and(
         eq(schema.documentVersions.id, version.id),
-        inArray(schema.documentVersions.syncStatus, ['pending', 'failed'])
-      )
+        inArray(schema.documentVersions.syncStatus, ['pending', 'failed']),
+      ),
     )
     .returning({ id: schema.documentVersions.id })
 

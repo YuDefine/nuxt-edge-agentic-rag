@@ -80,7 +80,7 @@ function resolveEnv(): {
 
 async function listAll(
   client: S3Client,
-  bucket: string
+  bucket: string,
 ): Promise<Array<{ Key: string; Size: number }>> {
   const objects: Array<{ Key: string; Size: number }> = []
   let continuationToken: string | undefined
@@ -90,7 +90,7 @@ async function listAll(
         Bucket: bucket,
         ContinuationToken: continuationToken,
         Prefix: LEGACY_PREFIX,
-      })
+      }),
     )
     for (const entry of response.Contents ?? []) {
       if (entry.Key) objects.push({ Key: entry.Key, Size: entry.Size ?? 0 })
@@ -155,7 +155,7 @@ async function main() {
       new DeleteObjectsCommand({
         Bucket: bucket,
         Delete: { Objects: batch.map((obj) => ({ Key: obj.Key })) },
-      })
+      }),
     )
     console.log(`已刪除 ${Math.min(i + batch.length, objects.length)} / ${objects.length}`)
   }

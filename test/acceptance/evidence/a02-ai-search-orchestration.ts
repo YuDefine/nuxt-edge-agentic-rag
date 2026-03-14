@@ -126,7 +126,7 @@ function buildStubObservation(testCaseId: string): A02OrchestrationObservation {
 }
 
 export function runA02AiSearchOrchestrationExporter(
-  input: A02ExporterInput = {}
+  input: A02ExporterInput = {},
 ): AcceptanceEvidenceExport {
   const context = createEvidenceExporterContext(input)
   const observations = input.observations ?? buildDefaultObservations()
@@ -137,7 +137,7 @@ export function runA02AiSearchOrchestrationExporter(
 
   const records: AcceptanceEvidenceRecord[] = observations.map((observation) => {
     const registryEntry = getAcceptanceRegistryEntry(
-      observation.testCaseId
+      observation.testCaseId,
     ) as AcceptanceCaseRegistryEntry | null
 
     if (!registryEntry || registryEntry.kind !== 'test-case') {

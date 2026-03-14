@@ -94,7 +94,7 @@ export function createDocumentListStore() {
         .from(schema.documents)
         .leftJoin(
           schema.documentVersions,
-          eq(schema.documents.currentVersionId, schema.documentVersions.id)
+          eq(schema.documents.currentVersionId, schema.documentVersions.id),
         )
         .orderBy(desc(schema.documents.updatedAt))
 
@@ -146,7 +146,7 @@ export function createDocumentListStore() {
         .from(schema.documents)
         .leftJoin(
           schema.documentVersions,
-          eq(schema.documents.currentVersionId, schema.documentVersions.id)
+          eq(schema.documents.currentVersionId, schema.documentVersions.id),
         )
         .where(eq(schema.documents.id, documentId))
         .limit(1)

@@ -35,7 +35,7 @@ export class McpReplayError extends Error {
   constructor(
     message: string,
     readonly statusCode: number,
-    readonly reason: McpReplayErrorReason = 'chunk_not_found'
+    readonly reason: McpReplayErrorReason = 'chunk_not_found',
   ) {
     super(message)
     this.name = 'McpReplayError'
@@ -80,7 +80,7 @@ export async function getDocumentChunk(
       tokenId: string
       tokenScopes: string[]
     }) => Promise<void>
-  }
+  },
 ): Promise<{
   chunkText: string
   citationId: string
@@ -123,7 +123,7 @@ export async function getDocumentChunk(
     throw new McpReplayError(
       'The requested citation requires knowledge.restricted.read',
       403,
-      'restricted_scope_required'
+      'restricted_scope_required',
     )
   }
 
@@ -185,7 +185,7 @@ export function createMcpReplayStore(database: D1DatabaseLike) {
             'WHERE cr.id = ?',
             '  AND cr.expires_at > ?',
             'LIMIT 1',
-          ].join('\n')
+          ].join('\n'),
         )
         .bind(citationId, now)
         .first<{
@@ -232,7 +232,7 @@ export function createMcpReplayStore(database: D1DatabaseLike) {
             'WHERE cr.id = ?',
             '  AND cr.expires_at > ?',
             'LIMIT 1',
-          ].join('\n')
+          ].join('\n'),
         )
         .bind(citationId, now)
         .first<{

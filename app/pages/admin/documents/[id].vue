@@ -18,7 +18,7 @@
   const documentId = computed(() => route.params.id as string)
 
   const { data, status, error, refresh } = await useFetch<{ data: DocumentWithAllVersions }>(
-    () => `/api/admin/documents/${documentId.value}`
+    () => `/api/admin/documents/${documentId.value}`,
   )
 
   const document = computed(() => data.value?.data ?? null)
@@ -37,7 +37,7 @@
   const rollbackPendingId = ref<string | null>(null)
 
   const hasPublishedHistory = computed(() =>
-    (document.value?.versions ?? []).some((v) => v.publishedAt !== null)
+    (document.value?.versions ?? []).some((v) => v.publishedAt !== null),
   )
 
   const versionCount = computed(() => document.value?.versions.length ?? 0)

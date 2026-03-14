@@ -63,7 +63,7 @@ vi.mock('hub:db', () => {
                         status: deleteMocks.state.document.status,
                       },
                     ]
-                  : []
+                  : [],
               ),
           }),
         }),
@@ -75,7 +75,7 @@ vi.mock('hub:db', () => {
         from: () => ({
           where: () =>
             Promise.resolve(
-              deleteMocks.state.versions.map((v) => ({ id: v.id, publishedAt: v.publishedAt }))
+              deleteMocks.state.versions.map((v) => ({ id: v.id, publishedAt: v.publishedAt })),
             ),
         }),
       }
@@ -132,7 +132,7 @@ describe('DELETE /api/admin/documents/[id]', () => {
     vi.stubGlobal(
       'getValidatedRouterParams',
       async (_event: unknown, parse: (v: unknown) => unknown) =>
-        parse(deleteMocks.getRouterParams())
+        parse(deleteMocks.getRouterParams()),
     )
     vi.stubGlobal('requireRuntimeAdminSession', deleteMocks.requireRuntimeAdminSession)
   })

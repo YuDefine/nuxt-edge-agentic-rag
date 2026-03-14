@@ -14,17 +14,17 @@ describe('runtime admin allowlist', () => {
   it('parses comma-separated allowlists into unique normalized emails', () => {
     expect(
       parseRuntimeAdminAllowlist(
-        ' Admin@Example.COM,editor@example.com, admin@example.com ,,EDITOR@example.com '
-      )
+        ' Admin@Example.COM,editor@example.com, admin@example.com ,,EDITOR@example.com ',
+      ),
     ).toEqual(['admin@example.com', 'editor@example.com'])
   })
 
   it('grants admin access only when the current email is allowlisted', () => {
     expect(
-      hasRuntimeAdminAccess(' Admin@Example.COM ', ['owner@example.com', 'admin@example.com'])
+      hasRuntimeAdminAccess(' Admin@Example.COM ', ['owner@example.com', 'admin@example.com']),
     ).toBe(true)
     expect(hasRuntimeAdminAccess('reader@example.com', 'owner@example.com,admin@example.com')).toBe(
-      false
+      false,
     )
   })
 

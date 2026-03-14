@@ -43,14 +43,14 @@ export default defineTask({
           deleted: result.deleted,
           errorCount: result.errors.length,
         },
-        'scheduled retention cleanup completed'
+        'scheduled retention cleanup completed',
       )
 
       return { result }
     } catch (error) {
       log.error(
         { message: error instanceof Error ? error.message : String(error) },
-        'scheduled retention cleanup failed to start'
+        'scheduled retention cleanup failed to start',
       )
       throw error
     }

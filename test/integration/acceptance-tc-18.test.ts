@@ -59,7 +59,7 @@ const tc18Mocks = vi.hoisted(
     readBody: vi.fn(),
     readZodBody: vi.fn(),
     runtimeConfig: null,
-  })
+  }),
 )
 
 vi.mock('evlog', () => ({
@@ -99,7 +99,7 @@ installNuxtRouteTestGlobals()
 
 describe('acceptance current-version-only enforcement', () => {
   const cases = loadAcceptanceFixtureDataset('seed').cases.filter(
-    (entry) => entry.registryId === 'TC-18'
+    (entry) => entry.registryId === 'TC-18',
   )
   const scenario = getTc18Scenario()
 
@@ -142,7 +142,7 @@ describe('acceptance current-version-only enforcement', () => {
 
       tc18Mocks.bindings = createTc18Bindings(
         tc18Mocks.actor as ReturnType<typeof createAcceptanceActorFixture>,
-        scenario
+        scenario,
       )
       tc18Mocks.readBody.mockResolvedValue({ query: fixture.prompt })
       tc18Mocks.readZodBody.mockResolvedValue({ query: fixture.prompt })
@@ -200,19 +200,22 @@ describe('acceptance current-version-only enforcement', () => {
         (call) =>
           call.query.includes('FROM source_chunks s') &&
           call.query.includes('INNER JOIN document_versions v') &&
-          call.query.includes('v.is_current = 1')
+          call.query.includes('v.is_current = 1'),
       )
 
       expect(evidenceLookups.length).toBeGreaterThanOrEqual(2)
       const lookedUpVersionIds = evidenceLookups.map((call) => call.values[0])
 
       expect(lookedUpVersionIds).toEqual(
-        expect.arrayContaining([scenario.staleDocumentVersionId, scenario.currentDocumentVersionId])
+        expect.arrayContaining([
+          scenario.staleDocumentVersionId,
+          scenario.currentDocumentVersionId,
+        ]),
       )
 
       // citation_records 的寫入只能針對 current 版本；絕對不能出現 stale 版本的任何欄位
       const citationInserts = d1.calls.filter((call) =>
-        call.query.includes('INSERT INTO citation_records')
+        call.query.includes('INSERT INTO citation_records'),
       )
 
       expect(citationInserts).toHaveLength(1)
@@ -222,7 +225,7 @@ describe('acceptance current-version-only enforcement', () => {
           scenario.currentSourceChunkId,
           scenario.currentCitationLocator,
           scenario.currentChunkText,
-        ])
+        ]),
       )
       expect(citationInserts[0]?.values).not.toContain(scenario.staleDocumentVersionId)
       expect(citationInserts[0]?.values).not.toContain(scenario.staleSourceChunkId)
@@ -236,14 +239,14 @@ describe('acceptance current-version-only enforcement', () => {
           'local',
           tc18Mocks.runtimeConfig?.governance.configSnapshotVersion,
           'accepted',
-        ])
+        ]),
       )
 
       if (fixture.channel === 'mcp') {
         expect(d1.calls.some((call) => call.query.includes('FROM mcp_tokens'))).toBe(true)
         expect(d1.calls.some((call) => call.query.includes('UPDATE mcp_tokens'))).toBe(true)
       }
-    }
+    },
   )
 })
 
@@ -262,7 +265,7 @@ async function runMcpCase(authorizationHeader: string, query: string) {
       authorizationHeader,
       cloudflareEnv: tc18Mocks.bindings ?? {},
       pendingEvent,
-    }
+    },
   )
 
   return { data }
@@ -291,7 +294,7 @@ function getTc18Scenario(): Tc18Scenario {
 
 function createTc18Bindings(
   actor: ReturnType<typeof createAcceptanceActorFixture>,
-  scenario: Tc18Scenario
+  scenario: Tc18Scenario,
 ) {
   const d1 = createD1BindingFake({
     responders: [

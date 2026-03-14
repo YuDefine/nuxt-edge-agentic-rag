@@ -96,7 +96,7 @@ class FakeD1PreparedStatement implements D1PreparedStatementLike {
   constructor(
     private readonly execute: (call: D1ExecutionCall) => Promise<D1ResponderResult>,
     private readonly query: string,
-    private readonly values: unknown[] = []
+    private readonly values: unknown[] = [],
   ) {}
 
   bind(...values: unknown[]): D1PreparedStatementLike {
@@ -187,7 +187,7 @@ export function createKvBindingFake(options: KvBindingFakeOptions = {}) {
       value: string,
       putOptions?: {
         expirationTtl?: number
-      }
+      },
     ): Promise<void> {
       putCalls.push({
         key,
@@ -299,7 +299,7 @@ export function createWorkersAiBindingFake(options: WorkersAiBindingFakeOptions 
 }
 
 export function createCloudflareBindingsFixture(
-  options: CloudflareBindingsFixtureOptions = {}
+  options: CloudflareBindingsFixtureOptions = {},
 ): Record<string, unknown> {
   const names: CloudflareBindingsFixtureNames = {
     ai: 'AI',
@@ -322,7 +322,7 @@ export function createCloudflareBindingsFixture(
 function createUploadedObjectMetadata(
   key: string,
   body: string,
-  metadata?: Partial<UploadedObjectMetadata>
+  metadata?: Partial<UploadedObjectMetadata>,
 ): UploadedObjectMetadata {
   return {
     key,

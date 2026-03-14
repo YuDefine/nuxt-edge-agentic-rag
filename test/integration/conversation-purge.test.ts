@@ -82,7 +82,7 @@ function createPurgeFakeDatabase(input: {
             return {
               async first<T>() {
                 const match = conversations.find(
-                  (row) => row.id === conversationId && row.user_profile_id === userProfileId
+                  (row) => row.id === conversationId && row.user_profile_id === userProfileId,
                 )
                 if (!match) return null
                 return { id: match.id, deleted_at: match.deleted_at } as unknown as T
@@ -176,7 +176,7 @@ function createPurgeFakeDatabase(input: {
                   (row) =>
                     row.id === conversationId &&
                     row.user_profile_id === userProfileId &&
-                    row.deleted_at === null
+                    row.deleted_at === null,
                 )
                 if (!match) return null
                 return {

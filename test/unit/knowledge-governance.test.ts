@@ -54,7 +54,7 @@ describe('knowledge governance config snapshot', () => {
     })
 
     expect(changed.governance.configSnapshotVersion).not.toBe(
-      baseline.governance.configSnapshotVersion
+      baseline.governance.configSnapshotVersion,
     )
   })
 })

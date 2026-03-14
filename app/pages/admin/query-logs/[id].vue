@@ -52,7 +52,7 @@
       error: (error.value as { statusCode?: number } | null) ?? null,
       itemCount: detail.value ? 1 : 0,
       status: fetchStatus.value,
-    })
+    }),
   )
 
   function formatDate(dateString: string): string {
