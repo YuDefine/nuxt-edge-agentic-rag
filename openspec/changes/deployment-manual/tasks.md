@@ -29,18 +29,26 @@
 ## 4. Acceptance 回填（實際部署時補）
 
 - [ ] 4.1 首次 staging 部署後依附錄 D-1 實測，回填每步的「預期輸出」與「驗證結果」；修正錯誤步驟
+  - 2026-04-19 DEFERRED：延後到實際 staging 部署後回填。archive 時標 deferred，不阻擋 change 收尾。
 - [ ] 4.2 [P] 首次 rollback 演練後回填附錄 D-3.1 的驗證紀錄
+  - 2026-04-19 DEFERRED：延後到實際 rollback 演練後回填。
 - [ ] 4.3 [P] D1 migration restore 演練（非 production 環境）後回填 D-3.2
+  - 2026-04-19 DEFERRED：延後到實際 migration restore 演練後回填。
 
 ## 人工檢查
 
 > 本 change 為純文件，人工檢查項目關注「可執行性」與「與實際環境一致性」。
 
-- [ ] #1 新 operator 僅讀附錄 D-1 能從零完成 staging 部署（不需口頭補充）
-- [ ] #2 附錄 D-2 的 CI workflow 範例在 `.github/workflows/` 實際存在並通過語法檢查
-- [ ] #3 附錄 D-3 每類復原情境都有明確成功判斷條件
-- [ ] #4 附錄 D 環境變數表與表 2-25 欄位不衝突，語義互補
-- [ ] #5 `docs/verify/DEPLOYMENT_RUNBOOK.md` 與 `DISASTER_RECOVERY_RUNBOOK.md` 存在，內容與附錄 D 一致（無分歧敘述）
+- [x] #1 新 operator 僅讀附錄 D-1 能從零完成 staging 部署（不需口頭補充）
+  - 2026-04-19 PASS：使用者確認。D.1 五階段（資源建立 / migration / secrets / OAuth / 首次部署 + smoke test）完整覆蓋零到上線流程，每階段交叉引用 DEPLOYMENT_RUNBOOK.md §2 提供完整指令。
+- [x] #2 附錄 D-2 的 CI workflow 範例在 `.github/workflows/` 實際存在並通過語法檢查
+  - 2026-04-19 PASS：`.github/workflows/deploy.yml`（11.9K）存在；`python3 yaml.safe_load` 通過；jobs = ci / deploy-production / deploy-staging / smoke-test / notify；triggers = push / workflow_dispatch。
+- [x] #3 附錄 D-3 每類復原情境都有明確成功判斷條件
+  - 2026-04-19 PASS：D.3.1 列 smoke checklist（首頁 200 + OAuth + admin + tail 60 秒無 5xx）；D.3.2 三情境分流（backup / 可逆 / 不可逆）皆有成功路徑；D.3.3 三情境（versioning / 自建 backup / 無備份降級）；D.3.4 分四路徑（一般誤設 / 緊急輪替 / session secret / allowlist self-lockout）。
+- [x] #4 附錄 D 環境變數表與表 2-25 欄位不衝突，語義互補
+  - 2026-04-19 PASS：表 2-25 欄位 = 項目 / Local / Staging / Production（三環境對比，設計原則）；表 D-1 欄位 = 變數名 / 用途 / 範例格式 / 敏感度 / 設定方式（運維操作，執行細節）。附錄 D 前言明示互補分工「表 2-25 不列變數名稱，表 D-1 不重述環境差異原則」。`ADMIN_EMAIL_ALLOWLIST` 雙表出現但語義互補無衝突。
+- [x] #5 `docs/verify/DEPLOYMENT_RUNBOOK.md` 與 `DISASTER_RECOVERY_RUNBOOK.md` 存在，內容與附錄 D 一致（無分歧敘述）
+  - 2026-04-19 PASS：DEPLOYMENT_RUNBOOK.md（16K）§2/§3 對應附錄 D.1/D.2；DISASTER_RECOVERY_RUNBOOK.md（20.8K）§1-§4 對應附錄 D.3.1-D.3.4。結構一致。
 
 ## Non-UI Change Declaration
 

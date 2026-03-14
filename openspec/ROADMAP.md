@@ -8,13 +8,13 @@
 
 ### Active Changes 實況（v0.17.0 之後）
 
-| Change                             | Tasks | 實況                                                                                                                                                        |
-| ---------------------------------- | ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `tc-acceptance-followups`          | 27/33 (82%) | code/docs 100% 完成（§1-§7.2）；剩 §7.3-§7.5 staging 實測 + §8.1-§8.3 人工檢查，**ready to archive**（staging 項目延後回填）                           |
+| Change                             | Tasks        | 實況                                                                                                                                                    |
+| ---------------------------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tc-acceptance-followups`          | 27/33 (82%)  | code/docs 100% 完成（§1-§7.2）；剩 §7.3-§7.5 staging 實測 + §8.1-§8.3 人工檢查，**ready to archive**（staging 項目延後回填）                            |
 | `deployment-manual`                | 11/19 (58%)  | runbook + 附錄 D + CI workflow 已落地；剩 §4 acceptance 回填（實際部署後做）+ §人工檢查 #1-#5（純文件閱讀確認），**ready to archive**（回填延後）       |
 | `member-and-permission-management` | 19/49 (39%)  | Phase 1-4 完成（types / migration 0006 / helpers / auth hook / Admin API / chat+MCP requireRole / role-gate / sync-admin-roles 刪除）；剩 Phase 5 UI 層 |
-| `responsive-and-a11y-foundation`   | 22/63 (35%)  | Phase A 完成（Tailwind xs / nuxt-a11y / hybrid table / 4 元件響應式 / contrast audit / Design Review 流程）；Phase B 待 member-perm Phase 5 完成         |
-| `add-ai-gateway-usage-tracking`    | 0/48 (draft) | 未啟動（post-v1 low priority）                                                                                                                             |
+| `responsive-and-a11y-foundation`   | 22/63 (35%)  | Phase A 完成（Tailwind xs / nuxt-a11y / hybrid table / 4 元件響應式 / contrast audit / Design Review 流程）；Phase B 待 member-perm Phase 5 完成        |
+| `add-ai-gateway-usage-tracking`    | 0/48 (draft) | 未啟動（post-v1 low priority）                                                                                                                          |
 
 ## Next Moves
 
@@ -44,7 +44,7 @@
 
 ## Active Changes
 
-_last synced: 2026-04-19T14:23:45.466Z_
+_last synced: 2026-04-19T14:53:32.240Z_
 
 5 active changes (0 ready · 4 in progress · 1 draft · 0 blocked)
 
@@ -54,10 +54,10 @@ _(none)_
 
 ### In progress
 
-- **deployment-manual** — 11/19 tasks (58%)
-- **member-and-permission-management** — 19/49 tasks (39%)
+- **deployment-manual** — 16/19 tasks (84%)
+- **member-and-permission-management** — 31/49 tasks (63%)
   - Specs: `admin-document-management-ui`, `web-chat-ui`
-- **responsive-and-a11y-foundation** — 22/63 tasks (35%)
+- **responsive-and-a11y-foundation** — 39/63 tasks (62%)
 - **tc-acceptance-followups** — 27/33 tasks (82%)
   - Specs: `web-chat-ui`
 
