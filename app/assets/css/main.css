@@ -19,3 +19,44 @@
 .dark {
   --ui-primary: white;
 }
+
+/*
+ * responsive-and-a11y-foundation §6.4 — focus ring utility.
+ *
+ * Nuxt UI components ship their own ring treatment, but bare `<a>` / `<button>`
+ * inside custom layouts need an explicit focus-visible treatment so keyboard
+ * Tab walks remain visible across the app (WCAG 2.4.7). We lean on the
+ * existing `--ui-primary` token so the ring inherits theme colour in both
+ * light + dark modes.
+ */
+@layer utilities {
+  .app-focus-ring:focus-visible {
+    outline: 2px solid var(--ui-primary);
+    outline-offset: 2px;
+  }
+}
+
+/*
+ * responsive-and-a11y-foundation §6.3 — Skip-to-main-content link.
+ *
+ * Hidden via sr-only by default; becomes visible on focus so keyboard
+ * users get a single-key skip past the header nav into `<main>`.
+ */
+.app-skip-link {
+  position: absolute;
+  top: 0.5rem;
+  left: 0.5rem;
+  z-index: 100;
+  padding: 0.5rem 1rem;
+  background: var(--ui-bg, white);
+  color: var(--ui-text, black);
+  border: 2px solid var(--ui-primary);
+  border-radius: var(--ui-radius);
+  font-weight: 500;
+  transform: translateY(-150%);
+  transition: transform 150ms ease-out;
+}
+
+.app-skip-link:focus-visible {
+  transform: translateY(0);
+}
