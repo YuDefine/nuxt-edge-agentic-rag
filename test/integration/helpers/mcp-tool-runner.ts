@@ -32,15 +32,15 @@ export interface McpToolRunOptions {
 }
 
 interface ToolLike {
-  handler: (args: unknown, extra: unknown) => unknown
+  handler: (...args: any[]) => any
   name?: string
 }
 
-export async function runMcpTool<Result = unknown>(
-  tool: ToolLike,
-  args: unknown,
-  options: McpToolRunOptions
-): Promise<Result> {
+export async function runMcpTool<TTool extends ToolLike>(
+  tool: TTool,
+  args: Parameters<TTool['handler']>[0],
+  options: McpToolRunOptions,
+): Promise<Awaited<ReturnType<TTool['handler']>>> {
   const {
     authorizationHeader,
     cloudflareEnv,
@@ -72,7 +72,9 @@ export async function runMcpTool<Result = unknown>(
       tokenStore: createMcpTokenStore(),
     })
 
-    return (await tool.handler(args, {} as never)) as Result
+    return (await tool.handler(args, {} as Parameters<TTool['handler']>[1])) as Awaited<
+      ReturnType<TTool['handler']>
+    >
   } finally {
     pendingEvent.current = null
   }
