@@ -16,6 +16,21 @@
     refused: boolean
   }
 
+  interface Props {
+    /**
+     * When true, the chat input becomes read-only and submission is
+     * blocked on both the UI and handler sides.
+     *
+     * Wired by `app/pages/index.vue` signed-in branch via the
+     * `GuestAccessGate` slot prop `canAsk`: Guest users under
+     * `browse_only` policy keep access to message history but cannot
+     * submit new questions.
+     */
+    disabled?: boolean
+  }
+
+  const props = withDefaults(defineProps<Props>(), { disabled: false })
+
   type ChatErrorKind = 'abort' | 'rate_limit' | 'network' | 'timeout' | 'unauthorized' | 'unknown'
 
   const messages = ref<ChatMessage[]>([])
@@ -119,7 +134,7 @@
       rateLimitCountdown.value = Math.ceil(remainingMs / 1000)
     },
     1000,
-    { immediate: true }
+    { immediate: true },
   )
 
   function handleStop() {
@@ -129,6 +144,7 @@
   }
 
   async function handleSubmit(query: string) {
+    if (props.disabled) return
     if (isSubmitting.value || isStreaming.value) return
     if (rateLimitRetryAt.value !== null && Date.now() < rateLimitRetryAt.value) {
       toast.add({
@@ -257,7 +273,7 @@
   // Scroll to bottom when messages change
   watch(
     () => messages.value.length,
-    () => scrollToBottom()
+    () => scrollToBottom(),
   )
 </script>
 
@@ -315,10 +331,14 @@
     <div class="border-t border-default p-4">
       <ChatMessageInput
         ref="messageInputRef"
-        :disabled="isSubmitting || rateLimitCountdown > 0"
+        :disabled="props.disabled || isSubmitting || rateLimitCountdown > 0"
         :loading="isStreaming"
         :placeholder="
-          rateLimitCountdown > 0 ? `請於 ${rateLimitCountdown} 秒後再試` : '輸入您的問題...'
+          props.disabled
+            ? '訪客僅可瀏覽，無法提問'
+            : rateLimitCountdown > 0
+              ? `請於 ${rateLimitCountdown} 秒後再試`
+              : '輸入您的問題...'
         "
         @submit="handleSubmit"
         @stop="handleStop"
