@@ -36,7 +36,7 @@ export interface R2BucketLike {
     options?: {
       customMetadata?: Record<string, string>
       httpMetadata?: { contentType?: string }
-    }
+    },
   ): Promise<unknown>
 }
 
@@ -50,7 +50,7 @@ export function getCloudflareEnv(event: CloudflareBoundEvent) {
 
 export function getRequiredD1Binding(
   event: CloudflareBoundEvent,
-  bindingName: string
+  bindingName: string,
 ): D1DatabaseLike {
   const env = getCloudflareEnv(event)
   const binding = env[bindingName]
@@ -68,7 +68,7 @@ export function getRequiredD1Binding(
 
 export function getRequiredR2Binding(
   event: CloudflareBoundEvent,
-  bindingName: string
+  bindingName: string,
 ): R2BucketLike {
   const env = getCloudflareEnv(event)
   const binding = env[bindingName]
@@ -91,7 +91,7 @@ export function getRequiredR2Binding(
 
 export function getRequiredKvBinding(
   event: CloudflareBoundEvent,
-  bindingName: string
+  bindingName: string,
 ): KvBindingLike {
   const env = getCloudflareEnv(event)
   const binding = env[bindingName]

@@ -84,13 +84,13 @@ function getHeadersRecord(event: McpEventLike): Record<string, string | undefine
  */
 export async function runMcpMiddleware(
   event: McpEventLike,
-  deps: RunMcpMiddlewareDeps
+  deps: RunMcpMiddlewareDeps,
 ): Promise<void> {
   let auth: McpAuthContext
   try {
     auth = await requireMcpBearerToken(
       { headers: getHeadersRecord(event) },
-      { environment: deps.environment, store: deps.tokenStore }
+      { environment: deps.environment, store: deps.tokenStore },
     )
   } catch (error) {
     if (error instanceof McpAuthError) {

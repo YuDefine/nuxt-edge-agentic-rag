@@ -125,7 +125,7 @@ export default defineEventHandler(async function chatHandler(event) {
         auditStore: createKnowledgeAuditStore(database),
         judge: createFallbackJudge(runtimeConfig.governance.thresholds.answerMin),
         rateLimitStore: createChatKvRateLimitStore(
-          getRequiredKvBinding(event, runtimeConfig.bindings.rateLimitKv)
+          getRequiredKvBinding(event, runtimeConfig.bindings.rateLimitKv),
         ),
         resolveStaleness: staleResolver.resolveStaleness,
         retrieve: (input) =>
@@ -134,7 +134,7 @@ export default defineEventHandler(async function chatHandler(event) {
             search: aiSearchClient.search,
             store: createKnowledgeEvidenceStore(database),
           }),
-      }
+      },
     )
 
     log.set({

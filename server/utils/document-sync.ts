@@ -34,7 +34,7 @@ export interface DocumentSyncStore {
       chunkText: string
       citationLocator: string
       metadata: Record<string, number>
-    }>
+    }>,
   ): Promise<void>
   createVersion(input: {
     documentId: string
@@ -65,7 +65,7 @@ function defaultCreateId(): string {
 
 export async function syncDocumentVersionSnapshot(
   input: SyncDocumentVersionSnapshotInput,
-  options: SyncDocumentVersionSnapshotOptions
+  options: SyncDocumentVersionSnapshotOptions,
 ): Promise<{
   document: DocumentRecord
   smokeTestQueries: string[]

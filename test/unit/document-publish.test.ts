@@ -58,7 +58,7 @@ describe('document publish', () => {
       {
         now: () => new Date('2026-04-16T01:00:00.000Z'),
         store,
-      }
+      },
     )
 
     expect(store.publishVersionAtomic).toHaveBeenCalledWith({
@@ -117,7 +117,7 @@ describe('document publish', () => {
         documentId: 'doc-1',
         versionId: 'ver-2',
       },
-      { store }
+      { store },
     )
 
     expect(store.publishVersionAtomic).not.toHaveBeenCalled()
@@ -186,7 +186,7 @@ describe('document publish', () => {
       {
         now: () => new Date('2026-04-18T01:00:00.000Z'),
         store,
-      }
+      },
     )
 
     expect(store.publishVersionAtomic).toHaveBeenCalledWith({
@@ -225,8 +225,8 @@ describe('document publish', () => {
           documentId: 'doc-archived',
           versionId: 'ver-2',
         },
-        { store }
-      )
+        { store },
+      ),
     ).rejects.toMatchObject({
       message: expect.stringContaining('archived'),
       name: 'DocumentPublishStateError',
@@ -276,13 +276,13 @@ describe('document publish', () => {
           documentId: 'doc-1',
           versionId: 'ver-2',
         },
-        { store }
-      )
+        { store },
+      ),
     ).rejects.toThrowError(
       new DocumentPublishStateError(
         'Only indexed versions without in-progress sync tasks can be published',
-        409
-      )
+        409,
+      ),
     )
   })
 })

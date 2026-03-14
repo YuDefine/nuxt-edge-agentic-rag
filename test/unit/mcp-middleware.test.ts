@@ -17,7 +17,7 @@ describe('runMcpMiddleware (§1.3 red)', () => {
   beforeEach(() => {
     vi.resetModules()
     stubCreateError = vi.fn((input: { statusCode: number; message: string }) =>
-      Object.assign(new Error(input.message), input)
+      Object.assign(new Error(input.message), input),
     )
     vi.stubGlobal('createError', stubCreateError)
   })
@@ -26,7 +26,7 @@ describe('runMcpMiddleware (§1.3 red)', () => {
     options: {
       authorization?: string
       env?: Record<string, unknown>
-    } = {}
+    } = {},
   ) {
     const headers = new Headers()
     if (options.authorization) {
@@ -63,7 +63,7 @@ describe('runMcpMiddleware (§1.3 red)', () => {
           findUsableTokenByHash: vi.fn().mockResolvedValue(null),
           touchLastUsedAt: vi.fn(),
         },
-      })
+      }),
     ).rejects.toMatchObject({
       statusCode: 401,
     })
@@ -83,7 +83,7 @@ describe('runMcpMiddleware (§1.3 red)', () => {
           findUsableTokenByHash: vi.fn().mockResolvedValue(null),
           touchLastUsedAt: vi.fn(),
         },
-      })
+      }),
     ).rejects.toMatchObject({
       statusCode: 401,
     })
@@ -127,7 +127,7 @@ describe('runMcpMiddleware (§1.3 red)', () => {
           findUsableTokenByHash: vi.fn().mockResolvedValue(tokenRecord),
           touchLastUsedAt: vi.fn().mockResolvedValue(undefined),
         },
-      })
+      }),
     ).rejects.toMatchObject({
       statusCode: 429,
     })

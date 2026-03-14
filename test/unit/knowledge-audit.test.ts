@@ -138,7 +138,7 @@ describe('knowledge audit', () => {
       null,
       null,
       null,
-      null
+      null,
     )
     // After governance §1.4: INSERT now binds
     //   id, conversation_id, query_log_id, user_profile_id, channel, role,
@@ -158,7 +158,7 @@ describe('knowledge audit', () => {
       '[]',
       '["pii:email"]',
       1,
-      expect.any(String)
+      expect.any(String),
     )
   })
 
@@ -214,7 +214,7 @@ describe('knowledge audit', () => {
       0.82,
       0.74,
       'judge_pass_then_answer',
-      null
+      null,
     )
   })
 
@@ -268,7 +268,7 @@ describe('knowledge audit', () => {
       null,
       null,
       'refused_restricted_scope',
-      'restricted_scope'
+      'restricted_scope',
     )
   })
 })

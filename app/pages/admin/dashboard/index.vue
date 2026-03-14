@@ -51,7 +51,7 @@
         documentsTotal: 0,
         queriesLast30Days: 0,
         tokensActive: 0,
-      }
+      },
   )
 
   const trend = computed<TrendPoint[]>(() => data.value?.data?.trend ?? [])

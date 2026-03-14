@@ -60,7 +60,7 @@ describe('askKnowledge — §1.2 debug-safe derived fields', () => {
           evidence: evidenceAt(0.9),
           normalizedQuery: 'summarize the launch plan',
         }),
-      }
+      },
     )
 
     expect(result.refused).toBe(false)
@@ -98,7 +98,7 @@ describe('askKnowledge — §1.2 debug-safe derived fields', () => {
         judge: vi.fn(),
         queryLogStore: { createAcceptedQueryLog: vi.fn() },
         retrieve: vi.fn(),
-      }
+      },
     )
 
     expect(auditStore.createQueryLog).toHaveBeenCalledWith(
@@ -110,7 +110,7 @@ describe('askKnowledge — §1.2 debug-safe derived fields', () => {
         completionLatencyMs: null,
         retrievalScore: null,
         judgeScore: null,
-      })
+      }),
     )
     expect(auditStore.updateQueryLog).not.toHaveBeenCalled()
   })
@@ -139,8 +139,8 @@ describe('askKnowledge — §1.2 debug-safe derived fields', () => {
           judge: vi.fn(),
           queryLogStore: { createAcceptedQueryLog: vi.fn() },
           retrieve: vi.fn().mockRejectedValue(boom),
-        }
-      )
+        },
+      ),
     ).rejects.toThrow(boom)
 
     expect(auditStore.updateQueryLog).toHaveBeenCalledWith(
@@ -151,7 +151,7 @@ describe('askKnowledge — §1.2 debug-safe derived fields', () => {
         completionLatencyMs: null,
         retrievalScore: null,
         judgeScore: null,
-      })
+      }),
     )
   })
 
@@ -179,7 +179,7 @@ describe('askKnowledge — §1.2 debug-safe derived fields', () => {
         retrieve: vi
           .fn()
           .mockResolvedValue({ evidence: [], normalizedQuery: 'empty corpus query' }),
-      }
+      },
     )
 
     expect(result.refused).toBe(true)
@@ -188,7 +188,7 @@ describe('askKnowledge — §1.2 debug-safe derived fields', () => {
         decisionPath: 'no_citation_refuse',
         refusalReason: 'no_citation',
         retrievalScore: 0,
-      })
+      }),
     )
   })
 
@@ -222,7 +222,7 @@ describe('askKnowledge — §1.2 debug-safe derived fields', () => {
           evidence: evidenceAt(0.88),
           normalizedQuery: 'question',
         }),
-      }
+      },
     )
 
     expect(result.refused).toBe(false)

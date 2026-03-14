@@ -68,7 +68,7 @@ const tc11Mocks = vi.hoisted(
     readBody: vi.fn(),
     readZodBody: vi.fn(),
     runtimeConfig: null,
-  })
+  }),
 )
 
 vi.mock('evlog', () => ({
@@ -113,7 +113,7 @@ vi.mock('../../server/utils/knowledge-answering', async (importOriginal) => {
     ...actual,
     async answerKnowledgeQuery(
       input: Parameters<typeof realAnswer>[0],
-      options: Parameters<typeof realAnswer>[1]
+      options: Parameters<typeof realAnswer>[1],
     ) {
       return realAnswer(input, {
         ...options,
@@ -136,7 +136,7 @@ installNuxtRouteTestGlobals()
 
 describe('acceptance conditional-procedure (TC-11)', () => {
   const cases = loadAcceptanceFixtureDataset('seed').cases.filter(
-    (entry) => entry.registryId === 'TC-11'
+    (entry) => entry.registryId === 'TC-11',
   )
   const scenario = getTc11Scenario()
 
@@ -183,7 +183,7 @@ describe('acceptance conditional-procedure (TC-11)', () => {
       tc11Mocks.bindings = createTc11Bindings(
         tc11Mocks.actor as ReturnType<typeof createAcceptanceActorFixture>,
         scenario,
-        path
+        path,
       )
       tc11Mocks.readBody.mockResolvedValue({ query: fixture.prompt })
       tc11Mocks.readZodBody.mockResolvedValue({ query: fixture.prompt })
@@ -243,7 +243,7 @@ describe('acceptance conditional-procedure (TC-11)', () => {
 
       // citation_records 寫入恰好一筆
       const citationInserts = d1.calls.filter((call) =>
-        call.query.includes('INSERT INTO citation_records')
+        call.query.includes('INSERT INTO citation_records'),
       )
 
       expect(citationInserts).toHaveLength(1)
@@ -253,7 +253,7 @@ describe('acceptance conditional-procedure (TC-11)', () => {
           scenario.sourceChunkId,
           scenario.citationLocator,
           scenario.chunkText,
-        ])
+        ]),
       )
 
       // query_logs 狀態 accepted + configSnapshotVersion
@@ -264,7 +264,7 @@ describe('acceptance conditional-procedure (TC-11)', () => {
           'local',
           tc11Mocks.runtimeConfig?.governance.configSnapshotVersion,
           'accepted',
-        ])
+        ]),
       )
 
       if (fixture.channel === 'mcp') {
@@ -290,7 +290,7 @@ async function runMcpCase(authorizationHeader: string, query: string) {
       authorizationHeader,
       cloudflareEnv: tc11Mocks.bindings ?? {},
       pendingEvent,
-    }
+    },
   )
 
   return { data }
@@ -315,7 +315,7 @@ function getTc11Scenario(): Tc11Scenario {
 function createTc11Bindings(
   actor: ReturnType<typeof createAcceptanceActorFixture>,
   scenario: Tc11Scenario,
-  path: Tc11Path
+  path: Tc11Path,
 ) {
   // direct  → 0.85 ≥ 0.7（directAnswerMin）
   // judge_pass → 0.55 ∈ [0.45, 0.7)

@@ -57,7 +57,7 @@ describe('GET /api/admin/dashboard/summary', () => {
 
   it('rejects unauthenticated requests with 401', async () => {
     mocks.requireRuntimeAdminSession.mockRejectedValueOnce(
-      Object.assign(new Error('Unauthorized'), { statusCode: 401 })
+      Object.assign(new Error('Unauthorized'), { statusCode: 401 }),
     )
 
     const { default: handler } = await import('../../server/api/admin/dashboard/summary.get')
@@ -67,7 +67,7 @@ describe('GET /api/admin/dashboard/summary', () => {
 
   it('rejects non-admin sessions with 403', async () => {
     mocks.requireRuntimeAdminSession.mockRejectedValueOnce(
-      Object.assign(new Error('Forbidden'), { statusCode: 403 })
+      Object.assign(new Error('Forbidden'), { statusCode: 403 }),
     )
 
     const { default: handler } = await import('../../server/api/admin/dashboard/summary.get')
@@ -132,7 +132,7 @@ describe('GET /api/admin/dashboard/summary', () => {
       adminDashboardEnabled: false,
     })
     mocks.requireRuntimeAdminSession.mockRejectedValueOnce(
-      Object.assign(new Error('Forbidden'), { statusCode: 403 })
+      Object.assign(new Error('Forbidden'), { statusCode: 403 }),
     )
 
     const { default: handler } = await import('../../server/api/admin/dashboard/summary.get')

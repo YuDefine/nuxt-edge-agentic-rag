@@ -31,6 +31,6 @@ export default defineEventHandler(async (event) => {
           accessKeyId: uploadConfig.accessKeyId,
           secretAccessKey: uploadConfig.secretAccessKey,
         }),
-    }
+    },
   )
 })

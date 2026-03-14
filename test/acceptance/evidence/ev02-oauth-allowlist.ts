@@ -113,14 +113,14 @@ function compareSnapshot(snapshot: Ev02SessionSnapshot): Ev02SnapshotComparison 
 }
 
 export function runEv02OauthAllowlistExporter(
-  input: Ev02ExporterInput = {}
+  input: Ev02ExporterInput = {},
 ): AcceptanceEvidenceExport {
   const context = createEvidenceExporterContext(input)
   const snapshots = input.snapshots ?? buildDefaultSnapshots()
 
   if (snapshots.length === 0) {
     throw new Error(
-      'EV-02 exporter requires at least one OAuth+allowlist snapshot to emit a record'
+      'EV-02 exporter requires at least one OAuth+allowlist snapshot to emit a record',
     )
   }
 
@@ -133,7 +133,7 @@ export function runEv02OauthAllowlistExporter(
   const isStubbed = snapshots.some(
     (snapshot) =>
       snapshot.oauthSessionPointer.startsWith('stub://') ||
-      snapshot.allowlistStatePointer.startsWith('stub://')
+      snapshot.allowlistStatePointer.startsWith('stub://'),
   )
 
   const notesParts: string[] = []
@@ -145,7 +145,7 @@ export function runEv02OauthAllowlistExporter(
     if (!comparison.roleMatchesExpectation) {
       anyFailed = true
       notesParts.push(
-        `role recomputation drift at ${snapshot.stateLabel} (expected=${snapshot.expectedRole}, actual=${snapshot.actualRole})`
+        `role recomputation drift at ${snapshot.stateLabel} (expected=${snapshot.expectedRole}, actual=${snapshot.actualRole})`,
       )
     }
 
@@ -157,7 +157,7 @@ export function runEv02OauthAllowlistExporter(
     if (comparison.adminRouteLeak) {
       anyFailed = true
       notesParts.push(
-        `non-admin session exposes admin routes at ${snapshot.stateLabel} — possible privilege escalation leak`
+        `non-admin session exposes admin routes at ${snapshot.stateLabel} — possible privilege escalation leak`,
       )
     }
   }
@@ -170,7 +170,7 @@ export function runEv02OauthAllowlistExporter(
 
   if (isStubbed && !anyFailed) {
     notesParts.push(
-      'Stubbed OAuth + allowlist chain — rerun promote/demote flow with real Google OAuth sessions to capture live payloads.'
+      'Stubbed OAuth + allowlist chain — rerun promote/demote flow with real Google OAuth sessions to capture live payloads.',
     )
   }
 

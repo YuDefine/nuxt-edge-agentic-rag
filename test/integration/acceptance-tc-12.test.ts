@@ -56,7 +56,7 @@ const tc12Mocks = vi.hoisted(
     readBody: vi.fn(),
     readZodBody: vi.fn(),
     runtimeConfig: null,
-  })
+  }),
 )
 
 vi.mock('evlog', () => ({
@@ -96,7 +96,7 @@ installNuxtRouteTestGlobals()
 
 describe('acceptance MCP interoperability replay chain', () => {
   const cases = loadAcceptanceFixtureDataset('seed').cases.filter(
-    (entry) => entry.registryId === 'TC-12'
+    (entry) => entry.registryId === 'TC-12',
   )
   const scenario = getTc12Scenario()
 
@@ -141,7 +141,7 @@ describe('acceptance MCP interoperability replay chain', () => {
 
       tc12Mocks.bindings = createTc12Bindings(
         tc12Mocks.actor as ReturnType<typeof createAcceptanceActorFixture>,
-        scenario
+        scenario,
       )
       tc12Mocks.readBody.mockResolvedValue({ query: fixture.prompt })
       tc12Mocks.readZodBody.mockResolvedValue({ query: fixture.prompt })
@@ -149,7 +149,7 @@ describe('acceptance MCP interoperability replay chain', () => {
       // Step 1：askKnowledge 取得 answer + citations
       const askResult = (await runAskKnowledge(
         tc12Mocks.actor?.mcpToken.authorizationHeader ?? '',
-        fixture.prompt
+        fixture.prompt,
       )) as {
         data: {
           answer: string
@@ -191,7 +191,7 @@ describe('acceptance MCP interoperability replay chain', () => {
       // askKnowledge 階段必備的 D1 寫入：query_logs 含 configSnapshotVersion、citation_records 含 source_chunk_id 與 document_version_id
       const queryLogInsert = d1.calls.find((call) => call.query.includes('INSERT INTO query_logs'))
       const citationInsert = d1.calls.find((call) =>
-        call.query.includes('INSERT INTO citation_records')
+        call.query.includes('INSERT INTO citation_records'),
       )
 
       expect(queryLogInsert?.values).toEqual(
@@ -199,7 +199,7 @@ describe('acceptance MCP interoperability replay chain', () => {
           'local',
           tc12Mocks.runtimeConfig?.governance.configSnapshotVersion,
           'accepted',
-        ])
+        ]),
       )
       expect(citationInsert?.values).toEqual(
         expect.arrayContaining([
@@ -207,7 +207,7 @@ describe('acceptance MCP interoperability replay chain', () => {
           scenario.sourceChunkId,
           scenario.citationLocator,
           scenario.chunkText,
-        ])
+        ]),
       )
 
       // MCP token 驗證與 last_used 更新應同時觸發
@@ -222,7 +222,7 @@ describe('acceptance MCP interoperability replay chain', () => {
       // Step 2：用同一個 citationId 打 getDocumentChunk
       const replayResult = (await runGetDocumentChunk(
         tc12Mocks.actor?.mcpToken.authorizationHeader ?? '',
-        citationId ?? ''
+        citationId ?? '',
       )) as {
         data: {
           chunkText: string
@@ -244,12 +244,12 @@ describe('acceptance MCP interoperability replay chain', () => {
       const replaySelect = d1.calls.find(
         (call) =>
           call.query.includes('FROM citation_records') &&
-          call.query.includes('INNER JOIN source_chunks')
+          call.query.includes('INNER JOIN source_chunks'),
       )
 
       expect(
         replaySelect,
-        'replay select should join citation_records and source_chunks'
+        'replay select should join citation_records and source_chunks',
       ).toBeTruthy()
       expect(replaySelect?.values[0]).toBe(citationId)
 
@@ -262,7 +262,7 @@ describe('acceptance MCP interoperability replay chain', () => {
 
       expect(mcpTokenSelects.length).toBeGreaterThanOrEqual(2)
       expect(mcpTokenUpdates.length).toBeGreaterThanOrEqual(2)
-    }
+    },
   )
 })
 
@@ -275,7 +275,7 @@ async function runAskKnowledge(authorizationHeader: string, query: string) {
       authorizationHeader,
       cloudflareEnv: tc12Mocks.bindings ?? {},
       pendingEvent,
-    }
+    },
   )
 
   return { data }
@@ -291,7 +291,7 @@ async function runGetDocumentChunk(authorizationHeader: string, citationId: stri
       cloudflareEnv: tc12Mocks.bindings ?? {},
       params: { citationId },
       pendingEvent,
-    }
+    },
   )
 
   return { data }
@@ -314,7 +314,7 @@ function getTc12Scenario(): Tc12Scenario {
 
 function createTc12Bindings(
   actor: ReturnType<typeof createAcceptanceActorFixture>,
-  scenario: Tc12Scenario
+  scenario: Tc12Scenario,
 ) {
   // 用一個共用的 citation 紀錄狀態模擬 D1：askKnowledge 寫入後，replay 能用同一個 citationId 取回。
   const persistedCitations = new Map<

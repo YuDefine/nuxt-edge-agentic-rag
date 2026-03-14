@@ -9,7 +9,7 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname_compat = path.dirname(__filename)
 const LOG_FILE = path.resolve(
   __dirname_compat,
-  '../screenshots/local/manual-review/csrf-cookie.log'
+  '../screenshots/local/manual-review/csrf-cookie.log',
 )
 
 test.beforeEach(async ({ page }) => {
@@ -34,7 +34,7 @@ test('extract csrf cookie and create token', async ({ page }) => {
       'csrf cookie: ' + JSON.stringify(csrfCookie),
       'csrf meta: ' + csrfMeta,
       'all cookie names: ' + cookies.map((c) => c.name).join(', '),
-    ].join('\n')
+    ].join('\n'),
   )
 
   // Now try API call using page.request which has all browser cookies

@@ -38,7 +38,7 @@ const tc16Mocks = vi.hoisted(
     bindings: null,
     readBody: vi.fn(),
     runtimeConfig: null,
-  })
+  }),
 )
 
 vi.mock('evlog', () => ({
@@ -72,7 +72,7 @@ installNuxtRouteTestGlobals()
 
 describe('acceptance searchKnowledge no-hit contract (TC-16)', () => {
   const cases = loadAcceptanceFixtureDataset('seed').cases.filter(
-    (entry) => entry.registryId === 'TC-16'
+    (entry) => entry.registryId === 'TC-16',
   )
 
   beforeEach(() => {
@@ -112,7 +112,7 @@ describe('acceptance searchKnowledge no-hit contract (TC-16)', () => {
     expect(fixture.channel).toBe('mcp')
 
     tc16Mocks.bindings = createTc16Bindings(
-      tc16Mocks.actor as ReturnType<typeof createAcceptanceActorFixture>
+      tc16Mocks.actor as ReturnType<typeof createAcceptanceActorFixture>,
     )
     tc16Mocks.readBody.mockResolvedValue({ query: fixture.prompt })
 
@@ -124,7 +124,7 @@ describe('acceptance searchKnowledge no-hit contract (TC-16)', () => {
         authorizationHeader: tc16Mocks.actor?.mcpToken.authorizationHeader ?? '',
         cloudflareEnv: tc16Mocks.bindings ?? {},
         pendingEvent,
-      }
+      },
     )) as { results: unknown[]; normalizedQuery?: string }
 
     // 契約 #1：tool 直接回傳 results（不含 data envelope）；200 + results: []

@@ -63,7 +63,7 @@ describe('knowledge governance drift guard', () => {
         const content = readFileSync(resolve(PROJECT_ROOT, filePath), 'utf8')
 
         return DRIFT_PATTERNS.flatMap((entry) =>
-          [...content.matchAll(entry.pattern)].map(() => `${filePath}: ${entry.label}`)
+          [...content.matchAll(entry.pattern)].map(() => `${filePath}: ${entry.label}`),
         )
       })
 
@@ -73,7 +73,7 @@ describe('knowledge governance drift guard', () => {
 
 function listFiles(relativeDirectories: string[]): string[] {
   return relativeDirectories.flatMap((relativeDirectory) =>
-    walkDirectory(resolve(PROJECT_ROOT, relativeDirectory))
+    walkDirectory(resolve(PROJECT_ROOT, relativeDirectory)),
   )
 }
 

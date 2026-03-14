@@ -60,7 +60,7 @@ describe('GET /api/admin/debug/latency/summary', () => {
 
   it('rejects non-admin with 401/403 (delegate to guard)', async () => {
     mocks.requireInternalDebugAccess.mockRejectedValueOnce(
-      Object.assign(new Error('Unauthorized'), { statusCode: 401 })
+      Object.assign(new Error('Unauthorized'), { statusCode: 401 }),
     )
 
     const { default: handler } = await import('../../server/api/admin/debug/latency/summary.get')
@@ -70,7 +70,7 @@ describe('GET /api/admin/debug/latency/summary', () => {
 
   it('rejects production + flag off with 403', async () => {
     mocks.requireInternalDebugAccess.mockRejectedValueOnce(
-      Object.assign(new Error('Forbidden'), { statusCode: 403 })
+      Object.assign(new Error('Forbidden'), { statusCode: 403 }),
     )
 
     const { default: handler } = await import('../../server/api/admin/debug/latency/summary.get')

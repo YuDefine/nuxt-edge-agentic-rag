@@ -64,7 +64,7 @@ describe('chatWithKnowledge — §1.2 debug-safe derived fields', () => {
           evidence: evidenceAt(0.92),
           normalizedQuery: 'how does payroll exception work',
         }),
-      }
+      },
     )
 
     expect(result.refused).toBe(false)
@@ -104,7 +104,7 @@ describe('chatWithKnowledge — §1.2 debug-safe derived fields', () => {
         judge: vi.fn(),
         rateLimitStore: kvStore(),
         retrieve: vi.fn(),
-      }
+      },
     )
 
     expect(auditStore.createQueryLog).toHaveBeenCalledWith(
@@ -116,7 +116,7 @@ describe('chatWithKnowledge — §1.2 debug-safe derived fields', () => {
         completionLatencyMs: null,
         retrievalScore: null,
         judgeScore: null,
-      })
+      }),
     )
     // Blocked path writes derived fields in the initial INSERT so it does not
     // need updateQueryLog.
@@ -147,7 +147,7 @@ describe('chatWithKnowledge — §1.2 debug-safe derived fields', () => {
           evidence: evidenceAt(0.1),
           normalizedQuery: 'tell me something outside the corpus',
         }),
-      }
+      },
     )
 
     expect(result.refused).toBe(true)
@@ -159,7 +159,7 @@ describe('chatWithKnowledge — §1.2 debug-safe derived fields', () => {
         retrievalScore: 0.1,
         judgeScore: null,
         firstTokenLatencyMs: null,
-      })
+      }),
     )
   })
 
@@ -186,8 +186,8 @@ describe('chatWithKnowledge — §1.2 debug-safe derived fields', () => {
           judge: vi.fn(),
           rateLimitStore: kvStore(),
           retrieve: vi.fn().mockRejectedValue(pipelineFailure),
-        }
-      )
+        },
+      ),
     ).rejects.toThrow(pipelineFailure)
 
     expect(auditStore.updateQueryLog).toHaveBeenCalledWith(
@@ -199,7 +199,7 @@ describe('chatWithKnowledge — §1.2 debug-safe derived fields', () => {
         completionLatencyMs: null,
         retrievalScore: null,
         judgeScore: null,
-      })
+      }),
     )
   })
 
@@ -231,7 +231,7 @@ describe('chatWithKnowledge — §1.2 debug-safe derived fields', () => {
           evidence: evidenceAt(0.5),
           normalizedQuery: 'mid-confidence query',
         }),
-      }
+      },
     )
 
     expect(result.refused).toBe(true)
@@ -241,7 +241,7 @@ describe('chatWithKnowledge — §1.2 debug-safe derived fields', () => {
         decisionPath: 'judge_pass_refuse',
         refusalReason: 'low_confidence',
         retrievalScore: 0.5,
-      })
+      }),
     )
   })
 
@@ -269,7 +269,7 @@ describe('chatWithKnowledge — §1.2 debug-safe derived fields', () => {
           evidence: evidenceAt(0.9),
           normalizedQuery: 'anything',
         }),
-      }
+      },
     )
 
     expect(result.refused).toBe(false)

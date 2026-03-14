@@ -62,7 +62,7 @@ describe('TC-UI-01 empty state contract (/api/admin/documents returns [])', () =
         error: null,
         itemCount: result.data.length,
         status: 'success',
-      })
+      }),
     ).toBe('empty')
   })
 })
@@ -94,7 +94,7 @@ describe('TC-UI-03 error state contract (/api/admin/documents surfaces fetch err
         error: { statusCode: 500 },
         itemCount: 0,
         status: 'error',
-      })
+      }),
     ).toBe('error')
   })
 
@@ -108,7 +108,7 @@ describe('TC-UI-03 error state contract (/api/admin/documents surfaces fetch err
         error: { statusCode: 400 },
         itemCount: 0,
         status: 'error',
-      })
+      }),
     ).toBe('error')
   })
 })
@@ -154,7 +154,7 @@ describe('TC-UI-04 success state contract (/api/admin/documents returns populate
         error: null,
         itemCount: result.data.length,
         status: 'success',
-      })
+      }),
     ).toBe('success')
   })
 })
@@ -168,7 +168,7 @@ describe('TC-UI-05 unauthorized state contract (/api/admin/documents enforces ad
 
   it('TC-UI-05: 401 from requireRuntimeAdminSession drives unauthorized state', async () => {
     adminDocumentsMocks.requireRuntimeAdminSession.mockRejectedValueOnce(
-      Object.assign(new Error('Unauthorized'), { statusCode: 401 })
+      Object.assign(new Error('Unauthorized'), { statusCode: 401 }),
     )
 
     const { default: handler } = await import('../../server/api/admin/documents/index.get')
@@ -182,13 +182,13 @@ describe('TC-UI-05 unauthorized state contract (/api/admin/documents enforces ad
         error: { statusCode: 401 },
         itemCount: 0,
         status: 'error',
-      })
+      }),
     ).toBe('unauthorized')
   })
 
   it('TC-UI-05: 403 from middleware (non-admin user) drives unauthorized state', async () => {
     adminDocumentsMocks.requireRuntimeAdminSession.mockRejectedValueOnce(
-      Object.assign(new Error('Forbidden'), { statusCode: 403 })
+      Object.assign(new Error('Forbidden'), { statusCode: 403 }),
     )
 
     const { default: handler } = await import('../../server/api/admin/documents/index.get')
@@ -202,7 +202,7 @@ describe('TC-UI-05 unauthorized state contract (/api/admin/documents enforces ad
         error: { statusCode: 403 },
         itemCount: 0,
         status: 'error',
-      })
+      }),
     ).toBe('unauthorized')
   })
 })
@@ -223,7 +223,7 @@ describe('TC-UI-02 loading state selector rule', () => {
         error: null,
         itemCount: 0,
         status: 'pending',
-      })
+      }),
     ).toBe('loading')
   })
 })

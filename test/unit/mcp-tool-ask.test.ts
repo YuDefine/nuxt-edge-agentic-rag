@@ -23,7 +23,7 @@ describe('mcp ask tool definition', () => {
 
     vi.stubGlobal('defineMcpTool', <T>(definition: T) => definition)
     vi.stubGlobal('createError', (input: { statusCode: number; message: string }) =>
-      Object.assign(new Error(input.message), input)
+      Object.assign(new Error(input.message), input),
     )
 
     vi.doMock('nitropack/runtime', () => ({

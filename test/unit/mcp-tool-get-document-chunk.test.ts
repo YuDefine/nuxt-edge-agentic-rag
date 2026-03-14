@@ -43,7 +43,7 @@ describe('mcp get-document-chunk tool definition', () => {
 
     vi.stubGlobal('defineMcpTool', <T>(definition: T) => definition)
     vi.stubGlobal('createError', (input: { statusCode: number; message: string }) =>
-      Object.assign(new Error(input.message), input)
+      Object.assign(new Error(input.message), input),
     )
 
     vi.doMock('nitropack/runtime', () => ({
@@ -167,7 +167,7 @@ describe('mcp get-document-chunk tool definition', () => {
       throw new MockMcpReplayError(
         'The requested citation requires knowledge.restricted.read',
         403,
-        'restricted_scope_required'
+        'restricted_scope_required',
       )
     })
 
@@ -186,7 +186,7 @@ describe('mcp get-document-chunk tool definition', () => {
     })
 
     await expect(tool.handler({ citationId: 'cid-restricted' }, {} as never)).rejects.toMatchObject(
-      { statusCode: 403 }
+      { statusCode: 403 },
     )
 
     // The handler now routes audit writes through the dedicated
@@ -198,7 +198,7 @@ describe('mcp get-document-chunk tool definition', () => {
       expect.objectContaining({
         queryText: 'getDocumentChunk:cid-restricted',
         tokenId: 'token-blocked',
-      })
+      }),
     )
     // The legacy accepted-path method must NOT be invoked on the 403 path,
     // keeping Scenario 3 of `mcp-restricted-audit-trail` spec intact.
@@ -207,7 +207,7 @@ describe('mcp get-document-chunk tool definition', () => {
 
   it('does NOT write a query_logs row when the replay error is 404', async () => {
     getDocumentChunkUtilMock.mockRejectedValue(
-      new MockMcpReplayError('The requested citation was not found', 404, 'chunk_not_found')
+      new MockMcpReplayError('The requested citation was not found', 404, 'chunk_not_found'),
     )
 
     const mod = await import('#server/mcp/tools/get-document-chunk')

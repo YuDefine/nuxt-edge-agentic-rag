@@ -25,7 +25,7 @@ const mcpRouteMocks = vi.hoisted(() => {
   class MockMcpAuthError extends Error {
     constructor(
       message: string,
-      readonly statusCode: number
+      readonly statusCode: number,
     ) {
       super(message)
       this.name = 'McpAuthError'
@@ -36,7 +36,7 @@ const mcpRouteMocks = vi.hoisted(() => {
     constructor(
       message: string,
       readonly statusCode: number,
-      readonly retryAfterMs: number
+      readonly retryAfterMs: number,
     ) {
       super(message)
       this.name = 'McpRateLimitExceededError'
@@ -47,7 +47,7 @@ const mcpRouteMocks = vi.hoisted(() => {
     constructor(
       message: string,
       readonly statusCode: number,
-      readonly reason = 'chunk_not_found'
+      readonly reason = 'chunk_not_found',
     ) {
       super(message)
       this.name = 'McpReplayError'
@@ -190,7 +190,7 @@ describe('mcp tool contract handlers (toolkit-native)', () => {
           rateLimitKv: 'KV',
         },
         environment: 'local',
-      })
+      }),
     )
     mcpRouteMocks.askKnowledge.mockResolvedValue({
       answer: 'Launch moved to Tuesday.',
@@ -214,8 +214,8 @@ describe('mcp tool contract handlers (toolkit-native)', () => {
       new mcpRouteMocks.MockMcpReplayError(
         'The requested citation requires knowledge.restricted.read',
         403,
-        'restricted_scope_required'
-      )
+        'restricted_scope_required',
+      ),
     )
 
     const { default: tool } = await import('#server/mcp/tools/get-document-chunk')
@@ -228,8 +228,8 @@ describe('mcp tool contract handlers (toolkit-native)', () => {
           authorizationHeader: 'Bearer test-token',
           cloudflareEnv: {},
           pendingEvent,
-        }
-      )
+        },
+      ),
     ).rejects.toMatchObject({
       statusCode: 403,
       message: 'The requested citation requires knowledge.restricted.read',
@@ -258,7 +258,7 @@ describe('mcp tool contract handlers (toolkit-native)', () => {
       throw new mcpRouteMocks.MockMcpReplayError(
         'The requested citation requires knowledge.restricted.read',
         403,
-        'restricted_scope_required'
+        'restricted_scope_required',
       )
     })
 
@@ -272,8 +272,8 @@ describe('mcp tool contract handlers (toolkit-native)', () => {
           authorizationHeader: 'Bearer test-token',
           cloudflareEnv: {},
           pendingEvent,
-        }
-      )
+        },
+      ),
     ).rejects.toMatchObject({ statusCode: 403 })
 
     expect(createBlockedRestrictedScopeQueryLog).toHaveBeenCalledTimes(1)
@@ -281,7 +281,7 @@ describe('mcp tool contract handlers (toolkit-native)', () => {
       expect.objectContaining({
         queryText: 'getDocumentChunk:citation-restricted',
         tokenId: 'token-1',
-      })
+      }),
     )
     // Spec Scenario 3: the legacy accepted-path writer must NOT fire on the
     // 403 branch so auditors never see two rows for the same blocked call.
@@ -302,7 +302,7 @@ describe('mcp tool contract handlers (toolkit-native)', () => {
         authorizationHeader: 'Bearer test-token',
         cloudflareEnv: {},
         pendingEvent,
-      }
+      },
     )
 
     expect(result).toEqual({
@@ -320,7 +320,7 @@ describe('mcp tool contract handlers (toolkit-native)', () => {
         authorizationHeader: 'Bearer test-token',
         cloudflareEnv: {},
         pendingEvent,
-      }
+      },
     )
 
     expect(result).toEqual([{ count: 1, slug: 'launch', title: 'Launch' }])
@@ -336,7 +336,7 @@ describe('mcp tool contract handlers (toolkit-native)', () => {
         authorizationHeader: 'Bearer test-token',
         cloudflareEnv: {},
         pendingEvent,
-      }
+      },
     )
 
     expect(result).toEqual({

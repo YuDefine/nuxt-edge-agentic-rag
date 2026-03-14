@@ -196,7 +196,7 @@ export default defineServerAuth(({ db, runtimeConfig }) => {
                       toRole: targetRole,
                       changedBy: ROLE_CHANGE_SYSTEM_ACTOR,
                       reason: auditReason,
-                    }
+                    },
                   )
                 } catch (error) {
                   authLog.error('member_role_changes drift-write failed', {

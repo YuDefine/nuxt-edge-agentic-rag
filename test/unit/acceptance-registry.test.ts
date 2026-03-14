@@ -108,7 +108,7 @@ describe('acceptance registry manifest', () => {
         httpStatus: 200,
         passed: true,
         testCaseId: 'TC-01',
-      })
+      }),
     ).toMatchObject({
       acceptanceId: 'A02',
       channel: 'web',

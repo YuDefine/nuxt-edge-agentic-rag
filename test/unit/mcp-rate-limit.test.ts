@@ -26,7 +26,7 @@ describe('mcp rate limit', () => {
     expect(kv.put).toHaveBeenCalledWith(
       'mcp:local:askKnowledge:token-1',
       JSON.stringify({ count: 2, windowStart: 0 }),
-      { expirationTtl: 300 }
+      { expirationTtl: 300 },
     )
   })
 
@@ -43,9 +43,9 @@ describe('mcp rate limit', () => {
         store: createKvRateLimitStore(kv),
         tokenId: 'token-1',
         tool: 'askKnowledge',
-      })
+      }),
     ).rejects.toThrowError(
-      new McpRateLimitExceededError('Rate limit exceeded for askKnowledge', 429, 240000)
+      new McpRateLimitExceededError('Rate limit exceeded for askKnowledge', 429, 240000),
     )
     expect(kv.put).not.toHaveBeenCalled()
   })

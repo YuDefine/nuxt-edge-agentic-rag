@@ -30,7 +30,7 @@ describe('mcp ask', () => {
           evidence: [],
           normalizedQuery: 'what is the payroll exception policy?',
         }),
-      }
+      },
     )
 
     expect(result).toEqual({
@@ -70,7 +70,7 @@ describe('mcp ask', () => {
           createAcceptedQueryLog: vi.fn(),
         },
         retrieve,
-      }
+      },
     )
 
     expect(auditStore.createQueryLog).toHaveBeenCalledWith({
@@ -153,7 +153,7 @@ describe('mcp ask', () => {
           ],
           normalizedQuery: 'summarize the restricted launch plan',
         }),
-      }
+      },
     )
 
     expect(queryLogStore.createAcceptedQueryLog).toHaveBeenCalledWith({
@@ -236,7 +236,7 @@ describe('createMcpQueryLogStore (observability-and-debug §0.1 / §0.3)', () =>
       null,
       null,
       null,
-      null
+      null,
     )
   })
 
@@ -284,7 +284,7 @@ describe('createMcpQueryLogStore (observability-and-debug §0.1 / §0.3)', () =>
       0.91,
       0.66,
       'direct_answer',
-      null
+      null,
     )
   })
 })

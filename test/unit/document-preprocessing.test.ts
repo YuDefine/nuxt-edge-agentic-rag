@@ -41,7 +41,7 @@ describe('document preprocessing', () => {
         '',
         'Risks',
         'Watch churn carefully.',
-      ].join('\n')
+      ].join('\n'),
     )
 
     expect(result.normalizedTextR2Key).toBe('normalized-text/ver-1/')
@@ -119,7 +119,7 @@ describe('document preprocessing', () => {
         title: 'Ops Playbook',
         versionId: 'ver-1',
         versionNumber: 1,
-      })
+      }),
     ).rejects.toThrow('Only text/plain and text/markdown uploads are supported')
   })
 
@@ -135,11 +135,11 @@ describe('document preprocessing', () => {
         normalizedTextR2Key: '',
         smokeTestQueries: [],
         sourceChunkCount: 0,
-      })
+      }),
     ).toThrowError(
       new MissingVersionReplayAssetsError(
-        'Version replay assets are incomplete: normalizedTextR2Key, smokeTestQueries, sourceChunks'
-      )
+        'Version replay assets are incomplete: normalizedTextR2Key, smokeTestQueries, sourceChunks',
+      ),
     )
   })
 })

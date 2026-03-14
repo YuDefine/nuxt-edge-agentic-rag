@@ -61,7 +61,7 @@ interface NormalizedLine {
 }
 
 export async function prepareDocumentVersionAssets(
-  input: PrepareDocumentVersionAssetsInput
+  input: PrepareDocumentVersionAssetsInput,
 ): Promise<PreparedDocumentVersionAssets> {
   assertSupportedSourceMimeType(input.sourceMimeType)
 
@@ -122,7 +122,7 @@ export function validateVersionReplayAssets(input: {
 
   if (missing.length > 0) {
     throw new MissingVersionReplayAssetsError(
-      `Version replay assets are incomplete: ${missing.join(', ')}`
+      `Version replay assets are incomplete: ${missing.join(', ')}`,
     )
   }
 
@@ -143,7 +143,7 @@ function buildChunkObjects(
   input: {
     accessLevel: string
     versionId: string
-  }
+  },
 ): PreparedChunkObject[] {
   return sourceChunks.map((chunk) => ({
     customMetadata: {
@@ -258,7 +258,7 @@ function buildSmokeTestQueries(normalizedLines: NormalizedLine[], fallbackTitle:
 
 function buildSourceChunks(
   normalizedLines: NormalizedLine[],
-  input: { accessLevel: string; documentVersionId: string }
+  input: { accessLevel: string; documentVersionId: string },
 ): PreparedSourceChunk[] {
   const chunks: PreparedSourceChunk[] = []
   let currentChunkLines: string[] = []
@@ -275,7 +275,7 @@ function buildSourceChunks(
     if (line.text === '') {
       if (currentChunkLines.length > 0) {
         chunks.push(
-          createSourceChunk(currentChunkLines, chunks.length, lineStart, lineNumber - 1, input)
+          createSourceChunk(currentChunkLines, chunks.length, lineStart, lineNumber - 1, input),
         )
         currentChunkLines = []
       }
@@ -293,7 +293,7 @@ function buildSourceChunks(
 
   if (currentChunkLines.length > 0) {
     chunks.push(
-      createSourceChunk(currentChunkLines, chunks.length, lineStart, normalizedLines.length, input)
+      createSourceChunk(currentChunkLines, chunks.length, lineStart, normalizedLines.length, input),
     )
   }
 
@@ -305,7 +305,7 @@ function createSourceChunk(
   chunkIndex: number,
   lineStart: number,
   lineEnd: number,
-  input: { accessLevel: string; documentVersionId: string }
+  input: { accessLevel: string; documentVersionId: string },
 ): PreparedSourceChunk {
   const chunkText = chunkLines.join('\n')
 

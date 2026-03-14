@@ -27,7 +27,7 @@ describe('staged upload', () => {
       {
         createUploadId: () => 'upload-123',
         signUploadUrl,
-      }
+      },
     )
 
     expect(result).toEqual({
@@ -65,11 +65,11 @@ describe('staged upload', () => {
     it('preserves Chinese, Japanese, accented Latin, and emoji characters in filenames', () => {
       expect(keyFor('採購流程.pdf')).toBe('staged/local/admin-1/upload-abcdef12/採購流程.pdf')
       expect(keyFor('日本語のドキュメント.md')).toBe(
-        'staged/local/admin-1/upload-abcdef12/日本語のドキュメント.md'
+        'staged/local/admin-1/upload-abcdef12/日本語のドキュメント.md',
       )
       expect(keyFor('café-menü.txt')).toBe('staged/local/admin-1/upload-abcdef12/café-menü.txt')
       expect(keyFor('🚀launch-plan.pdf')).toBe(
-        'staged/local/admin-1/upload-abcdef12/🚀launch-plan.pdf'
+        'staged/local/admin-1/upload-abcdef12/🚀launch-plan.pdf',
       )
     })
 
@@ -82,7 +82,7 @@ describe('staged upload', () => {
       expect(keyFor('a"b<c>d|e.txt')).toBe('staged/local/admin-1/upload-abcdef12/abcde.txt')
       // control characters U+0000–U+001F and U+007F get dropped
       expect(keyFor('plan\u0001\u0007\u007f.md')).toBe(
-        'staged/local/admin-1/upload-abcdef12/plan.md'
+        'staged/local/admin-1/upload-abcdef12/plan.md',
       )
       // bidi/zero-width chars (RLO spoofing, ZWSP/BOM) get dropped
       expect(keyFor('evil\u202Efdp.exe')).toBe('staged/local/admin-1/upload-abcdef12/evilfdp.exe')
@@ -94,10 +94,10 @@ describe('staged upload', () => {
       // `.`, `..`, `...` are valid filesystem-traversal symbols, not real names
       expect(keyFor('.', uploadId)).toBe('staged/local/admin-1/upload-feedface/upload-feedface.bin')
       expect(keyFor('..', uploadId)).toBe(
-        'staged/local/admin-1/upload-feedface/upload-feedface.bin'
+        'staged/local/admin-1/upload-feedface/upload-feedface.bin',
       )
       expect(keyFor('...', uploadId)).toBe(
-        'staged/local/admin-1/upload-feedface/upload-feedface.bin'
+        'staged/local/admin-1/upload-feedface/upload-feedface.bin',
       )
     })
 
@@ -105,15 +105,15 @@ describe('staged upload', () => {
       const sameUpload = 'upload-cafebabe'
       // Empty after sanitize → fallback uses upload-id prefix and .bin extension
       expect(keyFor('', sameUpload)).toBe(
-        'staged/local/admin-1/upload-cafebabe/upload-cafebabe.bin'
+        'staged/local/admin-1/upload-cafebabe/upload-cafebabe.bin',
       )
       // Only an extension survives → preserve the extension, generate base from upload id
       expect(keyFor('.pdf', sameUpload)).toBe(
-        'staged/local/admin-1/upload-cafebabe/upload-cafebabe.pdf'
+        'staged/local/admin-1/upload-cafebabe/upload-cafebabe.pdf',
       )
       // Only forbidden chars + extension → fallback
       expect(keyFor('<>|.md', sameUpload)).toBe(
-        'staged/local/admin-1/upload-cafebabe/upload-cafebabe.md'
+        'staged/local/admin-1/upload-cafebabe/upload-cafebabe.md',
       )
       // Same uploadId → same fallback (deterministic)
       expect(keyFor('.pdf', sameUpload)).toBe(keyFor('.pdf', sameUpload))
@@ -181,7 +181,7 @@ describe('staged upload', () => {
           uploadId: 'upload-123',
         },
         object: null,
-      })
+      }),
     ).toThrowError(new StagedUploadValidationError('Uploaded file was not found', 404))
   })
 
@@ -205,7 +205,7 @@ describe('staged upload', () => {
           key: 'staged/local/admin-1/upload-123/quarterly-report.md',
           size: 64,
         },
-      })
+      }),
     ).toThrowError(new StagedUploadValidationError('Uploaded file size did not match', 400))
   })
 
@@ -229,7 +229,7 @@ describe('staged upload', () => {
           key: 'staged/local/admin-1/upload-123/quarterly-report.md',
           size: 128,
         },
-      })
+      }),
     ).toThrowError(new StagedUploadValidationError('Uploaded file MIME type did not match', 400))
   })
 
@@ -276,7 +276,7 @@ describe('staged upload', () => {
           key: 'staged/local/admin-1/upload-123/quarterly-report.md',
           size: 128,
         },
-      })
+      }),
     ).toThrowError(new StagedUploadValidationError('Uploaded file checksum did not match', 400))
   })
 })

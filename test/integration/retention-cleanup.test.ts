@@ -64,7 +64,7 @@ function iso(date: string | Date): string {
 }
 
 function createPreparedStatement(
-  runWithValues: (...values: unknown[]) => Promise<{ meta: { changes: number } }>
+  runWithValues: (...values: unknown[]) => Promise<{ meta: { changes: number } }>,
 ) {
   return {
     bind(...values: unknown[]) {
@@ -90,7 +90,7 @@ function createFakeDatabase(state: FakeState) {
           const cutoff = new Date(String(expiresAtBound)).getTime()
           const before = state.citationRecords.length
           state.citationRecords = state.citationRecords.filter(
-            (row) => new Date(row.expiresAt).getTime() > cutoff
+            (row) => new Date(row.expiresAt).getTime() > cutoff,
           )
           const changes = before - state.citationRecords.length
           return { meta: { changes } }
@@ -112,13 +112,13 @@ function createFakeDatabase(state: FakeState) {
           const deletedIds = new Set(
             state.queryLogs
               .filter((row) => new Date(row.createdAt).getTime() <= cutoff)
-              .map((row) => row.id)
+              .map((row) => row.id),
           )
           state.queryLogs = state.queryLogs.filter(
-            (row) => new Date(row.createdAt).getTime() > cutoff
+            (row) => new Date(row.createdAt).getTime() > cutoff,
           )
           state.citationRecords = state.citationRecords.filter(
-            (cr) => !deletedIds.has(cr.queryLogId)
+            (cr) => !deletedIds.has(cr.queryLogId),
           )
           const changes = before - state.queryLogs.length
           return { meta: { changes } }
@@ -210,7 +210,7 @@ describe('runRetentionCleanup', () => {
   it('deletes expired query_logs but preserves rows within the retention window', async () => {
     state.queryLogs.push(
       { id: 'ql-expired', createdAt: iso(OUTSIDE_WINDOW) },
-      { id: 'ql-fresh', createdAt: iso(INSIDE_WINDOW) }
+      { id: 'ql-fresh', createdAt: iso(INSIDE_WINDOW) },
     )
 
     const result = await runRetentionCleanup({
@@ -237,7 +237,7 @@ describe('runRetentionCleanup', () => {
 
     expect(state.callOrder).toEqual(['citationRecords', 'queryLogs', 'sourceChunks', 'mcpTokens'])
     expect(state.callOrder.indexOf('citationRecords')).toBeLessThan(
-      state.callOrder.indexOf('queryLogs')
+      state.callOrder.indexOf('queryLogs'),
     )
     expect(result.deleted.citationRecords).toBe(1)
     expect(result.deleted.queryLogs).toBe(1)
@@ -258,7 +258,7 @@ describe('runRetentionCleanup', () => {
         chunkText: 'still needed',
         chunkHash: 'hash-2',
         createdAt: iso(INSIDE_WINDOW),
-      }
+      },
     )
 
     const result = await runRetentionCleanup({
@@ -395,7 +395,7 @@ describe('shared retention policy constants', () => {
         'citation_records',
         'source_chunks.chunk_text',
         'mcp_tokens',
-      ])
+      ]),
     )
   })
 
@@ -408,7 +408,7 @@ describe('shared retention policy constants', () => {
   it('computes deterministic cutoff timestamps', () => {
     const cutoff = computeRetentionCutoff(
       { retentionDays: 180 },
-      new Date('2026-04-18T00:00:00.000Z')
+      new Date('2026-04-18T00:00:00.000Z'),
     )
     expect(cutoff).toBe('2025-10-20T00:00:00.000Z')
   })

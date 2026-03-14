@@ -70,11 +70,11 @@ describe('acceptance fixture loader', () => {
     expect(frozen?.cases.length).toBeGreaterThan(0)
     expect(
       frozen?.cases.every(
-        (entry) => entry.registryId.startsWith('TC-') || entry.registryId.startsWith('EV-')
-      )
+        (entry) => entry.registryId.startsWith('TC-') || entry.registryId.startsWith('EV-'),
+      ),
     ).toBe(true)
     expect(module?.getAcceptanceFixturePath('frozen-final')).toContain(
-      'test/fixtures/acceptance/frozen-final/cases.json'
+      'test/fixtures/acceptance/frozen-final/cases.json',
     )
   })
 })

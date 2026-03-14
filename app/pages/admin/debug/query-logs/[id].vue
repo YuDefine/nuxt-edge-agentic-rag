@@ -42,7 +42,7 @@
     () => `/api/admin/debug/query-logs/${logId.value}`,
     {
       key: `debug-query-log-${logId.value}`,
-    }
+    },
   )
 
   const detail = computed(() => data.value?.data ?? null)
@@ -71,10 +71,10 @@
   })
 
   const firstTokenText = computed(() =>
-    formatNullableNumber(detail.value?.firstTokenLatencyMs ?? null, ' ms')
+    formatNullableNumber(detail.value?.firstTokenLatencyMs ?? null, ' ms'),
   )
   const completionText = computed(() =>
-    formatNullableNumber(detail.value?.completionLatencyMs ?? null, ' ms')
+    formatNullableNumber(detail.value?.completionLatencyMs ?? null, ' ms'),
   )
 </script>
 

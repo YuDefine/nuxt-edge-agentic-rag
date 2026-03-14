@@ -120,14 +120,14 @@ function compareSample(sample: Ev04RateLimitCleanupSample): Ev04Comparison {
 }
 
 export function runEv04RateLimitCleanupExporter(
-  input: Ev04ExporterInput = {}
+  input: Ev04ExporterInput = {},
 ): AcceptanceEvidenceExport {
   const context = createEvidenceExporterContext(input)
   const samples = input.samples ?? buildDefaultSamples()
 
   if (samples.length === 0) {
     throw new Error(
-      'EV-04 exporter requires at least one rate-limit/retention sample to emit a record'
+      'EV-04 exporter requires at least one rate-limit/retention sample to emit a record',
     )
   }
 
@@ -158,25 +158,25 @@ export function runEv04RateLimitCleanupExporter(
 
     if (!comparison.rateLimitRuleEffective) {
       notesParts.push(
-        `rate-limit rule drift (expected=${sample.rateLimit.expectedRateLimitedCount} 429s, actual=${sample.rateLimit.actualRateLimitedCount})`
+        `rate-limit rule drift (expected=${sample.rateLimit.expectedRateLimitedCount} 429s, actual=${sample.rateLimit.actualRateLimitedCount})`,
       )
     }
 
     if (!comparison.retentionCleanupComplete) {
       notesParts.push(
-        `retention cleanup incomplete (remaining=${sample.retention.recordsRemainingAfterCleanup}, backdatedCleaned=${sample.retention.backdatedRecordCleaned})`
+        `retention cleanup incomplete (remaining=${sample.retention.recordsRemainingAfterCleanup}, backdatedCleaned=${sample.retention.backdatedRecordCleaned})`,
       )
     }
 
     if (!comparison.replayChainConsistent) {
       notesParts.push(
-        `replay chain inconsistent (pre=${sample.replay.preCleanupHttpStatus}, post=${sample.replay.postCleanupHttpStatus}; expected pre=200, post=404|410)`
+        `replay chain inconsistent (pre=${sample.replay.preCleanupHttpStatus}, post=${sample.replay.postCleanupHttpStatus}; expected pre=200, post=404|410)`,
       )
     }
 
     if (isStubbed && passed) {
       notesParts.push(
-        'Stubbed rate-limit + retention + replay pointers — rerun EV-04 with real KV counter, retention cleanup run, and replay probes to capture live evidence.'
+        'Stubbed rate-limit + retention + replay pointers — rerun EV-04 with real KV counter, retention cleanup run, and replay probes to capture live evidence.',
       )
     }
 

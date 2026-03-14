@@ -47,7 +47,7 @@ const chatRouteMocks = vi.hoisted(() => {
     constructor(
       message: string,
       readonly statusCode: number,
-      readonly retryAfterMs: number
+      readonly retryAfterMs: number,
     ) {
       super(message)
       this.name = 'ChatRateLimitExceededError'
@@ -193,7 +193,7 @@ describe('/api/chat — conversation auto-create plumbing (governance §1.7)', (
           rateLimitKv: 'RATE_LIMITS',
         },
         environment: 'local',
-      })
+      }),
     )
     chatRouteMocks.requireUserSession.mockResolvedValue({
       user: {
@@ -243,7 +243,7 @@ describe('/api/chat — conversation auto-create plumbing (governance §1.7)', (
     // wired up on every turn, including the first.
     expect(chatRouteMocks.chatWithKnowledge).toHaveBeenCalledWith(
       expect.objectContaining({ conversationId: 'conv-1' }),
-      expect.any(Object)
+      expect.any(Object),
     )
   })
 
@@ -301,7 +301,7 @@ describe('/api/chat — conversation auto-create plumbing (governance §1.7)', (
       expect.objectContaining({
         conversationId: '22222222-2222-2222-2222-222222222222',
       }),
-      expect.any(Object)
+      expect.any(Object),
     )
   })
 

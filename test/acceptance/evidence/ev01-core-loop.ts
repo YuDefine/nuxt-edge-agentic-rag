@@ -199,7 +199,7 @@ export function runEv01CoreLoopExporter(input: Ev01ExporterInput = {}): Acceptan
 
     if (isStubbed && comparison.allStagesSucceeded) {
       notesParts.push(
-        'Stubbed core-loop stages — rerun EV-01 against a live deploy to capture deploy / OAuth / publish / ask / replay payloads.'
+        'Stubbed core-loop stages — rerun EV-01 against a live deploy to capture deploy / OAuth / publish / ask / replay payloads.',
       )
     }
 

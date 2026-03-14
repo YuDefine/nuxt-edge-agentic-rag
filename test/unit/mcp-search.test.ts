@@ -30,7 +30,7 @@ describe('mcp search', () => {
       },
       {
         retrieve,
-      }
+      },
     )
 
     expect(retrieve).toHaveBeenCalledWith({
@@ -67,7 +67,7 @@ describe('mcp search', () => {
       },
       {
         retrieve,
-      }
+      },
     )
 
     expect(result).toEqual({

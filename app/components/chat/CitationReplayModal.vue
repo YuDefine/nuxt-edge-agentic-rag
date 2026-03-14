@@ -77,7 +77,7 @@
         loadCitation(newCitationId)
       }
     },
-    { immediate: true }
+    { immediate: true },
   )
 
   function getErrorMessage(): string {

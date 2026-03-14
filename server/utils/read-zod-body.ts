@@ -2,7 +2,7 @@ import type { ZodType } from 'zod'
 
 export async function readZodBody<TSchema extends ZodType>(
   event: Parameters<typeof readBody>[0],
-  schema: TSchema
+  schema: TSchema,
 ) {
   const result = schema.safeParse(await readBody(event))
 

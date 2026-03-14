@@ -32,7 +32,7 @@ export async function paginateList<T>(
   loaders: {
     count: () => Promise<number>
     list: (args: { limit: number; offset: number }) => Promise<T[]>
-  }
+  },
 ): Promise<{ data: T[]; pagination: PaginationMeta }> {
   const offset = (input.page - 1) * input.pageSize
   const [data, total] = await Promise.all([

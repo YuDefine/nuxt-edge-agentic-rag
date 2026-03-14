@@ -131,7 +131,7 @@ export async function getGuestPolicy(event: EventLike): Promise<GuestPolicy> {
  */
 export async function setGuestPolicy(
   event: EventLike,
-  input: { value: GuestPolicy; changedBy: string }
+  input: { value: GuestPolicy; changedBy: string },
 ): Promise<void> {
   const parsed = guestPolicySchema.parse(input.value)
   const now = new Date().toISOString()

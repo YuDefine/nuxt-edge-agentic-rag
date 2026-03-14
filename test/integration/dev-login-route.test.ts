@@ -95,8 +95,8 @@ describe('POST /api/_dev/login', () => {
         {
           status: 200,
           headers: { 'set-cookie': 'session=abc; Path=/; HttpOnly' },
-        }
-      )
+        },
+      ),
     )
     mocks.serverAuth.mockReturnValue({
       api: {
@@ -126,7 +126,7 @@ describe('POST /api/_dev/login', () => {
     expect(mocks.appendResponseHeader).toHaveBeenCalledWith(
       expect.any(Object),
       'set-cookie',
-      'session=abc; Path=/; HttpOnly'
+      'session=abc; Path=/; HttpOnly',
     )
     expect(result).toMatchObject({
       success: true,
@@ -154,7 +154,7 @@ describe('POST /api/_dev/login', () => {
         providerId: 'credential',
         userId: 'user-42',
         password: expect.stringMatching(/^[0-9a-f]{32}:[0-9a-f]{128}$/),
-      })
+      }),
     )
     expect(mocks.signInEmail).toHaveBeenCalledWith({
       body: {

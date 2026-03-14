@@ -169,7 +169,7 @@ describe('acceptance evidence exporters', () => {
             testCaseId: 'TC-999',
           },
         ],
-      })
+      }),
     ).toThrow(/unknown test case/i)
   })
 
@@ -397,7 +397,7 @@ describe('acceptance evidence exporters', () => {
     expect(record.evidenceRefs.filter((ref) => ref.kind === 'ai-search-request')).toHaveLength(2)
     expect(record.evidenceRefs.filter((ref) => ref.kind === 'ai-search-response')).toHaveLength(2)
     expect(record.evidenceRefs.some((ref) => ref.kind === 'orchestration-log-correction')).toBe(
-      true
+      true,
     )
   })
 
@@ -670,7 +670,7 @@ describe('acceptance evidence exporters', () => {
 
     expect(record.status).toBe('failed')
     expect(record.notes).toMatch(
-      /scope decision drift|scope matrix inconsistent|redaction marker missing|leaked restricted content/i
+      /scope decision drift|scope matrix inconsistent|redaction marker missing|leaked restricted content/i,
     )
   })
 
@@ -717,7 +717,7 @@ describe('acceptance evidence exporters', () => {
     expect(record.configSnapshotVersion).toBe(configSnapshotVersion)
     expect(record.evidenceRefs.some((ref) => ref.kind === 'access-matrix')).toBe(true)
     expect(
-      record.evidenceRefs.filter((ref) => ref.kind === 'orchestration-log').length
+      record.evidenceRefs.filter((ref) => ref.kind === 'orchestration-log').length,
     ).toBeGreaterThanOrEqual(2)
     expect(record.status).toBe('pending-production-run')
     expect(record.decisionPath).toBe('web-admin-reads-restricted-mcp-isolated')
@@ -765,7 +765,7 @@ describe('acceptance evidence exporters', () => {
 
     expect(record.status).toBe('failed')
     expect(record.notes).toMatch(
-      /isolation leak detected|did not refuse correctly|scope isolation broken/i
+      /isolation leak detected|did not refuse correctly|scope isolation broken/i,
     )
   })
 
@@ -1066,10 +1066,10 @@ describe('acceptance evidence exporters', () => {
     expect(record.decisionPath).toBe('allowlist-promote-demote-chain')
     expect(record.status).toBe('pending-production-run')
     expect(
-      record.evidenceRefs.filter((ref) => ref.kind === 'oauth-session-snapshot').length
+      record.evidenceRefs.filter((ref) => ref.kind === 'oauth-session-snapshot').length,
     ).toBeGreaterThanOrEqual(3)
     expect(
-      record.evidenceRefs.filter((ref) => ref.kind === 'allowlist-state').length
+      record.evidenceRefs.filter((ref) => ref.kind === 'allowlist-state').length,
     ).toBeGreaterThanOrEqual(3)
   })
 

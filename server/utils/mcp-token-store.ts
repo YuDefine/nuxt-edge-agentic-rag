@@ -61,7 +61,7 @@ export function buildProvisionedMcpToken(
     createId?: () => string
     createSecret?: () => string
     now?: () => Date
-  } = {}
+  } = {},
 ): {
   plaintextToken: string
   record: McpTokenRecord
@@ -98,7 +98,7 @@ export function createMcpTokenStore() {
             'INSERT INTO mcp_tokens (',
             '  id, token_hash, name, scopes_json, environment, status, expires_at, last_used_at, revoked_at, revoked_reason, created_at, created_by_user_id',
             ') VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-          ].join('\n')
+          ].join('\n'),
         )
         .bind(
           record.id,
@@ -112,14 +112,14 @@ export function createMcpTokenStore() {
           record.revokedAt,
           record.revokedReason,
           record.createdAt,
-          record.createdByUserId
+          record.createdByUserId,
         )
         .run()
     },
 
     async findUsableTokenByHash(
       tokenHash: string,
-      environment: string
+      environment: string,
     ): Promise<McpTokenRecord | null> {
       const database = (await getD1Database()) as D1DatabaseLike
       const row = await database
@@ -132,7 +132,7 @@ export function createMcpTokenStore() {
             '  AND environment = ?',
             "  AND status = 'active'",
             'LIMIT 1',
-          ].join('\n')
+          ].join('\n'),
         )
         .bind(tokenHash, environment)
         .first<{
@@ -247,7 +247,7 @@ export function createMcpTokenAdminStore() {
 
     async revokeTokenById(
       tokenId: string,
-      options: { now?: () => Date } = {}
+      options: { now?: () => Date } = {},
     ): Promise<McpTokenRevokeOutcome> {
       const { db, schema } = await getDrizzleDb()
       const { and, eq, ne } = await import('drizzle-orm')

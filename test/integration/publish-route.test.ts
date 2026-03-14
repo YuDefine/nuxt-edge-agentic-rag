@@ -22,7 +22,7 @@ const publishRouteMocks = vi.hoisted(() => ({
 class MockDocumentPublishStateError extends Error {
   constructor(
     message: string,
-    readonly statusCode: number
+    readonly statusCode: number,
   ) {
     super(message)
     this.name = 'DocumentPublishStateError'
@@ -56,7 +56,7 @@ describe('publish route', () => {
 
   it('rejects requests without both route params', async () => {
     publishRouteMocks.getRouterParam.mockImplementation((_event: unknown, key: string) =>
-      key === 'documentId' ? 'doc-1' : undefined
+      key === 'documentId' ? 'doc-1' : undefined,
     )
 
     const { default: handler } =
@@ -70,7 +70,7 @@ describe('publish route', () => {
 
   it('returns publish results through the unified response envelope', async () => {
     publishRouteMocks.getRouterParam.mockImplementation((_event: unknown, key: string) =>
-      key === 'documentId' ? 'doc-1' : 'ver-1'
+      key === 'documentId' ? 'doc-1' : 'ver-1',
     )
     publishRouteMocks.publishDocumentVersion.mockResolvedValue({
       alreadyCurrent: false,

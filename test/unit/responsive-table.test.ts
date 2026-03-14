@@ -17,7 +17,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 const TABLE_PATH = fileURLToPath(
-  new URL('../../app/components/documents/DocumentListTable.vue', import.meta.url)
+  new URL('../../app/components/documents/DocumentListTable.vue', import.meta.url),
 )
 
 function loadTableSource(): string {
@@ -40,7 +40,7 @@ describe('DocumentListTable — Hybrid Table Fallback Below md', () => {
     for (const key of expected) {
       expect(
         src.includes(`accessorKey: '${key}'`) || src.includes(`id: '${key}'`),
-        `expected column '${key}' to be declared in DocumentListTable`
+        `expected column '${key}' to be declared in DocumentListTable`,
       ).toBe(true)
     }
   })
@@ -58,11 +58,11 @@ describe('DocumentListTable — Hybrid Table Fallback Below md', () => {
       // crude proximity match — each secondary column should have `hidden md:` within its column def block
       const colBlock = new RegExp(
         `accessorKey:\\s*'${col}'[\\s\\S]{0,200}?(hidden md:|md:table-cell)`,
-        'm'
+        'm',
       )
       expect(
         colBlock.test(src),
-        `secondary column '${col}' should be hidden below md (expected 'hidden md:' or 'md:table-cell' class within 200 chars of its column def)`
+        `secondary column '${col}' should be hidden below md (expected 'hidden md:' or 'md:table-cell' class within 200 chars of its column def)`,
       ).toBe(true)
     }
   })
@@ -75,16 +75,16 @@ describe('DocumentListTable — Hybrid Table Fallback Below md', () => {
     // 2) an "Open →" / "詳情" button wired to the drawer state
     expect(
       /USlideover|UDrawer/.test(src),
-      'expected a USlideover / UDrawer for the mobile detail fallback'
+      'expected a USlideover / UDrawer for the mobile detail fallback',
     ).toBe(true)
     expect(
       /detailOpen|detailRow|openMobileDetail/.test(src),
-      'expected a reactive flag (e.g. detailOpen / openMobileDetail) controlling the detail drawer'
+      'expected a reactive flag (e.g. detailOpen / openMobileDetail) controlling the detail drawer',
     ).toBe(true)
     // focus restore — watch on detailOpen should re-focus the trigger
     expect(
       /detailTriggerRef[\s\S]*focus\(\)/m.test(src),
-      'expected the detail drawer close path to restore focus to the originating trigger button'
+      'expected the detail drawer close path to restore focus to the originating trigger button',
     ).toBe(true)
   })
 })

@@ -49,7 +49,7 @@ describe('TC-UI-01 empty state (對照 add-v1-core-ui §7.3)', () => {
         error: null,
         itemCount: 0,
         status: 'success',
-      })
+      }),
     ).toBe('empty')
   })
 
@@ -63,7 +63,7 @@ describe('TC-UI-01 empty state (對照 add-v1-core-ui §7.3)', () => {
         error: null,
         itemCount: 10,
         status: 'success',
-      })
+      }),
     ).toBe('success')
   })
 })
@@ -75,7 +75,7 @@ describe('TC-UI-02 loading state (對照 add-v1-core-ui §7.4)', () => {
         error: null,
         itemCount: 0,
         status: 'pending',
-      })
+      }),
     ).toBe('loading')
 
     expect(
@@ -83,7 +83,7 @@ describe('TC-UI-02 loading state (對照 add-v1-core-ui §7.4)', () => {
         error: null,
         itemCount: 5,
         status: 'pending',
-      })
+      }),
     ).toBe('loading')
   })
 
@@ -99,7 +99,7 @@ describe('TC-UI-03 error state (對照 add-v1-core-ui §7.5)', () => {
         error: { statusCode: 500 },
         itemCount: 0,
         status: 'error',
-      })
+      }),
     ).toBe('error')
   })
 
@@ -109,7 +109,7 @@ describe('TC-UI-03 error state (對照 add-v1-core-ui §7.5)', () => {
         error: {},
         itemCount: 0,
         status: 'error',
-      })
+      }),
     ).toBe('error')
   })
 
@@ -119,7 +119,7 @@ describe('TC-UI-03 error state (對照 add-v1-core-ui §7.5)', () => {
         error: { statusCode: 400 },
         itemCount: 0,
         status: 'error',
-      })
+      }),
     ).toBe('error')
   })
 
@@ -129,7 +129,7 @@ describe('TC-UI-03 error state (對照 add-v1-core-ui §7.5)', () => {
         error: { statusCode: 404 },
         itemCount: 0,
         status: 'error',
-      })
+      }),
     ).toBe('error')
   })
 
@@ -166,7 +166,7 @@ describe('TC-UI-04 success state transition', () => {
         error: null,
         itemCount: 0,
         status: 'success',
-      })
+      }),
     ).toBe('empty')
 
     // itemCount>0 is success
@@ -175,7 +175,7 @@ describe('TC-UI-04 success state transition', () => {
         error: null,
         itemCount: 1,
         status: 'success',
-      })
+      }),
     ).toBe('success')
   })
 })
@@ -187,7 +187,7 @@ describe('TC-UI-05 unauthorized state (對照 add-v1-core-ui §7.6)', () => {
         error: { statusCode: 401 },
         itemCount: 0,
         status: 'error',
-      })
+      }),
     ).toBe('unauthorized')
   })
 
@@ -197,7 +197,7 @@ describe('TC-UI-05 unauthorized state (對照 add-v1-core-ui §7.6)', () => {
         error: { statusCode: 403 },
         itemCount: 0,
         status: 'error',
-      })
+      }),
     ).toBe('unauthorized')
   })
 
@@ -208,7 +208,7 @@ describe('TC-UI-05 unauthorized state (對照 add-v1-core-ui §7.6)', () => {
         error: { statusCode: 401 },
         itemCount: 0,
         status: 'error',
-      })
+      }),
     ).toBe('unauthorized')
   })
 
@@ -223,7 +223,7 @@ describe('TC-UI-05 unauthorized state (對照 add-v1-core-ui §7.6)', () => {
           error: { statusCode },
           itemCount: 0,
           status: 'error',
-        })
+        }),
       ).toBe('error')
     }
   })

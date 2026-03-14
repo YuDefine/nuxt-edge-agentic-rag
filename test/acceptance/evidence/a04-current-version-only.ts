@@ -123,7 +123,7 @@ function compareCutoverSample(sample: A04CutoverSample): CutoverComparison {
 }
 
 export function runA04CurrentVersionOnlyExporter(
-  input: A04ExporterInput = {}
+  input: A04ExporterInput = {},
 ): AcceptanceEvidenceExport {
   const context = createEvidenceExporterContext(input)
   const samples = input.samples ?? buildDefaultSamples()
@@ -162,7 +162,7 @@ export function runA04CurrentVersionOnlyExporter(
 
     if (isStubbed && passed) {
       notesParts.push(
-        'Stubbed cutover snapshots — rerun TC-18 against live D1 to capture real query payloads.'
+        'Stubbed cutover snapshots — rerun TC-18 against live D1 to capture real query payloads.',
       )
     }
 

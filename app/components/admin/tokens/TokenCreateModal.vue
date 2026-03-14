@@ -85,7 +85,7 @@
         // Small timeout to avoid flashing inputs while modal fades out
         resetForm()
       }
-    }
+    },
   )
 
   const { $csrfFetch } = useNuxtApp()

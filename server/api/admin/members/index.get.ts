@@ -104,6 +104,6 @@ export default defineEventHandler(async function listMembersHandler(event) {
           updatedAt: row.updatedAt instanceof Date ? row.updatedAt.toISOString() : row.updatedAt,
         }))
       },
-    }
+    },
   )
 })

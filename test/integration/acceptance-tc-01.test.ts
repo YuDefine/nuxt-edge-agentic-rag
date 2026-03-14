@@ -47,7 +47,7 @@ const tc01Mocks = vi.hoisted(
     readBody: vi.fn(),
     readZodBody: vi.fn(),
     runtimeConfig: null,
-  })
+  }),
 )
 
 vi.mock('evlog', () => ({
@@ -87,7 +87,7 @@ installNuxtRouteTestGlobals()
 
 describe('acceptance direct-answer automation', () => {
   const cases = loadAcceptanceFixtureDataset('seed').cases.filter((entry) =>
-    ['TC-01', 'TC-02', 'TC-03'].includes(entry.registryId)
+    ['TC-01', 'TC-02', 'TC-03'].includes(entry.registryId),
   )
 
   beforeEach(() => {
@@ -119,7 +119,7 @@ describe('acceptance direct-answer automation', () => {
 
     tc01Mocks.bindings = createTc01Bindings(
       tc01Mocks.actor as ReturnType<typeof createAcceptanceActorFixture>,
-      scenario
+      scenario,
     )
     tc01Mocks.readBody.mockResolvedValue({ query: fixture.prompt })
     tc01Mocks.readZodBody.mockResolvedValue({ query: fixture.prompt })
@@ -192,7 +192,7 @@ describe('acceptance direct-answer automation', () => {
 
     const queryLogInsert = d1.calls.find((call) => call.query.includes('INSERT INTO query_logs'))
     const citationInsert = d1.calls.find((call) =>
-      call.query.includes('INSERT INTO citation_records')
+      call.query.includes('INSERT INTO citation_records'),
     )
 
     expect(queryLogInsert?.values).toEqual(
@@ -200,7 +200,7 @@ describe('acceptance direct-answer automation', () => {
         'local',
         tc01Mocks.runtimeConfig?.governance.configSnapshotVersion,
         'accepted',
-      ])
+      ]),
     )
     expect(citationInsert?.values).toEqual(
       expect.arrayContaining([
@@ -208,7 +208,7 @@ describe('acceptance direct-answer automation', () => {
         scenario.sourceChunkId,
         scenario.citationLocator,
         scenario.chunkText,
-      ])
+      ]),
     )
 
     if (fixture.channel === 'mcp') {
@@ -233,7 +233,7 @@ async function runMcpCase(authorizationHeader: string, query: string) {
       authorizationHeader,
       cloudflareEnv: tc01Mocks.bindings ?? {},
       pendingEvent,
-    }
+    },
   )
 
   return { data }
@@ -241,7 +241,7 @@ async function runMcpCase(authorizationHeader: string, query: string) {
 
 function createTc01Bindings(
   actor: ReturnType<typeof createAcceptanceActorFixture>,
-  scenario: AcceptanceCaseScenario
+  scenario: AcceptanceCaseScenario,
 ) {
   const d1 = createD1BindingFake({
     responders: [
@@ -323,7 +323,7 @@ function createTc01Bindings(
 }
 
 function getScenarioForCase(
-  registryId: AcceptanceCaseScenario['registryId']
+  registryId: AcceptanceCaseScenario['registryId'],
 ): AcceptanceCaseScenario {
   switch (registryId) {
     case 'TC-01':

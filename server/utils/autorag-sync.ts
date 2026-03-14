@@ -37,7 +37,7 @@ export class AutoRagCooldownError extends Error {
 
 export async function triggerAutoRagSync(
   config: AutoRagClientConfig,
-  options: ClientOptions = {}
+  options: ClientOptions = {},
 ): Promise<AutoRagSyncJob> {
   const response = await (options.fetch ?? fetch)(jobsEndpoint(config), {
     headers: authorizationHeader(config),
@@ -69,7 +69,7 @@ export async function triggerAutoRagSync(
 export async function getAutoRagJobStatus(
   config: AutoRagClientConfig,
   jobId: string,
-  options: ClientOptions = {}
+  options: ClientOptions = {},
 ): Promise<AutoRagJobStatus> {
   const response = await (options.fetch ?? fetch)(`${jobsEndpoint(config)}/${jobId}`, {
     headers: authorizationHeader(config),

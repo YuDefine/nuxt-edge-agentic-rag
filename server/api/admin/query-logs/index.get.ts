@@ -46,6 +46,6 @@ export default defineEventHandler(async function listQueryLogsHandler(event) {
     {
       count: () => store.countQueryLogs(filter),
       list: ({ limit, offset }) => store.listQueryLogs({ ...filter, limit, offset }),
-    }
+    },
   )
 })

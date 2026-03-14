@@ -112,7 +112,7 @@ function compareContractSample(sample: A12ContractSample): ContractComparison {
 }
 
 export function runA12McpNoInternalDiagnosticsExporter(
-  input: A12ExporterInput = {}
+  input: A12ExporterInput = {},
 ): AcceptanceEvidenceExport {
   const context = createEvidenceExporterContext(input)
   const samples = input.samples ?? buildDefaultSamples()
@@ -143,7 +143,7 @@ export function runA12McpNoInternalDiagnosticsExporter(
 
     if (comparison.hasForbiddenKeys) {
       notesParts.push(
-        `MCP ${sample.tool} response exposes forbidden internal diagnostic keys: ${sample.forbiddenKeysFound.join(', ')}`
+        `MCP ${sample.tool} response exposes forbidden internal diagnostic keys: ${sample.forbiddenKeysFound.join(', ')}`,
       )
     }
 
@@ -153,7 +153,7 @@ export function runA12McpNoInternalDiagnosticsExporter(
 
     if (isStubbed && passed) {
       notesParts.push(
-        'Stubbed contract snapshot + inspector log — rerun MCP Inspector against ${tool} and diff against stored contract to capture real evidence.'
+        'Stubbed contract snapshot + inspector log — rerun MCP Inspector against ${tool} and diff against stored contract to capture real evidence.',
       )
     }
 

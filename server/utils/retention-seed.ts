@@ -62,20 +62,20 @@ export interface SeedBackdatedRetentionResult {
 const FORBIDDEN_ENVIRONMENT = 'production'
 
 export async function seedBackdatedRetentionRecord(
-  input: SeedBackdatedRetentionInput
+  input: SeedBackdatedRetentionInput,
 ): Promise<SeedBackdatedRetentionResult> {
   if (input.environment === FORBIDDEN_ENVIRONMENT) {
     throw new Error(
       'seedBackdatedRetentionRecord refuses to write backdated rows in production. ' +
-        'Governance §2.4 restricts backdated verification to the local environment.'
+        'Governance §2.4 restricts backdated verification to the local environment.',
     )
   }
 
   if (!Number.isInteger(input.ageDays) || input.ageDays <= 0) {
     throw new Error(
       `seedBackdatedRetentionRecord: ageDays must be a positive integer, received ${String(
-        input.ageDays
-      )}`
+        input.ageDays,
+      )}`,
     )
   }
 
@@ -109,7 +109,7 @@ export async function seedBackdatedRetentionRecord(
     .prepare(
       'INSERT INTO query_logs (id, channel, environment, query_redacted_text, ' +
         'config_snapshot_version, status, created_at) ' +
-        'VALUES (?, ?, ?, ?, ?, ?, ?)'
+        'VALUES (?, ?, ?, ?, ?, ?, ?)',
     )
     .bind(
       queryLogId,
@@ -118,7 +118,7 @@ export async function seedBackdatedRetentionRecord(
       queryRedactedText,
       'retention-backdated',
       'accepted',
-      createdAt
+      createdAt,
     )
     .run()
 
@@ -129,7 +129,7 @@ export async function seedBackdatedRetentionRecord(
     .prepare(
       'INSERT INTO citation_records (id, query_log_id, document_version_id, ' +
         'source_chunk_id, citation_locator, chunk_text_snapshot, created_at, expires_at) ' +
-        'VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+        'VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
     )
     .bind(
       citationRecordId,
@@ -139,7 +139,7 @@ export async function seedBackdatedRetentionRecord(
       'loc:0',
       '[backdated snapshot]',
       createdAt,
-      expiresAt
+      expiresAt,
     )
     .run()
 

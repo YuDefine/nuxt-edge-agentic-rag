@@ -56,7 +56,7 @@ const tc08Mocks = vi.hoisted(
     readBody: vi.fn(),
     readZodBody: vi.fn(),
     runtimeConfig: null,
-  })
+  }),
 )
 
 vi.mock('evlog', () => ({
@@ -94,7 +94,7 @@ installNuxtRouteTestGlobals()
 
 describe('acceptance out-of-capability refusal (TC-08)', () => {
   const cases = loadAcceptanceFixtureDataset('seed').cases.filter(
-    (entry) => entry.registryId === 'TC-08'
+    (entry) => entry.registryId === 'TC-08',
   )
 
   beforeEach(() => {
@@ -137,7 +137,7 @@ describe('acceptance out-of-capability refusal (TC-08)', () => {
       expect(['web', 'mcp']).toContain(fixture.channel)
 
       tc08Mocks.bindings = createTc08Bindings(
-        tc08Mocks.actor as ReturnType<typeof createAcceptanceActorFixture>
+        tc08Mocks.actor as ReturnType<typeof createAcceptanceActorFixture>,
       )
       tc08Mocks.readBody.mockResolvedValue({ query: fixture.prompt })
       tc08Mocks.readZodBody.mockResolvedValue({ query: fixture.prompt })
@@ -153,7 +153,7 @@ describe('acceptance out-of-capability refusal (TC-08)', () => {
             })
           : ((await runMcpCase(
               tc08Mocks.actor?.mcpToken.authorizationHeader ?? '',
-              fixture.prompt
+              fixture.prompt,
             )) as {
               data: {
                 answer?: string
@@ -198,7 +198,7 @@ describe('acceptance out-of-capability refusal (TC-08)', () => {
 
       // 不得寫入任何 citation_records
       const citationInserts = d1.calls.filter((call) =>
-        call.query.includes('INSERT INTO citation_records')
+        call.query.includes('INSERT INTO citation_records'),
       )
 
       expect(citationInserts).toHaveLength(0)
@@ -212,13 +212,13 @@ describe('acceptance out-of-capability refusal (TC-08)', () => {
           'local',
           tc08Mocks.runtimeConfig?.governance.configSnapshotVersion,
           'accepted',
-        ])
+        ]),
       )
 
       if (fixture.channel === 'mcp') {
         expect(d1.calls.some((call) => call.query.includes('FROM mcp_tokens'))).toBe(true)
       }
-    }
+    },
   )
 })
 
@@ -237,7 +237,7 @@ async function runMcpCase(authorizationHeader: string, query: string) {
       authorizationHeader,
       cloudflareEnv: tc08Mocks.bindings ?? {},
       pendingEvent,
-    }
+    },
   )
 
   return { data }

@@ -78,7 +78,7 @@ describe('askKnowledge — MCP tool output contract (§4.2)', () => {
           evidence: evidenceAt(0.9),
           normalizedQuery: 'launch plan',
         }),
-      }
+      },
     )
 
     const serialized = JSON.stringify(result)
@@ -118,7 +118,7 @@ describe('askKnowledge — MCP tool output contract (§4.2)', () => {
           evidence: [],
           normalizedQuery: 'redacted',
         }),
-      }
+      },
     )
 
     const serialized = JSON.stringify(result)

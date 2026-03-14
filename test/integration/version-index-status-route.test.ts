@@ -52,7 +52,7 @@ describe('version index-status route', () => {
 
   it('rejects requests missing route params', async () => {
     routeMocks.getRouterParam.mockImplementation((_event: unknown, key: string) =>
-      key === 'documentId' ? 'doc-1' : undefined
+      key === 'documentId' ? 'doc-1' : undefined,
     )
 
     const { default: handler } =
@@ -66,7 +66,7 @@ describe('version index-status route', () => {
 
   it('returns 404 when the version does not belong to the requested document', async () => {
     routeMocks.getRouterParam.mockImplementation((_event: unknown, key: string) =>
-      key === 'documentId' ? 'doc-1' : 'ver-1'
+      key === 'documentId' ? 'doc-1' : 'ver-1',
     )
     routeMocks.findVersionById.mockResolvedValue({
       documentId: 'doc-other',
@@ -85,7 +85,7 @@ describe('version index-status route', () => {
 
   it('returns index and sync status through the unified response envelope', async () => {
     routeMocks.getRouterParam.mockImplementation((_event: unknown, key: string) =>
-      key === 'documentId' ? 'doc-1' : 'ver-1'
+      key === 'documentId' ? 'doc-1' : 'ver-1',
     )
     routeMocks.findVersionById.mockResolvedValue({
       documentId: 'doc-1',

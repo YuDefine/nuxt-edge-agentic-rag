@@ -10,7 +10,7 @@ export class McpRoleGateError extends Error {
   constructor(
     message: string,
     readonly statusCode: number,
-    readonly code: 'GUEST_ASK_DISABLED' | 'ACCOUNT_PENDING' | 'UNKNOWN_TOKEN_OWNER'
+    readonly code: 'GUEST_ASK_DISABLED' | 'ACCOUNT_PENDING' | 'UNKNOWN_TOKEN_OWNER',
   ) {
     super(message)
     this.name = 'McpRoleGateError'
@@ -54,7 +54,7 @@ export async function gateMcpToolAccess(
     auth: McpAuthContext
     toolName: string | undefined
     userRoleLookup: UserRoleLookup
-  }
+  },
 ): Promise<void> {
   // `auth.token` may be missing entirely in older test harnesses that stubbed
   // `requireMcpBearerToken` before `token` was part of the auth context.

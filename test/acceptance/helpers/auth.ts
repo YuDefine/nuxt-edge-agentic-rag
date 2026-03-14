@@ -56,7 +56,7 @@ export function createAcceptanceActorFixture(preset: string): AcceptanceActorFix
       createId: () => `${preset}-token`,
       createSecret: () => `${preset}-secret-token`,
       now: () => new Date('2026-04-16T00:00:00.000Z'),
-    }
+    },
   )
 
   return {

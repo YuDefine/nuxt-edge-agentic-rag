@@ -50,14 +50,14 @@ describe('web chat', () => {
           ],
           normalizedQuery: 'summarize the restricted launch plan',
         }),
-      }
+      },
     )
 
     expect(kv.get).toHaveBeenCalledWith('web:local:chat:user-1')
     expect(kv.put).toHaveBeenCalledWith(
       'web:local:chat:user-1',
       JSON.stringify({ count: 2, windowStart: 0 }),
-      { expirationTtl: 300 }
+      { expirationTtl: 300 },
     )
     expect(result).toEqual({
       answer: 'Launch is planned for next Tuesday.',
@@ -100,10 +100,10 @@ describe('web chat', () => {
           judge: vi.fn(),
           rateLimitStore: createChatKvRateLimitStore(kv),
           retrieve,
-        }
-      )
+        },
+      ),
     ).rejects.toThrowError(
-      new ChatRateLimitExceededError('Rate limit exceeded for /api/chat', 429, 240000)
+      new ChatRateLimitExceededError('Rate limit exceeded for /api/chat', 429, 240000),
     )
 
     expect(retrieve).not.toHaveBeenCalled()
@@ -139,7 +139,7 @@ describe('web chat', () => {
           put: vi.fn().mockResolvedValue(undefined),
         }),
         retrieve,
-      }
+      },
     )
 
     expect(auditStore.createQueryLog).toHaveBeenCalledWith({
@@ -221,7 +221,7 @@ describe('web chat', () => {
           ],
           normalizedQuery: 'what changed in revenue guidance',
         }),
-      }
+      },
     )
 
     expect(auditStore.createQueryLog).toHaveBeenCalledWith({
@@ -290,7 +290,7 @@ describe('web chat', () => {
           ],
           normalizedQuery: 'po 和 pr 有什麼差別',
         }),
-      }
+      },
     )
 
     expect(persistCitations).toHaveBeenCalledWith({

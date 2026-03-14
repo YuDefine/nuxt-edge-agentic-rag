@@ -57,7 +57,7 @@ const tc19Mocks = vi.hoisted(
     actor: null,
     bindings: null,
     runtimeConfig: null,
-  })
+  }),
 )
 
 vi.mock('evlog', () => ({
@@ -91,7 +91,7 @@ installNuxtRouteTestGlobals()
 
 describe('acceptance listCategories count contract (TC-19)', () => {
   const cases = loadAcceptanceFixtureDataset('seed').cases.filter(
-    (entry) => entry.registryId === 'TC-19'
+    (entry) => entry.registryId === 'TC-19',
   )
   // 代表 SQL 已過濾（active + is_current + visible）後每個 category 的最終計數。
   // 整個 category 不可見時（全 archived / 全 restricted 無 scope），不會出現在 response 中。
@@ -117,7 +117,7 @@ describe('acceptance listCategories count contract (TC-19)', () => {
       'getValidatedQuery',
       vi.fn().mockResolvedValue({
         includeCounts: true,
-      })
+      }),
     )
   })
 
@@ -144,7 +144,7 @@ describe('acceptance listCategories count contract (TC-19)', () => {
 
       tc19Mocks.bindings = createTc19Bindings(
         tc19Mocks.actor as ReturnType<typeof createAcceptanceActorFixture>,
-        preFilteredCounts
+        preFilteredCounts,
       )
 
       const { default: tool } = await import('#server/mcp/tools/categories')
@@ -155,7 +155,7 @@ describe('acceptance listCategories count contract (TC-19)', () => {
           authorizationHeader: tc19Mocks.actor?.mcpToken.authorizationHeader ?? '',
           cloudflareEnv: tc19Mocks.bindings ?? {},
           pendingEvent,
-        }
+        },
       )) as { categories: Array<{ count?: number; name: string }> }
       const result = { data }
 
@@ -166,7 +166,7 @@ describe('acceptance listCategories count contract (TC-19)', () => {
         (call) =>
           call.query.includes('FROM documents d') &&
           call.query.includes('INNER JOIN document_versions v') &&
-          call.query.includes('COUNT(DISTINCT d.id)')
+          call.query.includes('COUNT(DISTINCT d.id)'),
       )
 
       expect(categoryQuery).toBeDefined()
@@ -198,13 +198,13 @@ describe('acceptance listCategories count contract (TC-19)', () => {
       // 契約 #6：MCP token 驗證 + touch last_used_at 有跑（scope/auth flow 正常）
       expect(d1.calls.some((call) => call.query.includes('FROM mcp_tokens'))).toBe(true)
       expect(d1.calls.some((call) => call.query.includes('UPDATE mcp_tokens'))).toBe(true)
-    }
+    },
   )
 })
 
 function createTc19Bindings(
   actor: ReturnType<typeof createAcceptanceActorFixture>,
-  preFilteredCounts: Tc19CategoryCount[]
+  preFilteredCounts: Tc19CategoryCount[],
 ) {
   const d1 = createD1BindingFake({
     responders: [

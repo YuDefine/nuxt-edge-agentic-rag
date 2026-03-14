@@ -32,7 +32,7 @@ const replayRouteMocks = vi.hoisted(() => {
   class MockMcpAuthError extends Error {
     constructor(
       message: string,
-      readonly statusCode: number
+      readonly statusCode: number,
     ) {
       super(message)
       this.name = 'McpAuthError'
@@ -43,7 +43,7 @@ const replayRouteMocks = vi.hoisted(() => {
     constructor(
       message: string,
       readonly statusCode: number,
-      readonly retryAfterMs: number
+      readonly retryAfterMs: number,
     ) {
       super(message)
       this.name = 'McpRateLimitExceededError'
@@ -57,7 +57,7 @@ const replayRouteMocks = vi.hoisted(() => {
       readonly reason:
         | 'chunk_not_found'
         | 'chunk_retention_expired'
-        | 'restricted_scope_required' = 'chunk_not_found'
+        | 'restricted_scope_required' = 'chunk_not_found',
     ) {
       super(message)
       this.name = 'McpReplayError'
@@ -154,7 +154,7 @@ function prepareRuntimeConfig() {
         rateLimitKv: 'RATE_LIMITS',
       },
       environment: 'local',
-    })
+    }),
   )
 }
 
@@ -188,7 +188,7 @@ describe('MCP getDocumentChunk — retention replay contract', () => {
         cloudflareEnv: {},
         params: { citationId: 'citation-in-window' },
         pendingEvent,
-      }
+      },
     )
 
     expect(data).toEqual({
@@ -212,8 +212,8 @@ describe('MCP getDocumentChunk — retention replay contract', () => {
       new replayRouteMocks.MockMcpReplayError(
         'The requested citation was not found',
         404,
-        'chunk_not_found'
-      )
+        'chunk_not_found',
+      ),
     )
 
     const { default: tool } = await import('#server/mcp/tools/get-document-chunk')
@@ -227,8 +227,8 @@ describe('MCP getDocumentChunk — retention replay contract', () => {
           cloudflareEnv: {},
           params: { citationId: 'citation-never-existed' },
           pendingEvent,
-        }
-      )
+        },
+      ),
     ).rejects.toMatchObject({
       message: 'The requested citation was not found',
       statusCode: 404,
@@ -247,8 +247,8 @@ describe('MCP getDocumentChunk — retention replay contract', () => {
       new replayRouteMocks.MockMcpReplayError(
         'The requested citation was not found',
         404,
-        'chunk_retention_expired'
-      )
+        'chunk_retention_expired',
+      ),
     )
 
     const { default: tool } = await import('#server/mcp/tools/get-document-chunk')
@@ -262,8 +262,8 @@ describe('MCP getDocumentChunk — retention replay contract', () => {
           cloudflareEnv: {},
           params: { citationId: 'citation-scrubbed' },
           pendingEvent,
-        }
-      )
+        },
+      ),
     ).rejects.toMatchObject({
       message: 'The requested citation was not found',
       statusCode: 404,
@@ -290,7 +290,7 @@ describe('MCP getDocumentChunk — retention replay contract', () => {
       throw new replayRouteMocks.MockMcpReplayError(
         'The requested citation requires knowledge.restricted.read',
         403,
-        'restricted_scope_required'
+        'restricted_scope_required',
       )
     })
 
@@ -305,8 +305,8 @@ describe('MCP getDocumentChunk — retention replay contract', () => {
           cloudflareEnv: {},
           params: { citationId: 'citation-restricted' },
           pendingEvent,
-        }
-      )
+        },
+      ),
     ).rejects.toMatchObject({
       message: 'The requested citation requires knowledge.restricted.read',
       statusCode: 403,
@@ -320,7 +320,7 @@ describe('MCP getDocumentChunk — retention replay contract', () => {
       expect.objectContaining({
         queryText: 'getDocumentChunk:citation-restricted',
         tokenId: 'token-1',
-      })
+      }),
     )
     expect(replayRouteMocks.createAcceptedQueryLog).not.toHaveBeenCalled()
     // [Phase 4 migration] x-replay-reason header assertion no longer applies;
@@ -347,7 +347,7 @@ describe('MCP getDocumentChunk — retention replay contract', () => {
         cloudflareEnv: {},
         params: { citationId: 'citation-boundary' },
         pendingEvent,
-      }
+      },
     )
 
     expect(data).toEqual({
@@ -377,8 +377,8 @@ describe('MCP getDocumentChunk — retention replay contract', () => {
           cloudflareEnv: {},
           params: { citationId: 'citation-x' },
           pendingEvent,
-        }
-      )
+        },
+      ),
     ).rejects.toMatchObject({
       message: 'MCP session state is not supported in v1.0.0',
       statusCode: 400,

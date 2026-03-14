@@ -34,7 +34,7 @@ describe('Tailwind theme — Breakpoint Token Tiers', () => {
     const hasXsBreakpoint = /--breakpoint-xs\s*:\s*360px\s*;?/.test(themeBody)
     expect(
       hasXsBreakpoint,
-      'Expected `--breakpoint-xs: 360px;` inside the @theme block so the `xs:` utility activates at 360px'
+      'Expected `--breakpoint-xs: 360px;` inside the @theme block so the `xs:` utility activates at 360px',
     ).toBe(true)
   })
 
@@ -46,12 +46,12 @@ describe('Tailwind theme — Breakpoint Token Tiers', () => {
     // We only add xs. If someone redefines sm/md/lg/xl here, flag it so we
     // stay aligned with Tailwind defaults (per design.md "Breakpoint 六層策略").
     const overriddenDefaults = (['sm', 'md', 'lg', 'xl', '2xl'] as const).filter((name) =>
-      new RegExp(`--breakpoint-${name}\\s*:`).test(themeBody)
+      new RegExp(`--breakpoint-${name}\\s*:`).test(themeBody),
     )
 
     expect(
       overriddenDefaults,
-      `Do not redefine default Tailwind breakpoints in @theme; override detected: ${overriddenDefaults.join(', ')}`
+      `Do not redefine default Tailwind breakpoints in @theme; override detected: ${overriddenDefaults.join(', ')}`,
     ).toHaveLength(0)
   })
 })

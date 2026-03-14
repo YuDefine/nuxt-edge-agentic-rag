@@ -60,11 +60,11 @@ export default defineEventHandler(async (event) => {
       writeChunkObjects: async (objects) => {
         await Promise.all(
           objects.map((object) =>
-            bucket.put(object.key, object.text, 'text/plain; charset=utf-8', object.customMetadata)
-          )
+            bucket.put(object.key, object.text, 'text/plain; charset=utf-8', object.customMetadata),
+          ),
         )
       },
-    }
+    },
   )
 
   if (runtimeConfig.autoRag.apiToken) {

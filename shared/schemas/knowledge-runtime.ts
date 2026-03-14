@@ -170,7 +170,7 @@ export const DEFAULT_KNOWLEDGE_RETRIEVAL_CONFIG: Readonly<KnowledgeRetrievalConf
   {
     maxResults: 8,
     minScore: 0.2,
-  }
+  },
 )
 
 export const DEFAULT_KNOWLEDGE_DECISION_THRESHOLDS: Readonly<KnowledgeDecisionThresholds> =
@@ -183,7 +183,7 @@ export const DEFAULT_KNOWLEDGE_DECISION_THRESHOLDS: Readonly<KnowledgeDecisionTh
 export const DEFAULT_KNOWLEDGE_EXECUTION_CONFIG: Readonly<KnowledgeExecutionConfig> = Object.freeze(
   {
     maxSelfCorrectionRetry: 1,
-  }
+  },
 )
 
 export const DEFAULT_KNOWLEDGE_MODEL_ROLES: Readonly<KnowledgeModelRoles> = Object.freeze({
@@ -235,7 +235,7 @@ export function parseAdminEmailAllowlist(input?: string | string[]): string[] {
 }
 
 export function createKnowledgeFeatureFlags(
-  overrides?: KnowledgeRuntimeConfigInput['features']
+  overrides?: KnowledgeRuntimeConfigInput['features'],
 ): KnowledgeFeatureFlags {
   return {
     adminDashboard: parseBooleanFlag(overrides?.adminDashboard),
@@ -265,7 +265,7 @@ export function buildKnowledgeConfigSnapshotVersion(input: {
     `models.defaultAnswer=${input.models.defaultAnswer}`,
     `models.agentJudge=${input.models.agentJudge}`,
     ...KNOWLEDGE_FEATURE_FLAG_VALUES.map(
-      (featureName) => `features.${featureName}=${input.features[featureName] ? 'on' : 'off'}`
+      (featureName) => `features.${featureName}=${input.features[featureName] ? 'on' : 'off'}`,
     ),
   ].join(';')
 }
@@ -319,7 +319,7 @@ export function createKnowledgeGovernanceConfig(input: {
 }
 
 export function createKnowledgeRuntimeConfig(
-  input: KnowledgeRuntimeConfigInput = {}
+  input: KnowledgeRuntimeConfigInput = {},
 ): KnowledgeRuntimeConfig {
   const environment = z
     .enum(KNOWLEDGE_ENVIRONMENT_VALUES)
@@ -375,7 +375,7 @@ export function deriveAllowedAccessLevels(input: AllowedAccessContext): string[]
 
 export function isAdminEmailAllowlisted(
   email: string | null | undefined,
-  allowlist: string[]
+  allowlist: string[],
 ): boolean {
   if (!email) {
     return false

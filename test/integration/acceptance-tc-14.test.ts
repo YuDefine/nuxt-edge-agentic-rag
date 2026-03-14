@@ -65,7 +65,7 @@ const tc14Mocks = vi.hoisted(
     readBody: vi.fn(),
     readZodBody: vi.fn(),
     runtimeConfig: null,
-  })
+  }),
 )
 
 vi.mock('evlog', () => ({
@@ -103,7 +103,7 @@ installNuxtRouteTestGlobals()
 
 describe('acceptance admin web vs mcp scope isolation (TC-14)', () => {
   const cases = loadAcceptanceFixtureDataset('seed').cases.filter(
-    (entry) => entry.registryId === 'TC-14'
+    (entry) => entry.registryId === 'TC-14',
   )
   const scenario = getTc14Scenario()
 
@@ -145,14 +145,14 @@ describe('acceptance admin web vs mcp scope isolation (TC-14)', () => {
     expect(tc14Mocks.actor?.isAdmin).toBe(true)
     expect(tc14Mocks.actor?.mcpAuth.scopes).not.toContain('knowledge.restricted.read')
     expect(tc14Mocks.actor?.allowedAccessLevels.web).toEqual(
-      expect.arrayContaining(['internal', 'restricted'])
+      expect.arrayContaining(['internal', 'restricted']),
     )
     expect(tc14Mocks.actor?.allowedAccessLevels.mcp).toEqual(['internal'])
 
     // --- Web path (admin + restricted 可讀) ---
     tc14Mocks.bindings = createTc14Bindings(
       tc14Mocks.actor as ReturnType<typeof createAcceptanceActorFixture>,
-      scenario
+      scenario,
     )
     tc14Mocks.readBody.mockResolvedValue({ query: fixture.prompt })
     tc14Mocks.readZodBody.mockResolvedValue({ query: fixture.prompt })
@@ -197,12 +197,12 @@ describe('acceptance admin web vs mcp scope isolation (TC-14)', () => {
 
     // 契約 #3：Web 寫入 citation_records，包含 restricted documentVersionId + chunkText
     const webCitationInserts = webD1.calls.filter((call) =>
-      call.query.includes('INSERT INTO citation_records')
+      call.query.includes('INSERT INTO citation_records'),
     )
 
     expect(webCitationInserts).toHaveLength(1)
     expect(webCitationInserts[0]?.values).toEqual(
-      expect.arrayContaining([scenario.documentVersionId, scenario.sourceChunkId])
+      expect.arrayContaining([scenario.documentVersionId, scenario.sourceChunkId]),
     )
 
     // 契約 #4：Web query_logs 狀態 accepted
@@ -213,20 +213,20 @@ describe('acceptance admin web vs mcp scope isolation (TC-14)', () => {
         'local',
         tc14Mocks.runtimeConfig?.governance.configSnapshotVersion,
         'accepted',
-      ])
+      ]),
     )
 
     // --- MCP path (admin token 無 restricted scope) ---
     tc14Mocks.bindings = createTc14Bindings(
       tc14Mocks.actor as ReturnType<typeof createAcceptanceActorFixture>,
-      scenario
+      scenario,
     )
     tc14Mocks.readBody.mockResolvedValue({ query: fixture.prompt })
     tc14Mocks.readZodBody.mockResolvedValue({ query: fixture.prompt })
 
     const mcpResult = (await runMcpCase(
       tc14Mocks.actor?.mcpToken.authorizationHeader ?? '',
-      fixture.prompt
+      fixture.prompt,
     )) as {
       data: {
         answer?: string
@@ -251,12 +251,12 @@ describe('acceptance admin web vs mcp scope isolation (TC-14)', () => {
     }
 
     expect(mcpFilters.filters).toEqual(
-      expect.arrayContaining([{ key: 'access_level', type: 'eq', value: 'internal' }])
+      expect.arrayContaining([{ key: 'access_level', type: 'eq', value: 'internal' }]),
     )
 
     // 契約 #7：MCP 不得寫任何 citation_records
     const mcpCitationInserts = mcpD1.calls.filter((call) =>
-      call.query.includes('INSERT INTO citation_records')
+      call.query.includes('INSERT INTO citation_records'),
     )
 
     expect(mcpCitationInserts).toHaveLength(0)
@@ -270,7 +270,7 @@ describe('acceptance admin web vs mcp scope isolation (TC-14)', () => {
         'local',
         tc14Mocks.runtimeConfig?.governance.configSnapshotVersion,
         'accepted',
-      ])
+      ]),
     )
 
     // 契約 #9：restricted 文件的 chunk 原文、標題都不得出現在 MCP 回應序列化結果
@@ -299,7 +299,7 @@ async function runMcpCase(authorizationHeader: string, query: string) {
       authorizationHeader,
       cloudflareEnv: tc14Mocks.bindings ?? {},
       pendingEvent,
-    }
+    },
   )
 
   return { data }
@@ -322,7 +322,7 @@ function getTc14Scenario(): Tc14Scenario {
 
 function createTc14Bindings(
   actor: ReturnType<typeof createAcceptanceActorFixture>,
-  scenario: Tc14Scenario
+  scenario: Tc14Scenario,
 ) {
   const d1 = createD1BindingFake({
     responders: [

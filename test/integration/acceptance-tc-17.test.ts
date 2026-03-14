@@ -74,7 +74,7 @@ const tc17Mocks = vi.hoisted(
     readBody: vi.fn(),
     readZodBody: vi.fn(),
     runtimeConfig: null,
-  })
+  }),
 )
 
 vi.mock('evlog', () => ({
@@ -112,7 +112,7 @@ installNuxtRouteTestGlobals()
 
 describe('acceptance restricted existence-hiding (TC-17)', () => {
   const cases = loadAcceptanceFixtureDataset('seed').cases.filter(
-    (entry) => entry.registryId === 'TC-17'
+    (entry) => entry.registryId === 'TC-17',
   )
   const scenario = getTc17Scenario()
 
@@ -160,7 +160,7 @@ describe('acceptance restricted existence-hiding (TC-17)', () => {
     // --- askKnowledge ---
     tc17Mocks.bindings = createTc17Bindings(
       tc17Mocks.actor as ReturnType<typeof createAcceptanceActorFixture>,
-      scenario
+      scenario,
     )
     tc17Mocks.readBody.mockResolvedValue({ query: fixture.prompt })
     tc17Mocks.readZodBody.mockResolvedValue({ query: fixture.prompt })
@@ -173,7 +173,7 @@ describe('acceptance restricted existence-hiding (TC-17)', () => {
         authorizationHeader: tc17Mocks.actor?.mcpToken.authorizationHeader ?? '',
         cloudflareEnv: tc17Mocks.bindings ?? {},
         pendingEvent,
-      }
+      },
     )) as {
       answer?: string
       citations: Array<{ citationId: string; sourceChunkId: string }>
@@ -201,7 +201,7 @@ describe('acceptance restricted existence-hiding (TC-17)', () => {
     // 契約 #3：askKnowledge 不得寫入 citation_records
     const askD1 = (tc17Mocks.bindings ?? {}).DB as ReturnType<typeof createD1BindingFake>
     const askCitationInserts = askD1.calls.filter((call) =>
-      call.query.includes('INSERT INTO citation_records')
+      call.query.includes('INSERT INTO citation_records'),
     )
 
     expect(askCitationInserts).toHaveLength(0)
@@ -215,13 +215,13 @@ describe('acceptance restricted existence-hiding (TC-17)', () => {
         'local',
         tc17Mocks.runtimeConfig?.governance.configSnapshotVersion,
         'accepted',
-      ])
+      ]),
     )
 
     // --- searchKnowledge ---
     tc17Mocks.bindings = createTc17Bindings(
       tc17Mocks.actor as ReturnType<typeof createAcceptanceActorFixture>,
-      scenario
+      scenario,
     )
     tc17Mocks.readBody.mockResolvedValue({ query: fixture.prompt })
 
@@ -233,7 +233,7 @@ describe('acceptance restricted existence-hiding (TC-17)', () => {
         authorizationHeader: tc17Mocks.actor?.mcpToken.authorizationHeader ?? '',
         cloudflareEnv: tc17Mocks.bindings ?? {},
         pendingEvent,
-      }
+      },
     )) as { results: unknown[] } & Record<string, unknown>
     const searchResult = { data: searchData }
 
@@ -283,7 +283,7 @@ function getTc17Scenario(): Tc17Scenario {
 
 function createTc17Bindings(
   actor: ReturnType<typeof createAcceptanceActorFixture>,
-  scenario: Tc17Scenario
+  scenario: Tc17Scenario,
 ) {
   const d1 = createD1BindingFake({
     responders: [

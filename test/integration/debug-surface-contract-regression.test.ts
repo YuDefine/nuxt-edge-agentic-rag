@@ -39,7 +39,7 @@ function assertNoDebugLeak(payload: unknown, surface: string): void {
   for (const field of DEBUG_FIELDS) {
     if (serialized.includes(`"${field}"`)) {
       throw new Error(
-        `${surface} leaked debug field "${field}" — production contract must keep these internal.`
+        `${surface} leaked debug field "${field}" — production contract must keep these internal.`,
       )
     }
   }
@@ -111,7 +111,7 @@ describe('/api/admin/query-logs/[id] — non-debug admin endpoint', () => {
 
     const { default: handler } = await import('../../server/api/admin/query-logs/[id].get')
     const result = await handler(
-      createRouteEvent({ context: { params: { id: 'log-1' }, cloudflare: { env: {} } } })
+      createRouteEvent({ context: { params: { id: 'log-1' }, cloudflare: { env: {} } } }),
     )
 
     assertNoDebugLeak(result, '/api/admin/query-logs/[id]')

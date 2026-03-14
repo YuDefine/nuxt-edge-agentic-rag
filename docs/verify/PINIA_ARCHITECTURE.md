@@ -134,7 +134,7 @@ export default defineNuxtPlugin(() => {
         myStore.clearData()
       }
     },
-    { immediate: true }
+    { immediate: true },
   )
 })
 ```

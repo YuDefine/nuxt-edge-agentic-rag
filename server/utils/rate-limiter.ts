@@ -55,7 +55,7 @@ export const FIXED_WINDOW_RATE_LIMIT_PRESETS = {
 } satisfies Record<string, FixedWindowRateLimitPreset>
 
 export async function consumeFixedWindowRateLimit(
-  input: ConsumeFixedWindowRateLimitInput
+  input: ConsumeFixedWindowRateLimitInput,
 ): Promise<FixedWindowRateLimitResult> {
   assertValidPreset(input.preset)
 

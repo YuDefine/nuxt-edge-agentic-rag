@@ -46,7 +46,7 @@ describe('query log status badge logic', () => {
 
   it('throws on unknown status (exhaustiveness)', () => {
     expect(() => getStatusConfig('other' as QueryLogStatus)).toThrow(
-      /Unhandled value in QueryLogStatusBadge/
+      /Unhandled value in QueryLogStatusBadge/,
     )
   })
 })
@@ -75,7 +75,7 @@ describe('query log channel labelling', () => {
 
   it('throws on unknown channel (exhaustiveness)', () => {
     expect(() => getChannelLabel('other' as QueryLogChannel)).toThrow(
-      /Unhandled value in getChannelLabel/
+      /Unhandled value in getChannelLabel/,
     )
   })
 })

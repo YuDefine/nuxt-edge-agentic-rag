@@ -118,7 +118,7 @@ export function createConversationStaleResolver(database: D1DatabaseLike) {
           "  AND role = 'assistant'",
           'ORDER BY created_at DESC',
           'LIMIT 1',
-        ].join('\n')
+        ].join('\n'),
       )
       .bind(input.conversationId)
       .first<RawMessageRow>()
@@ -157,8 +157,8 @@ export function createConversationStaleResolver(database: D1DatabaseLike) {
     const versionRows = await database
       .prepare(
         ['SELECT id, is_current', 'FROM document_versions', `WHERE id IN (${placeholders})`].join(
-          '\n'
-        )
+          '\n',
+        ),
       )
       .bind(...citedDocumentVersionIds)
       .all<RawVersionRow>()

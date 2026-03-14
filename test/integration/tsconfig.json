@@ -11,10 +11,5 @@
     "../../vitest.config.ts",
     "../../vitest.vscode.config.ts"
   ],
-  "exclude": [
-    "../../e2e/**",
-    "../../node_modules/**",
-    "../../coverage/**",
-    "../../test-results/**"
-  ]
+  "exclude": ["../../e2e/**", "../../node_modules/**", "../../coverage/**", "../../test-results/**"]
 }

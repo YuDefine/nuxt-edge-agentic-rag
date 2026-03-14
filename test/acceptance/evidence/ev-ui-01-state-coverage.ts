@@ -83,7 +83,7 @@ function deriveHttpStatusForState(state: UiPageState): number {
 }
 
 export function runEvUi01StateCoverageExporter(
-  input: EvUi01ExporterInput = {}
+  input: EvUi01ExporterInput = {},
 ): AcceptanceEvidenceExport {
   const context = createEvidenceExporterContext(input)
   const observations = input.observations ?? buildDefaultObservations()
@@ -103,7 +103,7 @@ export function runEvUi01StateCoverageExporter(
 
     if (!caseRegistry) {
       throw new Error(
-        `EV-UI-01 exporter referenced unknown UI test case: ${observation.testCaseId}`
+        `EV-UI-01 exporter referenced unknown UI test case: ${observation.testCaseId}`,
       )
     }
 
@@ -122,13 +122,13 @@ export function runEvUi01StateCoverageExporter(
 
     if (!stateMatches) {
       notesParts.push(
-        `UI state drift — expected=${observation.expectedState}, observed=${observation.observedState}`
+        `UI state drift — expected=${observation.expectedState}, observed=${observation.observedState}`,
       )
     }
 
     if (isStubbed && stateMatches) {
       notesParts.push(
-        'Stubbed screenshot + network log pointers — rerun review-screenshot agent against local or production to capture live UI evidence.'
+        'Stubbed screenshot + network log pointers — rerun review-screenshot agent against local or production to capture live UI evidence.',
       )
     }
 

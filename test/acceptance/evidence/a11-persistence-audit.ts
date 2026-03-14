@@ -146,7 +146,7 @@ function comparePersistenceSample(sample: A11PersistenceSample): PersistenceComp
 }
 
 export function runA11PersistenceAuditExporter(
-  input: A11ExporterInput = {}
+  input: A11ExporterInput = {},
 ): AcceptanceEvidenceExport {
   const context = createEvidenceExporterContext(input)
   const samples = input.samples ?? buildDefaultSamples()
@@ -182,31 +182,31 @@ export function runA11PersistenceAuditExporter(
 
     if (comparison.queryLogLeak) {
       notesParts.push(
-        `query_logs.query_text leaked sensitive tokens: ${sample.queryLog.detectedTokens.join(', ')}`
+        `query_logs.query_text leaked sensitive tokens: ${sample.queryLog.detectedTokens.join(', ')}`,
       )
     }
 
     if (comparison.citationRecordsLeak) {
       notesParts.push(
-        `citation_records.chunk_text_snapshot leaked sensitive tokens: ${sample.citationRecords.detectedTokens.join(', ')}`
+        `citation_records.chunk_text_snapshot leaked sensitive tokens: ${sample.citationRecords.detectedTokens.join(', ')}`,
       )
     }
 
     if (comparison.messagesLeak) {
       notesParts.push(
-        `messages.content_text leaked sensitive tokens: ${sample.messagesContent.detectedTokens.join(', ')}`
+        `messages.content_text leaked sensitive tokens: ${sample.messagesContent.detectedTokens.join(', ')}`,
       )
     }
 
     if (comparison.citationRecordsWrittenOnRefused) {
       notesParts.push(
-        'citation_records row was written for a refused high-risk query — expected zero rows'
+        'citation_records row was written for a refused high-risk query — expected zero rows',
       )
     }
 
     if (isStubbed && passed) {
       notesParts.push(
-        'Stubbed persistence audit pointers — rerun TC-09/15 against live D1 and diff query_logs / citation_records / messages rows against redaction policy.'
+        'Stubbed persistence audit pointers — rerun TC-09/15 against live D1 and diff query_logs / citation_records / messages rows against redaction policy.',
       )
     }
 

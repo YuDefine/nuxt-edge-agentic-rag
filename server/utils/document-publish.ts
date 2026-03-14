@@ -3,7 +3,7 @@ import type { DocumentRecord, DocumentVersionRecord } from '#shared/types/knowle
 export class DocumentPublishStateError extends Error {
   constructor(
     message: string,
-    readonly statusCode: number
+    readonly statusCode: number,
   ) {
     super(message)
     this.name = 'DocumentPublishStateError'
@@ -30,7 +30,7 @@ export async function publishDocumentVersion(
   options: {
     now?: () => Date
     store: DocumentPublishStore
-  }
+  },
 ): Promise<{
   alreadyCurrent: boolean
   documentId: string
@@ -45,7 +45,7 @@ export async function publishDocumentVersion(
   if (document.status === 'archived') {
     throw new DocumentPublishStateError(
       'Cannot publish a version: the document has been archived',
-      409
+      409,
     )
   }
 
@@ -73,7 +73,7 @@ export async function publishDocumentVersion(
   if (version.indexStatus !== 'indexed' || version.syncStatus === 'running') {
     throw new DocumentPublishStateError(
       'Only indexed versions without in-progress sync tasks can be published',
-      409
+      409,
     )
   }
 

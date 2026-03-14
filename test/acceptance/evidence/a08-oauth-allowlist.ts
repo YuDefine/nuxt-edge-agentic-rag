@@ -116,7 +116,7 @@ function compareSnapshot(snapshot: A08SessionSnapshot): AllowlistComparison {
 }
 
 export function runA08OauthAllowlistExporter(
-  input: A08ExporterInput = {}
+  input: A08ExporterInput = {},
 ): AcceptanceEvidenceExport {
   const context = createEvidenceExporterContext(input)
   const snapshots = input.snapshots ?? buildDefaultSnapshots()
@@ -150,7 +150,7 @@ export function runA08OauthAllowlistExporter(
 
     if (!comparison.roleMatchesExpectation) {
       notesParts.push(
-        `role recomputation drift at ${snapshot.stateLabel} (expected=${snapshot.expectedRole}, actual=${snapshot.actualRole})`
+        `role recomputation drift at ${snapshot.stateLabel} (expected=${snapshot.expectedRole}, actual=${snapshot.actualRole})`,
       )
     }
 
@@ -164,7 +164,7 @@ export function runA08OauthAllowlistExporter(
 
     if (isStubbed && passed) {
       notesParts.push(
-        'Stubbed OAuth + allowlist snapshots — rerun promote/demote flow with real Google OAuth session to capture live payloads.'
+        'Stubbed OAuth + allowlist snapshots — rerun promote/demote flow with real Google OAuth session to capture live payloads.',
       )
     }
 

@@ -109,7 +109,7 @@ function compareSample(sample: Ev03PublishCutoverSample): Ev03Comparison {
   const cutoverCitesOnlyCurrent =
     !sample.cutoverStage.cutoverLeaksArchivedVersion &&
     !sample.cutoverStage.citationIds.some((id) =>
-      id.includes(sample.cutoverStage.previousVersionId)
+      id.includes(sample.cutoverStage.previousVersionId),
     ) &&
     !sample.cutoverStage.citationIds.some((id) => id.toLowerCase().includes('v1'))
 
@@ -123,7 +123,7 @@ function compareSample(sample: Ev03PublishCutoverSample): Ev03Comparison {
 
   if (!cutoverCitesOnlyCurrent) {
     failureReasons.push(
-      `cutover stage leaks archived version (previous=${sample.cutoverStage.previousVersionId}, current=${sample.cutoverStage.currentVersionId})`
+      `cutover stage leaks archived version (previous=${sample.cutoverStage.previousVersionId}, current=${sample.cutoverStage.currentVersionId})`,
     )
   }
 
@@ -136,7 +136,7 @@ function compareSample(sample: Ev03PublishCutoverSample): Ev03Comparison {
 }
 
 export function runEv03PublishCutoverExporter(
-  input: Ev03ExporterInput = {}
+  input: Ev03ExporterInput = {},
 ): AcceptanceEvidenceExport {
   const context = createEvidenceExporterContext(input)
   const samples = input.samples ?? [buildDefaultSample()]
@@ -170,7 +170,7 @@ export function runEv03PublishCutoverExporter(
 
     if (isStubbed && passed) {
       notesParts.push(
-        'Stubbed publish pipeline — rerun EV-03 against live publish/rollback/cutover transactions to capture real payloads.'
+        'Stubbed publish pipeline — rerun EV-03 against live publish/rollback/cutover transactions to capture real payloads.',
       )
     }
 

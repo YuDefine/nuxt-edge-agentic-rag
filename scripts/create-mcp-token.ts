@@ -148,7 +148,7 @@ async function main(): Promise<void> {
       console.log(`     -H "Authorization: Bearer ${data.token}" \\`)
       console.log('     -H "Content-Type: application/json" \\')
       console.log(
-        '     -d \'{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"searchKnowledge","arguments":{"query":"test"}}}\''
+        '     -d \'{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"searchKnowledge","arguments":{"query":"test"}}}\'',
       )
     } else {
       if (response.status === 401 || response.status === 403) {

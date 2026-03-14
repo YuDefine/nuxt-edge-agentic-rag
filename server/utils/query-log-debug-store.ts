@@ -238,7 +238,7 @@ export function createQueryLogDebugStore() {
           completionMs: summarizeBucket(bucket.completion),
           firstTokenMs: summarizeBucket(bucket.firstToken),
           outcomes: bucket.outcomes,
-        })
+        }),
       )
 
       // Stable order: web first (primary), then mcp (internal), then the rest

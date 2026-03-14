@@ -53,7 +53,7 @@
       error: (error.value as { statusCode?: number } | null) ?? null,
       itemCount: tokens.value.length,
       status: fetchStatus.value,
-    })
+    }),
   )
 
   const createOpen = ref(false)

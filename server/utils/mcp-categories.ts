@@ -34,7 +34,7 @@ export function createMcpCategoryStore(database: D1DatabaseLike) {
             `  AND d.access_level IN (${placeholders})`,
             'GROUP BY d.category_slug',
             'ORDER BY d.category_slug ASC',
-          ].join('\n')
+          ].join('\n'),
         )
         .bind(...allowedAccessLevels)
         .all<{
@@ -59,7 +59,7 @@ export async function listCategories(
     store: {
       listVisibleCategories(allowedAccessLevels: string[]): Promise<McpCategoryRecord[]>
     }
-  }
+  },
 ): Promise<{
   categories: Array<
     | {
@@ -77,7 +77,7 @@ export async function listCategories(
 
   const categories = await options.store.listVisibleCategories(input.allowedAccessLevels)
   const sortedCategories = [...categories].toSorted((left, right) =>
-    left.name.localeCompare(right.name)
+    left.name.localeCompare(right.name),
   )
 
   return {
@@ -89,7 +89,7 @@ export async function listCategories(
           }
         : {
             name: category.name,
-          }
+          },
     ),
   }
 }

@@ -12,14 +12,14 @@
   const router = useRouter()
 
   const { data, status, error, refresh } = await useFetch<{ data: DocumentWithCurrentVersion[] }>(
-    '/api/admin/documents'
+    '/api/admin/documents',
   )
 
   const documents = computed(() => data.value?.data ?? [])
   const isLoading = computed(() => status.value === 'pending')
   const hasError = computed(() => status.value === 'error')
   const isEmpty = computed(
-    () => !isLoading.value && !hasError.value && documents.value.length === 0
+    () => !isLoading.value && !hasError.value && documents.value.length === 0,
   )
 
   function handleUpload() {

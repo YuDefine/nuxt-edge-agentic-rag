@@ -38,7 +38,7 @@
       content: props.content,
       isStreaming: props.isStreaming,
       hasError: !!props.error,
-    })
+    }),
   )
 
   const showLoader = computed(() => streamingState.value === 'waiting')
@@ -47,7 +47,7 @@
     () =>
       streamingState.value === 'streaming' ||
       streamingState.value === 'complete' ||
-      streamingState.value === 'error'
+      streamingState.value === 'error',
   )
 
   const showCursor = computed(() => streamingState.value === 'streaming')
@@ -61,7 +61,7 @@
           messageContainer.value?.scrollIntoView({ behavior: 'smooth', block: 'end' })
         })
       }
-    }
+    },
   )
 </script>
 

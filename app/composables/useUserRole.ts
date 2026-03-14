@@ -84,7 +84,7 @@ export function useUserRole() {
       channel: 'web',
       isAdmin: isAdmin.value,
       isAuthenticated: loggedIn.value,
-    })
+    }),
   )
 
   /**

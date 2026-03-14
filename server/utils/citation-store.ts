@@ -38,7 +38,7 @@ export function createCitationStore(database: D1DatabaseLike) {
               'INSERT INTO citation_records (',
               '  id, query_log_id, document_version_id, source_chunk_id, citation_locator, chunk_text_snapshot, created_at, expires_at',
               ') VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-            ].join('\n')
+            ].join('\n'),
           )
           .bind(
             citationId,
@@ -48,7 +48,7 @@ export function createCitationStore(database: D1DatabaseLike) {
             citation.citationLocator,
             citation.chunkTextSnapshot,
             now.toISOString(),
-            expiresAt
+            expiresAt,
           )
           .run()
 

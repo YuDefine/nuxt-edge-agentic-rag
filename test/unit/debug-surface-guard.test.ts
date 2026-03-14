@@ -21,7 +21,7 @@ function stubRuntimeConfig(overrides: Record<string, unknown>) {
       debugSurfaceEnabled: false,
       knowledge: { environment: 'local' },
       ...overrides,
-    }))
+    })),
   )
 }
 
@@ -30,7 +30,7 @@ function stubRequireRuntimeAdminSession(result: unknown, reject = false) {
     'requireRuntimeAdminSession',
     reject
       ? vi.fn().mockRejectedValue(Object.assign(new Error('Forbidden'), { statusCode: 403 }))
-      : vi.fn().mockResolvedValue(result)
+      : vi.fn().mockResolvedValue(result),
   )
 }
 
@@ -41,7 +41,7 @@ function stubCreateError() {
       const err = new Error(opts.message ?? opts.statusMessage ?? 'error')
       Object.assign(err, opts)
       return err
-    })
+    }),
   )
 }
 

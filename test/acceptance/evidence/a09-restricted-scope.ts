@@ -125,7 +125,7 @@ function compareRestrictedSample(sample: A09RestrictedSample): RestrictedCompari
     (!sample.hasRestrictedScope && sample.actualDecision === 'deny')
   const redactionApplied = sample.redactedQueryText.startsWith('<redacted')
   const unredactedTokensDetected = sample.sensitiveTokens.some((token) =>
-    sample.redactedQueryText.includes(token)
+    sample.redactedQueryText.includes(token),
   )
   const responseContentLeak = sample.responseLeaksRestrictedContent
   // 對於 refused 或 deny path，query_logs 仍必須是 accepted（governance 要求保留紀錄）
@@ -143,7 +143,7 @@ function compareRestrictedSample(sample: A09RestrictedSample): RestrictedCompari
 }
 
 export function runA09RestrictedScopeExporter(
-  input: A09ExporterInput = {}
+  input: A09ExporterInput = {},
 ): AcceptanceEvidenceExport {
   const context = createEvidenceExporterContext(input)
   const samples = input.samples ?? buildDefaultSamples()
@@ -180,19 +180,19 @@ export function runA09RestrictedScopeExporter(
 
     if (!comparison.scopeDecisionMatches) {
       notesParts.push(
-        `scope decision drift (expected=${sample.expectedDecision}, actual=${sample.actualDecision})`
+        `scope decision drift (expected=${sample.expectedDecision}, actual=${sample.actualDecision})`,
       )
     }
 
     if (!comparison.scopeMatrixConsistent) {
       notesParts.push(
-        `scope matrix inconsistent: hasRestrictedScope=${sample.hasRestrictedScope} but decision=${sample.actualDecision}`
+        `scope matrix inconsistent: hasRestrictedScope=${sample.hasRestrictedScope} but decision=${sample.actualDecision}`,
       )
     }
 
     if (!comparison.redactionApplied) {
       notesParts.push(
-        'query_logs redaction marker missing — raw query text may have been persisted'
+        'query_logs redaction marker missing — raw query text may have been persisted',
       )
     }
 
@@ -206,13 +206,13 @@ export function runA09RestrictedScopeExporter(
 
     if (!comparison.queryLogStatusValid) {
       notesParts.push(
-        `query_logs status=${sample.queryLogStatus} — expected accepted|refused for audit governance`
+        `query_logs status=${sample.queryLogStatus} — expected accepted|refused for audit governance`,
       )
     }
 
     if (isStubbed && passed) {
       notesParts.push(
-        'Stubbed scope decision + redaction pointers — rerun TC-13/15/17 against live orchestration to capture actual scope matrix + query_logs row.'
+        'Stubbed scope decision + redaction pointers — rerun TC-13/15/17 against live orchestration to capture actual scope matrix + query_logs row.',
       )
     }
 

@@ -58,7 +58,7 @@ const tc10Mocks = vi.hoisted(
     readBody: vi.fn(),
     readZodBody: vi.fn(),
     runtimeConfig: null,
-  })
+  }),
 )
 
 vi.mock('evlog', () => ({
@@ -96,7 +96,7 @@ installNuxtRouteTestGlobals()
 
 describe('acceptance policy direct-answer (TC-10)', () => {
   const cases = loadAcceptanceFixtureDataset('seed').cases.filter(
-    (entry) => entry.registryId === 'TC-10'
+    (entry) => entry.registryId === 'TC-10',
   )
   const scenario = getTc10Scenario()
 
@@ -141,7 +141,7 @@ describe('acceptance policy direct-answer (TC-10)', () => {
 
       tc10Mocks.bindings = createTc10Bindings(
         tc10Mocks.actor as ReturnType<typeof createAcceptanceActorFixture>,
-        scenario
+        scenario,
       )
       tc10Mocks.readBody.mockResolvedValue({ query: fixture.prompt })
       tc10Mocks.readZodBody.mockResolvedValue({ query: fixture.prompt })
@@ -187,7 +187,7 @@ describe('acceptance policy direct-answer (TC-10)', () => {
 
       // citation_records 寫入恰好一筆，且指向制度文件
       const citationInserts = d1.calls.filter((call) =>
-        call.query.includes('INSERT INTO citation_records')
+        call.query.includes('INSERT INTO citation_records'),
       )
 
       expect(citationInserts).toHaveLength(1)
@@ -197,7 +197,7 @@ describe('acceptance policy direct-answer (TC-10)', () => {
           scenario.sourceChunkId,
           scenario.citationLocator,
           scenario.chunkText,
-        ])
+        ]),
       )
 
       // source_chunks 查回的 category_slug 必須是制度類別
@@ -211,14 +211,14 @@ describe('acceptance policy direct-answer (TC-10)', () => {
           'local',
           tc10Mocks.runtimeConfig?.governance.configSnapshotVersion,
           'accepted',
-        ])
+        ]),
       )
 
       if (fixture.channel === 'mcp') {
         expect(d1.calls.some((call) => call.query.includes('FROM mcp_tokens'))).toBe(true)
         expect(d1.calls.some((call) => call.query.includes('UPDATE mcp_tokens'))).toBe(true)
       }
-    }
+    },
   )
 })
 
@@ -237,7 +237,7 @@ async function runMcpCase(authorizationHeader: string, query: string) {
       authorizationHeader,
       cloudflareEnv: tc10Mocks.bindings ?? {},
       pendingEvent,
-    }
+    },
   )
 
   return { data }
@@ -262,7 +262,7 @@ function getTc10Scenario(): Tc10Scenario {
 
 function createTc10Bindings(
   actor: ReturnType<typeof createAcceptanceActorFixture>,
-  scenario: Tc10Scenario
+  scenario: Tc10Scenario,
 ) {
   const d1 = createD1BindingFake({
     responders: [

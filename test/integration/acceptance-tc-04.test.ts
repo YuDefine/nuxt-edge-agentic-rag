@@ -61,7 +61,7 @@ const tc04Mocks = vi.hoisted(
     readZodBody: vi.fn(),
     reformulatedQuery: '上個月的銷售月結報表如何檢視',
     runtimeConfig: null,
-  })
+  }),
 )
 
 vi.mock('evlog', () => ({
@@ -106,7 +106,7 @@ vi.mock('../../server/utils/knowledge-answering', async (importOriginal) => {
     ...actual,
     async answerKnowledgeQuery(
       input: Parameters<typeof realAnswer>[0],
-      options: Parameters<typeof realAnswer>[1]
+      options: Parameters<typeof realAnswer>[1],
     ) {
       const judgedQueries: string[] = []
 
@@ -130,7 +130,7 @@ installNuxtRouteTestGlobals()
 
 describe('acceptance self-correction reformulation (TC-04)', () => {
   const cases = loadAcceptanceFixtureDataset('seed').cases.filter(
-    (entry) => entry.registryId === 'TC-04'
+    (entry) => entry.registryId === 'TC-04',
   )
   const scenario = getTc04Scenario()
 
@@ -174,7 +174,7 @@ describe('acceptance self-correction reformulation (TC-04)', () => {
       tc04Mocks.bindings = createTc04Bindings(
         tc04Mocks.actor as ReturnType<typeof createAcceptanceActorFixture>,
         scenario,
-        fixture.prompt
+        fixture.prompt,
       )
       tc04Mocks.readBody.mockResolvedValue({ query: fixture.prompt })
       tc04Mocks.readZodBody.mockResolvedValue({ query: fixture.prompt })
@@ -216,7 +216,7 @@ describe('acceptance self-correction reformulation (TC-04)', () => {
 
       // citation_records 只能寫入第二輪 evidence
       const citationInserts = d1.calls.filter((call) =>
-        call.query.includes('INSERT INTO citation_records')
+        call.query.includes('INSERT INTO citation_records'),
       )
 
       expect(citationInserts).toHaveLength(1)
@@ -226,7 +226,7 @@ describe('acceptance self-correction reformulation (TC-04)', () => {
           scenario.secondPassSourceChunkId,
           scenario.secondPassCitationLocator,
           scenario.secondPassChunkText,
-        ])
+        ]),
       )
       expect(citationInserts[0]?.values).not.toContain(scenario.firstPassSourceChunkId)
       expect(citationInserts[0]?.values).not.toContain(scenario.firstPassChunkText)
@@ -239,14 +239,14 @@ describe('acceptance self-correction reformulation (TC-04)', () => {
           'local',
           tc04Mocks.runtimeConfig?.governance.configSnapshotVersion,
           'accepted',
-        ])
+        ]),
       )
 
       if (fixture.channel === 'mcp') {
         expect(d1.calls.some((call) => call.query.includes('FROM mcp_tokens'))).toBe(true)
         expect(d1.calls.some((call) => call.query.includes('UPDATE mcp_tokens'))).toBe(true)
       }
-    }
+    },
   )
 })
 
@@ -265,7 +265,7 @@ async function runMcpCase(authorizationHeader: string, query: string) {
       authorizationHeader,
       cloudflareEnv: tc04Mocks.bindings ?? {},
       pendingEvent,
-    }
+    },
   )
 
   return { data }
@@ -293,7 +293,7 @@ function getTc04Scenario(): Tc04Scenario {
 function createTc04Bindings(
   actor: ReturnType<typeof createAcceptanceActorFixture>,
   scenario: Tc04Scenario,
-  originalPrompt: string
+  originalPrompt: string,
 ) {
   const d1 = createD1BindingFake({
     responders: [

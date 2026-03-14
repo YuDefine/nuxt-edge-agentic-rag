@@ -130,7 +130,7 @@ export default defineEventHandler(async function updateMemberRoleHandler(event) 
       toRole: targetRole,
       changedBy: session.user.id ?? 'unknown-admin',
       reason: body.reason ?? 'admin-ui',
-    }
+    },
   )
 
   log.set({

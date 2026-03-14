@@ -80,7 +80,7 @@ export default defineMcpTool({
               throw logError
             }
           },
-        }
+        },
       )
     } catch (replayError) {
       if (replayError instanceof McpReplayError) {

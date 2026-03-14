@@ -60,7 +60,7 @@ const tc09Mocks = vi.hoisted(
     readBody: vi.fn(),
     readZodBody: vi.fn(),
     runtimeConfig: null,
-  })
+  }),
 )
 
 vi.mock('evlog', () => ({
@@ -98,7 +98,7 @@ installNuxtRouteTestGlobals()
 
 describe('acceptance sensitive-data policy refusal (TC-09)', () => {
   const cases = loadAcceptanceFixtureDataset('seed').cases.filter(
-    (entry) => entry.registryId === 'TC-09'
+    (entry) => entry.registryId === 'TC-09',
   )
 
   beforeEach(() => {
@@ -139,7 +139,7 @@ describe('acceptance sensitive-data policy refusal (TC-09)', () => {
     expect(['web', 'mcp']).toContain(fixture.channel)
 
     tc09Mocks.bindings = createTc09Bindings(
-      tc09Mocks.actor as ReturnType<typeof createAcceptanceActorFixture>
+      tc09Mocks.actor as ReturnType<typeof createAcceptanceActorFixture>,
     )
     tc09Mocks.readBody.mockResolvedValue({ query: fixture.prompt })
     tc09Mocks.readZodBody.mockResolvedValue({ query: fixture.prompt })
@@ -155,7 +155,7 @@ describe('acceptance sensitive-data policy refusal (TC-09)', () => {
           })
         : ((await runMcpCase(
             tc09Mocks.actor?.mcpToken.authorizationHeader ?? '',
-            fixture.prompt
+            fixture.prompt,
           )) as {
             data: {
               answer?: string
@@ -200,7 +200,7 @@ describe('acceptance sensitive-data policy refusal (TC-09)', () => {
 
     // 不得寫入任何 citation_records
     const citationInserts = d1.calls.filter((call) =>
-      call.query.includes('INSERT INTO citation_records')
+      call.query.includes('INSERT INTO citation_records'),
     )
 
     expect(citationInserts).toHaveLength(0)
@@ -210,7 +210,7 @@ describe('acceptance sensitive-data policy refusal (TC-09)', () => {
 
     expect(queryLogInsert).toBeDefined()
     expect(queryLogInsert?.values).toEqual(
-      expect.arrayContaining(['local', tc09Mocks.runtimeConfig?.governance.configSnapshotVersion])
+      expect.arrayContaining(['local', tc09Mocks.runtimeConfig?.governance.configSnapshotVersion]),
     )
 
     // Workers AI 所有呼叫（應為空）中不得含敏感 keyword
@@ -241,7 +241,7 @@ async function runMcpCase(authorizationHeader: string, query: string) {
       authorizationHeader,
       cloudflareEnv: tc09Mocks.bindings ?? {},
       pendingEvent,
-    }
+    },
   )
 
   return { data }

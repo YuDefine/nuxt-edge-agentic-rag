@@ -54,7 +54,7 @@ describe('GET /api/admin/query-logs', () => {
 
   it('rejects unauthenticated requests with 401', async () => {
     mocks.requireRuntimeAdminSession.mockRejectedValueOnce(
-      Object.assign(new Error('Unauthorized'), { statusCode: 401 })
+      Object.assign(new Error('Unauthorized'), { statusCode: 401 }),
     )
 
     const { default: handler } = await import('../../server/api/admin/query-logs/index.get')
@@ -64,7 +64,7 @@ describe('GET /api/admin/query-logs', () => {
 
   it('rejects non-admin sessions with 403', async () => {
     mocks.requireRuntimeAdminSession.mockRejectedValueOnce(
-      Object.assign(new Error('Forbidden'), { statusCode: 403 })
+      Object.assign(new Error('Forbidden'), { statusCode: 403 }),
     )
 
     const { default: handler } = await import('../../server/api/admin/query-logs/index.get')
@@ -132,7 +132,7 @@ describe('GET /api/admin/query-logs', () => {
         redactionApplied: true,
         startDate: '2026-04-01T00:00:00.000Z',
         endDate: '2026-04-19T00:00:00.000Z',
-      })
+      }),
     )
   })
 })
@@ -149,25 +149,25 @@ describe('GET /api/admin/query-logs/[id]', () => {
 
   it('rejects unauthenticated requests with 401', async () => {
     mocks.requireRuntimeAdminSession.mockRejectedValueOnce(
-      Object.assign(new Error('Unauthorized'), { statusCode: 401 })
+      Object.assign(new Error('Unauthorized'), { statusCode: 401 }),
     )
 
     const { default: handler } = await import('../../server/api/admin/query-logs/[id].get')
 
     await expect(
-      handler(createRouteEvent({ context: { params: { id: 'log-1' }, cloudflare: { env: {} } } }))
+      handler(createRouteEvent({ context: { params: { id: 'log-1' }, cloudflare: { env: {} } } })),
     ).rejects.toMatchObject({ statusCode: 401 })
   })
 
   it('rejects non-admin sessions with 403', async () => {
     mocks.requireRuntimeAdminSession.mockRejectedValueOnce(
-      Object.assign(new Error('Forbidden'), { statusCode: 403 })
+      Object.assign(new Error('Forbidden'), { statusCode: 403 }),
     )
 
     const { default: handler } = await import('../../server/api/admin/query-logs/[id].get')
 
     await expect(
-      handler(createRouteEvent({ context: { params: { id: 'log-1' }, cloudflare: { env: {} } } }))
+      handler(createRouteEvent({ context: { params: { id: 'log-1' }, cloudflare: { env: {} } } })),
     ).rejects.toMatchObject({ statusCode: 403 })
   })
 
@@ -177,7 +177,7 @@ describe('GET /api/admin/query-logs/[id]', () => {
     const { default: handler } = await import('../../server/api/admin/query-logs/[id].get')
 
     await expect(
-      handler(createRouteEvent({ context: { params: { id: 'log-1' }, cloudflare: { env: {} } } }))
+      handler(createRouteEvent({ context: { params: { id: 'log-1' }, cloudflare: { env: {} } } })),
     ).rejects.toMatchObject({ statusCode: 404 })
   })
 
@@ -197,7 +197,7 @@ describe('GET /api/admin/query-logs/[id]', () => {
 
     const { default: handler } = await import('../../server/api/admin/query-logs/[id].get')
     const result = (await handler(
-      createRouteEvent({ context: { params: { id: 'log-1' }, cloudflare: { env: {} } } })
+      createRouteEvent({ context: { params: { id: 'log-1' }, cloudflare: { env: {} } } }),
     )) as { data: Record<string, unknown> }
 
     expect(result.data).toMatchObject({

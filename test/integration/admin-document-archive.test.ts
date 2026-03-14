@@ -75,7 +75,7 @@ vi.mock('hub:db', () => {
                       archivedAt: archiveMocks.state.document.archivedAt,
                     },
                   ]
-                : []
+                : [],
             ),
         }),
       }),
@@ -134,7 +134,7 @@ describe('Document archive & unarchive', () => {
     vi.stubGlobal(
       'getValidatedRouterParams',
       async (_event: unknown, parse: (v: unknown) => unknown) =>
-        parse(archiveMocks.getRouterParams())
+        parse(archiveMocks.getRouterParams()),
     )
     vi.stubGlobal('requireRuntimeAdminSession', archiveMocks.requireRuntimeAdminSession)
   })

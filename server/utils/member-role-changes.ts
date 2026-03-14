@@ -78,7 +78,7 @@ export interface RecordRoleChangeInput {
  */
 export async function recordRoleChange(
   hubDb: HubDbModuleLike,
-  input: RecordRoleChangeInput
+  input: RecordRoleChangeInput,
 ): Promise<{ id: string }> {
   const id = crypto.randomUUID()
 

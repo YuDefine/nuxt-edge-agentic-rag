@@ -49,7 +49,7 @@ export default defineEventHandler(async (event) => {
               apiToken: runtimeConfig.autoRag.apiToken,
               instanceName: runtimeConfig.bindings.aiSearchIndex,
             },
-            jobId
+            jobId,
           )
           if (jobStatus.status === 'completed') {
             await store.setVersionIndexingStatus(versionId, {

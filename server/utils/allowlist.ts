@@ -14,7 +14,7 @@ export function parseRuntimeAdminAllowlist(input?: string | string[]): string[] 
 
 export function hasRuntimeAdminAccess(
   email: string | null | undefined,
-  allowlist: string | string[]
+  allowlist: string | string[],
 ): boolean {
   return isAdminEmailAllowlisted(email, parseRuntimeAdminAllowlist(allowlist))
 }

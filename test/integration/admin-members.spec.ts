@@ -196,7 +196,7 @@ describe('PATCH /api/admin/members/[userId] (B16 §9.3)', () => {
         toRole: 'member',
         changedBy: 'admin-self',
         reason: 'admin-ui',
-      })
+      }),
     )
   })
 
@@ -219,7 +219,7 @@ describe('PATCH /api/admin/members/[userId] (B16 §9.3)', () => {
         fromRole: 'member',
         toRole: 'guest',
         changedBy: 'admin-self',
-      })
+      }),
     )
   })
 
