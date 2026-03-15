@@ -1,51 +1,8 @@
 <script setup lang="ts">
-  const { isAdmin } = useUserRole()
   const { user, signOut } = useUserSession()
-  const runtimeConfig = useRuntimeConfig()
-  const dashboardEnabled = computed(() => runtimeConfig.public?.adminDashboardEnabled ?? true)
+  const { links } = useAppNavigation()
 
   const drawer = useLayoutDrawer('main')
-
-  interface NavLink {
-    label: string
-    to: string
-    icon?: string
-  }
-
-  // responsive-and-a11y-foundation §3.2 + member-and-permission-management §8.1
-  // Admin nav expansion lives here so the drawer (< md) and the top-bar
-  // (>= md) always render the same set of links; avoids drift.
-  const links = computed<NavLink[]>(() => {
-    const items: NavLink[] = [{ label: '問答', to: '/', icon: 'i-lucide-messages-square' }]
-
-    if (isAdmin.value) {
-      items.push(
-        { label: '文件管理', to: '/admin/documents', icon: 'i-lucide-file-text' },
-        { label: '成員管理', to: '/admin/members', icon: 'i-lucide-users' },
-        {
-          label: '訪客政策',
-          to: '/admin/settings/guest-policy',
-          icon: 'i-lucide-shield',
-        },
-        { label: 'Token 管理', to: '/admin/tokens', icon: 'i-lucide-key' },
-        { label: '查詢日誌', to: '/admin/query-logs', icon: 'i-lucide-list' },
-      )
-      if (dashboardEnabled.value) {
-        items.push({
-          label: '管理摘要',
-          to: '/admin/dashboard',
-          icon: 'i-lucide-layout-dashboard',
-        })
-      }
-      items.push({
-        label: 'Debug 延遲',
-        to: '/admin/debug/latency',
-        icon: 'i-lucide-activity',
-      })
-    }
-
-    return items
-  })
 
   const userMenuItems = computed(() => [
     [

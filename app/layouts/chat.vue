@@ -1,36 +1,9 @@
 <script setup lang="ts">
-  const { isAdmin } = useUserRole()
   const { user, signOut } = useUserSession()
+  const { links } = useAppNavigation()
 
   const navDrawer = useLayoutDrawer('main')
   const historyDrawer = useLayoutDrawer('chat-history')
-
-  interface NavLink {
-    label: string
-    to: string
-    icon?: string
-  }
-
-  // member-and-permission-management §8.1 — admin nav entries also live
-  // in the chat layout so an admin in `/` (chat) can reach `/admin/*`
-  // without having to exit the chat layout first.
-  const links = computed<NavLink[]>(() => {
-    const items: NavLink[] = [{ label: '問答', to: '/', icon: 'i-lucide-messages-square' }]
-
-    if (isAdmin.value) {
-      items.push(
-        { label: '文件管理', to: '/admin/documents', icon: 'i-lucide-file-text' },
-        { label: '成員管理', to: '/admin/members', icon: 'i-lucide-users' },
-        {
-          label: '訪客政策',
-          to: '/admin/settings/guest-policy',
-          icon: 'i-lucide-shield',
-        },
-      )
-    }
-
-    return items
-  })
 
   const userMenuItems = computed(() => [
     [
