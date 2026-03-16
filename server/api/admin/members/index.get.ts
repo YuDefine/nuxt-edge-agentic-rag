@@ -9,6 +9,35 @@ import { assertNever } from '#shared/utils/assert-never'
 const SORT_VALUES = ['created_desc', 'created_asc', 'email_asc'] as const
 
 /**
+ * Tolerate schema drift on the better-auth `user` table. Production D1 stores
+ * `createdAt` / `updatedAt` as TEXT (column affinity disagrees with drizzle's
+ * `integer timestamp_ms` declaration) and some rows hold values like
+ * `"1776332449872.0"` that produce Invalid Date through the drizzle mapper.
+ * Calling `toISOString()` on Invalid Date throws `RangeError: Invalid time
+ * value` and takes the whole list request down. Return null for unparseable
+ * rows instead; a table-rebuild migration is the right long-term fix.
+ */
+function toIsoOrNull(value: unknown): string | null {
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value.toISOString()
+  }
+  // 數值 / 數值字串分支故意排在 ISO 字串之前：production drift 值形如
+  // `"1776332449872.0"`（epoch-ms float 偽裝成字串），先丟 Date.parse()
+  // 會 NaN。只有無法解讀為 epoch-ms 的值（例如 ISO 字串）才 fallback 到
+  // Date.parse。
+  const asNumber = typeof value === 'number' ? value : Number(value)
+  if (Number.isFinite(asNumber) && asNumber > 0) {
+    const parsed = new Date(asNumber)
+    if (!Number.isNaN(parsed.getTime())) return parsed.toISOString()
+  }
+  if (typeof value === 'string') {
+    const parsed = Date.parse(value)
+    if (!Number.isNaN(parsed)) return new Date(parsed).toISOString()
+  }
+  return null
+}
+
+/**
  * B16 §5.1 — Admin member list.
  *
  * Source table is the better-auth `user` table in `hub:db`. The `user`
@@ -45,7 +74,7 @@ export default defineEventHandler(async function listMembersHandler(event) {
   })
 
   const { db, schema } = await import('hub:db')
-  const { asc, desc, eq, count } = await import('drizzle-orm')
+  const { asc, desc, eq, count, sql } = await import('drizzle-orm')
 
   const whereExpr = query.role ? eq(schema.user.role, query.role) : undefined
 
@@ -74,6 +103,12 @@ export default defineEventHandler(async function listMembersHandler(event) {
         return rows[0]?.n ?? 0
       },
       list: async ({ limit, offset }) => {
+        // `createdAt` / `updatedAt` are read via `sql<...>` to bypass
+        // drizzle's `timestamp_ms` mapper. Production D1 stores these
+        // columns as TEXT (affinity drift) and the mapper produces
+        // Invalid Date on every row, which we then can't recover from.
+        // Reading the raw driver value lets `toIsoOrNull` parse strings,
+        // numbers, or actual Date instances uniformly.
         const base = db
           .select({
             id: schema.user.id,
@@ -81,8 +116,12 @@ export default defineEventHandler(async function listMembersHandler(event) {
             name: schema.user.name,
             image: schema.user.image,
             role: schema.user.role,
-            createdAt: schema.user.createdAt,
-            updatedAt: schema.user.updatedAt,
+            createdAtRaw: sql<string | number | null>`${schema.user.createdAt}`.as(
+              'created_at_raw',
+            ),
+            updatedAtRaw: sql<string | number | null>`${schema.user.updatedAt}`.as(
+              'updated_at_raw',
+            ),
           })
           .from(schema.user)
 
@@ -100,8 +139,8 @@ export default defineEventHandler(async function listMembersHandler(event) {
           name: row.name,
           image: row.image,
           role: row.role,
-          createdAt: row.createdAt instanceof Date ? row.createdAt.toISOString() : row.createdAt,
-          updatedAt: row.updatedAt instanceof Date ? row.updatedAt.toISOString() : row.updatedAt,
+          createdAt: toIsoOrNull(row.createdAtRaw),
+          updatedAt: toIsoOrNull(row.updatedAtRaw),
         }))
       },
     },
