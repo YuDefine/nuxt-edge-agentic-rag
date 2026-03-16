@@ -214,8 +214,15 @@ export default defineNuxtConfig({
     '/api/auth/**': { csurf: false },
     // setup endpoint 用 secret token 保護，不需要 CSRF
     '/api/setup/**': { csurf: false },
-    // MCP 是無狀態 API，使用 Bearer token 認證，不需要 CSRF
-    '/api/mcp/**': { csurf: false },
+    // MCP 是無狀態 API，使用 Bearer token 認證，不需要 CSRF。
+    // @nuxtjs/mcp-toolkit 將 endpoint 掛在 `/mcp`（JSON-RPC, Bearer 認證）、
+    // `/mcp/:handler`（同上）、`/mcp/deeplink`（GET，state-free HTML redirect）、
+    // `/mcp/badge.svg`（GET，純 SVG 生成）。舊 `/api/mcp/**` 豁免路徑自
+    // 2b083ac 遷移至 toolkit 後已失效，外部 MCP client 被 nuxt-security csurf
+    // 擋下（HTTP 403 CSRF Token Mismatch）。
+    // 新增任何 `/mcp/**` 路由前必須確認：要嘛 Bearer 認證、要嘛 GET-only 且不存取
+    // session cookie，否則會從此洞滲漏 CSRF。
+    '/mcp/**': { csurf: false },
     // dev endpoints 僅在 local 環境啟用，不需要 CSRF
     '/api/_dev/**': { csurf: false },
     // Nuxt DevTools 內部 hint endpoints（lazy-load 追蹤等），僅 dev mode
