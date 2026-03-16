@@ -147,35 +147,29 @@
         <div class="flex flex-col gap-6">
           <!-- Summary fields -->
           <dl class="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <div>
+            <div class="min-w-0">
               <dt class="text-xs text-muted">建立時間</dt>
               <dd class="mt-1 text-sm font-medium text-default">
                 {{ formatDate(detail.createdAt) }}
               </dd>
             </div>
-            <div>
+            <div class="min-w-0">
               <dt class="text-xs text-muted">狀態</dt>
               <dd class="mt-1">
                 <AdminQueryLogsQueryLogStatusBadge :status="detail.status" />
               </dd>
             </div>
-            <div>
+            <div class="min-w-0">
               <dt class="text-xs text-muted">來源</dt>
               <dd class="mt-1">
                 <AdminQueryLogsQueryLogChannelBadge :channel="detail.channel as 'web' | 'mcp'" />
               </dd>
             </div>
-            <div>
+            <div class="min-w-0">
               <dt class="text-xs text-muted">環境</dt>
               <dd class="mt-1 text-sm font-medium text-default">{{ detail.environment }}</dd>
             </div>
-            <div>
-              <dt class="text-xs text-muted">Config snapshot 版本</dt>
-              <dd class="mt-1 font-mono text-sm text-default">
-                {{ detail.configSnapshotVersion }}
-              </dd>
-            </div>
-            <div>
+            <div class="min-w-0">
               <dt class="text-xs text-muted">遮罩狀態</dt>
               <dd class="mt-1">
                 <UBadge
@@ -185,6 +179,14 @@
                 >
                   {{ detail.redactionApplied ? '已遮罩' : '未遮罩' }}
                 </UBadge>
+              </dd>
+            </div>
+            <div class="min-w-0 md:col-span-2">
+              <dt class="text-xs text-muted">Config snapshot 版本</dt>
+              <dd
+                class="mt-1 rounded-md border border-default bg-muted p-3 font-mono text-xs break-all text-default"
+              >
+                {{ detail.configSnapshotVersion }}
               </dd>
             </div>
           </dl>
