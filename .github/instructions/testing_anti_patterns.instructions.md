@@ -158,7 +158,7 @@ test('detects duplicate entry', () => {
     getDbClient: vi.fn().mockReturnValue(
       createMockDbClient({
         initialData: existingEntries,
-      })
+      }),
     ),
   }))
 

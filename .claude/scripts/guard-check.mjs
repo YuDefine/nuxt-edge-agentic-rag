@@ -45,7 +45,7 @@ process.stdin.on('end', () => {
         console.error(
           JSON.stringify({
             error: `🛡️ 此路徑受永久保護: ${relativePath}\n手動修改請直接編輯檔案，不要透過 Claude。`,
-          })
+          }),
         )
         process.exit(2)
       }
@@ -58,7 +58,7 @@ process.stdin.on('end', () => {
         console.error(
           JSON.stringify({
             error: `🧊 此路徑已被凍結: ${relativePath}\n解凍: /unfreeze ${frozen}`,
-          })
+          }),
         )
         process.exit(2)
       }
