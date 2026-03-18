@@ -137,7 +137,7 @@
       <div>
         <h1 class="text-2xl font-bold text-default">成員管理</h1>
         <p class="mt-1 text-sm text-muted">
-          檢視所有登入過的使用者，並升降 Member / Guest 角色。Admin 由 env var 控制。
+          檢視所有登入過的使用者，並升降 Member / Guest 角色。Admin 由伺服器設定管理。
         </p>
       </div>
       <div class="flex flex-col gap-2 md:flex-row md:items-center">

@@ -44,7 +44,7 @@
   function transitionWarning(target: Role): string {
     switch (target) {
       case 'admin':
-        return '無法由 UI 升任管理員，請改由 ADMIN_EMAIL_ALLOWLIST env var 設定。'
+        return '此角色由伺服器設定管理，無法由 UI 變更。'
       case 'member':
         return '此使用者將可提問並使用所有 Member 權限。'
       case 'guest':

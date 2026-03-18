@@ -74,11 +74,11 @@
   const actions = computed(() => actionsForRole(props.row.role))
 
   function selfActionHint(): string {
-    return '不可對自己的 Admin 權限操作，請從 ADMIN_EMAIL_ALLOWLIST 移除此 email'
+    return '不可對自己的 Admin 權限操作'
   }
 
   function adminRoleHint(): string {
-    return 'Admin 權限由 ADMIN_EMAIL_ALLOWLIST env var 控制，無法由 UI 變更'
+    return '由伺服器設定管理'
   }
 
   function handleClick(target: ActionConfig) {
