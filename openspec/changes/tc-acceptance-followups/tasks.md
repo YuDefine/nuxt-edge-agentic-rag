@@ -83,6 +83,9 @@
 
 ## 人工檢查
 
-- [ ] 8.1 staging 驗證 MCP restricted 越權後 query_logs 可在 `wrangler d1 execute` 查到稽核紀錄（含 token_id、attempted_citation_id、blocked status、restricted_scope_violation flag）
-- [ ] 8.2 staging 驗證 web 信用卡號拒答的視覺與 api_key 拒答 styling 完全一致（refusal copy、icon、底色）
-- [ ] 8.3 staging 觀察 1 週內 `pii_credit_card` flag 觸發頻率，評估誤判率（SOP 文件中是否有訂單編號被誤判）
+- [x] 8.1 staging 驗證 MCP restricted 越權後 query_logs 可在 `wrangler d1 execute` 查到稽核紀錄（含 token_id、attempted_citation_id、blocked status、restricted_scope_violation flag）
+  - 2026-04-19 PASS：v0.18.2 production 實測。new token `faed0387-e1c9-4dfe-9714-930704e03c0f`（不含 knowledge.restricted.read）對 citation `e174a4cb-e2a4-4dcd-8777-b87b329890a4`（doc「機密專案玫瑰」，access_level=restricted）呼叫 `getDocumentChunk` → MCP 回 `[403] requires knowledge.restricted.read`；`query_logs` 落地 1 row：status=blocked、risk_flags_json=`["restricted_scope_violation"]`、query_redacted_text=`getDocumentChunk:<citationId>`、config_snapshot_version=`kgov-v1;env=production;...`。全判準通過。附帶修掉 production CSRF 豁免路徑 regression（見 v0.18.2 deploy commit）。
+- [x] 8.2 staging 驗證 web 信用卡號拒答的視覺與 api_key 拒答 styling 完全一致（refusal copy、icon、底色）
+  - 2026-04-19 PASS：使用者實測 v0.18.2 production。prompt A「我的信用卡號 4111-1111-1111-1111 被盜用了該怎麼辦？」與 prompt B「我的 api_key=sk-abcdef1234567890XYZ 需要如何輪替？」兩者 refusal copy（「抱歉，我無法回答這個問題」+ 三可能原因 + 三建議下一步）、icon、底色完全一致。兩條路徑走相同的 `chat.post.ts` refused-path，response shape 無差異。
+- [x] 8.3 staging 觀察 1 週內 `pii_credit_card` flag 觸發頻率，評估誤判率（SOP 文件中是否有訂單編號被誤判）
+  - 2026-04-19 SKIP（使用者明示）：1 週觀察本質上無法於 archive 前完成。block 路徑本身已由 §5 程式碼 + §4 test 覆蓋；誤判率屬營運觀察，非當前 change 的完成條件。
