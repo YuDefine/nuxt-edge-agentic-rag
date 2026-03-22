@@ -1,0 +1,234 @@
+-- fix-better-auth-timestamp-affinity: rebuild `user` and `account` tables to
+-- realign D1 column affinity with the drizzle declarations in
+-- `.nuxt/better-auth/schema.sqlite.ts`.
+--
+-- Drift inventory (verified 2026-04-19 via `wrangler d1 execute --remote`):
+--
+--   user.createdAt                  TEXT → INTEGER (timestamp_ms)
+--   user.updatedAt                  TEXT → INTEGER (timestamp_ms)
+--   user.banExpires                 TEXT → INTEGER (timestamp_ms, nullable)
+--   account.createdAt               TEXT → INTEGER (timestamp_ms)
+--   account.updatedAt               TEXT → INTEGER (timestamp_ms)
+--   account.accessTokenExpiresAt    TEXT → INTEGER (nullable)
+--   account.refreshTokenExpiresAt   TEXT → INTEGER (nullable)
+--   account_userId_idx              MISSING → CREATE (declared by drizzle, never built)
+--
+-- Out of scope (verified drift but NOT rebuilt — see design § Open Questions):
+--   * `session` table: TEXT affinity drift on createdAt/updatedAt/expiresAt,
+--     but NOT in `.nuxt/better-auth/schema.sqlite.ts` (better-auth reads via
+--     raw SQL, drizzle `timestamp_ms` mapper never touches these rows).
+--   * `verification` table: same as session.
+--   * `user.role` / `user.banned` NOT NULL: pre-existing drift from 0002,
+--     unrelated to this bug. Left as-is to avoid scope creep.
+--
+-- FK children of user(id) that are NOT rebuilt here but rely on id
+-- preservation + defer_foreign_keys for the atomic swap to remain valid:
+--   * `session.userId REFERENCES "user"(id) ON DELETE CASCADE`
+--   * `mcp_tokens.created_by_user_id REFERENCES user(id)` (from 0006)
+--   * `member_role_changes.user_id FOREIGN KEY REFERENCES user(id)` (from 0006)
+-- The pre-flight script `scripts/checks/verify-auth-storage-consistency.sh
+-- --preflight` MUST be run before `wrangler d1 migrations apply --remote`.
+-- It refuses to green-light apply if any of these tables contains an orphan
+-- row, or if any timestamp column holds an unparseable value. Those checks
+-- live outside the migration SQL because D1 runs migration .sql in a
+-- non-atomic batch (no implicit transaction; `BEGIN/COMMIT` is not supported
+-- inside a migration file), so an inline CHECK-constraint abort would still
+-- leak partial DDL through — the pre-flight gate stops bad data before any
+-- DESTRUCTIVE statement runs.
+--
+-- D1 constraint on FK handling:
+--   Cloudflare D1 does not support `PRAGMA foreign_keys = OFF`. The canonical
+--   SQLite table-rebuild recipe (`foreign_keys=OFF` first) does not apply.
+--   We use `PRAGMA defer_foreign_keys = ON` to postpone FK enforcement until
+--   commit. Modern SQLite (legacy_alter_table OFF default) also rewrites FK
+--   references when the target table is renamed, so
+--   `ALTER TABLE user_new RENAME TO "user"` correctly re-binds the three
+--   FK children above without manual DDL edits.
+--   Reference: https://developers.cloudflare.com/d1/sql-api/foreign-keys/
+--
+-- Value normalization strategy (CASE WHEN CAST(col AS REAL) >= 1_000_000_000_000):
+--   * Production rows inserted by better-auth carry float-like TEXT such
+--     as `"1776332449872.0"` (JS `Date.now()` coerced by TEXT affinity on
+--     write). `CAST(col AS REAL)` parses to 1776332449872.0, exceeds the
+--     year-2001 threshold (>= 1e12 ms); `CAST(... AS INTEGER)` rounds it.
+--   * Rows materialised from the SQLite `CURRENT_TIMESTAMP` default hold
+--     ISO datetime strings like `"2026-04-19 23:00:45"`. `CAST` to REAL
+--     stops at the first non-digit (yielding 2026), which is below the
+--     threshold, so the fallback `unixepoch(col) * 1000` rescues them.
+--   * NULL / empty-string on nullable columns (`banExpires`, token expiries)
+--     is preserved as NULL via explicit `WHEN ... IS NULL OR ... = '' THEN NULL`.
+--   * Any other unparseable shape produces `unixepoch(col) = NULL`, which
+--     will abort INSERT with a NOT NULL error. The pre-flight script
+--     catches those cases first so this path is never reached at runtime.
+--
+-- Release checklist (MUST run in order before --remote apply):
+--   1. wrangler d1 export agentic-rag-db --remote --output tmp/snapshot.sql
+--   2. bash scripts/checks/verify-auth-storage-consistency.sh --preflight
+--      (assertion gate — refuses if FK orphans or bad timestamps present)
+--   3. rm -f tmp/dryrun.db && sqlite3 tmp/dryrun.db < tmp/snapshot.sql
+--   4. sqlite3 tmp/dryrun.db < server/database/migrations/0007_better_auth_timestamp_affinity.sql
+--   5. bash scripts/checks/verify-auth-storage-consistency.sh --local
+--   6. wrangler d1 migrations apply agentic-rag-db --remote
+--   7. bash scripts/checks/verify-auth-storage-consistency.sh --remote
+--
+-- Rollback: if step 7 fails:
+--   1. Restore BOTH user and account atomically from the snapshot taken in
+--      step 1 (one `wrangler d1 execute --file` applying a restore script).
+--      Phase 1's `sql<>` parser in `server/api/admin/members/index.get.ts`
+--      (commit `e45cf95`) keeps the endpoint functional through
+--      TEXT-affinity rows, so there is no user-visible outage during
+--      rollback.
+--   2. `DELETE FROM d1_migrations WHERE name LIKE '0007_%';` so a fixed
+--      retry can re-apply. Wrangler will not re-run a row listed as applied.
+
+PRAGMA defer_foreign_keys = ON;
+
+-- =========================================================================
+-- (1) Rebuild `user`
+--
+-- Column shape mirrors production (NOT NULL / DEFAULT / role / banned)
+-- EXCEPT:
+--   * the three timestamp_ms columns gain INTEGER affinity (the purpose
+--     of this migration), and
+--   * createdAt/updatedAt DEFAULT moves from CURRENT_TIMESTAMP (which
+--     returns TEXT and would re-introduce the bug) to the drizzle-declared
+--     `cast(unixepoch('subsecond') * 1000 as integer)`.
+-- Keeping `role TEXT NOT NULL DEFAULT 'user'` and `banned INTEGER NOT NULL
+-- DEFAULT 0` mirrors the live schema — 0002's drift from drizzle is out of
+-- scope here.
+-- =========================================================================
+
+CREATE TABLE user_new (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  email TEXT NOT NULL UNIQUE,
+  emailVerified INTEGER NOT NULL DEFAULT 0,
+  image TEXT,
+  createdAt INTEGER NOT NULL DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)),
+  updatedAt INTEGER NOT NULL DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)),
+  role TEXT NOT NULL DEFAULT 'user',
+  banned INTEGER NOT NULL DEFAULT 0,
+  banReason TEXT,
+  banExpires INTEGER
+);
+
+INSERT INTO user_new (
+  id, name, email, emailVerified, image,
+  createdAt, updatedAt, role, banned, banReason, banExpires
+)
+SELECT
+  id, name, email, emailVerified, image,
+  CASE
+    WHEN CAST(createdAt AS REAL) >= 1000000000000
+      THEN CAST(CAST(createdAt AS REAL) AS INTEGER)
+    ELSE CAST(unixepoch(createdAt) AS INTEGER) * 1000
+  END,
+  CASE
+    WHEN CAST(updatedAt AS REAL) >= 1000000000000
+      THEN CAST(CAST(updatedAt AS REAL) AS INTEGER)
+    ELSE CAST(unixepoch(updatedAt) AS INTEGER) * 1000
+  END,
+  role, banned, banReason,
+  CASE
+    WHEN banExpires IS NULL OR banExpires = '' THEN NULL
+    WHEN CAST(banExpires AS REAL) >= 1000000000000
+      THEN CAST(CAST(banExpires AS REAL) AS INTEGER)
+    ELSE CAST(unixepoch(banExpires) AS INTEGER) * 1000
+  END
+FROM "user";
+
+-- =========================================================================
+-- (2) Rebuild `account`
+--
+-- `userId` FK resolves by name to `"user"` (the final rename target); after
+-- the swap below it re-binds to `user_new` transparently. `updatedAt` gains
+-- a DB-side DEFAULT as belt-and-braces for future raw-SQL inserts — drizzle
+-- always supplies the value via `$onUpdate`, but seeds / tests / manual
+-- repairs shouldn't fail with a cryptic NOT NULL error.
+-- =========================================================================
+
+CREATE TABLE account_new (
+  id TEXT PRIMARY KEY,
+  userId TEXT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+  accountId TEXT NOT NULL,
+  providerId TEXT NOT NULL,
+  accessToken TEXT,
+  refreshToken TEXT,
+  accessTokenExpiresAt INTEGER,
+  refreshTokenExpiresAt INTEGER,
+  scope TEXT,
+  password TEXT,
+  idToken TEXT,
+  createdAt INTEGER NOT NULL DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)),
+  updatedAt INTEGER NOT NULL DEFAULT (cast(unixepoch('subsecond') * 1000 as integer))
+);
+
+INSERT INTO account_new (
+  id, userId, accountId, providerId,
+  accessToken, refreshToken,
+  accessTokenExpiresAt, refreshTokenExpiresAt,
+  scope, password, idToken,
+  createdAt, updatedAt
+)
+SELECT
+  id, userId, accountId, providerId,
+  accessToken, refreshToken,
+  CASE
+    WHEN accessTokenExpiresAt IS NULL OR accessTokenExpiresAt = '' THEN NULL
+    WHEN CAST(accessTokenExpiresAt AS REAL) >= 1000000000000
+      THEN CAST(CAST(accessTokenExpiresAt AS REAL) AS INTEGER)
+    ELSE CAST(unixepoch(accessTokenExpiresAt) AS INTEGER) * 1000
+  END,
+  CASE
+    WHEN refreshTokenExpiresAt IS NULL OR refreshTokenExpiresAt = '' THEN NULL
+    WHEN CAST(refreshTokenExpiresAt AS REAL) >= 1000000000000
+      THEN CAST(CAST(refreshTokenExpiresAt AS REAL) AS INTEGER)
+    ELSE CAST(unixepoch(refreshTokenExpiresAt) AS INTEGER) * 1000
+  END,
+  scope, password, idToken,
+  CASE
+    WHEN CAST(createdAt AS REAL) >= 1000000000000
+      THEN CAST(CAST(createdAt AS REAL) AS INTEGER)
+    ELSE CAST(unixepoch(createdAt) AS INTEGER) * 1000
+  END,
+  CASE
+    WHEN CAST(updatedAt AS REAL) >= 1000000000000
+      THEN CAST(CAST(updatedAt AS REAL) AS INTEGER)
+    ELSE CAST(unixepoch(updatedAt) AS INTEGER) * 1000
+  END
+FROM "account";
+
+-- =========================================================================
+-- (3) Swap old tables with new
+--
+-- Drop `account` first so `account.userId → "user"(id)` FK edge goes away
+-- before `"user"` itself disappears; `account_new.userId → "user"(id)`
+-- resolves the moment `user_new` is renamed back to `"user"`. The window
+-- where `"user"` does not exist is safe only because `defer_foreign_keys`
+-- is ON and SQLite's modern `legacy_alter_table=OFF` re-binds FK text in
+-- dependent DDL on RENAME.
+-- =========================================================================
+
+DROP TABLE "account";
+DROP TABLE "user";
+ALTER TABLE user_new RENAME TO "user";
+ALTER TABLE account_new RENAME TO "account";
+
+-- =========================================================================
+-- (4) Recreate indexes
+-- IF NOT EXISTS is defensive only — the DROP TABLE above removes every
+-- index on the old account, so this always creates fresh. PK and UNIQUE
+-- auto-indexes regenerate from the inline constraints.
+-- =========================================================================
+
+CREATE INDEX IF NOT EXISTS account_userId_idx ON "account"(userId);
+
+-- =========================================================================
+-- (5) Post-swap integrity report (diagnostic only)
+-- PRAGMA foreign_key_check returns rows but does not abort the batch. The
+-- verification script (step 7 of the release checklist) reads the PRAGMA
+-- output and exits non-zero if violations exist. For belt-and-braces,
+-- D1's implicit deferred-FK commit gate would also abort the run.
+-- =========================================================================
+
+PRAGMA foreign_key_check;
