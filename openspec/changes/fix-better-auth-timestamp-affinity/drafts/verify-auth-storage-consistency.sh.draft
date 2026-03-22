@@ -1,0 +1,219 @@
+#!/usr/bin/env bash
+# verify-auth-storage-consistency: pre-apply gate + post-apply verifier for
+# migration 0007_better_auth_timestamp_affinity.
+#
+# Usage:
+#   bash scripts/checks/verify-auth-storage-consistency.sh --preflight
+#   bash scripts/checks/verify-auth-storage-consistency.sh --remote
+#   bash scripts/checks/verify-auth-storage-consistency.sh --local [sqlite-path]
+#
+# Modes:
+#   --preflight   Runs against production D1 BEFORE `wrangler d1 migrations
+#                 apply --remote`. Refuses apply if any FK child of user(id)
+#                 holds an orphan row or any timestamp column holds a value
+#                 that migration 0007's CASE normalization would turn into
+#                 NULL (→ NOT NULL abort inside the non-atomic batch).
+#
+#   --remote      Runs against production D1 AFTER apply. Asserts the three
+#                 scenarios of spec
+#                 `auth-storage-consistency > Better-auth Tables Storage
+#                 Type Matches Drizzle Declaration` (minus new-insert
+#                 scenario, which needs a manual sign-in — see task 4.2).
+#
+#   --local       Runs against a local sqlite3 DB (default `tmp/dryrun.db`)
+#                 that has the migration applied. Same checks as --remote.
+#
+# Exits non-zero if any check fails. Output is plain text so the script can
+# be wired into CI or a manual release checklist.
+
+set -euo pipefail
+
+MODE="${1:---preflight}"
+DB_NAME="agentic-rag-db"
+LOCAL_DB="${2:-tmp/dryrun.db}"
+
+case "${MODE}" in
+  --preflight|--remote|--local) ;;
+  *)
+    echo "usage: $0 [--preflight|--remote|--local [sqlite-path]]" >&2
+    exit 2
+    ;;
+esac
+
+# query <sql>: run a query against whichever backend matches MODE, and echo
+# results with `value` newline-separated. Used for simple scalar counts.
+query() {
+  local sql="$1"
+  if [[ "${MODE}" == "--local" ]]; then
+    sqlite3 "${LOCAL_DB}" "${sql}"
+  else
+    wrangler d1 execute "${DB_NAME}" --remote --json --command "${sql}" \
+      | jq -r '.[0].results // [] | .[] | to_entries[0].value // empty'
+  fi
+}
+
+# rows <sql>: run a query and return rows as `k=v` lines for `grep`-style
+# assertions. Works for both backends.
+rows() {
+  local sql="$1"
+  if [[ "${MODE}" == "--local" ]]; then
+    # sqlite3 default `.mode list` separates columns with `|`; convert to
+    # `key=value` pairs matching the wrangler JSON shape.
+    local header_sql="${sql}"
+    sqlite3 -header -separator '|' "${LOCAL_DB}" "${header_sql}" \
+      | awk -F '|' 'NR==1 { for (i=1; i<=NF; i++) keys[i] = $i; next } { out = ""; for (i=1; i<=NF; i++) { out = out keys[i] "=" $i " " } print out }'
+  else
+    wrangler d1 execute "${DB_NAME}" --remote --json --command "${sql}" \
+      | jq -r '.[0].results // [] | .[] | [to_entries[] | "\(.key)=\(.value)"] | join(" ")'
+  fi
+}
+
+fail=0
+
+if [[ "${MODE}" == "--preflight" ]]; then
+  echo "== Preflight: FK orphan check =="
+
+  # Any table with a FK into user(id) whose row points at a missing user.id
+  # would either abort migration 0007 mid-apply (breaking DDL atomicity) or
+  # leak through and become a dangling reference after the swap.
+  orphans="$(query "
+    SELECT
+        (SELECT COUNT(*) FROM session s LEFT JOIN \"user\" u ON s.userId = u.id WHERE u.id IS NULL)
+      + (SELECT COUNT(*) FROM mcp_tokens m LEFT JOIN \"user\" u ON m.created_by_user_id = u.id
+           WHERE m.created_by_user_id IS NOT NULL AND u.id IS NULL)
+      + (SELECT COUNT(*) FROM member_role_changes r LEFT JOIN \"user\" u ON r.user_id = u.id WHERE u.id IS NULL)
+      + (SELECT COUNT(*) FROM \"account\" a LEFT JOIN \"user\" u ON a.userId = u.id WHERE u.id IS NULL)
+    AS n
+  ")"
+
+  if [[ "${orphans}" == "0" ]]; then
+    echo "  OK: 0 orphan FK rows across session / mcp_tokens / member_role_changes / account"
+  else
+    echo "FAIL: ${orphans} orphan FK row(s) pointing at missing user.id" >&2
+    fail=1
+  fi
+
+  echo "== Preflight: timestamp parseability =="
+
+  # Any source value that would hit `unixepoch(col) IS NULL` causes INSERT
+  # fail on NOT NULL columns, or silent NULL on nullable ones. Either way,
+  # migration integrity suffers — refuse apply until human inspects.
+  bad="$(query "
+    SELECT
+        (SELECT COUNT(*) FROM \"user\"
+           WHERE createdAt IS NULL OR createdAt = ''
+              OR (CAST(createdAt AS REAL) < 1000000000000 AND unixepoch(createdAt) IS NULL))
+      + (SELECT COUNT(*) FROM \"user\"
+           WHERE updatedAt IS NULL OR updatedAt = ''
+              OR (CAST(updatedAt AS REAL) < 1000000000000 AND unixepoch(updatedAt) IS NULL))
+      + (SELECT COUNT(*) FROM \"user\"
+           WHERE banExpires IS NOT NULL AND banExpires != ''
+             AND CAST(banExpires AS REAL) < 1000000000000
+             AND unixepoch(banExpires) IS NULL)
+      + (SELECT COUNT(*) FROM \"account\"
+           WHERE createdAt IS NULL OR createdAt = ''
+              OR (CAST(createdAt AS REAL) < 1000000000000 AND unixepoch(createdAt) IS NULL))
+      + (SELECT COUNT(*) FROM \"account\"
+           WHERE updatedAt IS NULL OR updatedAt = ''
+              OR (CAST(updatedAt AS REAL) < 1000000000000 AND unixepoch(updatedAt) IS NULL))
+      + (SELECT COUNT(*) FROM \"account\"
+           WHERE accessTokenExpiresAt IS NOT NULL AND accessTokenExpiresAt != ''
+             AND CAST(accessTokenExpiresAt AS REAL) < 1000000000000
+             AND unixepoch(accessTokenExpiresAt) IS NULL)
+      + (SELECT COUNT(*) FROM \"account\"
+           WHERE refreshTokenExpiresAt IS NOT NULL AND refreshTokenExpiresAt != ''
+             AND CAST(refreshTokenExpiresAt AS REAL) < 1000000000000
+             AND unixepoch(refreshTokenExpiresAt) IS NULL)
+    AS n
+  ")"
+
+  if [[ "${bad}" == "0" ]]; then
+    echo "  OK: all timestamp columns parseable by migration CASE"
+  else
+    echo "FAIL: ${bad} unparseable timestamp value(s) — inspect and repair before apply" >&2
+    fail=1
+  fi
+
+  if [[ "${fail}" -eq 0 ]]; then
+    echo ""
+    echo "PREFLIGHT PASSED — safe to run: wrangler d1 migrations apply ${DB_NAME} --remote"
+  else
+    echo ""
+    echo "PREFLIGHT FAILED" >&2
+    exit 1
+  fi
+  exit 0
+fi
+
+# --local / --remote: post-apply verification
+
+echo "== (a) column affinity =="
+for table in user account; do
+  col_rows="$(rows "PRAGMA table_info(\"${table}\")")"
+  case "${table}" in
+    user) expect_int=(createdAt updatedAt banExpires) ;;
+    account) expect_int=(createdAt updatedAt accessTokenExpiresAt refreshTokenExpiresAt) ;;
+  esac
+  for col in "${expect_int[@]}"; do
+    # Match the name= token exactly to avoid substring collisions (e.g.
+    # "updatedAt" matching "not_updatedAtThing"). The trailing space or
+    # end-of-line after the name= token is what delimits it.
+    line="$(printf '%s\n' "${col_rows}" | grep -E "(^| )name=${col}( |$)" || true)"
+    if [[ -z "${line}" ]]; then
+      echo "FAIL: ${table}.${col} missing from PRAGMA table_info" >&2
+      fail=1
+      continue
+    fi
+    if ! printf '%s' "${line}" | grep -q 'type=INTEGER'; then
+      echo "FAIL: ${table}.${col} type not INTEGER: ${line}" >&2
+      fail=1
+    else
+      echo "  OK: ${table}.${col} = INTEGER"
+    fi
+  done
+done
+
+echo "== (b) typeof() on existing rows =="
+for table in user account; do
+  data="$(rows "SELECT id, typeof(createdAt) AS c, typeof(updatedAt) AS u FROM \"${table}\"")"
+  if [[ -z "${data}" ]]; then
+    echo "  (no rows in ${table})"
+    continue
+  fi
+  while IFS= read -r row; do
+    [[ -z "${row}" ]] && continue
+    if [[ "${row}" == *"c=integer"* && "${row}" == *"u=integer"* ]]; then
+      echo "  OK: ${table} ${row}"
+    else
+      echo "FAIL: ${table} ${row}" >&2
+      fail=1
+    fi
+  done <<<"${data}"
+done
+
+echo "== (c) foreign_key_check =="
+fk_count="$(query "SELECT COUNT(*) FROM pragma_foreign_key_check")"
+if [[ "${fk_count}" == "0" ]]; then
+  echo "  OK: 0 FK violations"
+else
+  echo "FAIL: ${fk_count} FK violation(s) — inspect with PRAGMA foreign_key_check" >&2
+  fail=1
+fi
+
+echo "== (d) account_userId_idx present =="
+idx_count="$(query "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='account_userId_idx'")"
+if [[ "${idx_count}" == "1" ]]; then
+  echo "  OK: account_userId_idx present"
+else
+  echo "FAIL: account_userId_idx missing" >&2
+  fail=1
+fi
+
+if [[ "${fail}" -ne 0 ]]; then
+  echo ""
+  echo "FAILED" >&2
+  exit 1
+fi
+
+echo ""
+echo "PASSED"
