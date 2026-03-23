@@ -152,7 +152,7 @@
           取消
         </UButton>
         <UButton
-          color="primary"
+          color="neutral"
           variant="solid"
           size="md"
           block

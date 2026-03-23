@@ -84,7 +84,11 @@
       data-testid="guest-gate-pending"
     >
       <div class="flex flex-col items-center gap-3">
-        <UIcon name="i-lucide-loader-2" class="size-6 animate-spin text-muted" aria-hidden="true" />
+        <UIcon
+          name="i-lucide-loader-2"
+          class="size-6 animate-spin text-muted motion-reduce:animate-none"
+          aria-hidden="true"
+        />
         <p class="text-sm text-muted">正在導向待審核頁…</p>
       </div>
     </div>

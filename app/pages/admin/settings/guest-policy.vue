@@ -139,7 +139,10 @@
     <UCard>
       <template v-if="isLoading">
         <div class="flex flex-col items-center justify-center py-12">
-          <UIcon name="i-lucide-loader-2" class="mb-4 size-8 animate-spin text-muted" />
+          <UIcon
+            name="i-lucide-loader-2"
+            class="mb-4 size-8 animate-spin text-muted motion-reduce:animate-none"
+          />
           <p class="text-sm text-muted">載入中…</p>
         </div>
       </template>
@@ -180,7 +183,7 @@
               :key="item.value"
               class="flex cursor-pointer items-start gap-3 rounded-md border border-default p-3 transition-colors hover:bg-elevated md:p-4"
               :class="{
-                'border-primary bg-primary/5': selected === item.value,
+                'border-default bg-accented': selected === item.value,
               }"
             >
               <input
@@ -199,7 +202,7 @@
                   </span>
                   <UBadge
                     v-if="serverValue === item.value"
-                    color="primary"
+                    color="neutral"
                     variant="subtle"
                     size="sm"
                   >
@@ -237,7 +240,7 @@
             </UButton>
             <UButton
               type="submit"
-              color="primary"
+              color="neutral"
               variant="solid"
               size="md"
               block

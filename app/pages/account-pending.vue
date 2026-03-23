@@ -52,7 +52,7 @@
           <p class="text-xs font-medium text-muted md:text-sm">聯絡管理員</p>
           <a
             :href="`mailto:${SUPPORT_EMAIL}?subject=申請成員身分`"
-            class="text-sm font-medium break-all text-primary underline-offset-2 hover:underline md:text-base"
+            class="text-sm font-medium break-all text-default underline underline-offset-2 hover:text-muted md:text-base"
           >
             {{ SUPPORT_EMAIL }}
           </a>

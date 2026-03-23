@@ -89,7 +89,7 @@
              `< lg` conversation history is reachable via the chat-layout drawer
              toggle; sidebar is hidden below that breakpoint to keep the chat
              column full-width for phones / small tablets. -->
-        <div class="flex h-[calc(100vh-4rem)] min-h-0 gap-0">
+        <div class="flex h-[calc(100dvh-4rem)] min-h-0 gap-0">
           <aside
             class="hidden w-64 shrink-0 border-r border-default lg:flex lg:flex-col"
             aria-label="對話記錄"

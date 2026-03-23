@@ -311,6 +311,7 @@
             variant="ghost"
             size="xs"
             icon="i-lucide-x"
+            aria-label="關閉錯誤提示"
             @click="submitError = null"
           />
         </template>

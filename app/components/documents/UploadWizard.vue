@@ -890,7 +890,10 @@
       </template>
       <template v-else>
         <div class="mb-4 rounded-full bg-muted p-4">
-          <UIcon name="i-lucide-loader-2" class="size-8 animate-spin text-primary" />
+          <UIcon
+            name="i-lucide-loader-2"
+            class="size-8 animate-spin text-primary motion-reduce:animate-none"
+          />
         </div>
         <h3 class="mb-2 text-lg font-medium text-default">正在建立索引</h3>
         <p class="max-w-sm text-sm text-muted">
@@ -958,7 +961,10 @@
     </div>
 
     <div v-else class="flex flex-col items-center justify-center py-12 text-center">
-      <UIcon name="i-lucide-loader-2" class="mb-4 size-8 animate-spin text-primary" />
+      <UIcon
+        name="i-lucide-loader-2"
+        class="mb-4 size-8 animate-spin text-primary motion-reduce:animate-none"
+      />
       <p class="text-sm text-muted">{{ steps.find((s) => s.key === currentStep)?.description }}</p>
     </div>
   </div>

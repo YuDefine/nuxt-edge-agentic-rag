@@ -37,7 +37,7 @@
     label: string
     icon: string
     targetRole: Role
-    color: 'primary' | 'warning' | 'neutral'
+    color: 'neutral'
   }
 
   /**
@@ -54,7 +54,7 @@
             label: '降為訪客',
             icon: 'i-lucide-user-minus',
             targetRole: 'guest',
-            color: 'warning',
+            color: 'neutral',
           },
         ]
       case 'guest':
@@ -63,7 +63,7 @@
             label: '升為成員',
             icon: 'i-lucide-user-plus',
             targetRole: 'member',
-            color: 'primary',
+            color: 'neutral',
           },
         ]
       default:
