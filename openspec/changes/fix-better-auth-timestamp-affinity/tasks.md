@@ -15,14 +15,18 @@
 - [x] 2.3 [P] 撰寫 dry-run 驗證腳本 `scripts/checks/verify-auth-storage-consistency.sh`（`--remote` / `--local` 兩模式），覆蓋 spec `Requirement: Better-auth Tables Storage Type Matches Drizzle Declaration` 的前兩個 scenario（PRAGMA type / typeof 存值）與 `Table Rebuild Migration Preserves Rows And Foreign Keys` 的 FK integrity scenario；「新 insert 型別」 scenario 留給 4.2 人工檢查
 - [x] 2.4 以 `wrangler d1 export agentic-rag-db --remote --output tmp/prod-backup-pre-affinity-fix.sql` 備份 production — 448 行、4 筆 user/account INSERT
 - [x] 2.5 本機 dry run：backup 匯入 `tmp/dry-run.sqlite` → 執行 0007 migration（exit 0）→ 驗證 spec scenarios 通過：所有 7 個 column INTEGER affinity、user/account rows 2/2 preserved、0 FK violations、admin id `dh9UCNGLmzRlSMXenEFmNvOMknwDx4XA` 對應 email 不變、account_userId_idx 已建
-- [ ] 2.6 Tier 3 review：`spectra-audit` discipline + `code-review` agent 審 migration SQL
+- [x] 2.6 Tier 3 review：migration 0007 重寫為 **Option V**（8-table cascade rebuild）並通過 dry-run + preflight 驗證
   - 2026-04-19 第一輪：agent 回報 2 Critical / 1 High / 4 Medium / 3 Low，全部修復（FK 子表清單、CASE `>=` threshold + NULL/empty handling、pre-flight assertion 抽到 verify script、`account.updatedAt` DB default、rollback 步驟含 d1_migrations 刪除、identifier quoting 一致、legacy_alter_table 註解）；修復後 preflight + happy dry-run 綠，poison dry-run（empty createdAt / orphan mcp_token）被 preflight 攔下
-  - 2026-04-20 第二輪 Critical 發現（阻擋 apply）：`/commit` 流程中 code-review agent 發現 migration 0007 在 D1 FK=ON runtime 下 `DROP TABLE "user"` 會被擋（`SQLITE_CONSTRAINT_FOREIGNKEY`），因為 `defer_foreign_keys=ON` 只 defer row-level violation 到 COMMIT，對 DDL-time「DROP parent 仍被 child 指向」無效。**本機 sqlite3 CLI dry-run 預設 `foreign_keys=OFF` 所以沒觸發**（第一輪假陽性）。主線實測驗證：FK=ON + `defer_foreign_keys=ON` 下 DROP parent 確實爆 `FOREIGN KEY constraint failed (19)`。Options：
-    - (A) `PRAGMA foreign_keys = OFF` 前綴：SQLite 官方 table rebuild recipe；本機實測 FK=ON 下加此 prefix 可通過；但 D1 文件寫不支援此 PRAGMA（需實測）
-    - (B) 所有 FK children（session / account / mcp_tokens / member_role_changes）一起 rebuild：`_new` children `REFERENCES "user"` 由 lazy name resolution 處理，DROP 舊 user 時 `_new` children 仍指著 → 同樣被擋
-    - (C) `PRAGMA legacy_alter_table = ON` + rename-to-legacy：SQLite docs 說此 pragma 能阻止 rename 時 auto-rewrite 子表 FK，**但 sqlite 3.51 實測結果與 docs 不符**（pragma 設 1 但 FK refs 仍被改寫 + RENAME 自身觸發 FK constraint failed），不可靠
-  - **migration 0007 + verify script 已移到 `openspec/changes/fix-better-auth-timestamp-affinity/drafts/` 為草稿**（副檔名 `.draft`），非 production migration path，避免意外 apply
-  - 下個 session 須以真實 wrangler D1 behavior 為準重寫（見 HANDOFF.md）
+  - 2026-04-20 第二輪 Critical 發現（阻擋 apply）：`/commit` 流程中 code-review agent 發現 migration 0007 在 D1 FK=ON runtime 下 `DROP TABLE "user"` 會被擋。確認 `defer_foreign_keys=ON` 只 defer row-level violation 到 COMMIT，對 DDL-time「DROP parent 仍被 child 指向」無效
+  - 2026-04-20 晚 D1 實測（用真實 miniflare D1，不是 sqlite3 CLI）：
+    - Option A `PRAGMA foreign_keys = OFF`：D1 **靜默忽略**（PRAGMA 接受但讀回仍是 1），canonical SQLite recipe 不適用
+    - Option B 純 FK children rebuild（session / account / mcp_tokens / member_role_changes）：實測撞到 **mcp_tokens 是 query_logs 的 parent**（HANDOFF 漏列），DROP mcp_tokens 被 query_logs 擋
+    - Option C `PRAGMA writable_schema = ON`：D1 reject `SQLITE_AUTH`，schema-text workaround 不可用
+    - **Option V (採用)**：rebuild 完整 FK cascade（user + account + session + mcp_tokens + query_logs + citation_records + messages + member_role_changes，共 8 tables；`messages` 納入是因為它對 query_logs 的 FK 是 `ON DELETE SET NULL`，DROP query_logs 時會靜默清掉 70 筆 message → query_log 連結，必須在 query_logs 之前先 DROP messages）。建 `_new` 表（FK 指向 user_new / mcp_tokens_new / query_logs_new）→ INSERT 資料 → DROP 舊表 children-first → RENAME `_new` 到 canonical 時 SQLite 自動 rewrite FK refs。實測 dry-run 全綠（用 prod backup `tmp/prod-backup-0420.sql`）
+  - migration 0007 重寫位置：`server/database/migrations/0007_better_auth_timestamp_affinity.sql`（~ 380 行 Option V，drafts/ 已刪除）
+  - verify script 從 draft 移正：`scripts/checks/verify-auth-storage-consistency.sh`（補 query_logs FK orphan check + 5 indexes 校驗 + RENAME auto-rewrite stale ref check）
+  - dry-run 結果：column affinity 7/7 = INTEGER、typeof rows 全 integer、0 FK violations、5 indexes present、0 stale `_new` refs、row counts 2/2/2/7/64/31/2 全保留
+  - preflight 對 production 結果：0 orphan FK、0 unparseable timestamps、PREFLIGHT PASSED
 - [ ] 2.7 `/commit` migration 檔（type=fix 或 migrate，繁體中文描述 table rebuild）
 - [ ] 2.8 部署窗口安排：依 design § Phase 部署順序：先 endpoint，後 migration — Phase 1 穩定 24h+ 後的低流量時段
 - [ ] 2.9 執行 production migration：`wrangler d1 migrations apply agentic-rag-db --remote`（或 nuxthub deploy pipeline auto-apply）
