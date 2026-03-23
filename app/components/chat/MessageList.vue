@@ -150,6 +150,7 @@
             <button
               v-for="query in suggestionQueries"
               :key="query"
+              type="button"
               class="w-full rounded-lg border border-default bg-elevated px-4 py-3 text-left text-sm text-default transition-colors hover:bg-accented"
               @click="handleSuggestionClick(query)"
             >
