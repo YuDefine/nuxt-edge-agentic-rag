@@ -79,3 +79,43 @@
 備註：修復時未觸發 cross-change DRIFT — tokens / query-logs / documents 全部都使用 `bg-muted text-default`，Phase 3 初版是唯一偏離者；review 當下 inline 修復。
 
 累積 Findings: **12 項**。
+
+---
+
+## member-and-permission-management + responsive-and-a11y-foundation (合跑) — 2026-04-20
+
+**影響範圍**:
+
+- `app/pages/admin/members/index.vue`
+- `app/pages/admin/settings/guest-policy.vue`
+- `app/pages/account-pending.vue`
+- `app/components/admin/members/MemberRoleActions.vue`
+- `app/components/admin/members/ConfirmRoleChangeDialog.vue`
+- `app/components/chat/GuestAccessGate.vue`
+- `app/components/chat/Container.vue`
+- `app/components/chat/MessageList.vue`
+- `app/components/documents/UploadWizard.vue`
+- `app/pages/index.vue`（signed-in 分支）
+
+| #   | 類別        | 問題摘要                                                                                    | 嚴重度   | 發現來源 |
+| --- | ----------- | ------------------------------------------------------------------------------------------- | -------- | -------- |
+| 1   | consistency | `ConfirmRoleChangeDialog` / `MemberRoleActions` 用 `color="primary"` / `"warning"` 做強調色 | critical | /polish  |
+| 2   | consistency | `guest-policy.vue` radio 選中狀態用 `border-primary bg-primary/5` 做強調                    | critical | /polish  |
+| 3   | consistency | `account-pending.vue` 聯絡 email 用 `text-primary` 而非 `text-default underline`            | warning  | /polish  |
+| 4   | a11y        | 4 處 `animate-spin` 缺 `motion-reduce:animate-none` （WCAG 2.3.3）                          | P1       | /audit   |
+| 5   | a11y        | `Container.vue` 錯誤提示關閉鈕 icon-only `<UButton>` 缺 `aria-label`                        | P2       | /audit   |
+| 6   | responsive  | `index.vue:92` signed-in chat 用 `100vh` 而非 `100dvh`，mobile Safari 地址列會切到輸入區    | P2       | /audit   |
+| 7   | a11y        | `MessageList.vue` suggestion chip 原生 `<button>` 缺 `type="button"` 預設會變 submit        | P3       | /audit   |
+
+備註：
+
+- `#1-3` 為語意色彩做裝飾的**第三次**出現（前兩次：admin-document-lifecycle-ops warning/primary、bootstrap UploadWizard success）。已由 subagent inline 修為 neutral。
+- `#4-7` 由 `/audit` 發現、主線補修（2026-04-20）；均為細節強化，屬 `/harden` + `/adapt` 範疇。
+- **Cross-Change DRIFT 觀察**：全 repo 有 13+ 個 `animate-spin` 使用處（admin/debug/、admin/tokens/、admin/query-logs/、auth/callback、admin/dashboard、chat/StreamingMessage、chat/CitationReplayModal、admin/documents/[index,upload]、documents/[id]）缺 `motion-reduce:animate-none`。本次 change scope 外，不阻擋 archive，但建議列為獨立 tech-debt task 或下一條 UI change 的 Cross-Change DRIFT。
+
+**未完成項**（archive 前必補）：
+
+- 三斷點截圖（xs 360 / md 768 / xl 1280）— 需 `pnpm dev` + seeded session
+- `responsive-and-a11y-foundation` §10 的 `/design improve` 從頭跑（subagent 此次只覆蓋 member-perm 範圍）
+
+累積 Findings: **19 項**（達到 `/design-retro` 5 倍數觸發點 15 + 20 之間；下次達 20 時觸發）。
