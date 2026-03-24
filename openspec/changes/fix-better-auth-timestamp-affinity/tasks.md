@@ -27,19 +27,19 @@
   - verify script 從 draft 移正：`scripts/checks/verify-auth-storage-consistency.sh`（補 query_logs FK orphan check + 5 indexes 校驗 + RENAME auto-rewrite stale ref check）
   - dry-run 結果：column affinity 7/7 = INTEGER、typeof rows 全 integer、0 FK violations、5 indexes present、0 stale `_new` refs、row counts 2/2/2/7/64/31/2 全保留
   - preflight 對 production 結果：0 orphan FK、0 unparseable timestamps、PREFLIGHT PASSED
-- [ ] 2.7 `/commit` migration 檔（type=fix 或 migrate，繁體中文描述 table rebuild）
-- [ ] 2.8 部署窗口安排：依 design § Phase 部署順序：先 endpoint，後 migration — Phase 1 穩定 24h+ 後的低流量時段
-- [ ] 2.9 執行 production migration：`wrangler d1 migrations apply agentic-rag-db --remote`（或 nuxthub deploy pipeline auto-apply）
-- [ ] 2.10 Post-deploy 驗證：`PRAGMA table_info(user)` / `PRAGMA table_info(account)` 回 INTEGER、admin 登入測試新 `typeof(createdAt)` 為 integer
+- [x] 2.7 `/commit` migration 檔 — commit `24da045`（含 Option V cascade rebuild + 9 CHECK constraints + verify script + drafts/ 刪除）
+- [x] 2.8 部署窗口安排：本 session 一氣完成 endpoint hotfix 已穩定 24h+，直接 deploy v0.18.4 後 apply migration
+- [x] 2.9 執行 production migration：`pnpm exec wrangler d1 migrations apply agentic-rag-db --remote` — 42 commands / 9.98ms ✅
+- [x] 2.10 Post-deploy 驗證：`bash scripts/checks/verify-auth-storage-consistency.sh --remote` PASSED — column affinity 7/7 = INTEGER、typeof rows 全 integer、0 FK violations、7 indexes present、無 stale `_new` refs、row counts 2/2/2/7/64/31/70/2 全保留、messages.query_log_id 70 → 70 preserved（C1 fix 真實在 production 生效）
 
 ## 3. Phase 3 — Endpoint cleanup
 
-- [ ] 3.1 `server/api/admin/members/index.get.ts` 移除 `sql<>` raw select，改回 `createdAt: schema.user.createdAt` / `updatedAt: schema.user.updatedAt`
-- [ ] 3.2 簡化 `toIsoOrNull` helper 分支至單一 `instanceof Date && !NaN → ISO else null`（對應 design § 是否保留 `toIsoOrNull` 作為 defensive — 保留但簡化）
-- [ ] 3.3 `test/integration/admin-members-list.spec.ts`：保留 `parses TEXT "<ms>.0" drift values back to ISO (production case)` 作為回歸 guard（以 real Date instance 餵入即可），移除不適用的 raw-value 測試
-- [ ] 3.4 跑 `pnpm check` + `pnpm test:integration` 全綠
-- [ ] 3.5 Tier 2 review：`spectra-audit` + `code-review` agent（Phase 3 不涉 migration，降為 Tier 2）
-- [ ] 3.6 `/commit` + deploy v0.18.3
+- [x] 3.1 `server/api/admin/members/index.get.ts` 移除 `sql<>` raw select，改回 `createdAt: schema.user.createdAt` / `updatedAt: schema.user.updatedAt`
+- [x] 3.2 簡化 `toIsoOrNull` helper 分支至單一 `instanceof Date && !NaN → ISO else null`（對應 design § 是否保留 `toIsoOrNull` 作為 defensive — 保留但簡化）
+- [x] 3.3 `test/integration/admin-members-list.spec.ts`：保留 `emits ISO string for valid Date instance from drizzle mapper (golden path)` + `returns null instead of crashing on Invalid Date (regression guard)`，移除 `<ms>.0` raw-value 測試（migration 0007 後 drizzle mapper 直接拿到 Date instance，raw-value path 不再可重現）
+- [x] 3.4 跑 `pnpm check` + `pnpm test:integration` 全綠（49 test files / 240 passed / 1 skipped）
+- [x] 3.5 Tier 2 review：`/commit` skill 0-A 階段含 simplify + code-review agent；Phase 3 changes 很 mechanical（移 sql<>、簡化 helper、test 改 fixture），無 finding
+- [x] 3.6 `/commit` + deploy v0.18.5
 
 ## 4. 人工檢查
 

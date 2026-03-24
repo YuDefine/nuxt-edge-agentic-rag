@@ -3,16 +3,20 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createRouteEvent, installNuxtRouteTestGlobals } from './helpers/nuxt-route'
 
 /**
- * GET /api/admin/members — schema-drift tolerance.
+ * GET /api/admin/members — defensive timestamp handling.
  *
- * Production D1 stores `user.createdAt` / `user.updatedAt` as TEXT (drift
- * from the drizzle `integer timestamp_ms` declaration). Values look like
- * `"1776332449872.0"`. The drizzle mapper for `timestamp_ms` produces
- * Invalid Date on such input → `Date.toISOString()` threw `RangeError:
- * Invalid time value` and the endpoint returned 500.
+ * After migration 0007 (Option V cascade rebuild, 2026-04-20) the
+ * production D1 `user.createdAt` / `user.updatedAt` columns hold INTEGER
+ * values and drizzle's `timestamp_ms` mapper returns valid Date instances
+ * on every row. The handler now reads `createdAt` / `updatedAt` directly
+ * (no `sql<>` raw alias) and converts via the simplified `toIsoOrNull`
+ * helper that accepts a Date instance and returns its ISO form, or null
+ * if the input is unparseable.
  *
- * The handler must tolerate the drift and emit a valid ISO string (or
- * null if truly unparseable) instead of crashing the whole list request.
+ * The drift regression test is retained — it now exercises the helper
+ * with `Invalid Date` (the only shape that could re-emerge if a future
+ * driver / column-type drift sneaks back in) and asserts the handler
+ * degrades to null rather than throwing RangeError.
  */
 
 const ADMIN_SESSION = {
@@ -73,15 +77,6 @@ vi.mock('drizzle-orm', () => ({
   desc: (col: unknown) => ({ __op: 'desc', col }),
   eq: (col: unknown, value: unknown) => ({ __op: 'eq', col, value }),
   count: () => ({ __fn: 'count' }),
-  sql: Object.assign(
-    (strings: TemplateStringsArray, ..._values: unknown[]) => {
-      const token = { __sql: strings.join('?'), as: (_alias: string) => token }
-      return token
-    },
-    {
-      raw: (value: string) => ({ __sqlRaw: value }),
-    },
-  ),
 }))
 
 vi.mock('../../server/utils/admin-session', () => ({
@@ -90,7 +85,7 @@ vi.mock('../../server/utils/admin-session', () => ({
 
 installNuxtRouteTestGlobals()
 
-describe('GET /api/admin/members — timestamp drift tolerance', () => {
+describe('GET /api/admin/members — timestamp handling', () => {
   beforeEach(() => {
     mocks.requireRuntimeAdminSession.mockReset()
     mocks.selectRows = []
@@ -106,10 +101,8 @@ describe('GET /api/admin/members — timestamp drift tolerance', () => {
     mocks.requireRuntimeAdminSession.mockResolvedValue(ADMIN_SESSION)
   })
 
-  it('parses TEXT "<ms>.0" drift values back to ISO (production case)', async () => {
-    // Exactly what production D1 has: column affinity is TEXT, value is
-    // a float-like string. The raw driver value flows into the handler
-    // because we bypass drizzle's timestamp_ms mapper via `sql<>` alias.
+  it('emits ISO string for valid Date instance from drizzle mapper (golden path)', async () => {
+    const epoch = 1776332449872
     mocks.countValue = 1
     mocks.selectRows = [
       {
@@ -118,8 +111,8 @@ describe('GET /api/admin/members — timestamp drift tolerance', () => {
         name: 'User One',
         image: null,
         role: 'admin',
-        createdAtRaw: '1776332449872.0',
-        updatedAtRaw: '1776476402391.0',
+        createdAt: new Date(epoch),
+        updatedAt: new Date(epoch),
       },
     ]
 
@@ -130,12 +123,14 @@ describe('GET /api/admin/members — timestamp drift tolerance', () => {
     }
 
     expect(result.data).toHaveLength(1)
-    expect(result.data[0].createdAt).toBe(new Date(1776332449872).toISOString())
-    expect(result.data[0].updatedAt).toBe(new Date(1776476402391).toISOString())
+    expect(result.data[0].createdAt).toBe(new Date(epoch).toISOString())
+    expect(result.data[0].updatedAt).toBe(new Date(epoch).toISOString())
   })
 
-  it('still emits valid ISO for numeric epoch-ms rows (no regression)', async () => {
-    const epoch = 1776332449872
+  it('returns null instead of crashing on Invalid Date (regression guard)', async () => {
+    // If a future driver upgrade or column-type drift produces Invalid Date,
+    // the helper must degrade to null rather than letting toISOString() throw
+    // RangeError and 500 the entire list response.
     mocks.countValue = 1
     mocks.selectRows = [
       {
@@ -143,36 +138,9 @@ describe('GET /api/admin/members — timestamp drift tolerance', () => {
         email: 'u2@example.com',
         name: 'User Two',
         image: null,
-        role: 'member',
-        createdAtRaw: epoch,
-        updatedAtRaw: epoch,
-      },
-    ]
-
-    const { default: handler } = await import('../../server/api/admin/members/index.get')
-
-    const result = (await handler(createRouteEvent())) as {
-      data: Array<{ createdAt: string | null; updatedAt: string | null }>
-    }
-
-    expect(result.data[0].createdAt).toBe(new Date(epoch).toISOString())
-    expect(result.data[0].updatedAt).toBe(new Date(epoch).toISOString())
-  })
-
-  it('returns null instead of crashing on null / unparseable drift values', async () => {
-    // Guarantees the docstring promise "Return null for unparseable rows
-    // instead": null, garbage strings, and zero/negative epoch all degrade
-    // to null rather than propagating a RangeError.
-    mocks.countValue = 1
-    mocks.selectRows = [
-      {
-        id: 'u3',
-        email: 'u3@example.com',
-        name: 'User Three',
-        image: null,
         role: 'guest',
-        createdAtRaw: null,
-        updatedAtRaw: 'not-a-date',
+        createdAt: new Date('not-a-date'),
+        updatedAt: null,
       },
     ]
 
