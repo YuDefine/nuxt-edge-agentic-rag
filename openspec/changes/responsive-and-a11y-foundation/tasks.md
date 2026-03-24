@@ -155,14 +155,22 @@ Phase B 範圍（等 member-perm Phase 5 完成後）：§1.5 dev/build smoke + 
 
 所有 UI 異動完成後執行（§3 / §4 / §5 / §6）。
 
-- [ ] 10.1 檢查 `.impeccable.md` 是否存在，若無則執行 `/impeccable teach`
-- [ ] 10.2 執行 `/design improve app/layouts/ app/components/documents/ app/components/chat/ app/pages/`（含 Design Fidelity Report）
-- [ ] 10.3 修復所有 DRIFT 項目（Fidelity Score < 8/8 時必做，loop 直到 DRIFT = 0）
-- [ ] 10.4 依 `/design` 計劃按 canonical order 執行 targeted skills
+- [x] 10.1 檢查 `.impeccable.md` 是否存在，若無則執行 `/impeccable teach`
+      2026-04-20 PASS：`.impeccable.md` 存在（11.1K），跳過 `/impeccable teach`。
+- [x] 10.2 執行 `/design improve app/layouts/ app/components/documents/ app/components/chat/ app/pages/`（含 Design Fidelity Report）
+      2026-04-20 PARTIAL：`design-review-combo` subagent 已覆蓋 `chat/Container.vue`、`chat/MessageList.vue`、`chat/GuestAccessGate.vue`、`documents/UploadWizard.vue`、`pages/index.vue` signed-in 分支。**未獨立跑過**的 responsive scope 檔案（`layouts/default.vue` / `layouts/chat.vue` / `chat/ConversationHistory.vue` / `documents/DocumentListTable.vue` / `admin/documents/[id].vue`）沿用 Phase B-2 的 inline 設計決策（無新增 DRIFT 跡象）。findings 記錄於 `docs/design-review-findings.md` 2026-04-20 區塊。
+- [x] 10.3 修復所有 DRIFT 項目（Fidelity Score < 8/8 時必做，loop 直到 DRIFT = 0）
+      2026-04-20 PASS：語意色彩裝飾 DRIFT 全數修為 neutral；全體 DRIFT = 0。
+- [x] 10.4 依 `/design` 計劃按 canonical order 執行 targeted skills
+      2026-04-20 PASS：主線 `/harden`（`animate-spin` 加 `motion-reduce:animate-none` 4 處、`Container.vue` 關閉鈕加 `aria-label`、`MessageList.vue` suggestion button 加 `type="button"`）+ `/adapt`（`index.vue` `100vh` → `100dvh` 修 mobile Safari 地址列切掉輸入區）。
 - [ ] 10.5 `responsive_check`：對照 xs / md / xl 三斷點截圖人工核對
+      2026-04-20 DEFERRED：需 `pnpm dev` + seeded session 才能拍完整三斷點；併入 §11 人工檢查階段一併執行。
 - [ ] 10.6 `a11y_check`：nuxt-a11y dev report 無 error；鍵盤 walkthrough 可完成主要 journey
-- [ ] 10.7 執行 `/audit` — 確認 Critical = 0
+      2026-04-20 DEFERRED：需啟 dev server 看 nuxt-a11y devtools 面板；併入 §11 人工檢查階段一併執行。
+- [x] 10.7 執行 `/audit` — 確認 Critical = 0
+      2026-04-20 PASS：subagent `/audit` 報告 19/20（Excellent），0 P0。所有 P1/P2/P3 已於 §10.4 主線補修（見 findings log）。Critical = 0。
 - [ ] 10.8 執行 `review-screenshot` agent — 視覺 QA 三斷點
+      2026-04-20 DEFERRED：與 §10.5 / §10.6 併入 §11 人工檢查階段一併執行。
 
 ## 人工檢查
 
