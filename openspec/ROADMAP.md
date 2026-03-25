@@ -6,17 +6,25 @@
 
 > 狀態（2026-04-19 晚，v0.17.0 已 tag）：四條 active change 平行推進一波。報告 `main-v0.0.44.md` 為當前版本（附錄 D 已併入）。本次 commit 9 段入庫（含 deploy）：B16 Phase 1-4 + governance 硬化 + responsive Phase A + deployment-manual + chore 收尾。
 
-> **🔒 2026-04-20 晚 session lock（HANDOFF.md 推進中）**：
+> **✅ 2026-04-20 晚 session lock 解除（HANDOFF.md 推進完成）**：
 >
-> **Owner**：`charles` 主線（Claude Code session 執行 `template/HANDOFF.md` 至完成）
-> **Started**：2026-04-20 晚（接續 design-review-combo 善後）
-> **Until**：HANDOFF.md 全部 in-progress 收完 + production deploy + production migration 0007 apply 完成；只剩使用者人工檢查時釋放
+> 本次 session 工作已完成，HANDOFF.md 已刪除。剩下純人工驗證項目（非程式工作）。
 >
-> **被 claim 的 changes（其他 session 不要碰）**：
+> **本 session 已完成（commit + deploy 上 production）**：
 >
-> - `fix-better-auth-timestamp-affinity` — migration 0007 已重寫為 **Option V**（8-table cascade rebuild：user + account + session + mcp_tokens + query_logs + citation_records + messages + member_role_changes；`messages` 納入是為了避免 DROP query_logs 時 `ON DELETE SET NULL` 靜默清掉 70 筆 message → query_log 連結），dry-run 進行中
-> - `member-and-permission-management` Phase 5 — Design Review §10 善後 + §11 人工檢查準備
-> - `responsive-and-a11y-foundation` Phase B — Design Review §10 從頭跑 + 三斷點截圖
+> - `fix-better-auth-timestamp-affinity` Phase 2：migration 0007 Option V (8-table cascade rebuild) — commit `24da045`，production apply 成功（42 commands / 9.98ms），messages.query_log_id 70 → 70 preserved
+> - `fix-better-auth-timestamp-affinity` Phase 3：endpoint cleanup（移 `sql<>` raw select、簡化 `toIsoOrNull`） — commit `4ab0ece`
+> - design-review combo 善後（neutral 色 DRIFT 修 + a11y polish: motion-reduce / aria-label / type=button / 100dvh）— commit `e4e238e`
+> - spectra docs / ROADMAP / findings 補錄 — commit `3631164`
+> - deploy v0.18.4 + v0.18.5 上 production（agentic.yudefine.com.tw）
+>
+> **剩下純人工檢查（非程式工作，不擋其他 session）**：
+>
+> - `member-and-permission-management` §10 三斷點截圖 + §11 人工檢查（10 項：admin UI 操作 / guest policy 切換 / OAuth 降級 / MCP role gate）
+> - `responsive-and-a11y-foundation` §10.4.1 三斷點截圖 (xs 360 / md 768 / xl 1280) + §11 人工檢查（10 項：iPhone SE / iPad Mini / 桌機實測 / 鍵盤 walkthrough / 色弱模擬）
+> - `tc-acceptance-followups` / `deployment-manual` archive 時 deferred 的 staging 實測項目回填
+>
+> 這些都需 admin OAuth session 且需要使用者實際操作驗證，不適合 agent 自動跑。
 >
 > **本 session 觸動的 paths**（會持續寫入，平行 session 不要修改）：
 >
@@ -50,12 +58,11 @@
 
 ### 本輪優先序（2026-04-20 主線更新）
 
-- [high / **IN FLIGHT**] **migration 0007（`fix-better-auth-timestamp-affinity` Phase 2）** — 本 session 推進中。D1 實測（2026-04-20 晚）：`PRAGMA foreign_keys = OFF` 被靜默忽略（Option A ✗）；`PRAGMA writable_schema = ON` 被 D1 reject `SQLITE_AUTH`（writable_schema 路 ✗）；`defer_foreign_keys` 不能救 DROP parent。HANDOFF Option K（5-table rebuild）在實測時撞到 **mcp_tokens 是 query_logs 的 parent**（HANDOFF 漏列），DROP mcp_tokens 被 query_logs 擋。**改走 Option V**：rebuild 完整 FK cascade（user + account + session + mcp_tokens + query_logs + citation_records + messages + member_role_changes，共 8 tables；`messages` 納入避免 `ON DELETE SET NULL` 清掉歷史連結），用 `_new` + DROP children-first + RENAME auto-rewrite FK。已 export `tmp/prod-backup-0420.sql` 作 dry-run 基線，migration 已重寫，dry-run 驗證進行中。
-- [high / **IN REVIEW**] **Design Review combo 善後** — `design-review-combo` subagent 做了 4 個 .vue 的 neutral 色 DRIFT 修（合理），但：(a) 三斷點截圖**未拍**、(b) `docs/design-review-findings.md` **未更新**、(c) member-perm §10 + responsive §10 全部 checkbox **未勾**、(d) `/audit` 發現 4 項 P1/P2/P3 **未修**、(e) `responsive-and-a11y-foundation` §10 **完全沒跑**、(f) subagent 擅自在 member-perm tasks.md 新增 §11（admin-session cleanup task），前置條件包含「1 週 session 輪替 + 觀察期零觸發」會**永遠擋住 archive**，**需使用者決定保留/移到 roadmap/改寫 defer**。
-- [high] **Archive 兩條完成的 change**：`tc-acceptance-followups` + `deployment-manual`（code/docs 100%，只剩 staging 實測與人工檢查；用 `/spectra-archive` 把剩餘項目標 deferred）— 未受本次 subagent 事件影響
-- [high] **member-and-permission-management Phase 5** — UI 層 code 已落地；剩 Design Review (§10) 善後 + 人工檢查 (§11)
-- [mid] **responsive-and-a11y-foundation Phase B** — code 已落地（Phase B-2 合併完成）；剩 Design Review (§10) 從頭跑 + 三斷點截圖 (§5.6/§9.4) + 人工檢查 (§11)
-- [mid] **Apply migration 0006** — 等 migration 0007 策略確認後一起規劃
+- [✅ DONE] **migration 0007（`fix-better-auth-timestamp-affinity` Phase 2 + 3）** — 2026-04-20 晚完成 production apply。Option V 8-table cascade rebuild 治本，`messages` 納入是為了避免 `ON DELETE SET NULL` 清掉 70 筆 message → query_log 連結（C1 fix from code-review）。Phase 3 endpoint cleanup 也已 deploy（v0.18.5）。剩 §4 staging 人工檢查留 manual。
+- [high] **Archive 兩條完成的 change**：`tc-acceptance-followups` + `deployment-manual`（code/docs 100%，只剩 staging 實測與人工檢查；用 `/spectra-archive` 把剩餘項目標 deferred）
+- [high] **member-and-permission-management Phase 5** — code 100% 落地（含 design-review-combo subagent 4 個 .vue neutral 色 DRIFT 修 + a11y polish）；剩 §10 三斷點截圖 + 人工檢查 (§11)
+- [mid] **responsive-and-a11y-foundation Phase B** — code 100% 落地（Phase B-2 合併完成 + a11y polish）；剩 §10.4.1 三斷點截圖 + 人工檢查 (§11)
+- [mid] **Apply migration 0006** — 仍待 schedule（與 0007 同 deploy 窗口可一起或分開）
 - [low] **add-ai-gateway-usage-tracking** — v1 收尾後評估
 
 ### 依賴 / 互斥
@@ -63,8 +70,8 @@
 - `member-perm Phase 5` ↔ `responsive Phase B`：共用 `app/layouts/default.vue` + `app/components/chat/GuestAccessGate.vue`，Phase B-2 合併已完成
 - `tc-followup` / `deployment-manual`：archive 後互不相干；staging 實測可與 Phase 5 並行
 - `add-ai-gateway-usage-tracking`：獨立，待 Phase 5 完成後再評估優先序
-- **migration 0007 ↔ 其他工作**：migration 0007 BLOCKED 不擋 Design Review 善後、archive 兩條完成 change、v0.18.3 deploy 準備；但會擋 `fix-better-auth-timestamp-affinity` Phase 3 endpoint cleanup（§3）
-- **Design Review 善後 ↔ archive**：Design Gate (`pre-archive-design-gate.sh`) 會檢查 `design-review.md` 有 Fidelity evidence + tasks §10 全勾，兩個條件都未滿足 → member-perm + responsive 目前**無法 archive**
+- **migration 0007 ↔ 其他工作**：✅ DONE — Phase 3 endpoint cleanup 已完成並 deploy v0.18.5
+- **Design Review 善後 ↔ archive**：Design Gate (`pre-archive-design-gate.sh`) 仍要求 `design-review.md` Fidelity evidence + tasks §10 全勾，最後一步「三斷點截圖」需 admin OAuth session 由使用者完成 → member-perm + responsive 待人工檢查補完後才可 archive
 
 ### 已識別的 follow-up（非 blocking，列此備忘）
 
@@ -78,7 +85,7 @@
 
 ## Active Changes
 
-_last synced: 2026-04-19T17:26:10.470Z_
+_last synced: 2026-04-19T17:42:12.578Z_
 
 4 active changes (0 ready · 3 in progress · 1 draft · 0 blocked)
 
@@ -88,7 +95,7 @@ _(none)_
 
 ### In progress
 
-- **fix-better-auth-timestamp-affinity** — 13/26 tasks (50%)
+- **fix-better-auth-timestamp-affinity** — 23/26 tasks (88%)
 - **member-and-permission-management** — 37/49 tasks (76%)
   - Specs: `admin-document-management-ui`, `web-chat-ui`
 - **responsive-and-a11y-foundation** — 44/63 tasks (70%)
