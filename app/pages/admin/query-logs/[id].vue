@@ -88,7 +88,10 @@
     <UCard>
       <template v-if="pageState === 'loading'">
         <div class="flex flex-col items-center justify-center py-16">
-          <UIcon name="i-lucide-loader-2" class="mb-4 size-8 animate-spin text-muted" />
+          <UIcon
+            name="i-lucide-loader-2"
+            class="mb-4 size-8 animate-spin text-muted motion-reduce:animate-none"
+          />
           <p class="text-sm text-muted">載入中...</p>
         </div>
       </template>

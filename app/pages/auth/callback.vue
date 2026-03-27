@@ -36,7 +36,10 @@
         </NuxtLink>
       </template>
       <template v-else>
-        <UIcon name="i-lucide-loader-2" class="size-8 animate-spin text-dimmed" />
+        <UIcon
+          name="i-lucide-loader-2"
+          class="size-8 animate-spin text-dimmed motion-reduce:animate-none"
+        />
         <p class="text-muted">正在處理登入...</p>
         <p v-if="isTimeout" class="text-sm text-muted">
           處理時間較長，請稍候或

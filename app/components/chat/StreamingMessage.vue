@@ -76,7 +76,10 @@
 
     <!-- Waiting state: show loader -->
     <div v-if="showLoader" class="flex items-center gap-2 py-2">
-      <UIcon name="i-lucide-loader-2" class="size-4 animate-spin text-muted" />
+      <UIcon
+        name="i-lucide-loader-2"
+        class="size-4 animate-spin text-muted motion-reduce:animate-none"
+      />
       <span class="text-sm text-muted">正在思考...</span>
     </div>
 

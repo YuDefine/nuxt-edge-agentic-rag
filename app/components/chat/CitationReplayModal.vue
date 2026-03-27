@@ -133,7 +133,10 @@
 
         <!-- Loading state -->
         <div v-if="isLoading" class="flex items-center justify-center py-8">
-          <UIcon name="i-lucide-loader-2" class="size-6 animate-spin text-primary" />
+          <UIcon
+            name="i-lucide-loader-2"
+            class="size-6 animate-spin text-primary motion-reduce:animate-none"
+          />
           <span class="ml-2 text-sm text-muted">載入中...</span>
         </div>
 

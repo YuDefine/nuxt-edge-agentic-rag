@@ -112,6 +112,7 @@
 - `#1-3` 為語意色彩做裝飾的**第三次**出現（前兩次：admin-document-lifecycle-ops warning/primary、bootstrap UploadWizard success）。已由 subagent inline 修為 neutral。
 - `#4-7` 由 `/audit` 發現、主線補修（2026-04-20）；均為細節強化，屬 `/harden` + `/adapt` 範疇。
 - **Cross-Change DRIFT 觀察**：全 repo 有 13+ 個 `animate-spin` 使用處（admin/debug/、admin/tokens/、admin/query-logs/、auth/callback、admin/dashboard、chat/StreamingMessage、chat/CitationReplayModal、admin/documents/[index,upload]、documents/[id]）缺 `motion-reduce:animate-none`。本次 change scope 外，不阻擋 archive，但建議列為獨立 tech-debt task 或下一條 UI change 的 Cross-Change DRIFT。
+  - **✅ Resolved 2026-04-21**：主線已補齊 13 處 `motion-reduce:animate-none`（debug/latency、debug/query-logs/[id]、tokens/index、documents/[id] × 2、documents/upload、documents/index、dashboard/index、query-logs/[id]、query-logs/index、auth/callback、chat/StreamingMessage、chat/CitationReplayModal）。驗證：`rg 'animate-spin' app` 全 19 處皆含 `motion-reduce:animate-none`。
 
 **未完成項**（archive 前必補）：
 
