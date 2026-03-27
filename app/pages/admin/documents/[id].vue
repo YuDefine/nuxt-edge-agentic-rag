@@ -164,7 +164,10 @@
     <template v-if="isLoading">
       <UCard>
         <div class="flex flex-col items-center justify-center py-16">
-          <UIcon name="i-lucide-loader-2" class="mb-4 size-8 animate-spin text-muted" />
+          <UIcon
+            name="i-lucide-loader-2"
+            class="mb-4 size-8 animate-spin text-muted motion-reduce:animate-none"
+          />
           <p class="text-sm text-muted">載入中...</p>
         </div>
       </UCard>
@@ -357,7 +360,7 @@
                 variant="soft"
                 size="xs"
                 icon="i-lucide-loader-2"
-                :ui="{ leadingIcon: 'animate-spin' }"
+                :ui="{ leadingIcon: 'animate-spin motion-reduce:animate-none' }"
                 disabled
               >
                 同步中
