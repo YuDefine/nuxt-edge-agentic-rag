@@ -133,7 +133,7 @@ describe('POST /api/_dev/login', () => {
       action: 'signed_in',
       user: {
         email: 'member@test.local',
-        role: 'user',
+        role: 'member',
       },
     })
   })

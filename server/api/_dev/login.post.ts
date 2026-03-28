@@ -117,9 +117,12 @@ export default defineEventHandler(async (event) => {
 
   const auth = serverAuth(event)
 
-  // Determine role based on admin allowlist
+  // Determine role based on admin allowlist.
+  // Non-admin dev accounts default to `'member'` (B16 three-tier canonical
+  // value). Legacy `'user'` was retired by migration 0006 — writing it here
+  // would pollute the DB with values the rest of the app rejects.
   const isAdmin = getRuntimeAdminAccess(body.email)
-  const role = isAdmin ? 'admin' : 'user'
+  const role = isAdmin ? 'admin' : 'member'
   const displayName = body.name ?? (body.email.split('@')[0] as string)
 
   await ensureCredentialAccount(body.email, password)
