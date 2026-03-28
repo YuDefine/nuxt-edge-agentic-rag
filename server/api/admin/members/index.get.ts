@@ -2,7 +2,7 @@ import { useLogger } from 'evlog'
 import { z } from 'zod'
 
 import { requireRuntimeAdminSession } from '#server/utils/admin-session'
-import { ROLE_VALUES } from '#shared/types/auth'
+import { ROLE_VALUES, normaliseRole } from '#shared/types/auth'
 import { paginateList, paginationQuerySchema } from '#shared/schemas/pagination'
 import { assertNever } from '#shared/utils/assert-never'
 
@@ -62,6 +62,10 @@ export default defineEventHandler(async function listMembersHandler(event) {
   const { db, schema } = await import('hub:db')
   const { asc, desc, eq, count } = await import('drizzle-orm')
 
+  // NOTE: the filter runs against the raw stored value, so `?role=member`
+  // won't surface a hypothetical row that still carries legacy `'user'`
+  // (migration 0006 should have cleared those; the normaliseRole call on
+  // the returned rows below handles stragglers).
   const whereExpr = query.role ? eq(schema.user.role, query.role) : undefined
 
   const orderBy = (() => {
@@ -114,7 +118,12 @@ export default defineEventHandler(async function listMembersHandler(event) {
           email: row.email,
           name: row.name,
           image: row.image,
-          role: row.role,
+          // Defensive normalisation: even though migration 0006 upgraded
+          // every legacy `'user'` row to `'member'`, a stray dev / backfill
+          // path can still write the legacy value. `normaliseRole` keeps the
+          // UI's three-tier exhaustiveness contract intact (see
+          // `adminMembersIndex.roleBadgeColor`).
+          role: normaliseRole(row.role),
           createdAt: toIsoOrNull(row.createdAt),
           updatedAt: toIsoOrNull(row.updatedAt),
         }))
