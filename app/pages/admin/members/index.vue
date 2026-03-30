@@ -67,14 +67,12 @@
     }),
   )
 
-  function roleBadgeColor(role: Role): 'primary' | 'neutral' | 'warning' {
+  function roleBadgeColor(role: Role): 'neutral' {
     switch (role) {
       case 'admin':
-        return 'primary'
       case 'member':
-        return 'neutral'
       case 'guest':
-        return 'warning'
+        return 'neutral'
       default:
         return assertNever(role, 'adminMembersIndex.roleBadgeColor')
     }
@@ -110,7 +108,7 @@
   const roleFilterOptions = [
     { label: '全部', value: 'all' as const },
     { label: '管理員', value: 'admin' as const },
-    { label: '正式成員', value: 'member' as const },
+    { label: '成員', value: 'member' as const },
     { label: '訪客', value: 'guest' as const },
   ]
 
@@ -137,7 +135,7 @@
       <div>
         <h1 class="text-2xl font-bold text-default">成員管理</h1>
         <p class="mt-1 text-sm text-muted">
-          檢視所有登入過的使用者，並升降 Member / Guest 角色。Admin 由伺服器設定管理。
+          檢視所有登入過的使用者，並升降成員 / 訪客角色。管理員由伺服器設定管理。
         </p>
       </div>
       <div class="flex flex-col gap-2 md:flex-row md:items-center">
@@ -270,7 +268,11 @@
           class="flex flex-col items-center justify-between gap-2 border-t border-default p-3 md:flex-row"
         >
           <p class="text-xs text-muted">共 {{ pagination.total }} 位，第 {{ page }} 頁</p>
-          <UPagination v-model:page="page" :total="pagination.total" :items-per-page="pageSize" />
+          <LazyUPagination
+            v-model:page="page"
+            :total="pagination.total"
+            :items-per-page="pageSize"
+          />
         </div>
       </template>
     </UCard>
