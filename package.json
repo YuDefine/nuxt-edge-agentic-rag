@@ -20,6 +20,7 @@
     "skills:install": "bash ./scripts/install-skills.sh",
     "skills:list": "bash ./scripts/check-skills.sh",
     "skills:update": "bash ./scripts/install-skills.sh",
+    "spectra:followups": "node scripts/spectra-ux/collect-followups.mts",
     "spectra:roadmap": "node scripts/spectra-ux/roadmap-sync.mts",
     "tag": "git tag v$(node -p \"require('./package.json').version\") && git push origin --tags",
     "test": "vp test run --config ./vitest.config.ts --coverage",
@@ -57,6 +58,7 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.11.2",
     "@commitlint/cli": "^20.5.0",
     "@commitlint/config-conventional": "^20.5.0",
     "@iconify-json/lucide": "^1.2.102",
