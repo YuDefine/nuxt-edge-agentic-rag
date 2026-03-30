@@ -92,7 +92,7 @@
       </div>
     </div>
 
-    <div class="mt-3 text-xs text-dimmed">
+    <div class="mt-3 text-xs text-muted">
       {{ new Date(createdAt).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' }) }}
     </div>
   </div>
