@@ -17,7 +17,7 @@
        wires it into a `< md` USlideover (drawer content can scroll). Also
        keeps the same layout when rendered as a sidebar `>= lg`. -->
   <div class="flex h-full min-h-0 flex-col p-4">
-    <h2 class="mb-3 text-xs font-semibold tracking-wider text-dimmed uppercase">對話記錄</h2>
+    <h2 class="mb-3 text-xs font-semibold tracking-wider text-muted uppercase">對話記錄</h2>
 
     <div class="min-h-0 flex-1 overflow-y-auto">
       <div class="rounded-lg border-2 border-default bg-accented p-3">
@@ -28,6 +28,6 @@
       </div>
     </div>
 
-    <p class="mt-4 text-xs text-dimmed">歷史記錄將在未來版本提供</p>
+    <p class="mt-4 text-xs text-muted">歷史記錄將在未來版本提供</p>
   </div>
 </template>

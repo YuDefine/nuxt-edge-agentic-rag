@@ -76,7 +76,7 @@
           使用 Google 帳號登入
         </UButton>
 
-        <p class="text-center text-xs text-dimmed">首次登入後，系統會根據帳號設定自動指派角色。</p>
+        <p class="text-center text-xs text-muted">首次登入後，系統會根據帳號設定自動指派角色。</p>
       </div>
     </UCard>
   </NuxtLayout>

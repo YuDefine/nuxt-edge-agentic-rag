@@ -145,7 +145,7 @@
 
         <!-- Suggestion queries -->
         <div class="space-y-2">
-          <p class="text-xs font-medium text-dimmed">試試這些問題</p>
+          <p class="text-xs font-medium text-muted">試試這些問題</p>
           <div class="flex flex-col gap-2">
             <button
               v-for="query in suggestionQueries"
@@ -163,7 +163,7 @@
         </div>
 
         <!-- Tips -->
-        <p class="text-xs text-dimmed">回答會標註引用來源，點擊可查看原文</p>
+        <p class="text-xs text-muted">回答會標註引用來源，點擊可查看原文</p>
       </div>
     </div>
   </div>
