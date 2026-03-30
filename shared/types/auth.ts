@@ -91,7 +91,7 @@ export function roleLabel(role: Role): string {
     case 'admin':
       return '管理員'
     case 'member':
-      return '正式成員'
+      return '成員'
     case 'guest':
       return '訪客'
     default:
@@ -108,7 +108,7 @@ export function roleLabel(role: Role): string {
  * function describeRole(role: Role): string {
  *   switch (role) {
  *     case 'admin': return '管理員'
- *     case 'member': return '正式成員'
+ *     case 'member': return '成員'
  *     case 'guest': return '訪客'
  *     default: return assertNever(role, 'describeRole')
  *   }

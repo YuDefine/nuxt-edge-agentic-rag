@@ -46,7 +46,7 @@
       case 'admin':
         return '此角色由伺服器設定管理，無法由 UI 變更。'
       case 'member':
-        return '此使用者將可提問並使用所有 Member 權限。'
+        return '此使用者將可提問並使用所有成員權限。'
       case 'guest':
         return '此使用者將會降級為訪客，能否提問取決於目前的訪客政策。'
       default:
@@ -114,19 +114,19 @@
           </p>
         </div>
 
-        <UAlert
+        <LazyUAlert
           color="warning"
           variant="subtle"
           icon="i-lucide-info"
           :title="transitionWarning(targetRole)"
         />
 
-        <UFormField
+        <LazyUFormField
           label="備註（選填）"
           name="reason"
           help="此備註將寫入 audit row，便於日後追溯。"
         >
-          <UTextarea
+          <LazyUTextarea
             v-model="reason"
             placeholder="例如：2026Q2 正式入職，開通成員權限"
             :rows="2"
@@ -134,7 +134,7 @@
             :disabled="isSubmitting"
             class="w-full"
           />
-        </UFormField>
+        </LazyUFormField>
       </div>
     </template>
 

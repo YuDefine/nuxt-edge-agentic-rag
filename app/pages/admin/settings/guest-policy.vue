@@ -62,7 +62,7 @@
           value,
           label: '同成員（預設）',
           description:
-            '訪客登入後即可提問並使用所有 Member 功能。適合開放註冊情境，以註冊事件本身作為篩選。',
+            '訪客登入後即可提問並使用所有成員功能。適合開放註冊情境，以註冊事件本身作為篩選。',
         }
       case 'browse_only':
         return {
@@ -76,7 +76,7 @@
           value,
           label: '完全不開放',
           description:
-            '訪客登入後立即導向「帳號待審核」頁，所有功能路徑會回 403。需 Admin 手動升為 Member 才可使用。',
+            '訪客登入後立即導向「帳號待審核」頁，所有功能路徑會回 403。需管理員手動升為成員才可使用。',
         }
       default:
         return assertNever(value, 'guestPolicyPage.policyOption')
