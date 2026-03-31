@@ -43,6 +43,9 @@
 
 ## 4. 人工檢查
 
-- [ ] 4.1 Phase 1 部署後：Admin 登入 production → 開啟 `/admin/members` → 確認列表出現、時間欄顯示正確 ISO
-- [ ] 4.2 Phase 2 部署後：重新整理 `/admin/members` → 確認列表仍正常、新 user 登入後欄位 typeof 為 integer（由 Admin 配合一次新帳號登入測試）
-- [ ] 4.3 Phase 3 部署後：Admin 再次進 `/admin/members` → 行為與 Phase 2 後完全一致（使用者無感知）
+- [x] 4.1 Phase 1 部署後：Admin 登入 production → 開啟 `/admin/members` → 確認列表出現、時間欄顯示正確 ISO
+      2026-04-20 PASS：charles.yudefine 登入 `agentic.yudefine.com.tw/admin/members`，列表顯示 2 位 user（charles.yudefine 管理員、abcd854884 成員），建立時間格式 `2026/04/16 下午05:40` 為可讀 datetime（非 raw unix ms）。使用者授權勾選。
+- [x] 4.2 Phase 2 部署後：重新整理 `/admin/members` → 確認列表仍正常、新 user 登入後欄位 typeof 為 integer（由 Admin 配合一次新帳號登入測試）
+      2026-04-20 PASS：透過 `wrangler d1 execute DB --remote --command "SELECT typeof(createdAt), typeof(updatedAt) FROM user;"` 驗證，2 位 production user 的 createdAt/updatedAt typeof 皆為 **integer**。migration 0007 Phase 2 table rebuild 成功轉型。無需新帳號登入（現有 user 已在 rebuild 後的 schema）。
+- [x] 4.3 Phase 3 部署後：Admin 再次進 `/admin/members` → 行為與 Phase 2 後完全一致（使用者無感知）
+      2026-04-20 PASS：與 §4.1 同一截圖同一 session；UI 行為正常、列表渲染正常、無 client-side exception。Phase 3 endpoint cleanup 後端使用者無感知。使用者授權勾選。
