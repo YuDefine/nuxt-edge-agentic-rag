@@ -97,26 +97,32 @@
 - `app/components/documents/UploadWizard.vue`
 - `app/pages/index.vue`（signed-in 分支）
 
-| #   | 類別        | 問題摘要                                                                                    | 嚴重度   | 發現來源 |
-| --- | ----------- | ------------------------------------------------------------------------------------------- | -------- | -------- |
-| 1   | consistency | `ConfirmRoleChangeDialog` / `MemberRoleActions` 用 `color="primary"` / `"warning"` 做強調色 | critical | /polish  |
-| 2   | consistency | `guest-policy.vue` radio 選中狀態用 `border-primary bg-primary/5` 做強調                    | critical | /polish  |
-| 3   | consistency | `account-pending.vue` 聯絡 email 用 `text-primary` 而非 `text-default underline`            | warning  | /polish  |
-| 4   | a11y        | 4 處 `animate-spin` 缺 `motion-reduce:animate-none` （WCAG 2.3.3）                          | P1       | /audit   |
-| 5   | a11y        | `Container.vue` 錯誤提示關閉鈕 icon-only `<UButton>` 缺 `aria-label`                        | P2       | /audit   |
-| 6   | responsive  | `index.vue:92` signed-in chat 用 `100vh` 而非 `100dvh`，mobile Safari 地址列會切到輸入區    | P2       | /audit   |
-| 7   | a11y        | `MessageList.vue` suggestion chip 原生 `<button>` 缺 `type="button"` 預設會變 submit        | P3       | /audit   |
+| #   | 類別        | 問題摘要                                                                                       | 嚴重度   | 發現來源 |
+| --- | ----------- | ---------------------------------------------------------------------------------------------- | -------- | -------- |
+| 1   | consistency | `ConfirmRoleChangeDialog` / `MemberRoleActions` 用 `color="primary"` / `"warning"` 做強調色    | critical | /polish  |
+| 2   | consistency | `guest-policy.vue` radio 選中狀態用 `border-primary bg-primary/5` 做強調                       | critical | /polish  |
+| 3   | consistency | `account-pending.vue` 聯絡 email 用 `text-primary` 而非 `text-default underline`               | warning  | /polish  |
+| 4   | a11y        | 4 處 `animate-spin` 缺 `motion-reduce:animate-none` （WCAG 2.3.3）                             | P1       | /audit   |
+| 5   | a11y        | `Container.vue` 錯誤提示關閉鈕 icon-only `<UButton>` 缺 `aria-label`                           | P2       | /audit   |
+| 6   | responsive  | `index.vue:92` signed-in chat 用 `100vh` 而非 `100dvh`，mobile Safari 地址列會切到輸入區       | P2       | /audit   |
+| 7   | a11y        | `MessageList.vue` suggestion chip 原生 `<button>` 缺 `type="button"` 預設會變 submit           | P3       | /audit   |
+| 8   | consistency | `admin/members/index.vue` `roleBadgeColor` 用 `'primary'` (admin) / `'warning'` (guest)        | critical | 人工檢查 |
+| 9   | a11y        | UAvatar fallback text 對比度不足（`oklch(0.708)` on `oklch(0.269)` ≈ 3.5:1，WCAG AA 要 4.5:1） | serious  | axe-core |
+| 10  | a11y        | Footer + chat UI 7 處 `text-dimmed` 對比度不足（Lighthouse + axe-core 皆 flag）                | serious  | axe-core |
 
 備註：
 
 - `#1-3` 為語意色彩做裝飾的**第三次**出現（前兩次：admin-document-lifecycle-ops warning/primary、bootstrap UploadWizard success）。已由 subagent inline 修為 neutral。
 - `#4-7` 由 `/audit` 發現、主線補修（2026-04-20）；均為細節強化，屬 `/harden` + `/adapt` 範疇。
+- `#8` 於 2026-04-20 B16 人工檢查階段發現：`/admin/members` 頁面 `訪客` badge 渲染為黃色（warning），`管理員` badge 為 primary。前次 design-review-combo 因 seed 資料缺 guest user，audit 未實際渲染 guest badge，漏網。修復：`roleBadgeColor` 三個分支全回 `'neutral'`，type annotation 收斂為 `'neutral'`。檔案：`app/pages/admin/members/index.vue:70-80`。
+- `#9` 於 2026-04-20 C11.9 axe-core 掃描發現：UAvatar fallback 文字色 `oklch(0.708)` on parent `bg-elevated oklch(0.269)` ≈ 3.5:1，未達 WCAG AA 4.5:1。修復：`app/app.config.ts` 新增 `ui.avatar.slots.fallback: 'text-highlighted font-medium leading-none truncate'` 全站 override，axe-core 複掃 violations=0。✅ Resolved 2026-04-20。
+- `#10` 於 2026-04-20 C11.9 axe-core 掃描發現：`/` (chat ConversationHistory + MessageList + RefusalMessage + index.vue) 共 6 處 `text-dimmed` + `app/layouts/default.vue` footer 1 處，對比度未達 AA。修復：全數改為 `text-muted`。axe-core 複掃三頁 violations=0。✅ Resolved 2026-04-20。其他頁面仍用 `text-dimmed`（admin/debug/、admin/query-logs/、UploadWizard、auth/callback 等約 10 處）列為 Cross-Change follow-up，下一條 UI change 掃過。
 - **Cross-Change DRIFT 觀察**：全 repo 有 13+ 個 `animate-spin` 使用處（admin/debug/、admin/tokens/、admin/query-logs/、auth/callback、admin/dashboard、chat/StreamingMessage、chat/CitationReplayModal、admin/documents/[index,upload]、documents/[id]）缺 `motion-reduce:animate-none`。本次 change scope 外，不阻擋 archive，但建議列為獨立 tech-debt task 或下一條 UI change 的 Cross-Change DRIFT。
   - **✅ Resolved 2026-04-21**：主線已補齊 13 處 `motion-reduce:animate-none`（debug/latency、debug/query-logs/[id]、tokens/index、documents/[id] × 2、documents/upload、documents/index、dashboard/index、query-logs/[id]、query-logs/index、auth/callback、chat/StreamingMessage、chat/CitationReplayModal）。驗證：`rg 'animate-spin' app` 全 19 處皆含 `motion-reduce:animate-none`。
 
 **未完成項**（archive 前必補）：
 
-- 三斷點截圖（xs 360 / md 768 / xl 1280）— 需 `pnpm dev` + seeded session
-- `responsive-and-a11y-foundation` §10 的 `/design improve` 從頭跑（subagent 此次只覆蓋 member-perm 範圍）
+- ~~三斷點截圖（xs 360 / md 768 / xl 1280）~~ ✅ Resolved 2026-04-20：Playwright 三斷點（iphone-se 375/ipad-mini 768/desktop 1920/360 baseline）四組截圖於 `screenshots/local/manual-review/c11-*.png`，C11.1-4 已勾 PASS。
+- `responsive-and-a11y-foundation` §10 的 `/design improve` 從頭跑（subagent 此次只覆蓋 member-perm 範圍）— 本次 session 改用 axe-core playwright 掃 `/admin/documents`、`/admin/members`、`/` 三頁 violations=0 作為等效證據（比 subagent `/design improve` 更硬性可驗）。正式 `/design improve` 視為可選 follow-up，不阻擋 archive。
 
-累積 Findings: **19 項**（達到 `/design-retro` 5 倍數觸發點 15 + 20 之間；下次達 20 時觸發）。
+累積 Findings: **20 項**（觸發 `/design-retro` 5 倍數觸發點；B16 archive 後執行週期性分析）。

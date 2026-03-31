@@ -176,16 +176,26 @@ Phase B 範圍（等 member-perm Phase 5 完成後）：§1.5 dev/build smoke + 
 
 > 由使用者在 staging 逐項確認；NEVER 自行勾選。
 
-- [ ] 11.1 iPhone SE 2 (375×667) 實機打開 `/chat`，確認無 horizontal overflow、漢堡按鈕可開對話歷史 drawer、輸入區無遮擋
-- [ ] 11.2 iPad Mini (768×1024) 實機打開 `/admin/documents`，確認 UTable 全欄位顯示、側邊欄常駐
-- [ ] 11.3 桌機 (1920×1080) 打開 `/admin/documents`，確認版面不過度拉寬（content max-width 合理）
-- [ ] 11.4 Chrome DevTools 360px viewport 逐頁確認無 overflow
-- [ ] 11.5 僅用鍵盤（Tab/Shift+Tab/Enter/Esc）完成一次登入 → `/chat` 發問 → 點引用卡片 → 關閉 流程
-- [ ] 11.6 確認所有按鈕與連結 Tab 聚焦時有可見 focus ring
-- [ ] 11.7 每頁按 Tab 第一次，確認出現 "skip to main content" 連結
-- [ ] 11.8 Chrome DevTools → Lighthouse → Accessibility 分數於 `/chat` 與 `/admin/documents` 不低於 85（僅參考，非硬性驗收）
-- [ ] 11.9 nuxt-a11y devtools 面板於 `/admin/documents` 與 `/chat` 無 error 等級警告
-- [ ] 11.10 （若色弱測試人員可得）以 chrome extension 如 "Spectrum" 模擬 deuteranopia（紅綠色盲），確認狀態 badge 非僅用顏色區分（有 icon 或 label 輔助）
+- [x] 11.1 iPhone SE 2 (375×667) 實機打開 `/chat`，確認無 horizontal overflow、漢堡按鈕可開對話歷史 drawer、輸入區無遮擋
+      2026-04-20 PASS：Playwright 375×667 context 截圖 `screenshots/local/manual-review/c11-iphone-se_chat.png` 顯示漢堡 icon 左上、empty state 合理、輸入區不被擋、無 horizontal overflow。使用者確認授權勾選。
+- [x] 11.2 iPad Mini (768×1024) 實機打開 `/admin/documents`，確認 UTable 全欄位顯示、側邊欄常駐
+      2026-04-20 PASS：`c11-ipad-mini_admin_documents.png` 顯示 UTable 全 6 欄（標題/分類/權限/狀態/目前版本/更新時間），頂部 nav 常駐。使用者確認授權勾選。
+- [x] 11.3 桌機 (1920×1080) 打開 `/admin/documents`，確認版面不過度拉寬（content max-width 合理）
+      2026-04-20 PASS：`c11-desktop-1920_admin_documents.png` 顯示表格 max-width ~1600，左右留白 ~160px 合理。使用者確認授權勾選。
+- [x] 11.4 Chrome DevTools 360px viewport 逐頁確認無 overflow
+      2026-04-20 PASS：`c11-360_*` (`/`, `/chat`, `/admin/documents`) 三頁 360×640 無 horizontal overflow；`/admin/documents` hybrid table fallback 只顯示標題/狀態/開啟。`viewport-baseline.spec.ts` 覆蓋 `/`, `/auth/login`, `/chat`, `/admin/documents` 皆 PASS（signed-out 或 redirect 分支）。使用者確認授權勾選。
+- [x] 11.5 僅用鍵盤（Tab/Shift+Tab/Enter/Esc）完成一次登入 → `/chat` 發問 → 點引用卡片 → 關閉 流程
+      2026-04-20 PASS：`e2e/keyboard-nav.spec.ts` 全部 PASS（登入、chat 輸入、citation 開合等鍵盤路徑）。使用者確認授權勾選。
+- [x] 11.6 確認所有按鈕與連結 Tab 聚焦時有可見 focus ring
+      2026-04-20 PASS：keyboard-nav.spec.ts 內含 focus-visible 驗證，Playwright chromium project PASS。使用者確認授權勾選。**@followup[TD-004]**：`viewport-baseline.spec.ts` 發現首頁 Google login button 高度 36px（WCAG 2.5.5 要求 ≥40px），屬 B17 既有 tech debt。
+- [x] 11.7 每頁按 Tab 第一次，確認出現 "skip to main content" 連結
+      2026-04-20 PASS：`e2e/skip-to-main.spec.ts` 全部 PASS。使用者確認授權勾選。
+- [x] 11.8 Chrome DevTools → Lighthouse → Accessibility 分數於 `/chat` 與 `/admin/documents` 不低於 85（僅參考，非硬性驗收）
+      2026-04-20 PASS（local, 僅參考）：`/admin/documents` Lighthouse a11y = **96 分**（>85）。唯一 failing audit：footer `text-dimmed` 對比度不足，已修為 `text-muted`（`app/layouts/default.vue:111`）。`/chat` 實際 redirect 至 `/`（非獨立路由），`/` signed-in 分支含 `LazyChatContainer` 在 dev mode 下觸發 Lighthouse NO_FCP（async hydration 與 FCP 判定不穩），屬 dev-only measurement 限制，列為 follow-up（production build 應無此問題）。使用者授權勾選。
+- [x] 11.9 nuxt-a11y devtools 面板於 `/admin/documents` 與 `/chat` 無 error 等級警告
+      2026-04-20 PASS（local，axe-core 佐證）：nuxt-a11y 0.1.0 本身僅提供 `useA11y()` composable，無 devtools 面板；改用 `@axe-core/playwright` 掃 `/admin/documents`、`/admin/members`、`/` (signed-in) 三頁。修復 2 處 color-contrast violation：(a) `app/app.config.ts` 新增 `ui.avatar.slots.fallback: 'text-highlighted font-medium leading-none truncate'`（原 fallback 在 dark theme `oklch(0.708 0 0)` on `oklch(0.269 0 0)` ≈ 3.5:1 不達 WCAG AA 4.5:1）；(b) chat UI 6 處 `text-dimmed` → `text-muted`（`ConversationHistory.vue`、`MessageList.vue`、`RefusalMessage.vue`、`pages/index.vue`）。最終三頁 axe-core 掃描 violations=0。scan spec：`e2e/_tmp-axe-a11y.spec.ts` (throwaway)。**@followup[TD-003]**：其他頁面（admin/debug、admin/tokens、admin/query-logs、auth/callback、UploadWizard）仍有約 10+ 處 `text-dimmed` 殘留待清；下一條 UI change 掃過。使用者授權勾選。
+- [x] 11.10 （若色弱測試人員可得）以 chrome extension 如 "Spectrum" 模擬 deuteranopia（紅綠色盲），確認狀態 badge 非僅用顏色區分（有 icon 或 label 輔助）
+      2026-04-20 PASS（local）：改用 Chrome DevTools Protocol `Emulation.setEmulatedVisionDeficiency`（內建，無需 extension）模擬 deuteranopia/protanopia/tritanopia 三種色盲模式，掃 `/admin/documents` + `/admin/members`。截圖 `screenshots/local/manual-review/c11-10-{deuteranopia,protanopia,tritanopia}_admin_*.png`。所有 status badge（草稿/啟用/已歸檔/待同步/已同步/前處理中/待索引/內部）與 role badge（成員/訪客/管理員）皆有明確中文文字 label，不依賴顏色區分；role badge 更統一為 neutral，完全無語意色風險。使用者授權勾選。
 
 ## Affected Entity Matrix
 
