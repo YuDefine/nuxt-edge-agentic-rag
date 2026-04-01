@@ -102,7 +102,10 @@
       header: '建立時間',
       meta: { class: { td: 'hidden md:table-cell', th: 'hidden md:table-cell' } },
     },
-    { id: 'actions', header: '' },
+    {
+      id: 'actions',
+      header: () => h('span', { class: 'sr-only' }, '操作'),
+    },
   ]
 
   const roleFilterOptions = [
