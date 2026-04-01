@@ -126,3 +126,35 @@
 - `responsive-and-a11y-foundation` §10 的 `/design improve` 從頭跑（subagent 此次只覆蓋 member-perm 範圍）— 本次 session 改用 axe-core playwright 掃 `/admin/documents`、`/admin/members`、`/` 三頁 violations=0 作為等效證據（比 subagent `/design improve` 更硬性可驗）。正式 `/design improve` 視為可選 follow-up，不阻擋 archive。
 
 累積 Findings: **20 項**（觸發 `/design-retro` 5 倍數觸發點；B16 archive 後執行週期性分析）。
+
+---
+
+## @nuxt/a11y 首輪掃描 (2026-04-21)
+
+**觸發**：`responsive-and-a11y-foundation` B17 將社群版 `nuxt-a11y@0.1.0`（只有 composable 無 devtools）切換為官方 `@nuxt/a11y@1.0.0-alpha.1`（有 devtools panel）。panel 初次全站掃描發現以下 violation。
+
+**切換原因**：原社群版無法提供 RAF §9.2 / §10.6 要求的 devtools panel，使用者要求改用 <https://nuxt.com/modules/a11y> 官方版。
+
+| #   | 類別 | 頁面                           | 問題摘要                                                         | 嚴重度   | Scope           |
+| --- | ---- | ------------------------------ | ---------------------------------------------------------------- | -------- | --------------- |
+| 11  | a11y | `/admin/members`               | UTable `{ id: 'actions', header: '' }` 觸發 `empty-table-header` | minor    | **MPM（當前）** |
+| 12  | a11y | `/admin/settings/guest-policy` | `color-contrast`（affected element 待使用者貼 DevTools 詳情）    | serious  | **MPM（當前）** |
+| 13  | a11y | `/admin/query-logs`            | 3 × `button-name`（icon-only button 缺 aria-label）              | critical | Cross-Change    |
+| 14  | a11y | `/admin/query-logs`            | 2 × `label`（form element 缺 label）                             | critical | Cross-Change    |
+| 15  | a11y | `/admin/query-logs`            | UTable `empty-table-header`                                      | minor    | Cross-Change    |
+| 16  | a11y | `/admin/documents`             | UTable `empty-table-header`                                      | minor    | Cross-Change    |
+| 17  | a11y | `/admin/tokens`                | UTable `empty-table-header`                                      | minor    | Cross-Change    |
+| 18  | a11y | `/admin/debug/latency`         | `heading-order`（heading 層級跳階）                              | moderate | Cross-Change    |
+
+備註：
+
+- `#11` 於 2026-04-21 主線修復：`header: ''` 改為 `header: () => h('span', { class: 'sr-only' }, '操作')`，為視覺隱藏但 screen reader 可讀。檔案：`app/pages/admin/members/index.vue:105-108`。
+- `#12` 需使用者於 @nuxt/a11y DevTools 點 `color-contrast` violation 的 Affected Elements 提供 CSS selector + element text，才能精準修復（可能是 `text-muted` on `bg-accented` selected option 的組合）。
+- `#13-18` 屬 Cross-Change DRIFT（非 MPM / RAF scope）：
+  - `/admin/query-logs` → `admin-query-log-ui` capability
+  - `/admin/documents` → `admin-document-management-ui` capability
+  - `/admin/tokens` → `admin-token-management-ui` capability
+  - `/admin/debug/latency` → `debug-decision-inspection` capability
+  - 登 `docs/tech-debt.md` TD-005 批次處理，**不阻擋** 當前 MPM / RAF archive。
+
+累積 Findings: **28 項**。

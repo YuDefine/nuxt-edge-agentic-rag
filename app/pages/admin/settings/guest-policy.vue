@@ -209,7 +209,11 @@
                     目前
                   </UBadge>
                 </div>
-                <p :id="`guest-policy-desc-${item.value}`" class="text-xs text-muted md:text-sm">
+                <p
+                  :id="`guest-policy-desc-${item.value}`"
+                  class="text-xs md:text-sm"
+                  :class="selected === item.value ? 'text-default' : 'text-muted'"
+                >
                   {{ item.description }}
                 </p>
               </div>
