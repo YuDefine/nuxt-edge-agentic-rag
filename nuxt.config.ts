@@ -88,14 +88,8 @@ export default defineNuxtConfig({
     'evlog/nuxt',
     '@nuxt/hints',
     '@nuxtjs/mcp-toolkit',
-    // responsive-and-a11y-foundation §1.4 —
-    // nuxt-a11y provides dev-time axe-core audits. Dev-only by design so
-    // production bundles (Cloudflare Workers) stay lean. Accepts
-    // NUXT_A11Y_ENABLED=true override for staging if the team later wants
-    // it there as well. Filtered via `.filter(Boolean)` below.
-    (process.env.NODE_ENV !== 'production' || process.env.NUXT_A11Y_ENABLED === 'true') &&
-      'nuxt-a11y',
-  ].filter(Boolean) as string[],
+    '@nuxt/a11y',
+  ],
 
   // NuxtHub - auto-detects environment:
   // - Local: SQLite file + fs-based KV/blob in .data/

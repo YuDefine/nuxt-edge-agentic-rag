@@ -128,25 +128,27 @@ md+ (≥ 768)                          < md
 
 **共用元件設計**: 可選新增 `shared/components/ResponsiveTable.vue`（或以 composable `useResponsiveTable` 形式）封裝 hybrid 邏輯；既有 `DocumentListTable.vue` 先在檔案內實作 pattern，若未來第三個表格出現再抽取共用元件（YAGNI 順序）。
 
-### `nuxt-a11y` module 整合：dev-only
+### `@nuxt/a11y` module 整合：dev-only
 
-**Decision**: `nuxt-a11y` 僅於 `NODE_ENV !== 'production'` 啟用，不進 production bundle。
+**Decision**: 改用官方 `@nuxt/a11y`（1.0.0-alpha.1），module 內建 `enabled` 選項預設 production = false，不需要呼叫端條件載入。
 
 ```ts
 // nuxt.config.ts
 export default defineNuxtConfig({
   modules: [
     // ...既有 modules
-    process.env.NODE_ENV !== 'production' && 'nuxt-a11y',
-  ].filter(Boolean),
+    '@nuxt/a11y',
+  ],
 })
 ```
 
+**Pivot note (2026-04-21)**: 原本採用社群版 `nuxt-a11y@0.1.0`（Baroshem），該套件僅提供 `useA11y()` composable 無 DevTools 面板，且呼叫端需自行以 `(NODE_ENV !== 'production' || NUXT_A11Y_ENABLED === 'true') && 'nuxt-a11y'` 條件載入。官方 `@nuxt/a11y` 原生支援 Nuxt DevTools panel + module 內建 dev-only 邏輯，呼叫端一行即可，符合 Nuxt 社群 module integration 最佳實踐。
+
 **Rationale**:
 
-- module 主要提供 dev-time warnings（console）+ dev tools panel
-- 不需要 production 攜帶
-- 降低 Workers bundle size（避免觸及 1 MB limit）
+- module 提供 DevTools 面板 + dev-time axe-core audits
+- `enabled` 預設 production = false，module 自己處理，呼叫端不需條件載入
+- 不進 production bundle，降低 Workers bundle size
 
 **Alternative considered**: staging 也開啟（提早發現 production 前的 a11y 問題）。**Accepted as option**（design 保留 enable-in-staging 旗標，實作時可依需求切換；default 為 dev-only）
 

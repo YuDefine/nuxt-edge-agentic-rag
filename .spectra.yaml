@@ -37,7 +37,7 @@ design:
     - fix_drift: 'Fidelity Score must reach 8/8, max 2 rounds'
     - targeted_skills: 'Execute /design plan in canonical order'
     - responsive_check: 'Capture xs (360) / md (768) / xl (1280) screenshots; verify no horizontal overflow and primary interactions reachable on each breakpoint'
-    - a11y_check: 'Review nuxt-a11y devtools report + keyboard walkthrough (Tab / Esc / focus ring) for the affected journey'
+    - a11y_check: 'Review @nuxt/a11y devtools report + keyboard walkthrough (Tab / Esc / focus ring) for the affected journey'
     - audit: '/audit — Critical must be 0'
     - screenshot: '/review-screenshot — visual QA'
 
