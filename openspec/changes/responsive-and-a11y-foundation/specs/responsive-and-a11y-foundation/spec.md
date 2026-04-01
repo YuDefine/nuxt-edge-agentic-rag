@@ -76,21 +76,21 @@ Data tables SHALL use a hybrid fallback pattern below `md`. At `md` or wider, th
 - **THEN** a drawer opens showing all columns that are hidden in the reduced row, including any actions menu
 - **AND** closing the drawer returns focus to the triggering detail action
 
-### Requirement: nuxt-a11y Module Dev-Time Integration
+### Requirement: @nuxt/a11y Module Dev-Time Integration
 
-The system SHALL integrate the `nuxt-a11y` module into Nuxt configuration so it is active during local development (`NODE_ENV !== 'production'`). The module SHALL NOT be shipped in production builds. The integration SHALL surface `nuxt-a11y` warnings in the developer console and in the Nuxt devtools panel during development.
+The system SHALL integrate the `@nuxt/a11y` module into Nuxt configuration so it is active during local development (`NODE_ENV !== 'production'`). The module SHALL NOT be shipped in production builds. The integration SHALL surface `@nuxt/a11y` warnings in the developer console and in the Nuxt devtools panel during development.
 
-#### Scenario: nuxt-a11y loaded in development build
+#### Scenario: @nuxt/a11y loaded in development build
 
 - **WHEN** the application is started with `pnpm dev`
-- **THEN** the Nuxt module list includes `nuxt-a11y`
+- **THEN** the Nuxt module list includes `@nuxt/a11y`
 - **AND** known a11y issues (missing alt text, insufficient contrast, focus trap errors) appear in console or devtools
 
-#### Scenario: nuxt-a11y excluded from production build
+#### Scenario: @nuxt/a11y excluded from production build
 
 - **WHEN** the application is built with `pnpm build`
-- **THEN** the final Workers bundle does not include `nuxt-a11y` runtime code
-- **AND** the production bundle size delta attributable to `nuxt-a11y` is zero
+- **THEN** the final Workers bundle does not include `@nuxt/a11y` runtime code
+- **AND** the production bundle size delta attributable to `@nuxt/a11y` is zero
 
 ### Requirement: WCAG AA Contrast For Tailwind Theme Tokens
 
@@ -157,7 +157,7 @@ Every page SHALL include a "skip to main content" link as the first focusable el
 
 ### Requirement: Design Review Responsive And Accessibility Steps
 
-The repository's Design Review workflow SHALL include a responsive breakpoint check and an accessibility check as distinct steps. The responsive check SHALL verify the affected surfaces render correctly at `xs` (360), `md` (768), and `xl` (1280) viewports. The accessibility check SHALL verify the `nuxt-a11y` dev report shows no error-severity findings and that keyboard-only navigation can complete the documented user journeys. These steps SHALL be encoded in `.spectra.yaml` `design.review_steps` and referenced in the Design Review Task Template of `.claude/rules/proactive-skills.md` so new change proposals automatically inherit them.
+The repository's Design Review workflow SHALL include a responsive breakpoint check and an accessibility check as distinct steps. The responsive check SHALL verify the affected surfaces render correctly at `xs` (360), `md` (768), and `xl` (1280) viewports. The accessibility check SHALL verify the `@nuxt/a11y` dev report shows no error-severity findings and that keyboard-only navigation can complete the documented user journeys. These steps SHALL be encoded in `.spectra.yaml` `design.review_steps` and referenced in the Design Review Task Template of `.claude/rules/proactive-skills.md` so new change proposals automatically inherit them.
 
 #### Scenario: Spectra config declares responsive and a11y steps
 
@@ -169,7 +169,7 @@ The repository's Design Review workflow SHALL include a responsive breakpoint ch
 
 - **WHEN** a developer reviews `.claude/rules/proactive-skills.md` Design Review Task Template
 - **THEN** the template includes a "響應式檢查" task item referencing xs / md / xl viewports
-- **AND** the template includes a "無障礙檢查" task item referencing `nuxt-a11y` and keyboard walkthrough
+- **AND** the template includes a "無障礙檢查" task item referencing `@nuxt/a11y` and keyboard walkthrough
 
 #### Scenario: New change proposals inherit the extended template
 

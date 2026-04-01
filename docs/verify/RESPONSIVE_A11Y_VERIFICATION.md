@@ -18,7 +18,7 @@ and GuestAccessGate).
 | Area                                  | Reference                                                                                                                                                               |
 | ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Tailwind `--breakpoint-xs: 360px`     | `app/assets/css/main.css`, `test/unit/tailwind-theme.test.ts`                                                                                                           |
-| `nuxt-a11y` dev-only module           | `nuxt.config.ts` (conditional load), `package.json` devDependency                                                                                                       |
+| `@nuxt/a11y` dev-only module          | `nuxt.config.ts` (module auto-handles dev-only via `enabled` option), `package.json` devDependency                                                                      |
 | Hybrid Table Fallback Below md        | `app/components/documents/DocumentListTable.vue`, `test/unit/responsive-table.test.ts`, `e2e/table-fallback.spec.ts`                                                    |
 | Component responsive adjustments (§5) | `app/components/documents/UploadWizard.vue`, `app/components/chat/MessageList.vue`, `app/components/chat/ConversationHistory.vue`, `app/pages/admin/documents/[id].vue` |
 | WCAG AA contrast audit (§7)           | `docs/design-tokens.md`                                                                                                                                                 |
@@ -71,7 +71,7 @@ GuestAccessGate.
 
 | § (tasks.md)   | Task                                                                                                                                                                             | Collides-with                         |
 | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- |
-| §1.5           | `pnpm dev` + `pnpm build` — confirm nuxt-a11y loads in dev and is absent from production bundle                                                                                  | none; defer to Phase B for efficiency |
+| §1.5           | `pnpm dev` + `pnpm build` — confirm @nuxt/a11y loads in dev and is absent from production bundle                                                                                 | none; defer to Phase B for efficiency |
 | §2 (all)       | Viewport baseline E2E (`test/e2e/viewport-baseline.spec.ts`)                                                                                                                     | layouts + admin pages                 |
 | §3 (all)       | Layout drawer-at-md (`app/layouts/default.vue`, `app/layouts/chat.vue`, `useLayoutDrawer.ts`)                                                                                    | layouts, member-perm §5               |
 | §5.5           | `app/pages/index.vue` signed-in chat landing responsive sweep                                                                                                                    | GuestAccessGate integration           |
@@ -80,7 +80,7 @@ GuestAccessGate.
 | §8.2 (partial) | Extend `.claude/rules/proactive-skills.md` Design Review Task Template with responsive + a11y checkboxes (edit was blocked by file-guard; documented here as a manual follow-up) | —                                     |
 | §8.3           | dummy-change propose test                                                                                                                                                        | blocked by §8.2 edit                  |
 | §8.4           | `.claude/CLAUDE.md` Design Review step-count sync (if referenced)                                                                                                                | depends on §8.2                       |
-| §9.2           | Nuxt devtools nuxt-a11y panel smoke                                                                                                                                              | requires `pnpm dev`                   |
+| §9.2           | Nuxt devtools @nuxt/a11y panel smoke                                                                                                                                             | requires `pnpm dev`                   |
 | §9.3           | Staging bundle-size check (`wrangler deploy --dry-run`)                                                                                                                          | staging access                        |
 | §9.4           | `screenshot-review` sweep across `/`, `/chat`, `/admin/documents`, `/admin/documents/[id]`, `/auth/login` at xs / md / xl                                                        | drawers must be in place              |
 | §9.5           | Manual keyboard walkthrough                                                                                                                                                      | requires §3 + §6                      |
@@ -100,7 +100,7 @@ GuestAccessGate.
 
 2. **Phase A cannot run `pnpm dev` / `pnpm build` end-to-end** in the
    current environment (no browser / no wrangler-linked secrets in this
-   subagent), so §1.5 — "confirm nuxt-a11y module loads in dev and is
+   subagent), so §1.5 — "confirm @nuxt/a11y module loads in dev and is
    excluded from production bundle" — is deferred to the Phase B subagent
    which will have dev + deploy access.
 

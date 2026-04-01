@@ -134,7 +134,7 @@ Task 涉及 UI？
 - [ ] N.3 修復所有 DRIFT 項目（Fidelity Score < 8/8 時必做，loop 直到 DRIFT = 0）
 - [ ] N.4 依 /design 計劃按 canonical order 執行 targeted skills
 - [ ] N.4.1 響應式 viewport 測試（xs 360 / md 768 / xl 1280 截圖並人工核對）
-- [ ] N.4.2 無障礙檢查（nuxt-a11y dev report 無 error + 鍵盤 Tab / Esc walkthrough）
+- [ ] N.4.2 無障礙檢查（@nuxt/a11y dev report 無 error + 鍵盤 Tab / Esc walkthrough）
 - [ ] N.5 執行 /audit — 確認 Critical = 0
 - [ ] N.6 執行 review-screenshot — 視覺 QA
 - [ ] N.7 Fidelity 確認 — design-review.md 中無 DRIFT 項
