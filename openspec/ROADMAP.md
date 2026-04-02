@@ -55,19 +55,19 @@
 
 ## Active Changes
 
-_last synced: 2026-04-20T06:41:43.904Z_
+_last synced: 2026-04-20T07:47:18.797Z_
 
-4 active changes (1 ready · 2 in progress · 1 draft · 0 blocked)
+3 active changes (2 ready · 0 in progress · 1 draft · 0 blocked)
 
 ### Ready to apply
 
-- **fix-better-auth-timestamp-affinity** — 26/26 tasks (100%)
+- **member-and-permission-management** — 49/49 tasks (100%)
+  - Specs: `admin-document-management-ui`, `web-chat-ui`
+- **responsive-and-a11y-foundation** — 63/63 tasks (100%)
 
 ### In progress
 
-- **member-and-permission-management** — 47/49 tasks (96%)
-  - Specs: `admin-document-management-ui`, `web-chat-ui`
-- **responsive-and-a11y-foundation** — 54/63 tasks (86%)
+_(none)_
 
 ### Draft
 
@@ -88,8 +88,6 @@ _(none)_
 ### Independent (can run in parallel)
 
 - `add-ai-gateway-usage-tracking`
-- `member-and-permission-management`
-- `responsive-and-a11y-foundation`
 
 ### Mutex (same spec touched)
 
