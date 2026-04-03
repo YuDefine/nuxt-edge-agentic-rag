@@ -35,6 +35,7 @@ The `users` table SHALL include a `role` column constrained to the enum values `
 - **AND** writes an audit row with `from_role = 'admin'`, `to_role = 'member'`, `changed_by = 'system'`, `reason = 'allowlist-removed'`
 
 ---
+
 ### Requirement: Admin Role Is Only Seeded From Env Var
 
 The system SHALL treat `ADMIN_EMAIL_ALLOWLIST` as the sole source of truth for the `admin` role. No UI, API endpoint, or non-`system` caller SHALL be able to set `users.role = 'admin'` for any user whose email is not currently present in the allowlist.
@@ -58,6 +59,7 @@ The system SHALL treat `ADMIN_EMAIL_ALLOWLIST` as the sole source of truth for t
 - **AND** the response explains that the target is an allowlist seed and must be removed from the env var first
 
 ---
+
 ### Requirement: Role Changes Are Audited
 
 Every change to `users.role` SHALL write a row to the `member_role_changes` table capturing the previous role, new role, actor (admin user id or `'system'`), timestamp, and optional reason. The API SHALL NOT commit a role change if the audit row write fails.
@@ -75,6 +77,7 @@ Every change to `users.role` SHALL write a row to the `member_role_changes` tabl
 - **AND** the API responds with HTTP 500 and leaves `users.role` unchanged
 
 ---
+
 ### Requirement: System Settings Store For Guest Policy
 
 The `system_settings` table SHALL exist with `(key, value, updated_at, updated_by)` columns. The row with `key = 'guest_policy'` SHALL be seeded at migration time with `value = 'same_as_member'`. Only users with `role = 'admin'` SHALL be authorized to update this row.

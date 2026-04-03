@@ -21,6 +21,7 @@ The `guest_policy` setting SHALL be one of exactly three values: `same_as_member
 - **THEN** the endpoint proceeds as if the user had `role = 'member'`
 
 ---
+
 ### Requirement: Browse-Only Policy Restricts Guest Question Submission
 
 When `guest_policy = 'browse_only'`, the system SHALL allow guest users to view published non-restricted documents and citation previews, but SHALL NOT allow them to submit new questions via Web `/chat` or MCP `askKnowledge`.
@@ -42,6 +43,7 @@ When `guest_policy = 'browse_only'`, the system SHALL allow guest users to view 
 - **THEN** the system returns public non-restricted categories and documents
 
 ---
+
 ### Requirement: No-Access Policy Blocks All Feature Surfaces For Guests
 
 When `guest_policy = 'no_access'`, the system SHALL deny guest users access to every feature surface except a dedicated `/account-pending` page and its supporting auth endpoints. MCP tools SHALL respond with HTTP 403 and error code `ACCOUNT_PENDING` for guest-owned tokens.
@@ -58,6 +60,7 @@ When `guest_policy = 'no_access'`, the system SHALL deny guest users access to e
 - **THEN** the tool responds with HTTP 403 and error code `ACCOUNT_PENDING`
 
 ---
+
 ### Requirement: Policy Changes Propagate Across Worker Instances Within One Request
 
 When an Admin updates `guest_policy`, all Worker instances SHALL observe the new value no later than their next request after the Admin's update commits. The system SHALL achieve this by checking a KV-stored version stamp on each request and reloading from D1 when the cached stamp is stale.
@@ -68,6 +71,7 @@ When an Admin updates `guest_policy`, all Worker instances SHALL observe the new
 - **THEN** any other Worker instance, upon receiving its next request, observes the new value and enforces `no_access` behavior for guests
 
 ---
+
 ### Requirement: OAuth Callback Does Not Gate On Allowlist
 
 The OAuth sign-in flow SHALL accept any valid Google account and create a corresponding `users` row. The allowlist SHALL only influence the `role` assigned at row creation or update time; it SHALL NOT reject the login itself.
