@@ -5,6 +5,7 @@
   import { PAGE_SIZE_MAX } from '#shared/schemas/pagination'
   import type { AdminMemberRow } from '#shared/types/admin-members'
   import { roleLabel, type Role } from '#shared/types/auth'
+  import { srOnlyHeader } from '#shared/utils/table'
   import { getUiPageState } from '#shared/utils/ui-state'
 
   /**
@@ -104,7 +105,7 @@
     },
     {
       id: 'actions',
-      header: () => h('span', { class: 'sr-only' }, '操作'),
+      header: srOnlyHeader('操作'),
     },
   ]
 

@@ -2,6 +2,7 @@
   import type { DropdownMenuItem, TableColumn } from '@nuxt/ui'
   import type { DocumentWithCurrentVersion } from '~~/shared/types/knowledge'
   import { assertNever } from '~~/shared/utils/assert-never'
+  import { srOnlyHeader } from '~~/shared/utils/table'
 
   interface Props {
     documents: DocumentWithCurrentVersion[]
@@ -84,10 +85,10 @@
     // `actions` so it lands next to the status badge for thumb reach.
     {
       id: 'mobileDetail',
-      header: '',
+      header: srOnlyHeader('詳情'),
       meta: { class: { td: 'md:hidden', th: 'md:hidden' } },
     },
-    { id: 'actions', header: '' },
+    { id: 'actions', header: srOnlyHeader('操作') },
   ]
 
   function formatDate(dateString: string): string {

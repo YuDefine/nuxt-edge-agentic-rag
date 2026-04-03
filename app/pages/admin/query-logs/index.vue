@@ -2,6 +2,7 @@
   import type { TableColumn } from '@nuxt/ui'
 
   import { KNOWLEDGE_CHANNEL_VALUES } from '~~/shared/schemas/knowledge-runtime'
+  import { srOnlyHeader } from '~~/shared/utils/table'
   import { getUiPageState } from '~~/shared/utils/ui-state'
 
   /**
@@ -130,7 +131,7 @@
     { accessorKey: 'status', header: '狀態' },
     { accessorKey: 'queryRedactedText', header: '查詢內容（已遮罩）' },
     { accessorKey: 'redactionApplied', header: '遮罩' },
-    { id: 'actions', header: '' },
+    { id: 'actions', header: srOnlyHeader('操作') },
   ]
 </script>
 
@@ -156,8 +157,7 @@
 
     <UCard>
       <div class="flex flex-wrap items-end gap-3">
-        <div class="flex flex-col gap-1">
-          <label class="text-xs font-medium text-muted">來源</label>
+        <UFormField label="來源" name="channel" size="xs">
           <USelect
             v-model="filters.channel"
             :items="CHANNEL_OPTIONS"
@@ -167,9 +167,8 @@
             size="md"
             class="min-w-32"
           />
-        </div>
-        <div class="flex flex-col gap-1">
-          <label class="text-xs font-medium text-muted">狀態</label>
+        </UFormField>
+        <UFormField label="狀態" name="status" size="xs">
           <USelect
             v-model="filters.status"
             :items="STATUS_OPTIONS"
@@ -179,9 +178,8 @@
             size="md"
             class="min-w-32"
           />
-        </div>
-        <div class="flex flex-col gap-1">
-          <label class="text-xs font-medium text-muted">遮罩狀態</label>
+        </UFormField>
+        <UFormField label="遮罩狀態" name="redactionApplied" size="xs">
           <USelect
             v-model="filters.redactionApplied"
             :items="REDACTION_OPTIONS"
@@ -191,9 +189,8 @@
             size="md"
             class="min-w-32"
           />
-        </div>
-        <div class="flex flex-col gap-1">
-          <label class="text-xs font-medium text-muted">開始日期</label>
+        </UFormField>
+        <UFormField label="開始日期" name="startDate" size="xs">
           <UInput
             v-model="filters.startDate"
             type="date"
@@ -201,9 +198,8 @@
             variant="outline"
             size="md"
           />
-        </div>
-        <div class="flex flex-col gap-1">
-          <label class="text-xs font-medium text-muted">結束日期</label>
+        </UFormField>
+        <UFormField label="結束日期" name="endDate" size="xs">
           <UInput
             v-model="filters.endDate"
             type="date"
@@ -211,7 +207,7 @@
             variant="outline"
             size="md"
           />
-        </div>
+        </UFormField>
         <UButton
           color="neutral"
           variant="ghost"

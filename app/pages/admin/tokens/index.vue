@@ -1,6 +1,7 @@
 <script setup lang="ts">
   import type { TableColumn } from '@nuxt/ui'
 
+  import { srOnlyHeader } from '~~/shared/utils/table'
   import { getUiPageState } from '~~/shared/utils/ui-state'
 
   /**
@@ -121,7 +122,7 @@
     { accessorKey: 'expiresAt', header: '到期時間' },
     { accessorKey: 'lastUsedAt', header: '最近使用' },
     { accessorKey: 'createdAt', header: '建立時間' },
-    { id: 'actions', header: '' },
+    { id: 'actions', header: srOnlyHeader('操作') },
   ]
 </script>
 

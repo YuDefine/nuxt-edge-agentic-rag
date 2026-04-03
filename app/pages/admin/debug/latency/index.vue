@@ -129,7 +129,7 @@
       <UCard>
         <div class="flex flex-col items-center justify-center py-16 text-center">
           <UIcon name="i-lucide-shield-off" class="mb-4 size-10 text-warning" />
-          <h3 class="mb-2 text-lg font-semibold text-default">無權限存取</h3>
+          <h2 class="mb-2 text-lg font-semibold text-default">無權限存取</h2>
           <p class="max-w-md text-sm text-muted">
             內部 Debug 介面需 Admin 權限，且 production 需開啟
             <code class="rounded bg-muted px-1">NUXT_DEBUG_SURFACE_ENABLED</code> 旗標。
@@ -143,7 +143,7 @@
       <UCard>
         <div class="flex flex-col items-center justify-center py-16 text-center">
           <UIcon name="i-lucide-inbox" class="mb-4 size-10 text-muted" />
-          <h3 class="mb-2 text-lg font-semibold text-default">所選期間內無任何記錄</h3>
+          <h2 class="mb-2 text-lg font-semibold text-default">所選期間內無任何記錄</h2>
           <p class="text-sm text-muted">請嘗試切換期間或稍後再查詢。</p>
         </div>
       </UCard>
@@ -154,7 +154,7 @@
       <UCard>
         <div class="flex flex-col items-center justify-center py-16 text-center">
           <UIcon name="i-lucide-cloud-off" class="mb-4 size-10 text-error" />
-          <h3 class="mb-2 text-lg font-semibold text-default">無法載入統計</h3>
+          <h2 class="mb-2 text-lg font-semibold text-default">無法載入統計</h2>
           <p class="mb-6 max-w-sm text-sm text-muted">後端回應異常，請稍後再試。</p>
           <UButton
             color="neutral"
@@ -171,8 +171,14 @@
 
     <!-- Ready -->
     <template v-else>
-      <!-- Latency cards grid -->
-      <section aria-label="延遲分布" class="grid grid-cols-1 gap-4 lg:grid-cols-2">
+      <!-- h2 is visually hidden + referenced by aria-labelledby to fix
+           heading-order (h1 → h3 was flagged) with a single source of
+           truth for the region name. -->
+      <section
+        aria-labelledby="latency-distribution-heading"
+        class="grid grid-cols-1 gap-4 lg:grid-cols-2"
+      >
+        <h2 id="latency-distribution-heading" class="sr-only">延遲分布</h2>
         <DebugLatencySummaryCards
           v-for="channel in channels"
           :key="`latency-${channel.channel}`"
@@ -183,7 +189,11 @@
       </section>
 
       <!-- Outcome breakdown grid -->
-      <section aria-label="結果分布" class="grid grid-cols-1 gap-4 lg:grid-cols-2">
+      <section
+        aria-labelledby="outcome-distribution-heading"
+        class="grid grid-cols-1 gap-4 lg:grid-cols-2"
+      >
+        <h2 id="outcome-distribution-heading" class="sr-only">結果分布</h2>
         <DebugOutcomeBreakdown
           v-for="channel in channels"
           :key="`outcome-${channel.channel}`"
