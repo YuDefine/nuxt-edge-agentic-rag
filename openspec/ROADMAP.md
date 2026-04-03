@@ -4,48 +4,49 @@
 
 ## Current State
 
-> 狀態（2026-04-20 晚 → 2026-04-21 更新）：Production 跑 v0.18.5。`tc-acceptance-followups` + `deployment-manual` 已 archive（2026-04-20）。剩 4 條 active：3 條 code 完成等人工驗證、1 條 draft（post-v1 low priority）。
+> 狀態（2026-04-20 更新）：Production 跑 v0.18.5。v1 三條 wip 全部 archive：
 >
-> **三條 wip 都卡在需使用者親自操作的驗證步驟**（admin OAuth + 三斷點截圖 + 人工 §11 checklist），agent 無法代勞。
+> - `fix-better-auth-timestamp-affinity`（2026-04-20 archive）
+> - `member-and-permission-management`（2026-04-20 archive）
+> - `responsive-and-a11y-foundation`（2026-04-20 archive）
 >
-> **可做的 hygiene 工作**（不需 admin session）：
+> **目前 0 wip，只有 1 draft**（`add-ai-gateway-usage-tracking`，post-v1 low priority）。v1 收尾完成，進入 tech debt 清理階段。
 >
-> - 本輪主線已處理：ROADMAP MANUAL 修正、repo-wide `motion-reduce:animate-none` 補全（findings 標的 Cross-Change DRIFT）
+> **Active tech debt**（`docs/tech-debt.md`）：
+>
+> - TD-004（high）— 首頁 Google login button 高度 36px < WCAG 40px
+> - TD-005（high）— Admin 頁面 a11y violations 批次（@nuxt/a11y 首輪掃描 7 項 Cross-Change DRIFT）
+> - TD-003（mid）— text-dimmed 對比度不足
+> - TD-002（mid）— guest_policy DB-direct UPDATE 造成 cache drift
+> - TD-001（low）— mcp-token-store libsql 不相容
 >
 > **不應該做的**：
 >
-> - 專題報告升版 — `main-v0.0.44.md` 是實作前骨架版（多處「待驗證」「待於建置時鎖定」標記），B16 屬內部技術債修復，不觸動功能規格 / 介面 / 資料表概念層；正確升版時機是實際驗收回填 TC-xx / EV-xx 階段
-> - `add-ai-gateway-usage-tracking` 推進 — 使用者明標 post-v1 low priority，硬推違反優先序
-
-### Active Changes 實況
-
-| Change                               | Tasks        | 實況                                                                                                                           |
-| ------------------------------------ | ------------ | ------------------------------------------------------------------------------------------------------------------------------ |
-| `fix-better-auth-timestamp-affinity` | 23/26 (88%)  | Phase 2（migration 0007）+ Phase 3（endpoint cleanup）已 deploy v0.18.5；剩 §4 staging 人工檢查                                |
-| `member-and-permission-management`   | 37/49 (76%)  | code 100%（Phase 1-5 含 design-review-combo 善後：neutral 色 DRIFT + a11y polish）；剩 §10 三斷點截圖 + §11 人工檢查（10 項）  |
-| `responsive-and-a11y-foundation`     | 44/63 (70%)  | code 100%（Phase A + Phase B-2 合併 + a11y polish）；剩 §10.4.1 三斷點截圖（xs 360 / md 768 / xl 1280）+ §11 人工檢查（10 項） |
-| `add-ai-gateway-usage-tracking`      | 0/48 (draft) | 未啟動（post-v1 low priority）                                                                                                 |
+> - 專題報告升版 — `main-v0.0.44.md` 是實作前骨架版，正確升版時機是實際驗收回填 TC-xx / EV-xx 階段
+> - `add-ai-gateway-usage-tracking` 推進 — 使用者明標 post-v1 low priority
 
 ## Next Moves
 
 ### 本輪優先序
 
-- [critical path, 需使用者] **三條 wip 的人工檢查**（三條平行，共用 admin OAuth session 可一次做完）：
-  - `fix-better-auth-timestamp-affinity` §4 staging 人工檢查
-  - `member-and-permission-management` §10 三斷點截圖 + §11（10 項：admin UI / guest dial / OAuth 降級 / MCP role gate）
-  - `responsive-and-a11y-foundation` §10.4.1 三斷點截圖（xs 360 / md 768 / xl 1280）+ §11（10 項：iPhone SE / iPad Mini / 鍵盤 walkthrough / 色弱模擬）
+- [high] **TD-004 首頁 button hit-target** — agent 可獨立完成（改 `app/pages/index.vue` + `e2e/viewport-baseline.spec.ts` 驗證）
+- [high] **TD-005 admin a11y 批次** — agent 可獨立完成（4 頁：query-logs / documents / tokens / debug/latency；canonical pattern 參考 `/admin/members` 2026-04-21 修復）
+- [mid] **TD-003 text-dimmed → text-muted 批次** — 跨多頁的 a11y polish
+- [mid] **TD-002 guest_policy runbook** — 文件化優先（選項 A）
 - [mid] **Apply migration 0006** — 仍待 schedule
-- [low] **add-ai-gateway-usage-tracking** — post-v1，v1 收尾後評估
+- [low] **TD-001 mcp-token-store 遷移 Drizzle** — local dev 體驗修復
+- [low] **add-ai-gateway-usage-tracking** — post-v1 評估
 
 ### 依賴 / 互斥
 
-- 三條 wip 彼此 **independent**（無 spec collision），人工檢查可一次 session 連跑
-- **Design Gate 擋 archive**：`pre-archive-design-gate.sh` 要求 `design-review.md` Fidelity evidence + tasks §10 全勾；三斷點截圖需 admin OAuth session 由使用者完成
+- TD-004 / TD-005 彼此 independent，可並行處理
+- TD-003 涉及設計 token 決策（直接 token 升級 vs 逐頁換 class），先做 TD-005 canonical pattern 落穩後再啟動
+- TD-002 選項 A（runbook）無依賴；選項 B（程式層防線）需 benchmark 讀頻
 - `add-ai-gateway-usage-tracking`：獨立 draft，無依賴
 
 ### 已識別的 follow-up（非 blocking，列此備忘）
 
-- `server/utils/admin-session.ts` allowlist fallback：Phase 3 hook 穩定後可刪（code-review warning）。**時序條件**：需等 migration 0006 apply 到 prod + Phase 3 hook deploy 後活躍 session 都經過 `session.create.before` 重簽 + 觀察期內 fallback 分支零觸發（先加 `consola.warn` instrumentation 佐證）再動手。**處理時機**：v1.0.0 archive 之後當獨立 low-priority refactor，**不併入 B16 的 archive gate**（避免觀察期擋 archive）。
+- `server/utils/admin-session.ts` allowlist fallback：Phase 3 hook 穩定後可刪（code-review warning）。**時序條件**：需等 migration 0006 apply 到 prod + Phase 3 hook deploy 後活躍 session 都經過 `session.create.before` 重簽 + 觀察期內 fallback 分支零觸發（先加 `consola.warn` instrumentation 佐證）再動手。**處理時機**：v1.0.0 archive 之後當獨立 low-priority refactor。
 - `mcp_tokens.created_by_user_id` 未來加 `NOT NULL`（backfill 完 legacy token 後）
 - `chat.post.ts` 等的雙重 session 讀取已由 simplify 合併為 `fullSession`，其他 handler 仍有類似 pattern 可 follow-up
 
@@ -55,15 +56,13 @@
 
 ## Active Changes
 
-_last synced: 2026-04-20T07:47:18.797Z_
+_last synced: 2026-04-20T07:52:18.732Z_
 
-3 active changes (2 ready · 0 in progress · 1 draft · 0 blocked)
+1 active change (0 ready · 0 in progress · 1 draft · 0 blocked)
 
 ### Ready to apply
 
-- **member-and-permission-management** — 49/49 tasks (100%)
-  - Specs: `admin-document-management-ui`, `web-chat-ui`
-- **responsive-and-a11y-foundation** — 63/63 tasks (100%)
+_(none)_
 
 ### In progress
 
