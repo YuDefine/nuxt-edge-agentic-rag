@@ -70,6 +70,7 @@
           variant="solid"
           size="lg"
           icon="i-simple-icons-google"
+          class="py-3"
           :loading="socialLoading"
           @click="handleGoogleLogin"
         >
