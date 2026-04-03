@@ -23,6 +23,7 @@ The system SHALL declare `360px` as the baseline minimum supported viewport widt
 - **AND** content may overflow; such behavior is not treated as a bug
 
 ---
+
 ### Requirement: Breakpoint Token Tiers
 
 The system SHALL define six breakpoint tiers corresponding to Tailwind 4 theme tokens. The baseline `xs` token SHALL be added to the Tailwind theme configuration with value `360px`. The `sm`, `md`, `lg`, `xl` tokens SHALL match Tailwind 4 defaults (`640px`, `768px`, `1024px`, `1280px`). The application SHALL NOT introduce custom breakpoint values beyond the `xs` addition.
@@ -39,6 +40,7 @@ The system SHALL define six breakpoint tiers corresponding to Tailwind 4 theme t
 - **THEN** the rendered styles apply `px-4` from `360px` up to `767px` and `px-8` from `768px` upward
 
 ---
+
 ### Requirement: Mobile-First Layout Pattern At md Breakpoint
 
 The system SHALL use `md` (768px) as the pivot between mobile-layout and tablet-plus-layout patterns. Above or equal to `md`, layouts SHALL render a persistent sidebar; below `md`, the sidebar SHALL be hidden and replaced with a drawer (`USlideover` or equivalent) triggered by a visible menu button in the header.
@@ -63,6 +65,7 @@ The system SHALL use `md` (768px) as the pivot between mobile-layout and tablet-
 - **AND** is accessible through a drawer triggered from the chat header
 
 ---
+
 ### Requirement: Hybrid Table Fallback Below md
 
 Data tables SHALL use a hybrid fallback pattern below `md`. At `md` or wider, the full `UTable` with all columns SHALL be displayed. Below `md`, the table SHALL present a reduced row showing only primary columns (identifier, status indicator, and a single primary action) with an explicit "detail" action that opens a drawer showing the remaining columns. The system SHALL NOT substitute a pure card-per-row view and SHALL NOT rely on horizontal scrolling as the sole fallback below `md`.
@@ -86,6 +89,7 @@ Data tables SHALL use a hybrid fallback pattern below `md`. At `md` or wider, th
 - **AND** closing the drawer returns focus to the triggering detail action
 
 ---
+
 ### Requirement: @nuxt/a11y Module Dev-Time Integration
 
 The system SHALL integrate the `@nuxt/a11y` module into Nuxt configuration so it is active during local development (`NODE_ENV !== 'production'`). The module SHALL NOT be shipped in production builds. The integration SHALL surface `@nuxt/a11y` warnings in the developer console and in the Nuxt devtools panel during development.
@@ -103,6 +107,7 @@ The system SHALL integrate the `@nuxt/a11y` module into Nuxt configuration so it
 - **AND** the production bundle size delta attributable to `@nuxt/a11y` is zero
 
 ---
+
 ### Requirement: WCAG AA Contrast For Tailwind Theme Tokens
 
 The Tailwind theme SHALL define color tokens whose combinations used in the application satisfy WCAG 2.1 AA contrast minimums: `>= 4.5:1` for body text and small text against the token used for its background, `>= 3:1` for large text (18pt or 14pt bold) and for non-text UI components (button boundary, icon, focus ring). Token pairs that fail to meet these minimums SHALL NOT be used for foreground-on-background combinations in interactive contexts.
@@ -123,6 +128,7 @@ The Tailwind theme SHALL define color tokens whose combinations used in the appl
 - **THEN** the focus ring color against the adjacent background is at least 3:1
 
 ---
+
 ### Requirement: Keyboard Navigation Completeness
 
 All interactive elements (buttons, links, inputs, selects, menu items, drawer triggers, modal controls) SHALL be reachable via Tab key navigation. All modal dialogs, drawers, and popover menus SHALL trap keyboard focus while open and SHALL close when the Escape key is pressed. Focus SHALL return to the triggering control when a dialog, drawer, or popover closes. Every interactive element SHALL display a visible focus indicator when focused via keyboard (`focus-visible` state).
@@ -152,6 +158,7 @@ All interactive elements (buttons, links, inputs, selects, menu items, drawer tr
 - **AND** the focus ring is not suppressed by mouse-click focus
 
 ---
+
 ### Requirement: Skip-To-Main Navigation Link
 
 Every page SHALL include a "skip to main content" link as the first focusable element in the DOM. This link SHALL be visually hidden until focused via Tab and SHALL become visible when focused. Activating the link SHALL move keyboard focus to the main content landmark, bypassing the navigation.
@@ -169,6 +176,7 @@ Every page SHALL include a "skip to main content" link as the first focusable el
 - **AND** subsequent Tab presses navigate from within the main content rather than the navigation
 
 ---
+
 ### Requirement: Design Review Responsive And Accessibility Steps
 
 The repository's Design Review workflow SHALL include a responsive breakpoint check and an accessibility check as distinct steps. The responsive check SHALL verify the affected surfaces render correctly at `xs` (360), `md` (768), and `xl` (1280) viewports. The accessibility check SHALL verify the `@nuxt/a11y` dev report shows no error-severity findings and that keyboard-only navigation can complete the documented user journeys. These steps SHALL be encoded in `.spectra.yaml` `design.review_steps` and referenced in the Design Review Task Template of `.claude/rules/proactive-skills.md` so new change proposals automatically inherit them.

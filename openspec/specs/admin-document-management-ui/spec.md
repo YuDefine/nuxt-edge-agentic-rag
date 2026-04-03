@@ -28,6 +28,7 @@ The system SHALL provide an Admin-only document list page at `/admin/documents` 
 - **THEN** the page blocks access with an unauthorized state
 
 ---
+
 ### Requirement: Staged Upload And Publish Wizard
 
 The system SHALL provide an Admin upload flow that guides the user through presign, file upload, finalize, sync, and publish steps with explicit per-step status feedback. The UI SHALL not allow later steps to run before earlier steps succeed. The first successful publish of a document SHALL atomically promote the document from `draft` to `active` state; subsequent publishes SHALL continue to require `active` state and MUST reject attempts on `archived` documents.
@@ -72,6 +73,7 @@ code:
 -->
 
 ---
+
 ### Requirement: Version Status Clarity
 
 The document management UI SHALL represent document and version states with explicit labels or badges so that Admins can tell whether a document is draft, active, archived, queued, syncing, indexed, or failed without reading raw backend values.
@@ -91,6 +93,7 @@ code:
 -->
 
 ---
+
 ### Requirement: Document Version Retry Sync Action
 
 The system SHALL provide an admin-only action to retry a stuck or failed document version sync. Retrying SHALL advance `document_versions.sync_status` from `pending` or `failed` to `running` without creating a new version record and without altering `document_versions.index_status`. The server SHALL reject retries that cannot make progress and SHALL NOT trust any client-supplied precondition flags.
@@ -127,6 +130,7 @@ The system SHALL provide an admin-only action to retry a stuck or failed documen
 - **AND** no state mutation occurs
 
 ---
+
 ### Requirement: Hard Delete For Draft-Never-Published Documents
 
 The system SHALL allow an Admin to permanently delete a document if and only if its `documents.status = draft` AND no `document_versions` row belonging to the document has ever been published (`published_at IS NULL` for every version). The server SHALL determine deletability solely from stored state and SHALL NOT accept any client-supplied force or confirm flag to bypass the check. Deletion SHALL cascade to `document_versions` and `source_chunks` via foreign key `onDelete: cascade`.
@@ -164,6 +168,7 @@ The system SHALL allow an Admin to permanently delete a document if and only if 
 - **AND** evaluates deletability from server-side state only
 
 ---
+
 ### Requirement: Document Archive And Unarchive Actions
 
 The system SHALL allow an Admin to archive a document by setting `documents.status = archived` and writing `documents.archivedAt`, and to unarchive a document by returning `documents.status` to `active` and clearing `documents.archivedAt`. Archive and unarchive SHALL NOT modify `document_versions` or `source_chunks` rows. Archived documents SHALL be excluded from answering and retrieval flows by the existing `documents.status = active` filter. Re-archiving an already archived document and re-unarchiving an already active document SHALL each return a success no-op response.
@@ -209,6 +214,7 @@ The system SHALL allow an Admin to archive a document by setting `documents.stat
 - **AND** the document returns to the Admin view but may appear without a servable current version
 
 ---
+
 ### Requirement: Lifecycle Action Entry Points In Admin UI
 
 The admin document UI SHALL expose lifecycle actions whose visibility reflects each document's current state. The document list SHALL render an actions menu whose items are filtered by status and publication history. The document detail page SHALL render archive, unarchive, and delete actions in its toolbar according to the same filtering rules. The version history SHALL render a retry action for each version whose `sync_status` is `pending` or `failed`. Unavailable actions SHALL NOT be rendered as disabled controls; the UI SHALL hide them instead.
@@ -252,6 +258,7 @@ The admin document UI SHALL expose lifecycle actions whose visibility reflects e
 - **AND** the UI communicates that the sync task is currently in progress
 
 ---
+
 ### Requirement: Destructive Action Confirmation Dialog
 
 The admin UI SHALL present a confirmation dialog before invoking delete, archive, or unarchive actions. The dialog SHALL state the action name, describe the impact in concrete terms, and display the current Admin email. The dialog SHALL require an explicit confirm click to proceed. Retry-sync SHALL NOT require a confirmation dialog because it is not destructive.
@@ -286,6 +293,7 @@ The admin UI SHALL present a confirmation dialog before invoking delete, archive
 - **AND** the server request is sent immediately
 
 ---
+
 ### Requirement: Upload Filename Preserves Unicode Characters
 
 The staged upload pipeline SHALL preserve user-visible Unicode characters (Chinese, Japanese, Korean, accented Latin, emoji) in filenames while stripping only characters that are unsafe for R2 object keys or operating system paths. Stored object keys MUST retain the sanitized original filename so Admins can visually identify uploads in the document list.

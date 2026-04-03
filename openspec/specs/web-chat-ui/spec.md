@@ -40,6 +40,7 @@ The system SHALL provide a chat page at `/chat` for authenticated Web users and 
 - **AND** the account-pending page explains how to contact an admin
 
 ---
+
 ### Requirement: Persisted Conversation Chat UI
 
 The chat UI SHALL display the current conversation message list, support sending new questions, and surface existing conversation history for the signed-in user. The UI SHALL honor server-provided visibility and stale conversation rules instead of inventing a separate client-only truth source.
@@ -65,6 +66,7 @@ code:
 -->
 
 ---
+
 ### Requirement: Streaming Answer And Refusal Display
 
 The system SHALL stream assistant responses in the chat UI, show loading state before the first token, render partial content incrementally, display refusal responses distinctly from successful answers, and treat detected high-risk inputs (credentials and credit card numbers) as refusal-worthy regardless of retrieval outcome.
@@ -100,6 +102,7 @@ code:
 -->
 
 ---
+
 ### Requirement: Citation Replay UI
 
 The system SHALL display clickable citation markers for cited answers and SHALL open a replay surface that retrieves the cited chunk through an app-level server wrapper around the citation replay core.

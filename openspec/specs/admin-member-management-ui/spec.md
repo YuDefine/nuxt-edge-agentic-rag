@@ -27,6 +27,7 @@ The system SHALL provide an admin-only page at `/admin/members` that lists all u
 - **THEN** the page shows an empty state with guidance rather than a blank table
 
 ---
+
 ### Requirement: Role Promotion And Demotion Actions With Confirmation
 
 The member list SHALL provide explicit promote and demote actions that route to `PATCH /api/admin/members/:userId` after a confirmation dialog. The confirmation SHALL display the target email, the current role, the requested role, and a warning if the action is irreversible without Admin intervention.
@@ -48,6 +49,7 @@ The member list SHALL provide explicit promote and demote actions that route to 
 - **THEN** the UI surfaces the HTTP 403 response body explaining that admin promotion must be done via env var allowlist
 
 ---
+
 ### Requirement: Guest Policy Settings Page With Single Dial
 
 The system SHALL provide an admin-only page at `/admin/settings/guest-policy` that displays the current value of `guest_policy` and offers a single radio-group selector with the three enum values. Saving the selection SHALL call `PATCH /api/admin/settings/guest-policy` and show immediate feedback on success or failure.
@@ -69,6 +71,7 @@ The system SHALL provide an admin-only page at `/admin/settings/guest-policy` th
 - **THEN** the UI reverts the radio selection to the previous value and shows an error toast with the server-provided message
 
 ---
+
 ### Requirement: Admin Navigation Exposes Member And Policy Entries
 
 The admin navigation shell SHALL expose entries for `/admin/members` and `/admin/settings/guest-policy` alongside existing admin entries. These entries SHALL only appear for users with `role = 'admin'`.
