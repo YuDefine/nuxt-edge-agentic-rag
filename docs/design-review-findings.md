@@ -156,5 +156,6 @@
   - `/admin/tokens` → `admin-token-management-ui` capability
   - `/admin/debug/latency` → `debug-decision-inspection` capability
   - 登 `docs/tech-debt.md` TD-005 批次處理，**不阻擋** 當前 MPM / RAF archive。
+  - **✅ Resolved 2026-04-20**：TD-005 commit 285482b 修復 — `#13-14` 用 `<UFormField>` 包裹（USelect×3 + UInput×2）同時解 button-name + label；`#15-17` 新增 `shared/utils/table.ts` `srOnlyHeader(label)` utility 統一 UTable actions header；`#18` `/admin/debug/latency` 補 `<h2 sr-only>` 並改用 `aria-labelledby` 單一 source of truth，unauthorized/empty/error 分支 `<h3>` 改為 `<h2>` 填全分支覆蓋。Regression guard：`e2e/td005-a11y-admin.spec.ts` 掃四頁 4/4 pass。
 
 累積 Findings: **28 項**。
