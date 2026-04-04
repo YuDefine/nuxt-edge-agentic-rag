@@ -50,7 +50,7 @@
       <!-- Allowed access levels -->
       <div class="flex flex-col gap-1">
         <span class="text-xs font-medium text-muted uppercase">允許存取層級</span>
-        <div v-if="allowedAccessLevels.length === 0" class="text-sm text-dimmed">無資料</div>
+        <div v-if="allowedAccessLevels.length === 0" class="text-sm text-muted">無資料</div>
         <div v-else class="flex flex-wrap gap-1">
           <UBadge
             v-for="level in allowedAccessLevels"
@@ -67,7 +67,7 @@
       <!-- Risk flags -->
       <div class="flex flex-col gap-1">
         <span class="text-xs font-medium text-muted uppercase">風險標記</span>
-        <div v-if="riskFlags.length === 0" class="text-sm text-dimmed">無</div>
+        <div v-if="riskFlags.length === 0" class="text-sm text-muted">無</div>
         <div v-else class="flex flex-wrap gap-1">
           <UBadge v-for="flag in riskFlags" :key="flag" color="warning" variant="subtle" size="sm">
             {{ flag }}
@@ -78,7 +78,7 @@
       <!-- Citations -->
       <div class="flex flex-col gap-1">
         <span class="text-xs font-medium text-muted uppercase">引用</span>
-        <div v-if="!hasCitations" class="text-sm text-dimmed">此次查詢未產生引用</div>
+        <div v-if="!hasCitations" class="text-sm text-muted">此次查詢未產生引用</div>
         <ul v-else class="flex flex-col gap-1">
           <li
             v-for="(citation, index) in citations"

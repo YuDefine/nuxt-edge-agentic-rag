@@ -46,7 +46,7 @@
         <span class="text-xs font-medium text-muted uppercase">首 token p50</span>
         <span
           class="text-lg font-semibold"
-          :class="firstTokenMs.p50 === null ? 'text-dimmed' : 'text-default'"
+          :class="firstTokenMs.p50 === null ? 'text-muted' : 'text-default'"
           data-testid="first-token-p50"
         >
           {{ firstTokenP50 }}
@@ -56,7 +56,7 @@
         <span class="text-xs font-medium text-muted uppercase">首 token p95</span>
         <span
           class="text-lg font-semibold"
-          :class="firstTokenMs.p95 === null ? 'text-dimmed' : 'text-default'"
+          :class="firstTokenMs.p95 === null ? 'text-muted' : 'text-default'"
           data-testid="first-token-p95"
         >
           {{ firstTokenP95 }}
@@ -66,7 +66,7 @@
         <span class="text-xs font-medium text-muted uppercase">完成 p50</span>
         <span
           class="text-lg font-semibold"
-          :class="completionMs.p50 === null ? 'text-dimmed' : 'text-default'"
+          :class="completionMs.p50 === null ? 'text-muted' : 'text-default'"
           data-testid="completion-p50"
         >
           {{ completionP50 }}
@@ -76,7 +76,7 @@
         <span class="text-xs font-medium text-muted uppercase">完成 p95</span>
         <span
           class="text-lg font-semibold"
-          :class="completionMs.p95 === null ? 'text-dimmed' : 'text-default'"
+          :class="completionMs.p95 === null ? 'text-muted' : 'text-default'"
           data-testid="completion-p95"
         >
           {{ completionP95 }}
@@ -85,7 +85,7 @@
     </div>
 
     <template v-if="!hasNumericSamples" #footer>
-      <p class="text-xs text-dimmed">此通道於所選期間內無可量測的延遲樣本（全為 null）。</p>
+      <p class="text-xs text-muted">此通道於所選期間內無可量測的延遲樣本（全為 null）。</p>
     </template>
   </UCard>
 </template>

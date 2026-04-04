@@ -31,7 +31,7 @@
         <span class="text-xs font-medium text-muted uppercase">檢索分數</span>
         <span
           v-if="retrievalScore === null"
-          class="text-sm text-dimmed"
+          class="text-sm text-muted"
           data-testid="retrieval-score-unmeasured"
         >
           未測量
@@ -46,7 +46,7 @@
         <span class="text-xs font-medium text-muted uppercase">評審分數</span>
         <span
           v-if="judgeScore === null"
-          class="text-sm text-dimmed"
+          class="text-sm text-muted"
           data-testid="judge-score-unmeasured"
         >
           未測量
