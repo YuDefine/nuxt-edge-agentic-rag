@@ -56,7 +56,7 @@
       </div>
     </template>
 
-    <div v-if="total === 0" class="py-6 text-center text-sm text-dimmed">
+    <div v-if="total === 0" class="py-6 text-center text-sm text-muted">
       此通道於所選期間內無記錄。
     </div>
 

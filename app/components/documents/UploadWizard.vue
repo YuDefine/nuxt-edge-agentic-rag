@@ -643,7 +643,7 @@
               'border-primary bg-primary text-inverted': getStepStatus(step.key) === 'active',
               'border-primary bg-default text-default': getStepStatus(step.key) === 'completed',
               'border-error bg-error text-inverted': getStepStatus(step.key) === 'error',
-              'border-muted bg-default text-dimmed': getStepStatus(step.key) === 'pending',
+              'border-muted bg-default text-muted': getStepStatus(step.key) === 'pending',
             }"
             :aria-current="getStepStatus(step.key) === 'active' ? 'step' : undefined"
             :aria-label="`${step.label}：${stepStatusLabel(getStepStatus(step.key))}`"
@@ -901,7 +901,7 @@
         </p>
         <p
           v-if="getIndexingDetailLabel(indexingStatus)"
-          class="mt-2 mb-6 max-w-sm text-xs text-dimmed"
+          class="mt-2 mb-6 max-w-sm text-xs text-muted"
         >
           {{ getIndexingDetailLabel(indexingStatus) }}
         </p>

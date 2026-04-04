@@ -177,7 +177,7 @@
             <span class="text-xs font-medium text-muted uppercase">首 token 延遲</span>
             <span
               class="text-lg font-semibold"
-              :class="detail.firstTokenLatencyMs === null ? 'text-dimmed' : 'text-default'"
+              :class="detail.firstTokenLatencyMs === null ? 'text-muted' : 'text-default'"
             >
               {{ firstTokenText }}
             </span>
@@ -186,7 +186,7 @@
             <span class="text-xs font-medium text-muted uppercase">完成延遲</span>
             <span
               class="text-lg font-semibold"
-              :class="detail.completionLatencyMs === null ? 'text-dimmed' : 'text-default'"
+              :class="detail.completionLatencyMs === null ? 'text-muted' : 'text-default'"
             >
               {{ completionText }}
             </span>
