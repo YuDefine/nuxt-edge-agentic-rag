@@ -1,5 +1,7 @@
 <script setup lang="ts">
   import type { TableColumn } from '@nuxt/ui'
+  import type { CalendarDate } from '@internationalized/date'
+  import { DateFormatter, getLocalTimeZone } from '@internationalized/date'
 
   import { KNOWLEDGE_CHANNEL_VALUES } from '~~/shared/schemas/knowledge-runtime'
   import { srOnlyHeader } from '~~/shared/utils/table'
@@ -66,9 +68,18 @@
     channel: ALL_OPTION_VALUE,
     status: ALL_OPTION_VALUE,
     redactionApplied: ALL_OPTION_VALUE,
-    startDate: '',
-    endDate: '',
   })
+
+  // CalendarDate 是 class with #private fields，必須用 shallowRef 避免 reactive proxy 剝離
+  const startDate = shallowRef<CalendarDate | undefined>(undefined)
+  const endDate = shallowRef<CalendarDate | undefined>(undefined)
+
+  const dateFormatter = new DateFormatter('zh-TW', { dateStyle: 'medium' })
+
+  function formatPickerLabel(value: CalendarDate | undefined): string | null {
+    if (!value) return null
+    return dateFormatter.format(value.toDate(getLocalTimeZone()))
+  }
 
   const queryParams = computed(() => {
     const params: Record<string, string> = {}
@@ -77,8 +88,15 @@
     if (filters.redactionApplied !== ALL_OPTION_VALUE) {
       params.redactionApplied = filters.redactionApplied
     }
-    if (filters.startDate) params.startDate = filters.startDate
-    if (filters.endDate) params.endDate = filters.endDate
+    if (startDate.value) {
+      // CalendarDate.toDate() 已回傳 midnight in the given time zone，無需 setHours(0,...)
+      params.startDate = startDate.value.toDate(getLocalTimeZone()).toISOString()
+    }
+    if (endDate.value) {
+      const end = endDate.value.toDate(getLocalTimeZone())
+      end.setHours(23, 59, 59, 999)
+      params.endDate = end.toISOString()
+    }
     return params
   })
 
@@ -121,8 +139,8 @@
     filters.channel = ALL_OPTION_VALUE
     filters.status = ALL_OPTION_VALUE
     filters.redactionApplied = ALL_OPTION_VALUE
-    filters.startDate = ''
-    filters.endDate = ''
+    startDate.value = undefined
+    endDate.value = undefined
   }
 
   const columns: TableColumn<QueryLogRow>[] = [
@@ -191,22 +209,42 @@
           />
         </UFormField>
         <UFormField label="開始日期" name="startDate" size="xs">
-          <UInput
-            v-model="filters.startDate"
-            type="date"
-            color="neutral"
-            variant="outline"
-            size="md"
-          />
+          <UPopover :content="{ align: 'start' }">
+            <UButton
+              color="neutral"
+              variant="outline"
+              size="md"
+              icon="i-lucide-calendar"
+              class="min-w-40 justify-start"
+              :aria-label="startDate ? `開始日期：${formatPickerLabel(startDate)}` : '選擇開始日期'"
+            >
+              <span :class="startDate ? 'text-default' : 'text-muted'">
+                {{ formatPickerLabel(startDate) ?? '選擇開始日期' }}
+              </span>
+            </UButton>
+            <template #content>
+              <UCalendar v-model="startDate" :max-value="endDate" class="p-2" />
+            </template>
+          </UPopover>
         </UFormField>
         <UFormField label="結束日期" name="endDate" size="xs">
-          <UInput
-            v-model="filters.endDate"
-            type="date"
-            color="neutral"
-            variant="outline"
-            size="md"
-          />
+          <UPopover :content="{ align: 'start' }">
+            <UButton
+              color="neutral"
+              variant="outline"
+              size="md"
+              icon="i-lucide-calendar"
+              class="min-w-40 justify-start"
+              :aria-label="endDate ? `結束日期：${formatPickerLabel(endDate)}` : '選擇結束日期'"
+            >
+              <span :class="endDate ? 'text-default' : 'text-muted'">
+                {{ formatPickerLabel(endDate) ?? '選擇結束日期' }}
+              </span>
+            </UButton>
+            <template #content>
+              <UCalendar v-model="endDate" :min-value="startDate" class="p-2" />
+            </template>
+          </UPopover>
         </UFormField>
         <UButton
           color="neutral"
