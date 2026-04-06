@@ -129,6 +129,18 @@ export async function getGuestPolicy(event: EventLike): Promise<GuestPolicy> {
  *   (c) the opposite order (KV first) would announce a version bump for
  *       a value that might not have landed, causing phantom re-reads.
  */
+/**
+ * **Only legitimate path to mutate `guest_policy`**. Writes D1
+ * `system_settings` AND bumps the KV version stamp in one call so every
+ * Worker instance converges on next request.
+ *
+ * **Do NOT** bypass this by UPDATE'ing D1 directly (wrangler d1 execute /
+ * D1 console). Direct DB writes skip the KV bump, leaving warm Worker
+ * instances on the old cached value while cold instances read the new one
+ * — parallel requests see mixed `guest_policy` enforcement until every
+ * warm instance evicts. See `docs/runbooks/guest-policy.md` and
+ * `docs/tech-debt.md` TD-002 for the recovery procedure.
+ */
 export async function setGuestPolicy(
   event: EventLike,
   input: { value: GuestPolicy; changedBy: string },
