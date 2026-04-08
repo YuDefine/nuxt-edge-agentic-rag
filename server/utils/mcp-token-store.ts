@@ -3,19 +3,8 @@ import { randomBytes } from 'node:crypto'
 import type { McpTokenRecord } from '#shared/types/knowledge'
 import { parseStringArrayJson } from '#shared/utils/parse-string-array'
 
-import { getD1Database, getDrizzleDb } from './database'
+import { getDrizzleDb } from './database'
 import { hashMcpToken } from './mcp-auth'
-
-interface D1PreparedStatementLike {
-  all<T>(): Promise<{ results?: T[] }>
-  bind(...values: unknown[]): D1PreparedStatementLike
-  first<T>(): Promise<T | null>
-  run(): Promise<unknown>
-}
-
-interface D1DatabaseLike {
-  prepare(query: string): D1PreparedStatementLike
-}
 
 /**
  * Admin-facing view of an MCP token. **MUST NOT** include `token_hash` — the
@@ -88,98 +77,102 @@ export function buildProvisionedMcpToken(
   }
 }
 
+/**
+ * MCP token store used by the MCP auth path (token provisioning + lookup).
+ *
+ * Implementation uses Drizzle ORM via `hub:db` so that local dev (libsql)
+ * and production (Cloudflare D1) share a single code path. Historical
+ * versions went through the raw D1 `$client.prepare()` API which broke
+ * under libsql's proxy (TD-001 in `docs/tech-debt.md`).
+ */
 export function createMcpTokenStore() {
   return {
     async createToken(record: McpTokenRecord): Promise<void> {
-      const database = (await getD1Database()) as D1DatabaseLike
-      await database
-        .prepare(
-          [
-            'INSERT INTO mcp_tokens (',
-            '  id, token_hash, name, scopes_json, environment, status, expires_at, last_used_at, revoked_at, revoked_reason, created_at, created_by_user_id',
-            ') VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-          ].join('\n'),
-        )
-        .bind(
-          record.id,
-          record.tokenHash,
-          record.name,
-          record.scopesJson,
-          record.environment,
-          record.status,
-          record.expiresAt,
-          record.lastUsedAt,
-          record.revokedAt,
-          record.revokedReason,
-          record.createdAt,
-          record.createdByUserId,
-        )
-        .run()
+      const { db, schema } = await getDrizzleDb()
+      await db.insert(schema.mcpTokens).values({
+        id: record.id,
+        tokenHash: record.tokenHash,
+        name: record.name,
+        scopesJson: record.scopesJson,
+        environment: record.environment,
+        status: record.status,
+        expiresAt: record.expiresAt,
+        lastUsedAt: record.lastUsedAt,
+        revokedAt: record.revokedAt,
+        revokedReason: record.revokedReason,
+        createdAt: record.createdAt,
+        createdByUserId: record.createdByUserId,
+      })
     },
 
     async findUsableTokenByHash(
       tokenHash: string,
       environment: string,
     ): Promise<McpTokenRecord | null> {
-      const database = (await getD1Database()) as D1DatabaseLike
-      const row = await database
-        .prepare(
-          [
-            'SELECT',
-            '  id, token_hash, name, scopes_json, environment, status, expires_at, last_used_at, revoked_at, revoked_reason, created_at, created_by_user_id',
-            'FROM mcp_tokens',
-            'WHERE token_hash = ?',
-            '  AND environment = ?',
-            "  AND status = 'active'",
-            'LIMIT 1',
-          ].join('\n'),
+      const { db, schema } = await getDrizzleDb()
+      const { and, eq } = await import('drizzle-orm')
+
+      const [row] = await db
+        .select({
+          id: schema.mcpTokens.id,
+          tokenHash: schema.mcpTokens.tokenHash,
+          name: schema.mcpTokens.name,
+          scopesJson: schema.mcpTokens.scopesJson,
+          environment: schema.mcpTokens.environment,
+          status: schema.mcpTokens.status,
+          expiresAt: schema.mcpTokens.expiresAt,
+          lastUsedAt: schema.mcpTokens.lastUsedAt,
+          revokedAt: schema.mcpTokens.revokedAt,
+          revokedReason: schema.mcpTokens.revokedReason,
+          createdAt: schema.mcpTokens.createdAt,
+          createdByUserId: schema.mcpTokens.createdByUserId,
+        })
+        .from(schema.mcpTokens)
+        .where(
+          and(
+            eq(schema.mcpTokens.tokenHash, tokenHash),
+            eq(schema.mcpTokens.environment, environment),
+            eq(schema.mcpTokens.status, 'active'),
+          ),
         )
-        .bind(tokenHash, environment)
-        .first<{
-          created_at: string
-          created_by_user_id: string | null
-          environment: string
-          expires_at: string | null
-          id: string
-          last_used_at: string | null
-          name: string
-          revoked_at: string | null
-          revoked_reason: string | null
-          scopes_json: string
-          status: string
-          token_hash: string
-        }>()
+        .limit(1)
 
       if (!row) {
         return null
       }
 
-      if (row.expires_at && new Date(row.expires_at).getTime() <= Date.now()) {
+      // `expires_at` check stays in JS so NULL (no expiry) is treated the
+      // same way on every backend — Drizzle's SQL-level `IS NULL OR > now`
+      // would be more efficient but introduces dialect-specific gotchas
+      // and this table stays small.
+      if (row.expiresAt && new Date(row.expiresAt).getTime() <= Date.now()) {
         return null
       }
 
       return {
-        createdAt: row.created_at,
-        createdByUserId: row.created_by_user_id,
+        createdAt: row.createdAt,
+        createdByUserId: row.createdByUserId,
         environment: row.environment,
-        expiresAt: row.expires_at,
+        expiresAt: row.expiresAt,
         id: row.id,
-        lastUsedAt: row.last_used_at,
+        lastUsedAt: row.lastUsedAt,
         name: row.name,
-        revokedAt: row.revoked_at,
-        revokedReason: row.revoked_reason,
-        scopesJson: row.scopes_json,
+        revokedAt: row.revokedAt,
+        revokedReason: row.revokedReason,
+        scopesJson: row.scopesJson,
         status: row.status,
-        tokenHash: row.token_hash,
+        tokenHash: row.tokenHash,
       }
     },
 
     async touchLastUsedAt(tokenId: string, usedAt: string): Promise<void> {
-      const database = (await getD1Database()) as D1DatabaseLike
-      await database
-        .prepare(['UPDATE mcp_tokens', 'SET last_used_at = ?', 'WHERE id = ?'].join('\n'))
-        .bind(usedAt, tokenId)
-        .run()
+      const { db, schema } = await getDrizzleDb()
+      const { eq } = await import('drizzle-orm')
+
+      await db
+        .update(schema.mcpTokens)
+        .set({ lastUsedAt: usedAt })
+        .where(eq(schema.mcpTokens.id, tokenId))
     },
   }
 }
