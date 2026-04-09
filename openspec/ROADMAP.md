@@ -14,15 +14,16 @@
 >
 > **Active tech debt**（`docs/tech-debt.md`）：
 >
-> - TD-006（mid）— Nuxt UI subtle variant tonal badge 對比度不足（新登，需 design 決策方向）
-> - TD-001（low）— mcp-token-store libsql 不相容（local dev 體驗）
+> - TD-007（low）— 裝飾 icon tonal color 低於 WCAG 1.4.11 non-text AA（新登，需先 audit informational vs decorative）
 >
 > **Recently resolved**（2026-04-20）：
 >
+> - TD-001 — mcp-token-store Drizzle 遷移
 > - TD-002 — guest_policy runbook + JSDoc 反向說明
 > - TD-003 — text-dimmed → text-muted 批次
 > - TD-004 — 首頁 button hit-target
 > - TD-005 — admin 頁面 a11y violations 批次
+> - TD-006 — Nuxt UI subtle/soft variant compoundVariants override
 >
 > **不應該做的**：
 >
@@ -33,14 +34,13 @@
 
 ### 本輪優先序
 
-- [mid, 需 design 討論] **TD-006 tonal badge 對比度** — 需決策方向（調 theme token / 換 variant / 接受 exception）
 - [mid] **Apply migration 0006** — 仍待 schedule
-- [low] **TD-001 mcp-token-store 遷移 Drizzle** — local dev 體驗修復
+- [low] **TD-007 裝飾 icon non-text contrast** — 需先 audit 每處 icon 是 decorative (`aria-hidden="true"`) 還是 informational；informational 的才修
 - [low] **add-ai-gateway-usage-tracking** — post-v1 評估
 
 ### 依賴 / 互斥
 
-- TD-006 需要 design 先決策（影響範圍：所有 tonal badge pattern 消費點）；決策後可 agent 獨立落地
+- TD-007 需要 audit pass，之後 agent 可獨立落地
 - `add-ai-gateway-usage-tracking`：獨立 draft，無依賴
 
 ### 已識別的 follow-up（非 blocking，列此備忘）
