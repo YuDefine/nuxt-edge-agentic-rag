@@ -60,27 +60,14 @@ test.describe('TD-003 color-contrast (admin pages)', () => {
       await page.goto(`${BASE_URL}/admin/debug/query-logs/${id}`)
       await page.waitForLoadState('networkidle')
 
-      // Known pre-existing tonal-badge contrast issues
-      // (NOT TD-003 scope — TD-003 is strictly text-dimmed → text-muted):
-      //   - `.text-warning` redaction notice paragraph
-      //     #f0b100 on #ffffff = 1.91:1
-      //   - `pii_request` risk badge (bg-warning/10 + text-warning)
-      //     #f0b100 on #fef7e5 = 1.78:1
-      //   - `超出允許範圍` refusal-reason badge (bg-error/10 + text-error)
-      //     #fb2c36 on #ffeaeb = 3.3:1
-      //   - `評審通過` score badge (bg-success/10 + text-success)
-      //     #00c950 on #e5faee = 2.03:1
-      // All four stem from Nuxt UI's `subtle` variant palette at 10%
-      // opacity — a cross-cutting issue distinct from TD-003's text-dimmed
-      // token scope. Tracking: see "unexpected findings" in TD-003 report.
-      // If a follow-up TD is filed for tonal badge tokens, remove excludes.
-      const results = await new AxeBuilder({ page })
-        .withRules(CONTRAST_RULE)
-        .exclude('p.text-warning')
-        .exclude('.bg-warning\\/10')
-        .exclude('.bg-error\\/10')
-        .exclude('.bg-success\\/10')
-        .analyze()
+      // Historically excluded tonal-badge selectors (.text-warning /
+      // .bg-{warning,error,success}/10) are now AA-compliant via
+      // TD-006 per-component `compoundVariants` overrides in
+      // `app/app.config.ts` (text shade shifted to `-700` / `dark:-200`).
+      // The `<p class="text-warning-700 ...">` redaction notice also
+      // uses the darker shade directly since it's a raw element, not a
+      // component variant.
+      const results = await new AxeBuilder({ page }).withRules(CONTRAST_RULE).analyze()
 
       expect(
         results.violations,

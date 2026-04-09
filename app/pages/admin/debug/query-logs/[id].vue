@@ -219,7 +219,10 @@
         <pre class="rounded bg-muted p-4 text-sm break-words whitespace-pre-wrap text-default">{{
           detail.queryRedactedText
         }}</pre>
-        <p v-if="detail.redactionApplied" class="mt-2 text-xs text-warning">
+        <p
+          v-if="detail.redactionApplied"
+          class="mt-2 text-xs text-warning-700 dark:text-warning-200"
+        >
           此查詢已套用 redaction 規則，原始文本不會出現在此介面。
         </p>
       </UCard>

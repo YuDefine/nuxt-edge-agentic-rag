@@ -152,10 +152,15 @@
 
     <div class="flex items-center justify-between">
       <div class="text-xs text-muted">
-        <span v-if="validationError" class="text-error">{{ validationError }}</span>
+        <span v-if="validationError" class="text-error-700 dark:text-error-200">{{
+          validationError
+        }}</span>
         <span v-else>按 / 聚焦｜Enter 送出｜Shift+Enter 換行｜Esc 清空</span>
       </div>
-      <div class="text-xs" :class="isNearLimit ? 'text-warning' : 'text-muted'">
+      <div
+        class="text-xs"
+        :class="isNearLimit ? 'text-warning-700 dark:text-warning-200' : 'text-muted'"
+      >
         {{ characterCount }} / {{ MAX_LENGTH }}
       </div>
     </div>
