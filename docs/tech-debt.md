@@ -16,7 +16,7 @@
 | TD-004 | 首頁 Google login button 高度 36px < WCAG 40px         | high     | done   | B17 viewport-baseline.spec.ts | —     |
 | TD-005 | Admin 頁面 a11y violations 批次（@nuxt/a11y 首輪掃描） | high     | done   | 2026-04-21 RAF @nuxt/a11y     | —     |
 | TD-006 | Nuxt UI subtle variant tonal badge 對比度不足          | mid      | done   | 2026-04-20 TD-003 e2e exclude | —     |
-| TD-007 | 裝飾 icon tonal color 低於 WCAG 1.4.11 non-text AA     | low      | open   | 2026-04-20 TD-006 review      | —     |
+| TD-007 | 裝飾 icon tonal color 低於 WCAG 1.4.11 non-text AA     | low      | done   | 2026-04-20 TD-006 review      | —     |
 
 ---
 
@@ -291,7 +291,8 @@ Nuxt UI `subtle` variant 的 tonal 配色在 `bg-default` 上對比度不足 WCA
 
 ## TD-007 — 裝飾 icon tonal color 低於 WCAG 1.4.11 non-text contrast
 
-**Status**: open
+**Status**: done
+**Resolved**: 2026-04-20 — Audit 全 repo 14 處 `<UIcon text-{color}>` 使用點，**全部判定為 decorative**（鄰近 heading / label / status text 已表達語義，icon 僅視覺重複）。12 處加 `aria-hidden="true"`（2 處原本已有）+ 0 處 informational，按 WCAG 1.4.11 decorative 圖形不計入 3:1 要求
 **Priority**: low
 **Discovered**: 2026-04-20 — TD-006 code-review 掃同專案 raw `text-{color}` 時連帶發現
 **Location**:
