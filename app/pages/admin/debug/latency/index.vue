@@ -128,7 +128,7 @@
     <template v-else-if="pageState === 'unauthorized'">
       <UCard>
         <div class="flex flex-col items-center justify-center py-16 text-center">
-          <UIcon name="i-lucide-shield-off" class="mb-4 size-10 text-warning" />
+          <UIcon name="i-lucide-shield-off" class="mb-4 size-10 text-warning" aria-hidden="true" />
           <h2 class="mb-2 text-lg font-semibold text-default">無權限存取</h2>
           <p class="max-w-md text-sm text-muted">
             內部 Debug 介面需 Admin 權限，且 production 需開啟
@@ -153,7 +153,7 @@
     <template v-else-if="pageState === 'error'">
       <UCard>
         <div class="flex flex-col items-center justify-center py-16 text-center">
-          <UIcon name="i-lucide-cloud-off" class="mb-4 size-10 text-error" />
+          <UIcon name="i-lucide-cloud-off" class="mb-4 size-10 text-error" aria-hidden="true" />
           <h2 class="mb-2 text-lg font-semibold text-default">無法載入統計</h2>
           <p class="mb-6 max-w-sm text-sm text-muted">後端回應異常，請稍後再試。</p>
           <UButton

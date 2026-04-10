@@ -418,7 +418,7 @@
         <UCard v-if="rollbackTarget">
           <template #header>
             <div class="flex items-center gap-2">
-              <UIcon name="i-lucide-git-branch" class="size-5 text-primary" />
+              <UIcon name="i-lucide-git-branch" class="size-5 text-primary" aria-hidden="true" />
               <h3 class="text-lg font-semibold text-default">切換目前版本</h3>
             </div>
           </template>

@@ -128,7 +128,7 @@
       <UCard :aria-describedby="describedById">
         <template #header>
           <div class="flex items-center gap-2">
-            <UIcon :name="copy.icon" class="size-5" :class="toneIconClass" />
+            <UIcon :name="copy.icon" class="size-5" :class="toneIconClass" aria-hidden="true" />
             <h3 class="text-lg font-semibold text-default">{{ copy.title }}</h3>
           </div>
         </template>

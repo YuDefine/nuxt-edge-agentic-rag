@@ -98,7 +98,7 @@
 
     <UCard v-else-if="targetDocumentId && !lockedDocument">
       <div class="flex flex-col items-center justify-center py-12 text-center">
-        <UIcon name="i-lucide-file-x" class="mb-4 size-8 text-error" />
+        <UIcon name="i-lucide-file-x" class="mb-4 size-8 text-error" aria-hidden="true" />
         <h3 class="mb-2 text-lg font-semibold text-default">找不到指定文件</h3>
         <p class="mb-6 max-w-sm text-sm text-muted">
           此文件可能已被刪除，或您無權存取。請回到列表重新選擇。
