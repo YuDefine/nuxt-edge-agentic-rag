@@ -868,7 +868,7 @@
     >
       <template v-if="indexingError">
         <div class="mb-4 rounded-full bg-muted p-4">
-          <UIcon name="i-lucide-alert-triangle" class="size-8 text-error" />
+          <UIcon name="i-lucide-alert-triangle" class="size-8 text-error" aria-hidden="true" />
         </div>
         <h3 class="mb-2 text-lg font-medium text-default">索引處理未完成</h3>
         <p class="mb-6 max-w-sm text-sm text-muted">{{ indexingError }}</p>
@@ -893,6 +893,7 @@
           <UIcon
             name="i-lucide-loader-2"
             class="size-8 animate-spin text-primary motion-reduce:animate-none"
+            aria-hidden="true"
           />
         </div>
         <h3 class="mb-2 text-lg font-medium text-default">正在建立索引</h3>
@@ -964,6 +965,7 @@
       <UIcon
         name="i-lucide-loader-2"
         class="mb-4 size-8 animate-spin text-primary motion-reduce:animate-none"
+        aria-hidden="true"
       />
       <p class="text-sm text-muted">{{ steps.find((s) => s.key === currentStep)?.description }}</p>
     </div>

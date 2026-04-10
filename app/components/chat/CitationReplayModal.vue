@@ -118,7 +118,7 @@
         <template #header>
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-2">
-              <UIcon name="i-lucide-quote" class="size-5 text-primary" />
+              <UIcon name="i-lucide-quote" class="size-5 text-primary" aria-hidden="true" />
               <h3 class="text-lg font-semibold text-default">引用內容</h3>
             </div>
             <UButton
@@ -136,6 +136,7 @@
           <UIcon
             name="i-lucide-loader-2"
             class="size-6 animate-spin text-primary motion-reduce:animate-none"
+            aria-hidden="true"
           />
           <span class="ml-2 text-sm text-muted">載入中...</span>
         </div>
