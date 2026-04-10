@@ -12,9 +12,7 @@
 >
 > **目前 0 wip，只有 1 draft**（`add-ai-gateway-usage-tracking`，post-v1 low priority）。v1 收尾完成，進入 tech debt 清理階段。
 >
-> **Active tech debt**（`docs/tech-debt.md`）：
->
-> - TD-007（low）— 裝飾 icon tonal color 低於 WCAG 1.4.11 non-text AA（新登，需先 audit informational vs decorative）
+> **Active tech debt**（`docs/tech-debt.md`）：無（全部 resolved）
 >
 > **Recently resolved**（2026-04-20）：
 >
@@ -24,6 +22,7 @@
 > - TD-004 — 首頁 button hit-target
 > - TD-005 — admin 頁面 a11y violations 批次
 > - TD-006 — Nuxt UI subtle/soft variant compoundVariants override
+> - TD-007 — 裝飾 icon `aria-hidden` 批次（14 處 audit，全為 decorative）
 >
 > **不應該做的**：
 >
@@ -35,12 +34,10 @@
 ### 本輪優先序
 
 - [mid] **Apply migration 0006** — 仍待 schedule
-- [low] **TD-007 裝飾 icon non-text contrast** — 需先 audit 每處 icon 是 decorative (`aria-hidden="true"`) 還是 informational；informational 的才修
 - [low] **add-ai-gateway-usage-tracking** — post-v1 評估
 
 ### 依賴 / 互斥
 
-- TD-007 需要 audit pass，之後 agent 可獨立落地
 - `add-ai-gateway-usage-tracking`：獨立 draft，無依賴
 
 ### 已識別的 follow-up（非 blocking，列此備忘）
