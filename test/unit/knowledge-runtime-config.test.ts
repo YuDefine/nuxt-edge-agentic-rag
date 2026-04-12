@@ -1,5 +1,7 @@
 import { beforeAll, describe, expect, it, vi } from 'vitest'
 
+import { createKnowledgeRuntimeConfig } from '#shared/schemas/knowledge-runtime'
+
 let nuxtConfig: typeof import('../../nuxt.config').default
 
 beforeAll(async () => {
@@ -16,6 +18,10 @@ describe('knowledge runtime bootstrap', () => {
     expect(knowledge).toEqual({
       environment: 'local',
       adminEmailAllowlist: [],
+      aiGateway: {
+        id: '',
+        cacheEnabled: true,
+      },
       autoRag: {
         apiToken: '',
       },
@@ -65,5 +71,56 @@ describe('knowledge runtime bootstrap', () => {
         },
       },
     })
+  })
+})
+
+describe('knowledge runtime aiGateway', () => {
+  it('defaults id to empty string and cacheEnabled to true', () => {
+    const config = createKnowledgeRuntimeConfig()
+
+    expect(config.aiGateway).toEqual({ id: '', cacheEnabled: true })
+  })
+
+  it('accepts explicit id and cacheEnabled boolean', () => {
+    const config = createKnowledgeRuntimeConfig({
+      aiGateway: { id: 'agentic-rag-production', cacheEnabled: false },
+    })
+
+    expect(config.aiGateway).toEqual({
+      id: 'agentic-rag-production',
+      cacheEnabled: false,
+    })
+  })
+
+  it('parses cacheEnabled string "false" from env', () => {
+    const config = createKnowledgeRuntimeConfig({
+      aiGateway: { cacheEnabled: 'false' },
+    })
+
+    expect(config.aiGateway.cacheEnabled).toBe(false)
+  })
+
+  it('parses cacheEnabled string "true" from env', () => {
+    const config = createKnowledgeRuntimeConfig({
+      aiGateway: { cacheEnabled: 'true' },
+    })
+
+    expect(config.aiGateway.cacheEnabled).toBe(true)
+  })
+
+  it('falls back to cacheEnabled default (true) for unrecognized string', () => {
+    const config = createKnowledgeRuntimeConfig({
+      aiGateway: { cacheEnabled: 'yes' },
+    })
+
+    expect(config.aiGateway.cacheEnabled).toBe(true)
+  })
+
+  it('accepts empty string id as disabled gateway', () => {
+    const config = createKnowledgeRuntimeConfig({
+      aiGateway: { id: '' },
+    })
+
+    expect(config.aiGateway.id).toBe('')
   })
 })
