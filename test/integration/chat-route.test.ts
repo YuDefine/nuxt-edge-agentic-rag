@@ -279,6 +279,82 @@ describe('/api/chat route', () => {
     })
   })
 
+  it('injects aiGateway runtime config into the search client', async () => {
+    chatRouteMocks.getKnowledgeRuntimeConfig.mockReturnValueOnce(
+      createKnowledgeRuntimeConfig({
+        aiGateway: {
+          id: 'agentic-rag-production',
+          cacheEnabled: true,
+        },
+        bindings: {
+          aiSearchIndex: 'knowledge-index',
+          d1Database: 'DB',
+          rateLimitKv: 'RATE_LIMITS',
+        },
+        environment: 'local',
+      }),
+    )
+    chatRouteMocks.chatWithKnowledge.mockResolvedValueOnce({
+      answer: 'ok',
+      citations: [],
+      refused: false,
+    })
+
+    const { default: handler } = await import('../../server/api/chat.post')
+    await handler(createRouteEvent())
+
+    expect(chatRouteMocks.createCloudflareAiSearchClient).toHaveBeenCalledWith(
+      expect.objectContaining({
+        gatewayConfig: {
+          id: 'agentic-rag-production',
+          cacheEnabled: true,
+        },
+        indexName: 'knowledge-index',
+      }),
+    )
+  })
+
+  it('surfaces gateway 5xx to client as 500 without silently retrying', async () => {
+    // Simulate Workers AI / Gateway returning a 5xx: the binding call
+    // propagates the error to `chatWithKnowledge`, which re-throws.
+    // Spec `ai-gateway-routing` "Gateway Routing Failures Surface To
+    // Caller": handler MUST NOT swallow or retry bypassing the gateway.
+    chatRouteMocks.chatWithKnowledge.mockRejectedValueOnce(
+      new Error('Cloudflare AI Gateway returned 502 Bad Gateway'),
+    )
+
+    const { default: handler } = await import('../../server/api/chat.post')
+
+    await expect(handler(createRouteEvent())).rejects.toMatchObject({
+      statusCode: 500,
+      statusMessage: 'Internal Server Error',
+      message: 'Chat failed',
+    })
+
+    // Handler fired chatWithKnowledge exactly once — no silent retry
+    // with the gateway parameter omitted.
+    expect(chatRouteMocks.chatWithKnowledge).toHaveBeenCalledTimes(1)
+  })
+
+  it('falls back to empty gateway id when aiGateway config is not set', async () => {
+    // Default runtime config in beforeEach has no aiGateway override,
+    // so createKnowledgeRuntimeConfig should produce `{ id: '', cacheEnabled: true }`.
+    chatRouteMocks.chatWithKnowledge.mockResolvedValueOnce({
+      answer: 'ok',
+      citations: [],
+      refused: false,
+    })
+
+    const { default: handler } = await import('../../server/api/chat.post')
+    await handler(createRouteEvent())
+
+    expect(chatRouteMocks.createCloudflareAiSearchClient).toHaveBeenCalledWith(
+      expect.objectContaining({
+        gatewayConfig: { id: '', cacheEnabled: true },
+      }),
+    )
+  })
+
   it('derives isAdmin from requireRole result instead of the narrow session snapshot', async () => {
     chatRouteMocks.requireRole.mockResolvedValueOnce({
       role: 'admin',
