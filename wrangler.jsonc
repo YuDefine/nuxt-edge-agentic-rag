@@ -8,6 +8,9 @@
     "NUXT_KNOWLEDGE_RATE_LIMIT_KV": "KV",
     "NUXT_KNOWLEDGE_AI_SEARCH_INDEX": "agentic-rag",
     "NUXT_KNOWLEDGE_ENVIRONMENT": "production",
+    "NUXT_KNOWLEDGE_AI_GATEWAY_ID": "agentic-rag-production",
+    "NUXT_KNOWLEDGE_AI_GATEWAY_CACHE_ENABLED": "true",
+    "CLOUDFLARE_ACCOUNT_ID": "0eac599c12df10586d97a78179b9f11f",
   },
   "routes": [{ "pattern": "agentic.yudefine.com.tw", "custom_domain": true }],
   "d1_databases": [

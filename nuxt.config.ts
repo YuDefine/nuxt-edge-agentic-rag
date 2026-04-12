@@ -42,6 +42,10 @@ function shouldIgnoreUpstreamCircularDependencyWarning(warning: {
 // https://nuxt.com/docs/api/configuration/nuxt-config
 const knowledgeRuntimeConfig = createKnowledgeRuntimeConfig({
   adminEmailAllowlist: process.env.ADMIN_EMAIL_ALLOWLIST,
+  aiGateway: {
+    id: process.env.NUXT_KNOWLEDGE_AI_GATEWAY_ID,
+    cacheEnabled: process.env.NUXT_KNOWLEDGE_AI_GATEWAY_CACHE_ENABLED,
+  },
   autoRag: {
     apiToken: process.env.NUXT_KNOWLEDGE_AUTO_RAG_API_TOKEN,
   },
@@ -132,6 +136,16 @@ export default defineNuxtConfig({
 
   runtimeConfig: {
     knowledge: knowledgeRuntimeConfig,
+    // Cloudflare account-level credentials for Analytics API (AI Gateway
+    // usage read). Populated via `wrangler secret put CLOUDFLARE_ACCOUNT_ID`
+    // and `... CLOUDFLARE_API_TOKEN_ANALYTICS`. Token scope MUST be
+    // `Account → Analytics → Read` only — do **not** reuse the deploy
+    // token. Secrets unused by any handler in an environment stay empty
+    // and `/api/admin/usage` returns 503 in that case (see usage.get.ts).
+    cloudflare: {
+      accountId: process.env.CLOUDFLARE_ACCOUNT_ID ?? '',
+      analyticsApiToken: process.env.CLOUDFLARE_API_TOKEN_ANALYTICS ?? '',
+    },
     oauth: {
       google: {
         clientId: process.env.NUXT_OAUTH_GOOGLE_CLIENT_ID,

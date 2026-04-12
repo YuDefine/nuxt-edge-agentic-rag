@@ -68,6 +68,11 @@ export interface KnowledgeAutoRagConfig {
   apiToken: string
 }
 
+export interface KnowledgeAiGatewayConfig {
+  id: string
+  cacheEnabled: boolean
+}
+
 export interface KnowledgeFeatureFlags {
   adminDashboard: boolean
   cloudFallback: boolean
@@ -77,6 +82,7 @@ export interface KnowledgeFeatureFlags {
 
 export interface KnowledgeRuntimeConfig {
   adminEmailAllowlist: string[]
+  aiGateway: KnowledgeAiGatewayConfig
   autoRag: KnowledgeAutoRagConfig
   bindings: KnowledgeBindingsConfig
   environment: KnowledgeEnvironment
@@ -94,6 +100,10 @@ export interface KnowledgeGovernanceInput {
 
 export interface KnowledgeRuntimeConfigInput {
   adminEmailAllowlist?: string | string[]
+  aiGateway?: {
+    id?: string
+    cacheEnabled?: boolean | string
+  }
   autoRag?: Partial<KnowledgeAutoRagConfig>
   bindings?: Partial<KnowledgeBindingsConfig>
   environment?: string
@@ -115,6 +125,10 @@ export interface AllowedAccessContext {
 
 const knowledgeRuntimeConfigSchema = z.object({
   adminEmailAllowlist: z.array(z.email()),
+  aiGateway: z.object({
+    id: z.string(),
+    cacheEnabled: z.boolean(),
+  }),
   autoRag: z.object({
     apiToken: z.string(),
   }),
@@ -191,16 +205,18 @@ export const DEFAULT_KNOWLEDGE_MODEL_ROLES: Readonly<KnowledgeModelRoles> = Obje
   defaultAnswer: 'defaultAnswer',
 })
 
-function parseBooleanFlag(value: boolean | string | undefined): boolean {
+function parseBooleanFlag(value: boolean | string | undefined, fallback = false): boolean {
   if (typeof value === 'boolean') {
     return value
   }
 
   if (typeof value === 'string') {
-    return value.toLowerCase() === 'true'
+    const normalized = value.trim().toLowerCase()
+    if (normalized === 'true') return true
+    if (normalized === 'false') return false
   }
 
-  return false
+  return fallback
 }
 
 function parsePositiveInteger(value: number | string | undefined, fallback: number): number {
@@ -329,6 +345,10 @@ export function createKnowledgeRuntimeConfig(
 
   return knowledgeRuntimeConfigSchema.parse({
     adminEmailAllowlist: parseAdminEmailAllowlist(input.adminEmailAllowlist),
+    aiGateway: {
+      id: input.aiGateway?.id ?? '',
+      cacheEnabled: parseBooleanFlag(input.aiGateway?.cacheEnabled, true),
+    },
     autoRag: {
       apiToken: input.autoRag?.apiToken ?? '',
     },
