@@ -1,7 +1,10 @@
 import { z } from 'zod'
 
 import { getCurrentMcpEvent } from '#server/utils/current-mcp-event'
-import { createCloudflareAiSearchClient } from '#server/utils/ai-search'
+import {
+  createCloudflareAiSearchClient,
+  type CloudflareAiBindingLike,
+} from '#server/utils/ai-search'
 import { getCloudflareEnv, getRequiredKvBinding } from '#server/utils/cloudflare-bindings'
 import { getD1Database } from '#server/utils/database'
 import { createKnowledgeEvidenceStore } from '#server/utils/knowledge-evidence-store'
@@ -59,6 +62,7 @@ export default defineMcpTool({
             search: createCloudflareAiSearchClient({
               aiBinding,
               indexName: runtimeConfig.bindings.aiSearchIndex,
+              gatewayConfig: runtimeConfig.aiGateway,
             }).search,
             store: createKnowledgeEvidenceStore(database),
           }),
@@ -84,31 +88,7 @@ function requireMcpAuth(event: {
 
 function getRequiredAiBinding(event: {
   context: Record<string, unknown> & { cloudflare?: { env?: Record<string, unknown> } }
-}): {
-  autorag(indexName: string): {
-    search(input: {
-      filters: Record<string, unknown>
-      max_num_results: number
-      query: string
-      ranking_options: {
-        score_threshold: number
-      }
-      rewrite_query: boolean
-    }): Promise<{
-      data?: Array<{
-        attributes?: {
-          file?: Record<string, unknown>
-        }
-        content?: Array<{
-          text?: string
-          type?: string
-        }>
-        filename?: string
-        score?: number
-      }>
-    }>
-  }
-} {
+}): CloudflareAiBindingLike {
   const binding = getCloudflareEnv(event).AI
 
   if (!binding || typeof (binding as { autorag?: unknown }).autorag !== 'function') {
@@ -119,29 +99,5 @@ function getRequiredAiBinding(event: {
     })
   }
 
-  return binding as {
-    autorag(indexName: string): {
-      search(input: {
-        filters: Record<string, unknown>
-        max_num_results: number
-        query: string
-        ranking_options: {
-          score_threshold: number
-        }
-        rewrite_query: boolean
-      }): Promise<{
-        data?: Array<{
-          attributes?: {
-            file?: Record<string, unknown>
-          }
-          content?: Array<{
-            text?: string
-            type?: string
-          }>
-          filename?: string
-          score?: number
-        }>
-      }>
-    }
-  }
+  return binding as CloudflareAiBindingLike
 }

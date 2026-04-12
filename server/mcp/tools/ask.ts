@@ -38,6 +38,7 @@ export default defineMcpTool({
     const aiSearchClient = createCloudflareAiSearchClient({
       aiBinding: getRequiredAiBinding(event),
       indexName: getRequiredAiSearchIndex(runtimeConfig.bindings.aiSearchIndex),
+      gatewayConfig: runtimeConfig.aiGateway,
     })
     const evidenceStore = createKnowledgeEvidenceStore(database)
 

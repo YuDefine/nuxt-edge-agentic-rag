@@ -101,6 +101,7 @@ export default defineEventHandler(async function chatHandler(event) {
     const aiSearchClient = createCloudflareAiSearchClient({
       aiBinding: getRequiredAiBinding(event),
       indexName: getRequiredAiSearchIndex(runtimeConfig.bindings.aiSearchIndex),
+      gatewayConfig: runtimeConfig.aiGateway,
     })
     const staleResolver = createConversationStaleResolver(database)
     const result = await chatWithKnowledge(
