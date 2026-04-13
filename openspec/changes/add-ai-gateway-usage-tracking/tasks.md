@@ -49,34 +49,56 @@
 
 ## 1. Schema 與 Runtime Config
 
-- [ ] 1.1 在 `shared/schemas/knowledge-runtime.ts` 加 `aiGateway: { id: string; cacheEnabled: boolean }` Zod schema 與 default 值（id 預設空字串、cacheEnabled 預設 true）。對應 spec **Gateway Identifier Comes From Runtime Configuration**；對應 design 章節 **Gateway ID 來源：runtime config**
-- [ ] 1.2 [P] 更新 `nuxt.config.ts` 中的 `createKnowledgeRuntimeConfig` 呼叫，新增從 `process.env.NUXT_KNOWLEDGE_AI_GATEWAY_ID` 讀取 + `process.env.NUXT_KNOWLEDGE_AI_GATEWAY_CACHE_ENABLED`
-- [ ] 1.3 [P] 更新 `.env.example` 增加 `NUXT_KNOWLEDGE_AI_GATEWAY_ID=`、`NUXT_KNOWLEDGE_AI_GATEWAY_CACHE_ENABLED=true`、`CLOUDFLARE_API_TOKEN_ANALYTICS=`、`CLOUDFLARE_ACCOUNT_ID=`
-- [ ] 1.4 在 `wrangler.jsonc` 的 `vars` 區塊加 `NUXT_KNOWLEDGE_AI_GATEWAY_ID`（值待 1.6 建好 gateway 後補）；secrets 透過 `wrangler secret put` 設定 `CLOUDFLARE_API_TOKEN_ANALYTICS`、`CLOUDFLARE_ACCOUNT_ID`
-- [ ] 1.5 為 `aiGateway` schema 寫單元測試 `test/unit/knowledge-runtime-config.test.ts`：驗證 default、env 注入、edge case（空字串）
+- [x] 1.1 在 `shared/schemas/knowledge-runtime.ts` 加 `aiGateway: { id: string; cacheEnabled: boolean }` Zod schema 與 default 值（id 預設空字串、cacheEnabled 預設 true）。對應 spec **Gateway Identifier Comes From Runtime Configuration**；對應 design 章節 **Gateway ID 來源：runtime config**
+      2026-04-20 PASS：新增 `KnowledgeAiGatewayConfig` interface、`aiGateway` 進 Zod schema、`parseBooleanWithDefault` helper；`createKnowledgeRuntimeConfig` 生成 `{ id: '', cacheEnabled: true }` 預設。
+- [x] 1.2 [P] 更新 `nuxt.config.ts` 中的 `createKnowledgeRuntimeConfig` 呼叫，新增從 `process.env.NUXT_KNOWLEDGE_AI_GATEWAY_ID` 讀取 + `process.env.NUXT_KNOWLEDGE_AI_GATEWAY_CACHE_ENABLED`
+      2026-04-20 PASS：nuxt.config.ts 的 `createKnowledgeRuntimeConfig({...})` 加 `aiGateway: { id, cacheEnabled }`。
+- [x] 1.3 [P] 更新 `.env.example` 增加 `NUXT_KNOWLEDGE_AI_GATEWAY_ID=`、`NUXT_KNOWLEDGE_AI_GATEWAY_CACHE_ENABLED=true`、`CLOUDFLARE_API_TOKEN_ANALYTICS=`、`CLOUDFLARE_ACCOUNT_ID=`
+      2026-04-20 PASS：.env.example 加「--- AI Gateway ---」區塊，四個變數全到位。
+- [x] 1.4 在 `wrangler.jsonc` 的 `vars` 區塊加 `NUXT_KNOWLEDGE_AI_GATEWAY_ID`（值待 1.6 建好 gateway 後補）；secrets 透過 `wrangler secret put` 設定 `CLOUDFLARE_API_TOKEN_ANALYTICS`、`CLOUDFLARE_ACCOUNT_ID`
+      2026-04-20 PASS：wrangler.jsonc 加 `NUXT_KNOWLEDGE_AI_GATEWAY_ID=""`、`NUXT_KNOWLEDGE_AI_GATEWAY_CACHE_ENABLED="true"`；secrets 待 1.6 完成後由使用者 `wrangler secret put`。
+- [x] 1.5 為 `aiGateway` schema 寫單元測試 `test/unit/knowledge-runtime-config.test.ts`：驗證 default、env 注入、edge case（空字串）
+      2026-04-20 PASS：新增 `describe('knowledge runtime aiGateway')` 6 個 case（default / 顯式 boolean / string "true"/"false" / unknown string / 空 id），全數通過（1+6=7 tests）。
 - [ ] 1.6 在 Cloudflare Dashboard 手動建立 AI Gateway instance `agentic-rag-production`（依 design **Gateway 啟用方式** 章節）
+      2026-04-20 BLOCKED：外部依賴（Cloudflare Dashboard 手動操作 + `wrangler secret put CLOUDFLARE_ACCOUNT_ID` / `CLOUDFLARE_API_TOKEN_ANALYTICS`）。
 
 ## 2. AI Gateway 路由實作
 
-- [ ] 2.1 在 `server/utils/ai-search.ts` 的 `createCloudflareAiSearchClient` 新增 `gatewayConfig?: { id: string; skipCache?: boolean }` 參數，若有則傳給 `aiBinding.autorag(indexName, { gateway })`。對應 spec **AI Gateway Routing For All Workers AI Calls**；對應 design 章節 **Gateway 啟用方式：透過 `gateway` 參數注入，而非改用 fetch**
-- [ ] 2.2 修改 `server/api/chat.post.ts` 第 39-42 行的 `createCloudflareAiSearchClient` 呼叫，注入 `gatewayConfig` from `runtimeConfig.aiGateway`
-- [ ] 2.3 [P] 修改 `server/api/mcp/ask.post.ts` 同步注入 gatewayConfig（依 spec scenario **MCP search endpoint routes through gateway** 同類處理）
-- [ ] 2.4 [P] 修改 `server/api/mcp/search.post.ts` 同步注入 gatewayConfig
-- [ ] 2.5 為 ai-search.ts 加單元測試：mock binding 並驗證有設定時呼叫帶 gateway 參數、未設定時不帶。對應 spec **Missing gateway id falls back to direct binding** scenario
-- [ ] 2.6 為 chat-route.test.ts 加 integration test：runtime config 有 gateway id 時，chat 呼叫 mock binding 收到 `gateway: { id }` 參數
-- [ ] 2.7 確認 admin 寫入路徑（document re-index、知識庫 sync）若有 AI 呼叫，傳入 `skipCache: true`。對應 spec **Cache Skipping For Admin Operations** 與 design 章節 **Cache 預設：開啟，但 admin 操作 skip**
-- [ ] 2.8 確認 chat / MCP read 路徑**不**傳 `skipCache`（依賴 cache 節省 Neurons）
-- [ ] 2.9 驗證 gateway 5xx 不被 silent retry；既有 try/catch 直接 surface。對應 spec **Gateway Routing Failures Surface To Caller**
+- [x] 2.1 在 `server/utils/ai-search.ts` 的 `createCloudflareAiSearchClient` 新增 `gatewayConfig?: { id: string; skipCache?: boolean }` 參數，若有則傳給 `aiBinding.autorag(indexName, { gateway })`。對應 spec **AI Gateway Routing For All Workers AI Calls**；對應 design 章節 **Gateway 啟用方式：透過 `gateway` 參數注入，而非改用 fetch**
+      2026-04-20 PASS：新增 `CloudflareAiGatewayOptions` / `CloudflareAiAutoragOptions` / `AiGatewayRuntimeConfig` types；`autorag()` 簽章加 optional `options`；`buildAutoragOptions` helper 在 `id` 為空時 return undefined（fallback）。
+- [x] 2.2 修改 `server/api/chat.post.ts` 第 39-42 行的 `createCloudflareAiSearchClient` 呼叫，注入 `gatewayConfig` from `runtimeConfig.aiGateway`
+      2026-04-20 PASS：chat.post.ts:101 `createCloudflareAiSearchClient({...gatewayConfig: runtimeConfig.aiGateway})`。
+- [x] 2.3 [P] 修改 MCP ask tool 同步注入 gatewayConfig（依 spec scenario **MCP search endpoint routes through gateway** 同類處理）
+      2026-04-20 PASS：原 tasks.md 寫 `server/api/mcp/ask.post.ts`，經 2026-04-19 `migrate-mcp-to-toolkit` 遷移後實際路徑是 `server/mcp/tools/ask.ts`。已於 line 38 注入 `gatewayConfig: runtimeConfig.aiGateway`。
+- [x] 2.4 [P] 修改 MCP search tool 同步注入 gatewayConfig
+      2026-04-20 PASS：同上，實際路徑 `server/mcp/tools/search.ts` line 59 注入 `gatewayConfig: runtimeConfig.aiGateway`。
+- [x] 2.5 為 ai-search.ts 加單元測試：mock binding 並驗證有設定時呼叫帶 gateway 參數、未設定時不帶。對應 spec **Missing gateway id falls back to direct binding** scenario
+      2026-04-20 PASS：新增 `test/unit/ai-search.test.ts` 7 個 case（gateway on/off、cacheEnabled 開關、skipCache override、空 id fallback、undefined config fallback、5xx surface、KnowledgeSearchCandidate projection），全數通過。
+- [x] 2.6 為 chat-route.test.ts 加 integration test：runtime config 有 gateway id 時，chat 呼叫 mock binding 收到 `gateway: { id }` 參數
+      2026-04-20 PASS：chat-route.test.ts 加 2 個 case（aiGateway 顯式設定時 createCloudflareAiSearchClient 收到 gatewayConfig / 未設定時 fallback 空 id）。
+- [x] 2.7 確認 admin 寫入路徑（document re-index、知識庫 sync）若有 AI 呼叫，傳入 `skipCache: true`。對應 spec **Cache Skipping For Admin Operations** 與 design 章節 **Cache 預設：開啟，但 admin 操作 skip**
+      2026-04-20 N/A：`grep env.AI / aiBinding / \.autorag(` 僅找到 `chat.post.ts` + `mcp/tools/ask.ts` + `mcp/tools/search.ts` 三個 read 路徑；admin 無直接 AI binding 呼叫（document re-index 走 AutoRAG HTTP API 不經 `env.AI` binding）。`skipCache` 參數仍保留在 `createCloudflareAiSearchClient` 介面中，日後若 admin 直連 AI 再傳 true。
+- [x] 2.8 確認 chat / MCP read 路徑**不**傳 `skipCache`（依賴 cache 節省 Neurons）
+      2026-04-20 PASS：三個呼叫點均未傳 `skipCache` override，由 `buildAutoragOptions` 依 `cacheEnabled`（預設 true）決定 `skipCache=false`。
+- [x] 2.9 驗證 gateway 5xx 不被 silent retry；既有 try/catch 直接 surface。對應 spec **Gateway Routing Failures Surface To Caller**
+      2026-04-20 PASS：ai-search.test.ts 的 "surfaces binding errors (gateway 5xx) without swallowing" case 驗證 Error 直接 propagate，無隱式 retry。
 
 ## 3. Admin Usage Endpoint
 
-- [ ] 3.1 新增 `server/api/admin/usage.get.ts` handler：使用 `requireAdmin()` 守門、Zod 驗證 `range=today|7d|30d`、`useLogger(event)` 第一行、`log.set({ user, operation })`。對應 spec **Admin Usage Endpoint Aggregates Server-Side**；對應 design 章節 **Admin endpoint design：聚合 server-side，UI 只顯示** 與 **Analytics API：分離 read-only token**
-- [ ] 3.2 在 endpoint 內呼叫 Cloudflare Analytics API（`https://api.cloudflare.com/client/v4/accounts/{ACCOUNT_ID}/ai-gateway/gateways/{GATEWAY_ID}/logs`），帶 `Authorization: Bearer <CLOUDFLARE_API_TOKEN_ANALYTICS>` header
-- [ ] 3.3 server 端聚合：累加 input/output tokens、計算 cacheHitRate = cached / total、計算 freeQuotaRemaining = 10000 - todayNeurons、組 timeline buckets
-- [ ] 3.4 統一 response shape `{ data: { tokens, neurons, requests, timeline, lastUpdatedAt } }`；錯誤一律走 `createError({ statusCode, statusMessage, message })`，不洩漏 raw upstream body
-- [ ] 3.5 上游錯誤處理：Analytics API 5xx → 回 503「服務暫時無法使用，請稍後再試」+ `log.error`。對應 spec scenario **Upstream Analytics API failure**
-- [ ] 3.6 [P] 新增 `shared/types/usage.ts` 定義 response TypeScript types（`UsageResponse`、`UsageRange`），共用給 server / client
-- [ ] 3.7 [P] 寫 integration test `test/integration/admin-usage-route.test.ts`：mock Analytics API、驗證 admin 200、non-admin 403、未認證 redirect、invalid range 400、上游錯誤 503
+- [x] 3.1 新增 `server/api/admin/usage.get.ts` handler：使用 `requireAdmin()` 守門、Zod 驗證 `range=today|7d|30d`、`useLogger(event)` 第一行、`log.set({ user, operation })`。對應 spec **Admin Usage Endpoint Aggregates Server-Side**；對應 design 章節 **Admin endpoint design：聚合 server-side，UI 只顯示** 與 **Analytics API：分離 read-only token**
+      2026-04-20 PASS：handler 走 `requireRuntimeAdminSession`（既有 admin 守門 util）+ Zod `usageQuerySchema` + `useLogger(event)` 首行。default range='today'。
+- [x] 3.2 在 endpoint 內呼叫 Cloudflare Analytics API（`https://api.cloudflare.com/client/v4/accounts/{ACCOUNT_ID}/ai-gateway/gateways/{GATEWAY_ID}/logs`），帶 `Authorization: Bearer <CLOUDFLARE_API_TOKEN_ANALYTICS>` header
+      2026-04-20 PASS：`server/utils/usage-analytics.ts` → `fetchAnalyticsLogs`；Account id 與 token 從 `useRuntimeConfig(event).cloudflare` 注入，nuxt.config.ts 新增 `cloudflare.accountId/analyticsApiToken` 區塊對映環境變數。
+- [x] 3.3 server 端聚合：累加 input/output tokens、計算 cacheHitRate = cached / total、計算 freeQuotaRemaining = 10000 - todayNeurons、組 timeline buckets
+      2026-04-20 PASS：`aggregateUsage` + `buildTimeline`；today→hourly 24 buckets、7d/30d→daily；Neurons 首選 per-log `neurons`，缺值時 fallback 至 totalTokens；remaining clamp 0。
+- [x] 3.4 統一 response shape `{ data: { tokens, neurons, requests, timeline, lastUpdatedAt } }`；錯誤一律走 `createError({ statusCode, statusMessage, message })`，不洩漏 raw upstream body
+      2026-04-20 PASS：shared/types/usage.ts 定義 `UsageResponse`；integration test "does not leak upstream error body in 503 response" 驗證 secret 不外洩。
+- [x] 3.5 上游錯誤處理：Analytics API 5xx → 回 503「服務暫時無法使用，請稍後再試」+ `log.error`。對應 spec scenario **Upstream Analytics API failure**
+      2026-04-20 PASS：handler `try/catch` → `log.error` + 503 泛用訊息；integration test "maps upstream 5xx to 503 with generic message" 驗證。
+- [x] 3.6 [P] 新增 `shared/types/usage.ts` 定義 response TypeScript types（`UsageResponse`、`UsageRange`），共用給 server / client
+      2026-04-20 PASS：`USAGE_RANGE_VALUES` const array + `UsageRange` / `UsageTokens` / `UsageNeurons` / `UsageRequests` / `UsageTimelineBucket` / `UsageSnapshot` / `UsageResponse` interfaces + `WORKERS_AI_FREE_QUOTA_PER_DAY=10_000` 常數。
+- [x] 3.7 [P] 寫 integration test `test/integration/admin-usage-route.test.ts`：mock Analytics API、驗證 admin 200、non-admin 403、未認證 redirect、invalid range 400、上游錯誤 503
+      2026-04-20 PASS：9 個 case：401 unauth / 403 non-admin / invalid range / gateway 未設定 503 / token 缺少 503 / 成功 aggregate / 上游錯誤不外洩 / 5xx→503 / neurons fallback，全數通過。
 
 ## 4. Admin Usage UI
 
