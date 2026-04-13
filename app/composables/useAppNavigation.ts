@@ -26,6 +26,7 @@ export function useAppNavigation() {
     if (isAdmin.value) {
       items.push(
         { label: '文件管理', to: '/admin/documents', icon: 'i-lucide-file-text' },
+        { label: '用量', to: '/admin/usage', icon: 'i-lucide-bar-chart-3' },
         { label: '成員管理', to: '/admin/members', icon: 'i-lucide-users' },
         {
           label: '訪客政策',
