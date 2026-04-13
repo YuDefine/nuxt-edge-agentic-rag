@@ -4,15 +4,18 @@
 
 ## Current State
 
-> 狀態（2026-04-20 更新）：Production 跑 v0.18.5。v1 三條 wip 全部 archive：
+> 狀態（2026-04-20 更新 — Next Move 推進中）：Production 跑 v0.22.1。v1 三條 wip 全部 archive。
 >
-> - `fix-better-auth-timestamp-affinity`（2026-04-20 archive）
-> - `member-and-permission-management`（2026-04-20 archive）
-> - `responsive-and-a11y-foundation`（2026-04-20 archive）
+> **Next Moves 推進紀錄（2026-04-20）**：
 >
-> **目前 0 wip，只有 1 draft**（`add-ai-gateway-usage-tracking`，post-v1 low priority）。v1 收尾完成，進入 tech debt 清理階段。
+> - ✅ Migration 0006 production apply — `wrangler d1 migrations list agentic-rag-db --remote` 回 "No migrations to apply"，確認 production 先前已 apply（可能透過 nuxthub auto-deploy）。原 roadmap "待 schedule" 已過時，移除
+> - 🟡 `add-ai-gateway-usage-tracking` — Phase 1/2/3/4 實作 + test 完成（code 路徑全通）；Phase 5 Design Review 與 H.1~H.9 人工檢查待 dev server + Cloudflare Dashboard 前置完成
 >
-> **Active tech debt**（`docs/tech-debt.md`）：無（全部 resolved）
+> **目前 1 draft 實作中**（`add-ai-gateway-usage-tracking`）。使用者改變決策（從 post-v1 low priority → 推進）；見 2026-04-20 對話。
+>
+> **Active tech debt**（`docs/tech-debt.md`）：
+>
+> - TD-008 — acceptance-tc-0x MCP 整合測試在 TD-001 修後破損（pre-existing，mid priority，與 add-ai-gateway 無關但跑 integration test 時發現）
 >
 > **Recently resolved**（2026-04-20）：
 >
@@ -27,18 +30,21 @@
 > **不應該做的**：
 >
 > - 專題報告升版 — `main-v0.0.44.md` 是實作前骨架版，正確升版時機是實際驗收回填 TC-xx / EV-xx 階段
-> - `add-ai-gateway-usage-tracking` 推進 — 使用者明標 post-v1 low priority
 
 ## Next Moves
 
 ### 本輪優先序
 
-- [mid] **Apply migration 0006** — 仍待 schedule
-- [low] **add-ai-gateway-usage-tracking** — post-v1 評估
+- [high] **add-ai-gateway-usage-tracking 收尾** — 外部前置 + Phase 5 Design Review + 人工檢查 H.1~H.9 + archive
+- [mid] **TD-008 acceptance-tc-0x MCP mock fix** — 獨立於 add-ai-gateway，可平行
 
 ### 依賴 / 互斥
 
-- `add-ai-gateway-usage-tracking`：獨立 draft，無依賴
+- `add-ai-gateway-usage-tracking` 收尾依賴**使用者手動**完成：
+  1. Cloudflare Dashboard 建 AI Gateway instance `agentic-rag-production`
+  2. 產 read-only Analytics API token（scope `Account → Analytics → Read`）
+  3. `wrangler secret put CLOUDFLARE_ACCOUNT_ID` 與 `CLOUDFLARE_API_TOKEN_ANALYTICS`
+  4. `wrangler.jsonc` 的 `NUXT_KNOWLEDGE_AI_GATEWAY_ID` 補值為 `agentic-rag-production` 後 redeploy
 
 ### 已識別的 follow-up（非 blocking，列此備忘）
 
@@ -52,9 +58,9 @@
 
 ## Active Changes
 
-_last synced: 2026-04-20T07:52:18.732Z_
+_last synced: 2026-04-20T10:23:30.017Z_
 
-1 active change (0 ready · 0 in progress · 1 draft · 0 blocked)
+1 active change (0 ready · 1 in progress · 0 draft · 0 blocked)
 
 ### Ready to apply
 
@@ -62,11 +68,11 @@ _(none)_
 
 ### In progress
 
-_(none)_
+- **add-ai-gateway-usage-tracking** — 21/48 tasks (44%)
 
 ### Draft
 
-- **add-ai-gateway-usage-tracking** — 0/48 tasks (0%)
+_(none)_
 
 ### Blocked
 
