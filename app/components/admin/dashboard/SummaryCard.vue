@@ -20,7 +20,7 @@
     <div class="flex items-start justify-between gap-3">
       <div class="flex flex-col gap-1">
         <p class="text-xs font-medium tracking-wide text-muted uppercase">{{ label }}</p>
-        <p class="text-3xl font-bold text-default">{{ value }}</p>
+        <p class="text-3xl font-bold text-default tabular-nums">{{ value }}</p>
         <p class="text-xs text-muted">{{ description }}</p>
       </div>
       <div
