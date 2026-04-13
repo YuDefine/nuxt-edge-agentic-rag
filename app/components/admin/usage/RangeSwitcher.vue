@@ -47,7 +47,7 @@
     <UButton
       v-for="item in items"
       :key="item.value"
-      :color="modelValue === item.value ? 'primary' : 'neutral'"
+      color="neutral"
       :variant="modelValue === item.value ? 'solid' : 'ghost'"
       size="sm"
       role="tab"
