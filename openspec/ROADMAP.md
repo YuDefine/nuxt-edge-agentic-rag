@@ -58,7 +58,7 @@
 
 ## Active Changes
 
-_last synced: 2026-04-20T10:23:30.017Z_
+_last synced: 2026-04-20T12:08:48.965Z_
 
 1 active change (0 ready · 1 in progress · 0 draft · 0 blocked)
 
@@ -68,7 +68,7 @@ _(none)_
 
 ### In progress
 
-- **add-ai-gateway-usage-tracking** — 21/48 tasks (44%)
+- **add-ai-gateway-usage-tracking** — 37/48 tasks (77%)
 
 ### Draft
 
