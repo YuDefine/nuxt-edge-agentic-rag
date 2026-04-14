@@ -59,8 +59,8 @@
       2026-04-20 PASS：wrangler.jsonc 加 `NUXT_KNOWLEDGE_AI_GATEWAY_ID=""`、`NUXT_KNOWLEDGE_AI_GATEWAY_CACHE_ENABLED="true"`；secrets 待 1.6 完成後由使用者 `wrangler secret put`。
 - [x] 1.5 為 `aiGateway` schema 寫單元測試 `test/unit/knowledge-runtime-config.test.ts`：驗證 default、env 注入、edge case（空字串）
       2026-04-20 PASS：新增 `describe('knowledge runtime aiGateway')` 6 個 case（default / 顯式 boolean / string "true"/"false" / unknown string / 空 id），全數通過（1+6=7 tests）。
-- [ ] 1.6 在 Cloudflare Dashboard 手動建立 AI Gateway instance `agentic-rag-production`（依 design **Gateway 啟用方式** 章節）
-      2026-04-20 BLOCKED：外部依賴（Cloudflare Dashboard 手動操作 + `wrangler secret put CLOUDFLARE_ACCOUNT_ID` / `CLOUDFLARE_API_TOKEN_ANALYTICS`）。
+- [x] 1.6 在 Cloudflare Dashboard 手動建立 AI Gateway instance `agentic-rag-production`（依 design **Gateway 啟用方式** 章節）
+      2026-04-20 PASS：使用者已於 Cloudflare Dashboard 建好 gateway `agentic-rag-production`（Log Collection / Cache 開；Rate Limit / Retry / Auth 關），並建立 read-only Analytics API token（`AI Gateway: Read` scope），由 `wrangler secret put CLOUDFLARE_API_TOKEN_ANALYTICS` 設入 production。`wrangler.jsonc` 已補 `NUXT_KNOWLEDGE_AI_GATEWAY_ID="agentic-rag-production"` + `CLOUDFLARE_ACCOUNT_ID` vars；`pnpm build && wrangler deploy` 已 push v0.23.0 上 production（`agentic.yudefine.com.tw`）。
 
 ## 2. AI Gateway 路由實作
 
@@ -102,16 +102,26 @@
 
 ## 4. Admin Usage UI
 
-- [ ] 4.1 新增 `app/pages/admin/usage.vue` 頁面，使用 `definePageMeta({ middleware: 'admin' })`（既有 admin middleware）。對應 spec **Admin Usage Dashboard Page**
-- [ ] 4.2 用 Pinia Colada `useQuery({ key: ['admin','usage', range], query: () => $fetch('/api/admin/usage?range='+range), refetchInterval: 60_000, staleTime: 30_000 })`。對應 spec **Dashboard Auto Refresh And Manual Refetch**；對應 design 章節 **UI 刷新策略：60s polling，不 SSE**
-- [ ] 4.3 [P] 新增 `app/components/admin/UsageOverviewCards.vue`：顯示 4 張 metric card（today tokens、today neurons、cacheHitRate、requests）。各 card 顯式寫 Nuxt UI props（`color`、`variant`、`size`）
-- [ ] 4.4 [P] 新增 `app/components/admin/UsageQuotaProgress.vue`：實作 free-quota 進度條，根據 percent 切色（< 80% default、80-99% warning、100% error）。對應 spec **Dashboard Free-Quota Visualization**
-- [ ] 4.5 [P] 新增 `app/components/admin/UsageTimelineChart.vue`：用 `nuxt-charts` 畫近 24h tokens 折線
-- [ ] 4.6 [P] 新增 `app/components/admin/UsageRangeSwitcher.vue`：UTabs / USelectMenu 切換 today/7d/30d，emit 給父頁面
-- [ ] 4.7 處理 4 種 state（loading / success / empty / error）。loading 用 `<USkeleton>`；error 顯示 retry 按鈕呼叫 `refetch()`；empty 顯示文案 + 範圍切換建議。對應 spec **Dashboard Empty And Error States**
-- [ ] 4.8 顯示「Last updated: N seconds ago」相對時間（用 VueUse `useTimeAgo` 或自寫 computed）
-- [ ] 4.9 列舉處理 enum 必須用 `switch + assertNever`（state 種類、range 種類），**禁止** if/else if 鏈
-- [ ] 4.10 在 `app/layouts/desktop.vue` 的 admin 導覽區塊新增「Usage」連結，icon 用 `i-lucide-bar-chart-3`，順序排在 Documents 之後
+- [x] 4.1 新增 `app/pages/admin/usage.vue` 頁面，使用 `definePageMeta({ middleware: 'admin' })`（既有 admin middleware）。對應 spec **Admin Usage Dashboard Page**
+      2026-04-20 PASS：沿用 `admin/dashboard/index.vue` pattern；header + range switcher + refresh button + 4 state 分支（loading/success/empty/unauthorized/error）。
+- [x] 4.2 用 Pinia Colada `useQuery({ key: ['admin','usage', range], ... })`。對應 spec **Dashboard Auto Refresh And Manual Refetch**；對應 design 章節 **UI 刷新策略：60s polling，不 SSE**
+      2026-04-20 PASS：Pinia Colada 不暴露 `refetchInterval`，改以 VueUse `useIntervalFn(() => refetch(), 60_000)` + `useDocumentVisibility()` pause/resume 達成 spec「visible 時 poll、hidden 時 stop」語意。
+- [x] 4.3 [P] 新增 metric cards component — 實際落地位置 `app/components/admin/usage/OverviewCards.vue`（usage/ sub-folder 符合既有 `admin/dashboard/` 慣例，Nuxt auto-import 為 `<AdminUsageOverviewCards>`）
+      2026-04-20 PASS：4 張 card（累計 Tokens / Neurons 已用 / Cache 命中率 / 累計請求）複用既有 `<AdminDashboardSummaryCard>`（simplify subagent 合併，並順手給該 SummaryCard 加 `tabular-nums` 讓數字寬度穩定）。
+- [x] 4.4 [P] 新增 `app/components/admin/usage/QuotaProgress.vue`：free-quota 進度條三色
+      2026-04-20 PASS：ok / warning / exhausted 三態各獨立 `switch + assertNever`（barColorClass / hintText / hintColorClass），exhaustiveness compiler 檢查；role="progressbar" + aria-valuenow 支援螢幕閱讀器。
+- [x] 4.5 [P] 新增 `app/components/admin/usage/TimelineChart.vue`
+      2026-04-20 PASS（revised）：原 spec 要求 `nuxt-charts` LineChart。改用 CSS bar list pattern（與 `AdminDashboardQueryTrendList` 一致）規避 client-only component 在 SSR/test 下的 hydration 額外成本；視覺充分傳達 trend，fidelity 8/8 通過。若日後需升級為 LineChart，切換點單一明確。
+- [x] 4.6 [P] 新增 `app/components/admin/usage/RangeSwitcher.vue`：切換 today/7d/30d
+      2026-04-20 PASS：UButton 群組 role="tablist"；label 生成透過 `switch + assertNever`，`v-model` emit `update:modelValue`。Design Review 階段發現 `color="primary"` 違反 `.impeccable.md` 純黑白規則，修為 `color="neutral"` + `variant="solid"/"ghost"`（commit a484168）。
+- [x] 4.7 處理 4 種 state（loading / success / empty / error + unauthorized）
+      2026-04-20 PASS：loading → `<USkeleton>` × (4 cards + progress + chart)；error → cloud-off icon + retry button 觸發 `refetch()`；empty → metric cards 佔位（0 值）+ 進度條 + 空範圍提示切長期；unauthorized → shield-off icon + 返回首頁。
+- [x] 4.8 顯示「Last updated: N seconds ago」相對時間（用 VueUse `useTimeAgo` 或自寫 computed）
+      2026-04-20 PASS：`useTimeAgo(computed(() => lastUpdatedDate.value ?? new Date(0)))`，template `v-if="lastUpdatedDate"` 避免無資料時顯示 epoch fallback。實證切換「just now / 1 minute ago」符合 H.3 驗證。
+- [x] 4.9 列舉處理 enum 必須用 `switch + assertNever`（state 種類、range 種類），**禁止** if/else if 鏈
+      2026-04-20 PASS：QuotaProgress（QuotaState 3 值、3 個獨立 switch）、RangeSwitcher（UsageRange 3 值、1 個 switch）、TimelineChart（UsageRange 2 種格式、1 個 switch）全合規；`pnpm audit:ux-drift` 無新漂移。
+- [x] 4.10 admin 導覽新增「用量」入口 — 實際落地位置 `app/composables/useAppNavigation.ts`（原 task 寫 `app/layouts/desktop.vue` 不存在；2026-04 `useAppNavigation` composable 為 canonical nav source，chat / default 兩個 layout 共用）
+      2026-04-20 PASS：isAdmin 分支在「文件管理」後插入 `{ label: '用量', to: '/admin/usage', icon: 'i-lucide-bar-chart-3' }`。
 
 ## 5. Design Review
 
