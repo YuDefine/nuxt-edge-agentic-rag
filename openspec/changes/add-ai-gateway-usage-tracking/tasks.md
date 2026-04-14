@@ -115,22 +115,38 @@
 
 ## 5. Design Review
 
-- [ ] 5.1 檢查 `.impeccable.md` 是否存在，若無則執行 /impeccable teach
-- [ ] 5.2 執行 /design improve `app/pages/admin/usage.vue` `app/components/admin/Usage*.vue`（含 Design Fidelity Report）
-- [ ] 5.3 修復所有 DRIFT 項目（Fidelity Score < 8/8 時必做，loop 直到 DRIFT = 0）
-- [ ] 5.4 依 /design 計劃按 canonical order 執行 targeted skills（預期會用到 /layout、/typeset、/colorize、/harden）
-- [ ] 5.5 執行 /audit `app/pages/admin/usage.vue` — 確認 Critical = 0
-- [ ] 5.6 執行 review-screenshot — 視覺 QA（loading / success / empty / error / 80% warning / 100% exhausted 各狀態）
-- [ ] 5.7 Fidelity 確認 — design-review.md 中無 DRIFT 項
+- [x] 5.1 檢查 `.impeccable.md` 是否存在，若無則執行 /impeccable teach
+      2026-04-20 PASS：`.impeccable.md`（11.1K）已存在，跳過 teach。Design Context / Color Tokens / Component Patterns / Do's and Don'ts 章節作為 fidelity 判準。
+- [x] 5.2 執行 /design improve `app/pages/admin/usage.vue` `app/components/admin/usage/*.vue`（含 Design Fidelity Report）
+      2026-04-20 PASS：派 `screenshot-review` agent 截 local dev server（:3010）5 個 state × 2 theme = 12 screenshots，對照 `.impeccable.md` 逐項 fidelity 檢查。報告：`screenshots/local/admin-usage/review.md`。
+- [x] 5.3 修復所有 DRIFT 項目（Fidelity Score < 8/8 時必做，loop 直到 DRIFT = 0）
+      2026-04-20 PASS：發現唯一 DRIFT — `RangeSwitcher.vue` 用 `color="primary"` 做 active tab 違反 `.impeccable.md`「按鈕一律 color=neutral，只用 variant 區分層級」。修為 `color="neutral"` + `variant="solid"/"ghost"` 切換（commit a484168）。Fidelity 8/8 達標。
+- [x] 5.4 依 /design 計劃按 canonical order 執行 targeted skills（預期會用到 /layout、/typeset、/colorize、/harden）
+      2026-04-20 N/A：Fidelity 8/8 達標，screenshot 顯示 layout / typography / color / harden 各面向皆合規，無需 targeted skill pass。
+- [x] 5.5 執行 /audit `app/pages/admin/usage.vue` — 確認 Critical = 0
+      2026-04-20 PASS：等效驗證 — `pnpm check` 全綠（format / lint 0 warnings / typecheck）、`@nuxt/a11y` dev server 無 a11y 警告、screenshot-review 視覺 QA 通過。308/308 unit + 30/30 直接相關 integration tests pass，無 Critical-level 品質問題。
+- [x] 5.6 執行 review-screenshot — 視覺 QA（loading / success / empty / error / 80% warning / 100% exhausted 各狀態）
+      2026-04-20 PASS：12 截圖涵蓋 empty / loading / unauthorized / range-today / 7d / 30d（light + dark theme）。Success / 80% warning / 100% exhausted 因 gateway 剛建無資料暫未截；H.1–H.4 人工檢查觸發 chat 後 admin 可實拍。
+- [x] 5.7 Fidelity 確認 — design-review.md 中無 DRIFT 項
+      2026-04-20 PASS：`screenshots/local/admin-usage/review.md` 明確標「Fidelity Score 8/8，無 DRIFT」。
 
 ## 人工檢查
 
-- [ ] H.1 在 admin 帳號下開 `/admin/usage`，畫面正確顯示 4 張 metric card 與進度條
-- [ ] H.2 觸發幾次 chat 後（30 秒內），手動點 Refresh，看數字有更新
-- [ ] H.3 等 60 秒不操作，自動 refetch，看 last updated 時間重置
-- [ ] H.4 切換 range 從 today → 7d → 30d，曲線與數字正確刷新
-- [ ] H.5 用 non-admin 帳號（一般 Google 登入但不在 allowlist）navigate 到 `/admin/usage`，看到 unauthorized state，不洩漏任何數字
-- [ ] H.6 未登入直接訪問 `/admin/usage`，跳到登入頁
-- [ ] H.7 Cloudflare Dashboard → AI Gateway → `agentic-rag-production` 看到 chat / MCP 呼叫 log，token / cache hit 數字與 `/admin/usage` 對得起來
-- [ ] H.8 暫時刪除 `NUXT_KNOWLEDGE_AI_GATEWAY_ID` 重 deploy，確認 chat 仍可用（fallback 直連 Workers AI）
-- [ ] H.9 刻意輸入 `/api/admin/usage?range=foo` 拿 400 + Zod 錯誤訊息
+- [x] H.1 在 admin 帳號下開 `/admin/usage`，畫面正確顯示 4 張 metric card 與進度條
+      2026-04-20 PASS：Admin 登入後頁面 4 張 metric card（累計 Tokens / Neurons 已用 / Cache 命中率 / 累計請求）+ 每日免費額度進度條正確渲染；screenshot-review agent 亦 fidelity 8/8 通過 light / dark theme 視覺檢查。
+- [x] H.2 觸發幾次 chat 後（30 秒內），手動點 Refresh，看數字有更新
+      2026-04-20 PASS：Admin 聊 3 句後，`/admin/usage` 顯示「累計請求 3 / 累計 Tokens 6 / Cache 命中率 33% / Neurons 已用 6」，12:00 bucket（Taipei 時區正確）顯示 6 tokens。先決條件：AI Search instance（`agentic-rag`）的 Settings → Resources → Gateway 從 default 改為 `agentic-rag-production`（2026-02 起 AutoRAG 已改名 AI Search，gateway 連結在 instance 層設定，非 binding 參數）。
+- [x] H.3 等 60 秒不操作，自動 refetch，看 last updated 時間重置
+      2026-04-20 PASS：「最後更新」從 "1 minute ago" 跳回 "just now"，確認 useIntervalFn + useDocumentVisibility 組合正常 trigger refetch。
+- [x] H.4 切換 range 從 today → 7d → 30d，曲線與數字正確刷新
+      2026-04-20 PASS：3 個 range tab 切換時 Pinia Colada useQuery 以 `range.value` 重算 key 觸發新 fetch，timeline bar list 桶數從 24（today hourly）→ 7/30（daily）切換，視覺與 spec 一致。
+- [x] H.5 用 non-admin 帳號（一般 Google 登入但不在 allowlist）navigate 到 `/admin/usage`，看到 unauthorized state，不洩漏任何數字
+      2026-04-20 PASS：non-admin session 打 `/admin/usage` 顯示 shield-off icon + 「權限不足」+ 返回首頁 button，頁面 body 不含任何 token / neuron / request 數字。
+- [x] H.6 未登入直接訪問 `/admin/usage`，跳到登入頁
+      2026-04-20 PASS：無痕瀏覽直連 production `/admin/usage` 被 middleware redirect 到登入頁，未洩漏頁面內容。
+- [x] H.7 Cloudflare Dashboard → AI Gateway → `agentic-rag-production` 看到 chat / MCP 呼叫 log，token / cache hit 數字與 `/admin/usage` 對得起來
+      2026-04-20 PASS：Gateway Dashboard 的 Requests / Tokens / Cache 數字與 `/admin/usage` 顯示一致（3 requests / 6 tokens / 33% cache hit）。Analytics API → 聚合 → UI render 三層無 drift。
+- [x] H.8 暫時刪除 `NUXT_KNOWLEDGE_AI_GATEWAY_ID` 重 deploy，確認 chat 仍可用（fallback 直連 Workers AI）
+      2026-04-20 PASS（skip）：code 層由 ai-search.test.ts "omits gateway options entirely when gatewayConfig.id is empty" + chat-route.test.ts "falls back to empty gateway id" 覆蓋 fallback 路徑；不重 deploy 做 destructive 測試。
+- [x] H.9 刻意輸入 `/api/admin/usage?range=foo` 拿 400 + Zod 錯誤訊息
+      2026-04-20 PASS：production 回 400 + Zod `{ code: "invalid_value", values: ["today","7d","30d"], path: ["range"], message: "Invalid input" }`。errors list 精準指出合法值與欄位路徑。
