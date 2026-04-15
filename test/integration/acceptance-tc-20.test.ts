@@ -73,9 +73,11 @@ vi.mock('../../server/utils/cloudflare-bindings', () => ({
   getRequiredKvBinding: () => (tc20Mocks.bindings ?? {}).KV,
 }))
 
-vi.mock('../../server/utils/database', () => ({
-  getD1Database: async () => (tc20Mocks.bindings ?? {}).DB,
-}))
+vi.mock('../../server/utils/database', async () => {
+  const { createHubDbMock } = await import('./helpers/database')
+
+  return createHubDbMock({ database: () => (tc20Mocks.bindings ?? {}).DB })
+})
 
 vi.mock('../../server/utils/knowledge-runtime', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../server/utils/knowledge-runtime')>()
@@ -140,7 +142,7 @@ describe('acceptance MCP no-internal-diagnostics contract (TC-20)', () => {
       searchTool,
       { query: fixture.prompt },
       {
-        authorizationHeader: tc20Mocks.actor?.mcpToken.authorizationHeader ?? '',
+        actor: tc20Mocks.actor ?? undefined,
         cloudflareEnv: tc20Mocks.bindings ?? {},
         pendingEvent,
       },
@@ -165,7 +167,7 @@ describe('acceptance MCP no-internal-diagnostics contract (TC-20)', () => {
       categoriesTool,
       { includeCounts: true },
       {
-        authorizationHeader: tc20Mocks.actor?.mcpToken.authorizationHeader ?? '',
+        actor: tc20Mocks.actor ?? undefined,
         cloudflareEnv: tc20Mocks.bindings ?? {},
         pendingEvent,
       },

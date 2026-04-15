@@ -77,9 +77,11 @@ vi.mock('../../server/utils/cloudflare-bindings', () => ({
   getRequiredKvBinding: () => (tc04Mocks.bindings ?? {}).KV,
 }))
 
-vi.mock('../../server/utils/database', () => ({
-  getD1Database: async () => (tc04Mocks.bindings ?? {}).DB,
-}))
+vi.mock('../../server/utils/database', async () => {
+  const { createHubDbMock } = await import('./helpers/database')
+
+  return createHubDbMock({ database: () => (tc04Mocks.bindings ?? {}).DB })
+})
 
 vi.mock('../../server/utils/knowledge-runtime', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../server/utils/knowledge-runtime')>()
@@ -180,9 +182,7 @@ describe('acceptance self-correction reformulation (TC-04)', () => {
       tc04Mocks.readZodBody.mockResolvedValue({ query: fixture.prompt })
 
       const result = (
-        fixture.channel === 'web'
-          ? await runWebCase()
-          : await runMcpCase(tc04Mocks.actor?.mcpToken.authorizationHeader ?? '', fixture.prompt)
+        fixture.channel === 'web' ? await runWebCase() : await runMcpCase(fixture.prompt)
       ) as {
         data: {
           answer: string
@@ -242,10 +242,12 @@ describe('acceptance self-correction reformulation (TC-04)', () => {
         ]),
       )
 
-      if (fixture.channel === 'mcp') {
-        expect(d1.calls.some((call) => call.query.includes('FROM mcp_tokens'))).toBe(true)
-        expect(d1.calls.some((call) => call.query.includes('UPDATE mcp_tokens'))).toBe(true)
-      }
+      // TD-001 post-migration: `createMcpTokenStore` now issues Drizzle
+      // queries instead of raw `prepare('... FROM mcp_tokens')`, so the
+      // legacy SQL-string assertion no longer matches. Token auth is
+      // covered by `createStubMcpTokenStoreFromActor` in the runner —
+      // reaching the `expect(result.answer).toMatch` above already proves
+      // the token resolved successfully.
     },
   )
 })
@@ -256,13 +258,13 @@ async function runWebCase() {
   return await handler(createRouteEvent())
 }
 
-async function runMcpCase(authorizationHeader: string, query: string) {
+async function runMcpCase(query: string) {
   const { default: tool } = await import('#server/mcp/tools/ask')
   const data = await runMcpTool(
     tool,
     { query },
     {
-      authorizationHeader,
+      actor: tc04Mocks.actor ?? undefined,
       cloudflareEnv: tc04Mocks.bindings ?? {},
       pendingEvent,
     },

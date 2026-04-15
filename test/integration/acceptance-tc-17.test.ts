@@ -90,9 +90,11 @@ vi.mock('../../server/utils/cloudflare-bindings', () => ({
   getRequiredKvBinding: () => (tc17Mocks.bindings ?? {}).KV,
 }))
 
-vi.mock('../../server/utils/database', () => ({
-  getD1Database: async () => (tc17Mocks.bindings ?? {}).DB,
-}))
+vi.mock('../../server/utils/database', async () => {
+  const { createHubDbMock } = await import('./helpers/database')
+
+  return createHubDbMock({ database: () => (tc17Mocks.bindings ?? {}).DB })
+})
 
 vi.mock('../../server/utils/knowledge-runtime', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../server/utils/knowledge-runtime')>()
@@ -170,7 +172,7 @@ describe('acceptance restricted existence-hiding (TC-17)', () => {
       askTool,
       { query: fixture.prompt },
       {
-        authorizationHeader: tc17Mocks.actor?.mcpToken.authorizationHeader ?? '',
+        actor: tc17Mocks.actor ?? undefined,
         cloudflareEnv: tc17Mocks.bindings ?? {},
         pendingEvent,
       },
@@ -230,7 +232,7 @@ describe('acceptance restricted existence-hiding (TC-17)', () => {
       searchTool,
       { query: fixture.prompt },
       {
-        authorizationHeader: tc17Mocks.actor?.mcpToken.authorizationHeader ?? '',
+        actor: tc17Mocks.actor ?? undefined,
         cloudflareEnv: tc17Mocks.bindings ?? {},
         pendingEvent,
       },

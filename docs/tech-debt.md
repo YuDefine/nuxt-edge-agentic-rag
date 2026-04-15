@@ -17,7 +17,7 @@
 | TD-005 | Admin 頁面 a11y violations 批次（@nuxt/a11y 首輪掃描） | high     | done   | 2026-04-21 RAF @nuxt/a11y     | —     |
 | TD-006 | Nuxt UI subtle variant tonal badge 對比度不足          | mid      | done   | 2026-04-20 TD-003 e2e exclude | —     |
 | TD-007 | 裝飾 icon tonal color 低於 WCAG 1.4.11 non-text AA     | low      | done   | 2026-04-20 TD-006 review      | —     |
-| TD-008 | acceptance-tc-0x MCP 整合測試在 TD-001 修後破損        | mid      | open   | 2026-04-20 add-ai-gateway     | —     |
+| TD-008 | acceptance-tc-0x MCP 整合測試在 TD-001 修後破損        | mid      | done   | 2026-04-20 add-ai-gateway     | —     |
 
 ---
 

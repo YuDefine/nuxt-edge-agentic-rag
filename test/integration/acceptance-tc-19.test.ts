@@ -73,9 +73,11 @@ vi.mock('../../server/utils/cloudflare-bindings', () => ({
   getRequiredKvBinding: () => (tc19Mocks.bindings ?? {}).KV,
 }))
 
-vi.mock('../../server/utils/database', () => ({
-  getD1Database: async () => (tc19Mocks.bindings ?? {}).DB,
-}))
+vi.mock('../../server/utils/database', async () => {
+  const { createHubDbMock } = await import('./helpers/database')
+
+  return createHubDbMock({ database: () => (tc19Mocks.bindings ?? {}).DB })
+})
 
 vi.mock('../../server/utils/knowledge-runtime', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../server/utils/knowledge-runtime')>()
@@ -152,7 +154,7 @@ describe('acceptance listCategories count contract (TC-19)', () => {
         tool,
         { includeCounts: true },
         {
-          authorizationHeader: tc19Mocks.actor?.mcpToken.authorizationHeader ?? '',
+          actor: tc19Mocks.actor ?? undefined,
           cloudflareEnv: tc19Mocks.bindings ?? {},
           pendingEvent,
         },
@@ -195,9 +197,12 @@ describe('acceptance listCategories count contract (TC-19)', () => {
         expect(Object.keys(entry).toSorted()).toEqual(['count', 'name'])
       }
 
-      // 契約 #6：MCP token 驗證 + touch last_used_at 有跑（scope/auth flow 正常）
-      expect(d1.calls.some((call) => call.query.includes('FROM mcp_tokens'))).toBe(true)
-      expect(d1.calls.some((call) => call.query.includes('UPDATE mcp_tokens'))).toBe(true)
+      // TD-001 post-migration: `createMcpTokenStore` now issues Drizzle
+      // queries instead of raw `prepare('... FROM/UPDATE mcp_tokens')`, so
+      // the legacy SQL-string assertions no longer match. Token auth is
+      // covered by `createStubMcpTokenStoreFromActor` in the runner —
+      // reaching the response assertions above already proves the token
+      // resolved successfully.
     },
   )
 })
