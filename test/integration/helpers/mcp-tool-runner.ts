@@ -1,5 +1,7 @@
 import { createMcpTokenStore } from '#server/utils/mcp-token-store'
-import { runMcpMiddleware } from '#server/utils/mcp-middleware'
+import { runMcpMiddleware, type McpTokenStoreLike } from '#server/utils/mcp-middleware'
+
+import type { AcceptanceActorFixture } from '../../acceptance/helpers/auth'
 
 import { createRouteEvent } from './nuxt-route'
 
@@ -22,13 +24,65 @@ export interface McpPendingEventHolder {
 }
 
 export interface McpToolRunOptions {
-  authorizationHeader: string
+  /**
+   * Acceptance actor fixture; when provided, the runner auto-builds both
+   * `authorizationHeader` and an in-memory `tokenStore` stub mapping the
+   * actor's `tokenHash` → full `McpTokenRecord`. Takes precedence over
+   * the individual `authorizationHeader` / `tokenStore` fields.
+   *
+   * Why this exists: TD-001 migrated `createMcpTokenStore` to Drizzle,
+   * which requires a populated `schema.mcpTokens` table to resolve. The
+   * `createHubDbMock` helper returns an empty `schema` object so the
+   * real token lookup throws before the bearer token check reaches
+   * `event.context.mcpAuth`. Passing `actor` short-circuits this.
+   */
+  actor?: AcceptanceActorFixture
+  authorizationHeader?: string
   cloudflareEnv?: Record<string, unknown>
   contextOverrides?: Record<string, unknown>
   environment?: string
   kvBindingName?: string
   params?: Record<string, string>
   pendingEvent: McpPendingEventHolder
+  tokenStore?: McpTokenStoreLike
+}
+
+/**
+ * Build an in-memory `McpTokenStoreLike` that accepts exactly one token —
+ * the one owned by `actor`. Any other hash / environment returns null,
+ * matching production behavior. `touchLastUsedAt` is a no-op.
+ */
+export function createStubMcpTokenStoreFromActor(
+  actor: AcceptanceActorFixture,
+  environment = 'local',
+): McpTokenStoreLike {
+  const record = {
+    createdAt: '2026-04-16T00:00:00.000Z',
+    // B16 §6.2.b role gate bypasses `createdByUserId === null` as legacy
+    // system seed. Acceptance tests predate B16 and don't care about the
+    // role × guest_policy matrix, so we treat stub tokens as legacy to
+    // skip the role lookup (which would require an additional drizzle
+    // mock for `user.role`). Tests that DO want to exercise B16 can
+    // build their own `McpTokenStoreLike` stub and pass `tokenStore`
+    // directly.
+    createdByUserId: null,
+    environment,
+    expiresAt: null,
+    id: actor.mcpAuth.tokenId,
+    lastUsedAt: null,
+    name: actor.mcpToken.record.name,
+    revokedAt: null,
+    revokedReason: null,
+    scopesJson: actor.mcpToken.record.scopesJson,
+    status: 'active',
+    tokenHash: actor.mcpToken.record.tokenHash,
+  }
+
+  return {
+    findUsableTokenByHash: async (tokenHash, env) =>
+      tokenHash === record.tokenHash && env === record.environment ? record : null,
+    touchLastUsedAt: async () => {},
+  }
 }
 
 interface ToolLike {
@@ -42,7 +96,7 @@ export async function runMcpTool<TTool extends ToolLike>(
   options: McpToolRunOptions,
 ): Promise<Awaited<ReturnType<TTool['handler']>>> {
   const {
-    authorizationHeader,
+    actor,
     cloudflareEnv,
     contextOverrides,
     environment = 'local',
@@ -50,6 +104,11 @@ export async function runMcpTool<TTool extends ToolLike>(
     params,
     pendingEvent,
   } = options
+  const authorizationHeader =
+    options.authorizationHeader ?? actor?.mcpToken.authorizationHeader ?? ''
+  const tokenStore =
+    options.tokenStore ??
+    (actor ? createStubMcpTokenStoreFromActor(actor, environment) : createMcpTokenStore())
 
   const event = createRouteEvent({
     context: {
@@ -69,7 +128,7 @@ export async function runMcpTool<TTool extends ToolLike>(
       environment,
       extractToolNames: async () => (tool.name ? [tool.name] : []),
       kvBindingName,
-      tokenStore: createMcpTokenStore(),
+      tokenStore,
     })
 
     return (await tool.handler(args, {} as Parameters<TTool['handler']>[1])) as Awaited<

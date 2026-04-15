@@ -78,9 +78,11 @@ vi.mock('../../server/utils/cloudflare-bindings', () => ({
   getRequiredKvBinding: () => (tc06Mocks.bindings ?? {}).KV,
 }))
 
-vi.mock('../../server/utils/database', () => ({
-  getD1Database: async () => (tc06Mocks.bindings ?? {}).DB,
-}))
+vi.mock('../../server/utils/database', async () => {
+  const { createHubDbMock } = await import('./helpers/database')
+
+  return createHubDbMock({ database: () => (tc06Mocks.bindings ?? {}).DB })
+})
 
 vi.mock('../../server/utils/knowledge-runtime', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../server/utils/knowledge-runtime')>()
@@ -179,9 +181,7 @@ describe('acceptance cross-document comparison (TC-06)', () => {
       tc06Mocks.readZodBody.mockResolvedValue({ query: fixture.prompt })
 
       const result = (
-        fixture.channel === 'web'
-          ? await runWebCase()
-          : await runMcpCase(tc06Mocks.actor?.mcpToken.authorizationHeader ?? '', fixture.prompt)
+        fixture.channel === 'web' ? await runWebCase() : await runMcpCase(fixture.prompt)
       ) as {
         data: {
           answer: string
@@ -266,13 +266,13 @@ async function runWebCase() {
   return await handler(createRouteEvent())
 }
 
-async function runMcpCase(authorizationHeader: string, query: string) {
+async function runMcpCase(query: string) {
   const { default: tool } = await import('#server/mcp/tools/ask')
   const data = await runMcpTool(
     tool,
     { query },
     {
-      authorizationHeader,
+      actor: tc06Mocks.actor ?? undefined,
       cloudflareEnv: tc06Mocks.bindings ?? {},
       pendingEvent,
     },

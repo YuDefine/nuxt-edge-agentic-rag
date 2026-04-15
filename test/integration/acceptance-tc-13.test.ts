@@ -120,7 +120,7 @@ describe('acceptance restricted citation scope (TC-13)', () => {
         tool,
         { citationId: RESTRICTED_CITATION_ID },
         {
-          authorizationHeader: tc13Mocks.actor?.mcpToken.authorizationHeader ?? '',
+          actor: tc13Mocks.actor ?? undefined,
           cloudflareEnv: tc13Mocks.bindings ?? {},
           params: { citationId: RESTRICTED_CITATION_ID },
           pendingEvent,
@@ -215,7 +215,7 @@ describe('acceptance restricted citation scope (TC-13)', () => {
         tool,
         { citationId: RESTRICTED_CITATION_ID },
         {
-          authorizationHeader: tc13Mocks.actor?.mcpToken.authorizationHeader ?? '',
+          actor: tc13Mocks.actor ?? undefined,
           cloudflareEnv: tc13Mocks.bindings ?? {},
           params: { citationId: RESTRICTED_CITATION_ID },
           pendingEvent,

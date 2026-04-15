@@ -54,9 +54,11 @@ vi.mock('../../server/utils/cloudflare-bindings', () => ({
   getRequiredKvBinding: () => (tc16Mocks.bindings ?? {}).KV,
 }))
 
-vi.mock('../../server/utils/database', () => ({
-  getD1Database: async () => (tc16Mocks.bindings ?? {}).DB,
-}))
+vi.mock('../../server/utils/database', async () => {
+  const { createHubDbMock } = await import('./helpers/database')
+
+  return createHubDbMock({ database: () => (tc16Mocks.bindings ?? {}).DB })
+})
 
 vi.mock('../../server/utils/knowledge-runtime', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../server/utils/knowledge-runtime')>()
@@ -121,7 +123,7 @@ describe('acceptance searchKnowledge no-hit contract (TC-16)', () => {
       tool,
       { query: fixture.prompt },
       {
-        authorizationHeader: tc16Mocks.actor?.mcpToken.authorizationHeader ?? '',
+        actor: tc16Mocks.actor ?? undefined,
         cloudflareEnv: tc16Mocks.bindings ?? {},
         pendingEvent,
       },
@@ -144,13 +146,16 @@ describe('acceptance searchKnowledge no-hit contract (TC-16)', () => {
       expect(envelopeKeys).not.toContain(leakingKey)
     }
 
-    // 契約 #3：AI search 被呼叫一次（表示 allowed_access_levels 套用於 retrieval），
-    // 且底層 D1 仍正確對 mcp_tokens 做 scope 檢查
+    // 契約 #3：AI search 被呼叫一次（表示 allowed_access_levels 套用於 retrieval）。
+    // TD-001 post-migration: mcp_tokens scope check is now performed via
+    // Drizzle instead of raw `prepare('... FROM mcp_tokens')`, so the
+    // legacy SQL-string assertion no longer matches. Token auth is
+    // covered by `createStubMcpTokenStoreFromActor` in the runner —
+    // reaching the response assertions above already proves the token
+    // resolved successfully.
     const aiBinding = (tc16Mocks.bindings ?? {}).AI as ReturnType<typeof createAiSearchBindingFake>
-    const d1 = (tc16Mocks.bindings ?? {}).DB as ReturnType<typeof createD1BindingFake>
 
     expect(aiBinding.calls).toHaveLength(1)
-    expect(d1.calls.some((call) => call.query.includes('FROM mcp_tokens'))).toBe(true)
   })
 })
 
