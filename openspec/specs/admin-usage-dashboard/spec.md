@@ -27,6 +27,7 @@ The system SHALL provide an admin-only page at `/admin/usage` that displays curr
 - **THEN** the system SHALL redirect to the login flow consistent with other admin routes
 
 ---
+
 ### Requirement: Admin Usage Endpoint Aggregates Server-Side
 
 The system SHALL expose a `GET /api/admin/usage` endpoint that accepts a `range` query parameter with allowed values `today`, `7d`, `30d` (default `today`), invokes the Cloudflare Analytics API server-side using the `CLOUDFLARE_API_TOKEN_ANALYTICS` secret and `CLOUDFLARE_ACCOUNT_ID`, aggregates the results, and returns a normalized JSON shape `{ data: { tokens: { input, output, total }, neurons: { used, freeQuotaPerDay, remaining }, requests: { total, cached, cacheHitRate }, timeline: Array<{ timestamp, tokens, requests, cacheHits }>, lastUpdatedAt } }`. The endpoint MUST require admin authority via `ADMIN_EMAIL_ALLOWLIST` re-check, MUST NOT expose the Analytics API token to the client, MUST NOT return raw upstream response bodies, and MUST validate the `range` parameter via Zod.
@@ -55,6 +56,7 @@ The system SHALL expose a `GET /api/admin/usage` endpoint that accepts a `range`
 - **AND** the failure MUST be logged via `evlog` at `error` level
 
 ---
+
 ### Requirement: Dashboard Free-Quota Visualization
 
 The dashboard SHALL display a progress indicator for the daily Workers AI free quota (10,000 Neurons per day). The indicator MUST show the consumed amount, the remaining amount, and a percentage. When consumption reaches or exceeds 80 percent of the daily quota, the indicator MUST visually signal a warning (color or icon change) so the admin can react before the quota is exhausted.
@@ -75,6 +77,7 @@ The dashboard SHALL display a progress indicator for the daily Workers AI free q
 - **THEN** the progress indicator SHALL show "quota exhausted" state visually and the remaining value SHALL display `0`
 
 ---
+
 ### Requirement: Dashboard Auto Refresh And Manual Refetch
 
 The dashboard SHALL automatically refetch usage data every 60 seconds while the page is visible, SHALL stop polling when the page is hidden, and SHALL provide a manual refresh control that triggers an immediate refetch bypassing client-side stale-time. The dashboard MUST display a "last updated" relative timestamp so the admin understands the data freshness, because the upstream Cloudflare Analytics API has a 1-2 minute ingestion delay.
@@ -95,6 +98,7 @@ The dashboard SHALL automatically refetch usage data every 60 seconds while the 
 - **THEN** the page SHALL show a "Last updated: N seconds ago" indicator that updates as time passes
 
 ---
+
 ### Requirement: Dashboard Empty And Error States
 
 The dashboard SHALL render four distinct UI states: loading (initial fetch in progress), success (data displayed), empty (gateway exists but no usage logs in the requested range), and error (upstream failure or network error). Each state MUST provide an actionable affordance: loading shows a skeleton, empty explains that no AI calls were made in the range and offers a range switcher, error shows a retry button.

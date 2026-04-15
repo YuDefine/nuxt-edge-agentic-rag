@@ -26,6 +26,7 @@ The system SHALL route all Workers AI binding invocations (`env.AI.autorag(...)`
 - **THEN** the AI binding SHALL be invoked without the `gateway` parameter and the request MUST still complete successfully against Workers AI directly
 
 ---
+
 ### Requirement: Gateway Identifier Comes From Runtime Configuration
 
 The system SHALL read the gateway identifier from `runtimeConfig.knowledge.aiGateway.id`, populated from the `NUXT_KNOWLEDGE_AI_GATEWAY_ID` environment variable injected at build time and surfaced through the existing `createKnowledgeRuntimeConfig` schema. The identifier MUST NOT be hard-coded in any source file, MUST NOT be read from `process.env` at request time inside handlers, and MUST be unique per deployment environment (preview, staging, production).
@@ -41,6 +42,7 @@ The system SHALL read the gateway identifier from `runtimeConfig.knowledge.aiGat
 - **THEN** AI calls from each environment SHALL appear only in the corresponding gateway's logs and the two MUST NOT mix
 
 ---
+
 ### Requirement: Cache Skipping For Admin Operations
 
 The system SHALL allow individual call sites to bypass gateway-level caching by passing `skipCache: true` in the `gateway` parameter. Calls originating from admin write paths (document re-index, content republish) MUST set `skipCache: true`. Calls from chat and MCP read paths MUST NOT set `skipCache` so that gateway-level caching can be applied.
@@ -56,6 +58,7 @@ The system SHALL allow individual call sites to bypass gateway-level caching by 
 - **THEN** the second call SHALL include `gateway: { id }` (no `skipCache`) and the gateway dashboard SHALL register a cache hit
 
 ---
+
 ### Requirement: Gateway Routing Failures Surface To Caller
 
 The system SHALL NOT silently swallow Cloudflare AI Gateway errors. If the gateway returns a non-success response, the existing error handling in chat / MCP endpoints SHALL surface the error to the caller with the original status code, and MUST NOT silently retry by bypassing the gateway, because bypassing would create observability gaps in usage logs.
