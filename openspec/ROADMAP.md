@@ -58,17 +58,17 @@
 
 ## Active Changes
 
-_last synced: 2026-04-20T12:08:48.965Z_
+_last synced: 2026-04-20T12:11:09.579Z_
 
-1 active change (0 ready · 1 in progress · 0 draft · 0 blocked)
+1 active change (1 ready · 0 in progress · 0 draft · 0 blocked)
 
 ### Ready to apply
 
-_(none)_
+- **add-ai-gateway-usage-tracking** — 48/48 tasks (100%)
 
 ### In progress
 
-- **add-ai-gateway-usage-tracking** — 37/48 tasks (77%)
+_(none)_
 
 ### Draft
 
@@ -88,7 +88,7 @@ _(none)_
 
 ### Independent (can run in parallel)
 
-- `add-ai-gateway-usage-tracking`
+_(none)_
 
 ### Mutex (same spec touched)
 
