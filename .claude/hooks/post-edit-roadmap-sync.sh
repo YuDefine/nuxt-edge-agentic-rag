@@ -37,6 +37,9 @@ if ! command -v node >/dev/null 2>&1; then
   exit 0
 fi
 
-cd "$ROOT" && node "$SCRIPT" >/dev/null 2>&1 || true
+# stdout → /dev/null (status line is noise); stderr passes through so MANUAL
+# drift warnings (archived-as-active / td-status-mismatch / version-mismatch)
+# reach the agent immediately after an openspec/changes/ edit.
+cd "$ROOT" && node "$SCRIPT" >/dev/null || true
 
 exit 0

@@ -18,7 +18,7 @@
  */
 
 import { readFile, readdir, stat } from 'node:fs/promises'
-import { join, relative } from 'node:path'
+import { join } from 'node:path'
 
 interface MarkerOccurrence {
   id: string
@@ -67,15 +67,16 @@ async function walkTaskFiles(dir: string): Promise<string[]> {
 
 async function scanMarkers(file: string): Promise<MarkerOccurrence[]> {
   const content = await readFile(file, 'utf8')
+  const lines = content.split('\n')
   const pattern = /@followup\[(TD-\d+)\]/g
-  const relPath = relative(ROOT, file)
   const occurrences: MarkerOccurrence[] = []
 
-  content.split('\n').forEach((line, i) => {
-    for (const m of line.matchAll(pattern)) {
+  lines.forEach((line, i) => {
+    let m: RegExpExecArray | null
+    while ((m = pattern.exec(line)) !== null) {
       occurrences.push({
         id: m[1]!,
-        file: relPath,
+        file: file.replace(ROOT + '/', ''),
         line: i + 1,
         context: line.trim().slice(0, 160),
       })
@@ -98,6 +99,9 @@ async function parseRegister(path: string): Promise<RegisterEntry[]> {
 
   let current: RegisterEntry | null = null
   let sectionBuffer = ''
+  // Track multi-line HTML comments so `<!-- TD-099 …` buried inside a
+  // comment doesn't become a phantom register entry.
+  let inHtmlComment = false
 
   const commit = () => {
     if (!current) return
@@ -112,6 +116,18 @@ async function parseRegister(path: string): Promise<RegisterEntry[]> {
   }
 
   for (const line of lines) {
+    if (inHtmlComment) {
+      if (line.includes('-->')) inHtmlComment = false
+      continue
+    }
+    if (line.includes('<!--') && !line.includes('-->')) {
+      inHtmlComment = true
+      continue
+    }
+    if (line.includes('<!--') && line.includes('-->')) {
+      continue
+    }
+
     const header = line.match(/^##\s+(TD-\d+)\s+—\s+(.+)$/)
     if (header) {
       commit()
@@ -194,7 +210,15 @@ async function main() {
   const unregistered = [...markerIds].filter((id) => !registerIds.has(id)).sort()
   const orphaned = [...registerIds].filter((id) => !markerIds.has(id)).sort()
 
-  const incomplete = register.filter((e) => describeIncomplete(e).length > 0)
+  const incomplete = register.filter((e) => {
+    if (e.status === 'wontfix') {
+      return !e.hasReason || !e.hasProblem
+    }
+    if (e.status === 'done') {
+      return false
+    }
+    return !e.hasProblem || !e.hasFix || !e.hasAcceptance
+  })
 
   const drift = unregistered.length + incomplete.length
   const byStatus: Record<string, number> = {}

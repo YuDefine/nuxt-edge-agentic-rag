@@ -1,0 +1,33 @@
+{
+  "version": "1.7.0",
+  "agents": {
+    "claude": true,
+    "codex": true,
+    "copilot": true
+  },
+  "paths": {
+    "types": ["shared/types"],
+    "ui": ["app/pages", "app/components"],
+    "uiExtensions": [".vue"],
+    "server": ["server", "shared"],
+    "migrations": "server/database/migrations",
+    "navigation": ["app/layouts/default.vue"],
+    "utils": "app/utils",
+    "scripts": "scripts",
+    "openspec": "openspec",
+    "rulesOutput": ".claude/rules/ux-completeness.md"
+  },
+  "roadmap": {
+    "enabled": true,
+    "path": "openspec/ROADMAP.md"
+  },
+  "packageManager": "pnpm",
+  "gitHooks": {
+    "enabled": true,
+    "tool": "husky"
+  },
+  "ci": {
+    "platform": "github-actions",
+    "warnOnly": false
+  }
+}

@@ -66,7 +66,7 @@ git diff --stat
 
 ## Step 2: 分析變更並分組
 
-依功能/目的分組，輸出給使用者確認：
+依功能/目的分組並輸出：
 
 ```text
 ### Group 1: [功能描述]
@@ -75,11 +75,7 @@ git diff --stat
 - path/to/file.ts
 ```
 
-## Step 3: 確認分組
-
-向使用者確認分組是否合適。
-
-## Step 4: 逐一執行 Commit
+## Step 3: 逐一執行 Commit
 
 對每個分組：
 
@@ -94,7 +90,7 @@ EOF
 git log -1 --oneline
 ```
 
-## Step 5: 版本號升級與 Deploy Commit
+## Step 4: 版本號升級與 Deploy Commit
 
 判斷升級類型：
 
@@ -119,7 +115,7 @@ pnpm tag
 
 `pnpm tag` 會建立 `v{版本號}` tag 並推送到 origin。
 
-## Step 6: 完成報告
+## Step 5: 完成報告
 
 ```text
 ✅ Commit 完成！
@@ -133,11 +129,11 @@ pnpm tag
 Tag：v1.8.0 已建立並推送
 ```
 
-## Step 7: 更新 HANDOFF.md
+## Step 6: 更新 HANDOFF.md 與 ROADMAP
 
-遵守 `.claude/rules/handoff.md`：commit 完成後**必須**更新 `template/HANDOFF.md`，把**所有可延續的後續工作**寫入 —— 不限於 spectra change。
+遵守 `.claude/rules/handoff.md`：commit 完成後**必須**更新 `template/HANDOFF.md`，把**所有可延續的後續工作**寫入 —— 不限於 spectra change。同時同步 Spectra ROADMAP。
 
-### 7-A. 判斷是否需要 handoff
+### 6-A. 判斷是否需要 handoff
 
 檢查以下任一條件成立 → 需要 handoff：
 
@@ -149,9 +145,9 @@ Tag：v1.8.0 已建立並推送
 - 使用者曾提過但還沒做的事（在本 session 或前 session 出現過的 backlog）
 - 使用者明確表達接下來要交接 / 暫停
 
-全部不成立（真正什麼都沒得做了）→ 跳到 7-D：若 `template/HANDOFF.md` 存在且內容已過時，清空或刪除。
+全部不成立（真正什麼都沒得做了）→ 跳到 6-D：若 `template/HANDOFF.md` 存在且內容已過時，清空或刪除。
 
-### 7-B. 收集下一步資訊
+### 6-B. 收集下一步資訊
 
 從本次 session 脈絡、`git log`、`docs/tech-debt.md`、`openspec/ROADMAP.md` 的 Next Moves 萃取：
 
@@ -164,7 +160,7 @@ Tag：v1.8.0 已建立並推送
   - 跨 session backlog：使用者提過的待辦、roadmap 的 near-term 項目
   - 注意事項 / 陷阱：下一人接手前需要知道的隱性脈絡
 
-### 7-C. 寫入 `template/HANDOFF.md`
+### 6-C. 寫入 `template/HANDOFF.md`
 
 若 `template/` 目錄不存在 → `mkdir -p template`。
 
@@ -194,8 +190,26 @@ Tag：v1.8.0 已建立並推送
 - 只寫 openspec 相關內容而漏掉其他可延續工作
 - 為了「填滿」區塊灌水 —— 真沒有就省略該區塊
 
-### 7-D. 報告
+### 6-D. 同步 Spectra ROADMAP
+
+```bash
+pnpm spectra:roadmap
+```
+
+重算 `openspec/ROADMAP.md` 的 AUTO 區塊（Active Changes / Parallel Tracks / Parked Changes）。
+
+若 6-B 收集到的 **Next Steps** 中包含跨 session backlog（不只是「commit 後立刻要做」的驗證動作），依 `.claude/rules/proactive-skills.md` 的「Spectra Roadmap Maintenance」**手動**更新 MANUAL 區塊的 `## Next Moves`，格式：
 
 ```text
-✅ HANDOFF.md 已更新（或：無可延續工作，HANDOFF.md 已清空 / 未建立）
+- [priority] 描述 — 依賴：xxx / 獨立 / 互斥：yyy
+```
+
+**禁止**：手編 `<!-- SPECTRA-UX:ROADMAP-AUTO:* -->` 區塊（會被下次 sync 覆寫）。
+
+### 6-E. 報告
+
+```text
+✅ HANDOFF.md 已更新
+✅ ROADMAP 已同步
+（或：無可延續工作，HANDOFF.md 已清空 / 未建立）
 ```
