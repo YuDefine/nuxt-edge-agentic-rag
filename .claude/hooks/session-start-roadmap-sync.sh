@@ -6,8 +6,11 @@
 # work to an external runtime (Codex / Copilot / Claude native subagent),
 # SessionStart catches up.
 #
-# Cheap: runs roadmap-sync.mts with its mtime fast path, so this is ~10ms
-# on a clean tree.
+# v1.6+: script always does a full sync (no mtime fast path). Still fast
+# (< 100ms on typical trees). MANUAL-block drift detection runs on every
+# invocation and surfaces warnings to stderr so Claude sees stale claims
+# (archived-as-active / td-status-mismatch / version-mismatch) at session
+# start — stdout is discarded, stderr is preserved.
 #
 # All business logic lives in scripts/spectra-ux/roadmap-sync.mts.
 
@@ -24,6 +27,8 @@ if ! command -v node >/dev/null 2>&1; then
   exit 0
 fi
 
-cd "$ROOT" && node "$SCRIPT" >/dev/null 2>&1 || true
+# stdout → /dev/null (normal status line is noise); stderr passes through
+# so MANUAL drift warnings reach the agent.
+cd "$ROOT" && node "$SCRIPT" >/dev/null || true
 
 exit 0

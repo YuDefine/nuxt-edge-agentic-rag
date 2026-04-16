@@ -27,10 +27,22 @@
  *   - `roadmap.enabled` (default true)
  *   - `roadmap.path` (default `<openspec>/ROADMAP.md`)
  *
+ * MANUAL drift detection (v1.6+):
+ *   Every sync additionally scans the MANUAL block for stale claims against
+ *   current ground truth:
+ *     - `archived-as-active`   — MANUAL names a change that's already in
+ *       openspec/changes/archive/ but describes it as in-progress/active.
+ *     - `td-status-mismatch`   — MANUAL names a TD-NNN and describes it with
+ *       active-language words, but docs/tech-debt.md register marks it
+ *       done/wontfix.
+ *     - `version-mismatch`     — MANUAL cites a "Production v*.*.*" version
+ *       that disagrees with package.json's version field.
+ *   Drift is reported as warnings on stderr and in the JSON payload; the
+ *   MANUAL block itself is never rewritten (agent / user must update it).
+ *
  * Usage:
- *   node scripts/spectra-ux/roadmap-sync.mts           # sync (default)
+ *   node scripts/spectra-ux/roadmap-sync.mts           # full sync (default)
  *   node scripts/spectra-ux/roadmap-sync.mts --check   # validate, no write
- *   node scripts/spectra-ux/roadmap-sync.mts --force   # skip mtime fast path
  *   node scripts/spectra-ux/roadmap-sync.mts --json    # emit report as JSON
  *
  * Exit: 0 clean · 1 check mode detected drift · 2 script error
@@ -56,10 +68,22 @@ const MARKERS = {
   backlogEnd: '<!-- SPECTRA-UX:ROADMAP-MANUAL:/backlog -->',
 } as const
 
-// Where the spectra CLI keeps parked-change metadata. Used by mtimeFastPath
-// so park/unpark invalidates the cache even though no file in openspec/changes
-// actually moves.
-const SPECTRA_DB_REL_PATH = '.spectra/spectra.db'
+// Pairs of AUTO markers, used to exclude auto-generated regions from MANUAL
+// drift scanning. MANUAL is everything outside these ranges.
+const AUTO_MARKER_PAIRS: ReadonlyArray<[string, string]> = [
+  [MARKERS.activeStart, MARKERS.activeEnd],
+  [MARKERS.parallelismStart, MARKERS.parallelismEnd],
+  [MARKERS.parkedStart, MARKERS.parkedEnd],
+]
+
+// Active-voice words that, when co-occurring with a known archived change
+// name or a TD-NNN marked done, signal MANUAL-block drift. Mixed zh-TW + EN
+// because MANUAL content in this template lineage is routinely bilingual.
+const ACTIVE_LANGUAGE_RE =
+  /進行中|實作中|開發中|待(?:archive|scheduled|handle|處理)|未解決|\bopen\b|\bactive\b|\bin\s*progress\b|\bwip\b|\bdraft\b|\bblocker\b/i
+
+// Relative path from repo root to the tech-debt register.
+const TECH_DEBT_REL_PATH = 'docs/tech-debt.md'
 
 // Max directory levels to walk upward when finding the project root.
 const MAX_WALK_DEPTH = 8
@@ -99,35 +123,43 @@ interface ParkedChange {
   summary: string
 }
 
+type ManualDriftType = 'archived-as-active' | 'td-status-mismatch' | 'version-mismatch'
+
+interface ManualDrift {
+  type: ManualDriftType
+  claim: string // MANUAL excerpt (≤ 120 chars)
+  reality: string // ground-truth description
+  lineNumber: number // 1-based in the full roadmap file
+  hint: string // suggested correction
+}
+
 interface SyncReport {
   changes: ChangeInfo[]
   parallelism: ParallelismReport
   parked: ParkedChange[]
   parkedSource: 'cli' | 'unavailable'
+  manualDrift: ManualDrift[]
   roadmapPath: string
   wrote: boolean
-  skipped: 'mtime' | 'check-only' | null
+  skipped: 'check-only' | null
 }
 
 interface CliOptions {
   check: boolean
-  force: boolean
   json: boolean
 }
 
 // ---------------- cli ----------------
 
 function parseArgs(argv: string[]): CliOptions {
-  const opts: CliOptions = { check: false, force: false, json: false }
+  const opts: CliOptions = { check: false, json: false }
   for (const arg of argv.slice(2)) {
     if (arg === '--check') opts.check = true
-    else if (arg === '--force') opts.force = true
     else if (arg === '--json') opts.json = true
     else if (arg === '--help' || arg === '-h') {
       console.log(
-        'Usage: roadmap-sync.mts [--check] [--force] [--json]\n' +
+        'Usage: roadmap-sync.mts [--check] [--json]\n' +
           '  --check   Validate only; do not write. Exit 1 if roadmap is stale.\n' +
-          '  --force   Skip mtime fast path and regenerate unconditionally.\n' +
           '  --json    Emit report as JSON instead of the normal summary.',
       )
       process.exit(0)
@@ -480,6 +512,184 @@ function collectParkedChanges(): {
   }
 }
 
+// ---------------- manual drift detection ----------------
+
+/**
+ * List every change name under `openspec/changes/archive/`. Returns both the
+ * raw directory names (e.g. `2026-04-20-foo-bar`) and the date-stripped
+ * variants (`foo-bar`). Callers search MANUAL text with both forms since
+ * MANUAL-authored prose typically omits the date prefix.
+ *
+ * Short names (< 5 chars post-strip) are dropped to avoid false-positives
+ * like a word "api" matching an archived change literally named "api".
+ */
+function listArchivedChangeNames(openspecDir: string): Set<string> {
+  const archiveDir = resolve(repoRoot, openspecDir, 'changes', 'archive')
+  if (!existsSync(archiveDir)) return new Set()
+  try {
+    const entries = readdirSync(archiveDir, { withFileTypes: true })
+    const names = new Set<string>()
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue
+      const stripped = entry.name.replace(/^\d{4}-\d{2}-\d{2}-/, '')
+      if (entry.name.length >= 5) names.add(entry.name)
+      if (stripped.length >= 5) names.add(stripped)
+    }
+    return names
+  } catch {
+    return new Set()
+  }
+}
+
+/**
+ * Parse `docs/tech-debt.md` and return Map<TD-NNN, status>.
+ * Only reads the `**Status**: …` line directly after each `## TD-NNN —` heading.
+ * Returns empty Map if the register file is absent — drift check then skips TD.
+ */
+function parseTechDebtStatuses(): Map<string, string> {
+  const path = resolve(repoRoot, TECH_DEBT_REL_PATH)
+  if (!existsSync(path)) return new Map()
+  try {
+    const content = readFileSync(path, 'utf-8')
+    const statuses = new Map<string, string>()
+    const lines = content.split('\n')
+    let pendingId: string | null = null
+    for (const line of lines) {
+      const headerMatch = line.match(/^##\s+(TD-\d+)\s+—/)
+      if (headerMatch) {
+        pendingId = headerMatch[1]!
+        continue
+      }
+      if (!pendingId) continue
+      const statusMatch = line.match(/^\*\*Status\*\*:\s+([\w-]+)/)
+      if (statusMatch) {
+        statuses.set(pendingId, statusMatch[1]!.toLowerCase())
+        pendingId = null
+      }
+    }
+    return statuses
+  } catch {
+    return new Map()
+  }
+}
+
+/**
+ * Read project `package.json` version. Returns null when the file is absent
+ * or malformed — drift check then skips version comparison.
+ */
+function readPackageVersion(): string | null {
+  const pkgPath = resolve(repoRoot, 'package.json')
+  if (!existsSync(pkgPath)) return null
+  try {
+    const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8')) as { version?: unknown }
+    return typeof pkg.version === 'string' ? pkg.version : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Scan MANUAL regions of the roadmap for stale claims against ground truth.
+ *
+ * Three drift categories are detected (see header docstring for summary):
+ *   - archived-as-active
+ *   - td-status-mismatch
+ *   - version-mismatch
+ *
+ * AUTO regions (enclosed by AUTO_MARKER_PAIRS) are skipped so auto-generated
+ * content never flags itself. One drift max per (type, line) to avoid noise
+ * when a single line mentions multiple stale names.
+ */
+function detectManualDrift(content: string, openspecDir: string): ManualDrift[] {
+  const archivedNames = listArchivedChangeNames(openspecDir)
+  const techDebt = parseTechDebtStatuses()
+  const pkgVersion = readPackageVersion()
+
+  const lines = content.split('\n')
+
+  // Mark AUTO regions (inclusive of marker lines) to skip during scan.
+  const autoRanges: Array<[number, number]> = []
+  for (const [startMarker, endMarker] of AUTO_MARKER_PAIRS) {
+    const startIdx = lines.findIndex((l) => l.includes(startMarker))
+    if (startIdx === -1) continue
+    const endIdx = lines.findIndex((l, i) => i >= startIdx && l.includes(endMarker))
+    if (endIdx === -1) continue
+    autoRanges.push([startIdx, endIdx])
+  }
+  const inAutoRegion = (idx: number): boolean => autoRanges.some(([s, e]) => idx >= s && idx <= e)
+
+  const drifts: ManualDrift[] = []
+  const seen = new Set<string>()
+  const record = (drift: ManualDrift): void => {
+    const key = `${drift.type}:${drift.lineNumber}`
+    if (seen.has(key)) return
+    seen.add(key)
+    drifts.push(drift)
+  }
+
+  for (let i = 0; i < lines.length; i++) {
+    if (inAutoRegion(i)) continue
+    const line = lines[i]!
+    if (!line.trim()) continue
+
+    const hasActiveVoice = ACTIVE_LANGUAGE_RE.test(line)
+
+    // 1. archived-as-active
+    if (hasActiveVoice && archivedNames.size > 0) {
+      for (const name of archivedNames) {
+        if (!line.includes(name)) continue
+        record({
+          type: 'archived-as-active',
+          claim: line.trim().slice(0, 120),
+          reality: `openspec/changes/archive/ 已存在 ${name}（該 change 已 archive）`,
+          lineNumber: i + 1,
+          hint: '移除此行或改寫反映已完成；避免把已 archive 的 change 描述為進行中',
+        })
+        break
+      }
+    }
+
+    // 2. td-status-mismatch
+    if (hasActiveVoice && techDebt.size > 0) {
+      const tdMatches = [...line.matchAll(/\b(TD-\d+)\b/g)]
+      for (const match of tdMatches) {
+        const id = match[1]!
+        const status = techDebt.get(id)
+        if (!status) continue
+        if (status !== 'done' && status !== 'wontfix') continue
+        record({
+          type: 'td-status-mismatch',
+          claim: line.trim().slice(0, 120),
+          reality: `${TECH_DEBT_REL_PATH} ${id} Status: ${status}`,
+          lineNumber: i + 1,
+          hint: `從 MANUAL 的 active 清單移除 ${id}，或改寫反映已 ${status}`,
+        })
+      }
+    }
+
+    // 3. version-mismatch — fire only when the line asserts the CURRENT
+    // production version. Require a production-state phrase adjacent to the
+    // version token so "migration applied to prod" or future-work refs like
+    // "v1.0.0 archive 之後" don't trip this check.
+    if (pkgVersion) {
+      const assertionRe =
+        /(?:Production\s*(?:跑|running|version)?|running|deployed|current(?:ly)?|目前(?:跑)?)\s*:?\s*v?(\d+\.\d+\.\d+)\b/i
+      const assertion = assertionRe.exec(line)
+      if (assertion && assertion[1] !== pkgVersion) {
+        record({
+          type: 'version-mismatch',
+          claim: line.trim().slice(0, 120),
+          reality: `package.json version: ${pkgVersion}`,
+          lineNumber: i + 1,
+          hint: `更新為 v${pkgVersion}（或移除 MANUAL 的硬編版號）`,
+        })
+      }
+    }
+  }
+
+  return drifts
+}
+
 // ---------------- rendering ----------------
 
 function fmtPercent(done: number, total: number): string {
@@ -694,21 +904,13 @@ function readOrScaffoldRoadmap(roadmapPath: string): string {
   return scaffoldRoadmap()
 }
 
-function mtimeFastPath(roadmapPath: string, changes: ChangeInfo[]): boolean {
-  if (!existsSync(roadmapPath)) return false
-  const roadmapMtime = statMtime(roadmapPath)
-  if (roadmapMtime === 0) return false
-  const latestChangeMtime = changes.reduce((max, c) => Math.max(max, c.mtime), 0)
-  // Park/unpark mutates `.spectra/spectra.db` without touching any file under
-  // openspec/changes/, so we have to peek at the DB mtime explicitly.
-  const parkedDbMtime = statMtime(resolve(repoRoot, SPECTRA_DB_REL_PATH))
-  const latest = Math.max(latestChangeMtime, parkedDbMtime)
-  // Give a small epsilon (1s) so filesystems with second-resolution don't
-  // cause false-negative "stale" detection right after a sync.
-  return roadmapMtime >= latest - 1
-}
-
 // ---------------- main ----------------
+//
+// v1.6+: no mtime fast path. Every invocation re-scans active changes,
+// regenerates AUTO blocks, and runs MANUAL drift detection. The earlier
+// optimisation skipped drift detection silently, which let MANUAL content
+// drift unnoticed across sessions. Full sync is still < 100ms on a typical
+// project; the clarity is worth the cost.
 
 function syncRoadmap(): SyncReport {
   const config = loadConfig()
@@ -723,6 +925,7 @@ function syncRoadmap(): SyncReport {
     parallelism,
     parked,
     parkedSource,
+    manualDrift: [],
     roadmapPath,
     wrote: false,
     skipped: null,
@@ -730,12 +933,6 @@ function syncRoadmap(): SyncReport {
 
   if (!config.enabled) {
     report.skipped = 'check-only'
-    return report
-  }
-
-  // Fast path: skip regeneration when nothing's changed.
-  if (!cli.force && mtimeFastPath(roadmapPath, changes)) {
-    report.skipped = 'mtime'
     return report
   }
 
@@ -768,23 +965,37 @@ function syncRoadmap(): SyncReport {
     content = `${content}${sep}${MARKERS.backlogStart}\n\n## Next Moves\n\n_(尚未累積)_\n\n${MARKERS.backlogEnd}\n`
   }
 
+  // Drift detection runs against the *final* content (AUTO blocks regenerated)
+  // so MANUAL claims are compared to the freshest ground-truth picture.
+  report.manualDrift = detectManualDrift(content, config.openspecDir)
+
+  const existing = existsSync(roadmapPath) ? readFileSync(roadmapPath, 'utf-8') : ''
+
+  // `_last synced: <ISO>_` changes every run — it's cosmetic metadata, not
+  // structural content. Strip it before diffing so `--check` doesn't report
+  // false staleness and the no-op sync path doesn't churn file mtime.
+  const structuralDiff = normaliseTimestamp(existing) !== normaliseTimestamp(content)
+
   if (cli.check) {
-    const existing = existsSync(roadmapPath) ? readFileSync(roadmapPath, 'utf-8') : ''
     report.skipped = 'check-only'
-    if (existing !== content) {
-      return { ...report, wrote: false }
-    }
-    return { ...report, wrote: true }
+    return { ...report, wrote: !structuralDiff }
   }
 
-  // Only write if content actually differs — avoids churning mtime on no-ops
-  const existing = existsSync(roadmapPath) ? readFileSync(roadmapPath, 'utf-8') : ''
-  if (existing !== content) {
+  if (structuralDiff) {
     writeFileSync(roadmapPath, content, 'utf-8')
     report.wrote = true
   }
 
   return report
+}
+
+/**
+ * Replace `_last synced: <ISO>_` with a stable placeholder. Used only for
+ * diff comparison — the written file keeps the real timestamp so readers
+ * still see when the roadmap was last regenerated.
+ */
+function normaliseTimestamp(content: string): string {
+  return content.replace(/^_last synced: [^\n]+_$/gm, '_last synced: <placeholder>_')
 }
 
 function emitJson(report: SyncReport): void {
@@ -808,6 +1019,7 @@ function emitJson(report: SyncReport): void {
           source: report.parkedSource,
           items: report.parked,
         },
+        manualDrift: report.manualDrift,
       },
       null,
       2,
@@ -815,17 +1027,38 @@ function emitJson(report: SyncReport): void {
   )
 }
 
-function emitText(report: SyncReport): void {
-  if (report.skipped === 'mtime') {
-    console.log('◦ roadmap-sync: up to date (mtime fast path)')
-    return
+/**
+ * Render MANUAL drift warnings to stderr. Routed to stderr so Claude Code
+ * SessionStart / PostToolUse hooks (which typically redirect stdout to
+ * /dev/null) still surface the warnings to the agent.
+ */
+function emitManualDrift(drifts: ManualDrift[]): void {
+  if (drifts.length === 0) return
+  const label = (t: ManualDriftType): string => {
+    if (t === 'archived-as-active') return 'archived-as-active'
+    if (t === 'td-status-mismatch') return 'td-status-mismatch'
+    return 'version-mismatch'
   }
+  console.error(
+    `⚠ roadmap-sync: MANUAL block drift detected (${drifts.length} item${drifts.length === 1 ? '' : 's'})`,
+  )
+  for (const drift of drifts) {
+    console.error(`  [line ${drift.lineNumber}] [${label(drift.type)}]`)
+    console.error(`    claim   : ${drift.claim}`)
+    console.error(`    reality : ${drift.reality}`)
+    console.error(`    fix     : ${drift.hint}`)
+  }
+  console.error('  → MANUAL blocks are never auto-rewritten. Update by hand.')
+}
+
+function emitText(report: SyncReport): void {
   if (report.skipped === 'check-only') {
     if (report.wrote) {
       console.log('✓ roadmap-sync: check passed')
     } else {
       console.log('✗ roadmap-sync: ROADMAP.md is stale — re-run without --check')
     }
+    emitManualDrift(report.manualDrift)
     return
   }
 
@@ -850,6 +1083,7 @@ function emitText(report: SyncReport): void {
   if (mutex > 0) {
     console.log(`  ⚠ ${mutex} spec collision${mutex === 1 ? '' : 's'} — check Parallel Tracks`)
   }
+  emitManualDrift(report.manualDrift)
 }
 
 function main(): void {
