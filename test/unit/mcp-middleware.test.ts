@@ -145,6 +145,7 @@ describe('runMcpMiddleware (§1.3 red)', () => {
 
     const tokenRecord = {
       createdAt: '2026-04-18T00:00:00.000Z',
+      createdByUserId: 'admin-1',
       environment: 'local',
       expiresAt: null,
       id: 'token-1',
@@ -169,6 +170,11 @@ describe('runMcpMiddleware (§1.3 red)', () => {
       tokenStore: {
         findUsableTokenByHash: vi.fn().mockResolvedValue(tokenRecord),
         touchLastUsedAt: vi.fn().mockResolvedValue(undefined),
+      },
+      userRoleLookup: {
+        async lookupRoleByUserId() {
+          return 'admin'
+        },
       },
     })
 

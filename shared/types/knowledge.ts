@@ -106,7 +106,7 @@ export interface QueryLogRecord {
 
 export interface McpTokenRecord {
   createdAt: string
-  createdByUserId: string | null
+  createdByUserId: string
   environment: string
   expiresAt: string | null
   id: string

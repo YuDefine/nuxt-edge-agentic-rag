@@ -45,7 +45,7 @@ export default defineEventHandler(async (event) => {
     : null
 
   const { plaintextToken, record } = buildProvisionedMcpToken({
-    createdByUserId: session.user.id ?? null,
+    createdByUserId: session.user.id,
     environment,
     expiresAt,
     name: body.name,
