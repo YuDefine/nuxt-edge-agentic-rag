@@ -4,7 +4,7 @@
 
 ## Current State
 
-> 狀態（2026-04-20 更新）：Production 跑 v0.23.1。無 active change、無 open tech debt、無 follow-up。
+> 狀態（2026-04-20 更新）：Production 跑 v0.24.0。無 active change、無 open tech debt、無 follow-up。
 >
 > **最近完成**（2026-04-20）：
 >
