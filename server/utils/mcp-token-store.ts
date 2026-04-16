@@ -40,7 +40,7 @@ function defaultCreateSecret(): string {
 
 export function buildProvisionedMcpToken(
   input: {
-    createdByUserId: string | null
+    createdByUserId: string
     environment: string
     expiresAt: string | null
     name: string

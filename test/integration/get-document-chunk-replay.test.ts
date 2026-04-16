@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { createKnowledgeRuntimeConfig } from '#shared/schemas/knowledge-runtime'
 import { createHubDbMock } from './helpers/database'
-import { runMcpTool } from './helpers/mcp-tool-runner'
+import { adminRoleLookup, runMcpTool } from './helpers/mcp-tool-runner'
 import { installNuxtRouteTestGlobals } from './helpers/nuxt-route'
 
 const pendingEvent = vi.hoisted(() => ({ current: null as unknown }))
@@ -88,6 +88,7 @@ const replayRouteMocks = vi.hoisted(() => {
     getRequiredKvBinding: vi.fn().mockReturnValue({ get: vi.fn(), put: vi.fn() }),
     requireMcpBearerToken: vi.fn().mockResolvedValue({
       scopes: ['knowledge.citation.read'],
+      token: { createdByUserId: 'admin-1' },
       tokenId: 'token-1',
     }),
     requireMcpScope: vi.fn(),
@@ -188,6 +189,7 @@ describe('MCP getDocumentChunk — retention replay contract', () => {
         cloudflareEnv: {},
         params: { citationId: 'citation-in-window' },
         pendingEvent,
+        userRoleLookup: adminRoleLookup,
       },
     )
 
@@ -227,6 +229,7 @@ describe('MCP getDocumentChunk — retention replay contract', () => {
           cloudflareEnv: {},
           params: { citationId: 'citation-never-existed' },
           pendingEvent,
+          userRoleLookup: adminRoleLookup,
         },
       ),
     ).rejects.toMatchObject({
@@ -262,6 +265,7 @@ describe('MCP getDocumentChunk — retention replay contract', () => {
           cloudflareEnv: {},
           params: { citationId: 'citation-scrubbed' },
           pendingEvent,
+          userRoleLookup: adminRoleLookup,
         },
       ),
     ).rejects.toMatchObject({
@@ -305,6 +309,7 @@ describe('MCP getDocumentChunk — retention replay contract', () => {
           cloudflareEnv: {},
           params: { citationId: 'citation-restricted' },
           pendingEvent,
+          userRoleLookup: adminRoleLookup,
         },
       ),
     ).rejects.toMatchObject({
@@ -347,6 +352,7 @@ describe('MCP getDocumentChunk — retention replay contract', () => {
         cloudflareEnv: {},
         params: { citationId: 'citation-boundary' },
         pendingEvent,
+        userRoleLookup: adminRoleLookup,
       },
     )
 
@@ -377,6 +383,7 @@ describe('MCP getDocumentChunk — retention replay contract', () => {
           cloudflareEnv: {},
           params: { citationId: 'citation-x' },
           pendingEvent,
+          userRoleLookup: adminRoleLookup,
         },
       ),
     ).rejects.toMatchObject({

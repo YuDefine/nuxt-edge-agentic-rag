@@ -103,17 +103,21 @@ export const mcpTokens = sqliteTable('mcp_tokens', {
   revokedReason: text('revoked_reason'),
   createdAt: text('created_at').notNull().default(timestampNow),
   /**
-   * B16 member-and-permission-management (migration 0006): better-auth
-   * `user.id` of the admin who provisioned this token. NULL for tokens
-   * created before 0006; MCP middleware treats NULL as `'admin'` (legacy
-   * system seed) for backward compatibility.
+   * Better-auth `user.id` of the admin who provisioned this token.
+   *
+   * Originally introduced by migration 0006 as nullable for backward
+   * compatibility with pre-0006 tokens; migration 0008 tightened the
+   * column to NOT NULL after prod backfill (charles.yudefine@gmail.com
+   * for existing audit-bearing tokens, DELETE for stale test seeds).
+   * The application path (`createToken` in `mcp-token-store.ts`) has
+   * always written a concrete admin id, so the column is now enforced
+   * at both the schema and code layers.
    *
    * **No `.references()`**: the `user` table is owned by better-auth in
-   * `hub:db` and is not declared in this drizzle schema. The FK constraint
-   * exists at the SQL layer (migration 0006); runtime validation lives in
-   * Zod / Phase 3 Admin API.
+   * `hub:db` and is not declared in this drizzle schema. The FK
+   * constraint is enforced at the SQL layer (migrations 0006/0007/0008).
    */
-  createdByUserId: text('created_by_user_id'),
+  createdByUserId: text('created_by_user_id').notNull(),
 })
 
 export const queryLogs = sqliteTable(

@@ -1,5 +1,9 @@
 import { createMcpTokenStore } from '#server/utils/mcp-token-store'
-import { runMcpMiddleware, type McpTokenStoreLike } from '#server/utils/mcp-middleware'
+import {
+  runMcpMiddleware,
+  type McpTokenStoreLike,
+  type UserRoleLookupLike,
+} from '#server/utils/mcp-middleware'
 
 import type { AcceptanceActorFixture } from '../../acceptance/helpers/auth'
 
@@ -45,6 +49,23 @@ export interface McpToolRunOptions {
   params?: Record<string, string>
   pendingEvent: McpPendingEventHolder
   tokenStore?: McpTokenStoreLike
+  /**
+   * Override the B16 §6.2.b role lookup so contract tests that mock
+   * `requireMcpBearerToken` (instead of providing a real `actor`) can
+   * pass the role gate without hitting better-auth.
+   */
+  userRoleLookup?: UserRoleLookupLike
+}
+
+/**
+ * Shared `UserRoleLookupLike` stub for contract tests that mock
+ * `requireMcpBearerToken` upstream and just need the B16 §6.2.b role gate
+ * to resolve to `admin` regardless of the stubbed `createdByUserId`.
+ */
+export const adminRoleLookup: UserRoleLookupLike = {
+  async lookupRoleByUserId() {
+    return 'admin'
+  },
 }
 
 /**
@@ -58,14 +79,11 @@ export function createStubMcpTokenStoreFromActor(
 ): McpTokenStoreLike {
   const record = {
     createdAt: '2026-04-16T00:00:00.000Z',
-    // B16 §6.2.b role gate bypasses `createdByUserId === null` as legacy
-    // system seed. Acceptance tests predate B16 and don't care about the
-    // role × guest_policy matrix, so we treat stub tokens as legacy to
-    // skip the role lookup (which would require an additional drizzle
-    // mock for `user.role`). Tests that DO want to exercise B16 can
-    // build their own `McpTokenStoreLike` stub and pass `tokenStore`
-    // directly.
-    createdByUserId: null,
+    // Migration 0008 made `created_by_user_id` NOT NULL. We key the stub
+    // off the actor's web-session user id so the role gate (wired up by
+    // `runMcpTool` with a stub `userRoleLookup`) can resolve the actor's
+    // role without touching real better-auth state.
+    createdByUserId: actor.webSession.user.id,
     environment,
     expiresAt: null,
     id: actor.mcpAuth.tokenId,
@@ -109,6 +127,19 @@ export async function runMcpTool<TTool extends ToolLike>(
   const tokenStore =
     options.tokenStore ??
     (actor ? createStubMcpTokenStoreFromActor(actor, environment) : createMcpTokenStore())
+  // Match the stub token's `createdByUserId` so the B16 §6.2.b role gate
+  // resolves to the actor's role instead of hitting better-auth. Contract
+  // tests that mock `requireMcpBearerToken` upstream can pass their own
+  // `userRoleLookup` to short-circuit the gate instead.
+  const userRoleLookup: UserRoleLookupLike | undefined =
+    options.userRoleLookup ??
+    (actor
+      ? {
+          async lookupRoleByUserId(userId: string) {
+            return userId === actor.webSession.user.id ? actor.webSession.user.role : null
+          },
+        }
+      : undefined)
 
   const event = createRouteEvent({
     context: {
@@ -129,6 +160,7 @@ export async function runMcpTool<TTool extends ToolLike>(
       extractToolNames: async () => (tool.name ? [tool.name] : []),
       kvBindingName,
       tokenStore,
+      userRoleLookup,
     })
 
     return (await tool.handler(args, {} as Parameters<TTool['handler']>[1])) as Awaited<

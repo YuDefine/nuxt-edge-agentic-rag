@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { createKnowledgeRuntimeConfig } from '#shared/schemas/knowledge-runtime'
 import { createHubDbMock } from './helpers/database'
-import { runMcpTool } from './helpers/mcp-tool-runner'
+import { adminRoleLookup, runMcpTool } from './helpers/mcp-tool-runner'
 import { installNuxtRouteTestGlobals } from './helpers/nuxt-route'
 
 // §3.1 Tool Migration (TDD red → green).
@@ -84,7 +84,11 @@ const mcpRouteMocks = vi.hoisted(() => {
         'knowledge.category.list',
         'knowledge.citation.read',
       ],
-      token: {},
+      // `createdByUserId` is NOT NULL after migration 0008; the role gate
+      // in `runMcpMiddleware` rejects tokens without a creator. Each test's
+      // `runMcpTool` call supplies a `userRoleLookup` stub returning `admin`
+      // for this id.
+      token: { createdByUserId: 'admin-1' },
       tokenId: 'token-1',
     }),
     requireMcpScope: vi.fn(),
@@ -228,6 +232,7 @@ describe('mcp tool contract handlers (toolkit-native)', () => {
           authorizationHeader: 'Bearer test-token',
           cloudflareEnv: {},
           pendingEvent,
+          userRoleLookup: adminRoleLookup,
         },
       ),
     ).rejects.toMatchObject({
@@ -272,6 +277,7 @@ describe('mcp tool contract handlers (toolkit-native)', () => {
           authorizationHeader: 'Bearer test-token',
           cloudflareEnv: {},
           pendingEvent,
+          userRoleLookup: adminRoleLookup,
         },
       ),
     ).rejects.toMatchObject({ statusCode: 403 })
@@ -302,6 +308,7 @@ describe('mcp tool contract handlers (toolkit-native)', () => {
         authorizationHeader: 'Bearer test-token',
         cloudflareEnv: {},
         pendingEvent,
+        userRoleLookup: adminRoleLookup,
       },
     )
 
@@ -320,6 +327,7 @@ describe('mcp tool contract handlers (toolkit-native)', () => {
         authorizationHeader: 'Bearer test-token',
         cloudflareEnv: {},
         pendingEvent,
+        userRoleLookup: adminRoleLookup,
       },
     )
 
@@ -336,6 +344,7 @@ describe('mcp tool contract handlers (toolkit-native)', () => {
         authorizationHeader: 'Bearer test-token',
         cloudflareEnv: {},
         pendingEvent,
+        userRoleLookup: adminRoleLookup,
       },
     )
 

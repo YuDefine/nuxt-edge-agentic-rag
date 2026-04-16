@@ -38,15 +38,17 @@ interface UserRoleLookup {
  * `event.context.mcpAuth`.
  *
  * Rules:
- *   - `token.createdByUserId === null` → legacy system seed; treat as admin.
- *     (Tokens created before migration 0006 have no FK; refusing them would
- *     break legacy integrations mid-deploy.)
  *   - `admin` / `member` → pass (no policy lookup).
  *   - `guest`:
  *       - `same_as_member` → pass.
  *       - `browse_only`    → pass only for browse-allowed tools;
  *                             `askKnowledge` throws 403 GUEST_ASK_DISABLED.
  *       - `no_access`      → every tool throws 403 ACCOUNT_PENDING.
+ *
+ * A missing `auth.token` (older test harnesses that stubbed
+ * `requireMcpBearerToken` before `token` was part of the auth context) is
+ * treated as UNKNOWN_TOKEN_OWNER — migration 0008 enforces NOT NULL on
+ * `created_by_user_id`, so in production this branch is unreachable.
  */
 export async function gateMcpToolAccess(
   event: H3Event,
@@ -56,13 +58,9 @@ export async function gateMcpToolAccess(
     userRoleLookup: UserRoleLookup
   },
 ): Promise<void> {
-  // `auth.token` may be missing entirely in older test harnesses that stubbed
-  // `requireMcpBearerToken` before `token` was part of the auth context.
-  // Treat that (and explicit null/undefined on `createdByUserId`) as "system
-  // seed" — the same bypass legacy tokens created before migration 0006 get.
   const creatorId = params.auth.token?.createdByUserId
-  if (creatorId === null || creatorId === undefined) {
-    return
+  if (!creatorId) {
+    throw new McpRoleGateError('MCP token has no creator', 403, 'UNKNOWN_TOKEN_OWNER')
   }
 
   const role = await params.userRoleLookup.lookupRoleByUserId(creatorId)
