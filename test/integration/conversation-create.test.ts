@@ -199,6 +199,7 @@ describe('/api/chat — conversation auto-create plumbing (governance §1.7)', (
       user: {
         email: 'user@example.com',
         id: 'user-1',
+        role: 'member',
       },
     })
     chatRouteMocks.chatWithKnowledge.mockResolvedValue({
