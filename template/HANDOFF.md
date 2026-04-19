@@ -2,18 +2,19 @@
 
 ## In Progress
 
-_(none — main-v0.0.45.md 升版已 archive 為 commit `971511d` / tag `v0.24.1`)_
+_(none — v0.24.3 / main-v0.0.46.md 已 archive 為 commit `f264132`；報告已反映 v46 驗收自動化與實機截圖)_
 
 ## Next Steps
 
-1. **跑 `frozen-final` 驗收集**：執行 `pnpm test:acceptance` + `pnpm test:contracts`（或 `pnpm verify:acceptance`），把 TC-01~20 與 UI state 測試結果整理進 v0.0.46 §3.3.2 表 3-7 / 表 3-8；把表 4-1 A01~A13 的「待驗證」依實際狀態回填。
-2. **實機截圖 7 張**：派 `screenshot-review` agent 對 `/login`、`/chat`、`/admin/documents`、`/admin/tokens`、`/admin/members`、`/admin/settings/guest-policy`、`/admin/usage` 各拍一張（desktop + mobile viewport 建議各一組），放到 `screenshots/local/report-v46/`；拍完補到 v0.0.46 §3.2.3 各小節取代「待實作後截圖」字樣。
-3. **EV 證據彙整**：把 `docs/verify/*RUNBOOK.md`（DEPLOYMENT / CONVERSATION_LIFECYCLE / DEBUG_SURFACE / RETENTION_CLEANUP / RESPONSIVE_A11Y / CONFIG_SNAPSHOT）既有內容摘進 v0.0.46 表 3-9 的「建議證據形式 / 通過條件」欄或新增「實際證據指向檔案」欄。
-4. **附錄 D-1 部署環境變數清單**：補 `CLOUDFLARE_API_TOKEN_ANALYTICS`（AI Gateway Analytics read-only token）；檢查是否還有其他 B16/AI Gateway 引入的 env var 遺漏（`wrangler.jsonc` 與 `.env.example` 交叉核對）。
-5. **tag push（如啟用遠端）**：目前 repo 無 `origin` remote，`v0.24.1` tag 只存 local。若將來要共享，需 `git remote add origin <url>` 後再 `git push origin --tags`。
+1. **`frozen-final` 驗收跑報**：接上實模型後跑 30–50 筆正式測試集，回填下一版 §3.3.2 表 3-7 / 3-8 的延遲、P50 / P95、Judge 觸發率、引用正確率、拒答精準率等統計。
+2. **重拍 `/chat` 含回答 + 引用卡片版本**：目前 v46 只有 empty onboarding。需完整 R2 + AI Search 閉環（或 staging 環境）才能拍出含「【引1】【引2】」行內引用與引用卡片的畫面。
+3. **重拍 `/admin/usage` loaded 版本**：目前 v46 為 graceful error。接上真實 `CLOUDFLARE_API_TOKEN_ANALYTICS` + 有流量後重拍 tokens / requests / cache / Neurons 圖表。
+4. **第五章收尾**：§5.1 組員心得、§5.2.2 實作前待驗證事項留待最終交付前依實際驗收結果回填；v0.0.47 時一併處理。
+5. **tag push（如啟用遠端）**：目前 repo 無 `origin` remote，`v0.24.0~v0.24.3` tag 都只存 local。
 
 ## 注意事項
 
-- 報告版本命名規則：v0.0.44 → v0.0.45（本次）→ v0.0.46（驗收跑完後）。**不可覆寫舊版**。
-- §5.1 組員心得、§5.2.2 實作前待驗證事項仍保留「實作前」語氣，依 ROADMAP 原則留待實際驗收完成再回填。
-- 本次升版只補「已實作但沒寫」，沒補「未實作的驗收產出」——跑報 / 截圖 / EV 仍依 §1.3.4 表 1-4 的回填時機原則處理。
+- 報告版本命名：v0.0.45 → v0.0.46（本輪 deploy `v0.24.3`）→ v0.0.47（驗收完成後）。**不可覆寫舊版**。
+- v46 的表 4-1 狀態已分三級（結構性保障 / 自動化覆蓋 / 待驗收）；v47 再升時，A01 / A13 從「待驗收」推進為「驗收完成」需以 frozen-final 跑報與 runbook 實跑紀錄為憑。
+- `/chat` 實模型接入牽涉 prompt 工程、token 成本觀測、延遲分布——屬獨立議題，見 §5.2.4 Fallback Synthesizer 取捨說明。
+- screenshots 目錄已 gitignored；若要併入 DOCX 交付版，需另走 Word / 嵌圖流程，不經 git。
