@@ -14,15 +14,38 @@
     ],
     [
       {
+        label: '帳號設定',
+        icon: 'i-lucide-user-cog',
+        to: '/account/settings',
+      },
+      {
         label: '登出',
         icon: 'i-lucide-log-out',
-        onSelect: () => signOut(),
+        onSelect: () => handleSignOut(),
       },
     ],
   ])
 
   function handleNavLinkClick() {
     navDrawer.close()
+  }
+
+  /**
+   * Sign out flow — see `default.vue` for rationale. The nanostore atom
+   * backing `@onmax/nuxt-better-auth`'s session lags a tick behind
+   * `signOut()`'s local `clearSession`, so navigate to `/` explicitly to
+   * force a clean re-mount of the `!loggedIn` branch.
+   */
+  async function handleSignOut() {
+    try {
+      await signOut({
+        onSuccess: async () => {
+          await navigateTo('/', { replace: true })
+        },
+      })
+    } catch {
+      await navigateTo('/', { replace: true })
+    }
   }
 </script>
 

@@ -1,4 +1,5 @@
 import { randomBytes, scryptSync } from 'node:crypto'
+import { useLogger } from 'evlog'
 import { z } from 'zod'
 import { and, eq } from 'drizzle-orm'
 import { getRuntimeAdminAccess } from '#server/utils/knowledge-runtime'
@@ -101,6 +102,7 @@ const bodySchema = z.object({
 })
 
 export default defineEventHandler(async (event) => {
+  const log = useLogger(event)
   // Gate: only allow in local environment
   const runtimeConfig = useRuntimeConfig()
   const knowledgeEnv = runtimeConfig.knowledge?.environment ?? 'local'
@@ -125,7 +127,16 @@ export default defineEventHandler(async (event) => {
   const role = isAdmin ? 'admin' : 'member'
   const displayName = body.name ?? (body.email.split('@')[0] as string)
 
-  await ensureCredentialAccount(body.email, password)
+  try {
+    await ensureCredentialAccount(body.email, password)
+  } catch (error) {
+    log.error(error as Error, { step: 'ensure-credential-account' })
+    throw createError({
+      statusCode: 500,
+      statusMessage: 'Internal Server Error',
+      message: 'Failed to prepare credential account',
+    })
+  }
 
   // Try to sign in first (user might already exist)
   try {
@@ -143,7 +154,16 @@ export default defineEventHandler(async (event) => {
 
       // Sync role with admin allowlist if needed
       if (data.user && data.user.role !== role) {
-        await updateUserRole(data.user.id, role)
+        try {
+          await updateUserRole(data.user.id, role)
+        } catch (error) {
+          log.error(error as Error, { step: 'update-user-role' })
+          throw createError({
+            statusCode: 500,
+            statusMessage: 'Internal Server Error',
+            message: 'Failed to sync user role',
+          })
+        }
       }
 
       // Copy session cookies to response
@@ -174,6 +194,11 @@ export default defineEventHandler(async (event) => {
         email: body.email,
         password,
         name: displayName,
+        // passkey-authentication: `user.displayName` is a required field
+        // declared on `auth.config.ts`. Dev login reuses the OAuth-style
+        // display name (first segment of the local-part) so dev seed
+        // accounts get a stable, readable nickname.
+        displayName,
       },
       asResponse: true,
     })
@@ -213,9 +238,10 @@ export default defineEventHandler(async (event) => {
     if (error instanceof Error && 'statusCode' in error) {
       throw error
     }
+    log.error(error as Error, { step: 'dev-login-signup' })
     throw createError({
       statusCode: 500,
-      message: error instanceof Error ? error.message : 'Failed to create user',
+      message: 'Failed to create user',
     })
   }
 })

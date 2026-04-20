@@ -152,6 +152,15 @@ export default defineNuxtConfig({
         clientSecret: process.env.NUXT_OAUTH_GOOGLE_CLIENT_SECRET,
       },
     },
+    // passkey-authentication: WebAuthn Relying Party configuration.
+    // Both values are required when `knowledge.features.passkey = true`
+    // (see `server/auth.config.ts`). RP ID must equal the eTLD+1 of the
+    // browser origin (e.g. `localhost` for local, `example.com` for
+    // production). RP Name is displayed by the OS passkey UI.
+    passkey: {
+      rpId: process.env.NUXT_PASSKEY_RP_ID ?? '',
+      rpName: process.env.NUXT_PASSKEY_RP_NAME ?? '',
+    },
     session: {
       maxAge: 60 * 60 * 24 * 7,
       password: process.env.NUXT_SESSION_PASSWORD || '',
@@ -183,6 +192,18 @@ export default defineNuxtConfig({
       // a doomed API call.
       adminDashboardEnabled:
         (process.env.NUXT_ADMIN_DASHBOARD_ENABLED ?? 'true').toLowerCase() !== 'false',
+      // passkey-authentication: client-visible mirror of
+      // `knowledge.features.passkey` (Decision 4: dual gate — server
+      // plugin registration + UI conditional render). The server plugin
+      // is the authoritative gate (endpoints 404 when off); this public
+      // mirror only lets the UI hide the passkey buttons and skip a
+      // doomed WebAuthn ceremony. Reads the same env var as the
+      // governance flag via `createKnowledgeFeatureFlags` parsing.
+      knowledge: {
+        features: {
+          passkey: (process.env.NUXT_KNOWLEDGE_FEATURE_PASSKEY ?? 'false').toLowerCase() === 'true',
+        },
+      },
     },
   },
 

@@ -67,7 +67,7 @@
       })
       toast.add({
         title: '角色已更新',
-        description: `${props.member.email ?? props.member.id} → ${roleLabel(props.targetRole)}`,
+        description: `${props.member.displayName ?? props.member.email ?? props.member.id} → ${roleLabel(props.targetRole)}`,
         color: 'success',
         icon: 'i-lucide-check-circle',
       })
@@ -101,10 +101,21 @@
           嗎？
         </p>
 
+        <!--
+          passkey-authentication §13.3 — Primary identifier flipped from
+          email to display_name so passkey-only users (email = NULL) can
+          still be unambiguously identified. Email remains visible as a
+          secondary field with an explicit "—" fallback for NULL rows.
+        -->
         <div class="rounded-md border border-default bg-elevated p-3">
-          <p class="text-xs font-medium text-muted">Email</p>
+          <p class="text-xs font-medium text-muted">暱稱</p>
           <p class="mt-0.5 text-sm font-medium break-all text-default">
-            {{ member.email ?? '（未提供）' }}
+            {{ member.displayName ?? member.name ?? '—' }}
+          </p>
+          <p class="mt-3 text-xs font-medium text-muted">Email</p>
+          <p class="mt-0.5 text-sm break-all text-default">
+            <template v-if="member.email">{{ member.email }}</template>
+            <span v-else class="text-muted" aria-label="沒有 email">—</span>
           </p>
           <p class="mt-3 text-xs font-medium text-muted">目前角色 → 目標角色</p>
           <p class="mt-0.5 text-sm text-default">

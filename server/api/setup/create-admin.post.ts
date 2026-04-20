@@ -1,3 +1,4 @@
+import { useLogger } from 'evlog'
 import { z } from 'zod'
 
 /**
@@ -23,6 +24,7 @@ const bodySchema = z.object({
 })
 
 export default defineEventHandler(async (event) => {
+  const log = useLogger(event)
   // 驗證 setup token
   const setupToken = process.env.SETUP_SECRET_TOKEN
   if (!setupToken) {
@@ -53,6 +55,12 @@ export default defineEventHandler(async (event) => {
         email: body.email,
         password: body.password,
         name: body.name,
+        // passkey-authentication: `user.displayName` is a required field
+        // declared on `auth.config.ts`. Setup endpoint seeds the admin
+        // account with the provided name as both `name` and
+        // `displayName`; the admin can change their OS passkey label
+        // later but `displayName` itself is immutable.
+        displayName: body.name,
       },
     })
 
@@ -74,9 +82,10 @@ export default defineEventHandler(async (event) => {
       })
     }
 
+    log.error(error as Error, { step: 'setup-create-admin' })
     throw createError({
       statusCode: 500,
-      message: error instanceof Error ? error.message : '建立帳號失敗',
+      message: '建立帳號失敗',
     })
   }
 })
