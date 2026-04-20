@@ -4,7 +4,11 @@
 
 ## Current State
 
-> 狀態（2026-04-21 更新）：Production 跑 v0.24.3。無 active change、無 open tech debt、無 follow-up。
+> 狀態（2026-04-21 更新）：Production 跑 v0.24.3。無 active change、無 open tech debt、無 follow-up。專題報告升版至 `main-v0.0.47.md`（本地編輯中，尚未 commit），僅文件變更、無程式碼改動。
+>
+> **本輪進行中**（2026-04-21）：
+>
+> - **專題報告升版至 `main-v0.0.47.md`**（本地編輯完成，待 `/commit` 與升版）— 補齊 v46 thinking 檢視發現之結構空洞：§3.3.2.3 驗收延後項收束契約（表 3-10）、§2.4.5 部署成本與容量規劃（表 2-29 / 2-30）、附錄 E 實模型選型參考（表 E-1）、§4.1.2 特色分級敘述、§3.2.3 響應式職責切分敘述、圖表目錄總數校正（62 張）、參考文獻 accessed date 格式。1/2/5/7（封面日期、目錄頁碼、組員心得、圖 3-2/3-7 補拍）與架構圖留待 frozen-final / 定稿排版階段。
 >
 > **最近完成**（2026-04-21）：
 >
@@ -30,9 +34,30 @@
 
 ## Next Moves
 
-### 本輪優先序
+### 本輪優先序：專題報告升版至 `main-v0.0.47.md`（本地編輯完成，待 commit）
 
-_（等待下一個需求進來再排）_
+本輪聚焦「v46 thinking 檢視發現之結構 / 量化空洞」。1/2/5/7（封面日期、目錄頁碼、組員心得、圖 3-2/3-7 補拍）經使用者決定先不動，留待 frozen-final 驗收階段；3（架構圖待製作）屬耗工且需最終定稿，亦留待最終排版階段。本輪先補的是**不依賴 frozen-final 也可完成的結構性內容**。
+
+- [x] [high] §3.3.2.3 驗收延後項收束契約（表 3-10）
+- [x] [high] §2.4.5.1 成本估算表（表 2-29 月度運營成本 + 超額試算）
+- [x] [high] §2.4.5.2 容量 / 擴展性規劃（表 2-30 Scale Envelope）
+- [x] [high] 附錄 E 實模型選型參考（表 E-1 候選模型對照 + 5 gate 選型規則）
+- [x] [high] 圖表目錄總數校正（62 張、去除 2-9 佔位）
+- [x] [mid] §4.1.2 特色分級敘述（已達結構式驗證 / 實模型品質待後續）
+- [x] [mid] §3.2.3 響應式職責切分敘述（desktop 截圖 + EV-06 跨 viewport）
+- [x] [low] 表 2-9 保留編號從圖表目錄去除
+- [x] [low] 參考文獻 web 資源 accessed date 格式
+- [x] [low] §5.2.1 v47 收束項敘述 + CLAUDE.md Current Version 指標
+- [ ] [low] 套件小版本號、實模型名稱回填 — 依賴：frozen-final 實機驗證
+- [ ] [low] 圖 1-1 / 1-2 / 2-1~2-4 架構圖製作 — 依賴：frozen-final 或最終排版階段
+
+### 後續輪次（不在本輪動）
+
+- 封面日期填寫（項目 1）— 定稿排版時
+- 目錄正式頁碼產生（項目 2）— 定稿排版時
+- §5.1 組員心得、§5.2.2 實作前待驗證事項回填（項目 5）— frozen-final 完成後
+- 圖 3-2（問答主畫面含回答 + 引用卡片）、圖 3-7（AI Gateway loaded）補拍（項目 7）— frozen-final 或 staging 環境完備後
+- frozen-final 30–50 筆實測跑報（表 3-7 / 表 3-8 統計回填）— 實模型接入後
 
 <!-- SPECTRA-UX:ROADMAP-MANUAL:END -->
 
@@ -40,9 +65,9 @@ _（等待下一個需求進來再排）_
 
 ## Active Changes
 
-_last synced: 2026-04-20T13:47:20.452Z_
+_last synced: 2026-04-20T17:45:07.572Z_
 
-_No active changes._
+1 active change (0 ready · 0 in progress · 1 draft · 0 blocked)
 
 ### Ready to apply
 
@@ -54,7 +79,8 @@ _(none)_
 
 ### Draft
 
-_(none)_
+- **passkey-authentication** — 0/78 tasks (0%)
+  - Specs: `admin-member-management-ui`, `auth-storage-consistency`, `member-and-permission-model`
 
 ### Blocked
 
@@ -70,7 +96,7 @@ _(none)_
 
 ### Independent (can run in parallel)
 
-_(none)_
+- `passkey-authentication`
 
 ### Mutex (same spec touched)
 
