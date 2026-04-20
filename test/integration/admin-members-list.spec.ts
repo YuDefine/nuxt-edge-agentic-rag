@@ -5,18 +5,20 @@ import { createRouteEvent, installNuxtRouteTestGlobals } from './helpers/nuxt-ro
 /**
  * GET /api/admin/members — defensive timestamp handling.
  *
- * After migration 0007 (Option V cascade rebuild, 2026-04-20) the
- * production D1 `user.createdAt` / `user.updatedAt` columns hold INTEGER
- * values and drizzle's `timestamp_ms` mapper returns valid Date instances
- * on every row. The handler now reads `createdAt` / `updatedAt` directly
- * (no `sql<>` raw alias) and converts via the simplified `toIsoOrNull`
- * helper that accepts a Date instance and returns its ISO form, or null
- * if the input is unparseable.
+ * After passkey-authentication §13.1 the handler switched to raw SQL
+ * (LEFT JOIN-ish aggregation with EXISTS / MAX sub-queries) for passkey
+ * + account credential badges and last-activity timestamps. The
+ * underlying drizzle timestamp mapper is no longer in the hot path —
+ * `db.all()` returns raw rows — but we still need defensive handling
+ * for:
  *
- * The drift regression test is retained — it now exercises the helper
- * with `Invalid Date` (the only shape that could re-emerge if a future
- * driver / column-type drift sneaks back in) and asserts the handler
- * degrades to null rather than throwing RangeError.
+ *   - `Date` instances (legacy shape; some driver paths still emit)
+ *   - Numeric epoch millis (current cloudflare D1 path)
+ *   - ISO strings
+ *   - Invalid / null values → null
+ *
+ * `toIsoOrNull` in the handler handles all four. This spec exercises
+ * the golden path + the regression guard.
  */
 
 const ADMIN_SESSION = {
@@ -26,7 +28,7 @@ const ADMIN_SESSION = {
 const mocks = vi.hoisted(() => ({
   requireRuntimeAdminSession: vi.fn(),
   getValidatedQuery: vi.fn(),
-  selectRows: [] as Array<Record<string, unknown>>,
+  listRows: [] as Array<Record<string, unknown>>,
   countValue: 0,
 }))
 
@@ -34,49 +36,26 @@ vi.mock('evlog', () => ({
   useLogger: () => ({ error: vi.fn(), set: vi.fn() }),
 }))
 
-const schemaFake = {
-  user: {
-    id: { __col: 'id' },
-    email: { __col: 'email' },
-    name: { __col: 'name' },
-    image: { __col: 'image' },
-    role: { __col: 'role' },
-    createdAt: { __col: 'createdAt' },
-    updatedAt: { __col: 'updatedAt' },
+vi.mock('hub:db', () => ({
+  db: {
+    all: vi.fn((query: unknown) => {
+      const strings = ((query as { __sql?: TemplateStringsArray } | null)?.__sql ?? []) as
+        | TemplateStringsArray
+        | never[]
+      const joined = Array.from(strings).join(' ')
+      if (joined.includes('COUNT(*)')) {
+        return Promise.resolve([{ n: mocks.countValue }])
+      }
+      return Promise.resolve(mocks.listRows)
+    }),
   },
-}
-
-function buildHubDb() {
-  const listChain = {
-    from: () => listChain,
-    where: () => listChain,
-    orderBy: () => listChain,
-    limit: () => listChain,
-    offset: () => Promise.resolve(mocks.selectRows),
-  }
-  const countChain = {
-    from: () => countChain,
-    where: () => Promise.resolve([{ n: mocks.countValue }]),
-    then: (resolve: (rows: Array<{ n: number }>) => unknown) => resolve([{ n: mocks.countValue }]),
-  }
-  return {
-    db: {
-      select: (shape?: Record<string, unknown>) => {
-        const isCount = shape ? Object.prototype.hasOwnProperty.call(shape, 'n') : false
-        return isCount ? countChain : listChain
-      },
-    },
-    schema: schemaFake,
-  }
-}
-
-vi.mock('hub:db', () => buildHubDb())
+}))
 
 vi.mock('drizzle-orm', () => ({
-  asc: (col: unknown) => ({ __op: 'asc', col }),
-  desc: (col: unknown) => ({ __op: 'desc', col }),
-  eq: (col: unknown, value: unknown) => ({ __op: 'eq', col, value }),
-  count: () => ({ __fn: 'count' }),
+  sql: (strings: TemplateStringsArray, ...values: unknown[]) => ({
+    __sql: strings,
+    __values: values,
+  }),
 }))
 
 vi.mock('../../server/utils/admin-session', () => ({
@@ -88,7 +67,7 @@ installNuxtRouteTestGlobals()
 describe('GET /api/admin/members — timestamp handling', () => {
   beforeEach(() => {
     mocks.requireRuntimeAdminSession.mockReset()
-    mocks.selectRows = []
+    mocks.listRows = []
     mocks.countValue = 0
 
     vi.stubGlobal('requireRuntimeAdminSession', mocks.requireRuntimeAdminSession)
@@ -101,57 +80,79 @@ describe('GET /api/admin/members — timestamp handling', () => {
     mocks.requireRuntimeAdminSession.mockResolvedValue(ADMIN_SESSION)
   })
 
-  it('emits ISO string for valid Date instance from drizzle mapper (golden path)', async () => {
+  it('emits ISO string for numeric epoch timestamps (golden path)', async () => {
     const epoch = 1776332449872
     mocks.countValue = 1
-    mocks.selectRows = [
+    mocks.listRows = [
       {
         id: 'u1',
         email: 'u1@example.com',
         name: 'User One',
+        display_name: 'UserOne',
         image: null,
         role: 'admin',
-        createdAt: new Date(epoch),
-        updatedAt: new Date(epoch),
+        created_at: epoch,
+        updated_at: epoch,
+        has_google: 1,
+        has_passkey: 0,
+        last_activity_at: epoch,
       },
     ]
 
     const { default: handler } = await import('../../server/api/admin/members/index.get')
 
     const result = (await handler(createRouteEvent())) as {
-      data: Array<{ id: string; createdAt: string | null; updatedAt: string | null }>
+      data: Array<{
+        id: string
+        createdAt: string | null
+        updatedAt: string | null
+        registeredAt: string | null
+        lastActivityAt: string | null
+      }>
     }
 
     expect(result.data).toHaveLength(1)
-    expect(result.data[0].createdAt).toBe(new Date(epoch).toISOString())
-    expect(result.data[0].updatedAt).toBe(new Date(epoch).toISOString())
+    expect(result.data[0]!.createdAt).toBe(new Date(epoch).toISOString())
+    expect(result.data[0]!.updatedAt).toBe(new Date(epoch).toISOString())
+    expect(result.data[0]!.registeredAt).toBe(new Date(epoch).toISOString())
+    expect(result.data[0]!.lastActivityAt).toBe(new Date(epoch).toISOString())
   })
 
-  it('returns null instead of crashing on Invalid Date (regression guard)', async () => {
-    // If a future driver upgrade or column-type drift produces Invalid Date,
-    // the helper must degrade to null rather than letting toISOString() throw
-    // RangeError and 500 the entire list response.
+  it('returns null registeredAt / lastActivityAt for unparseable input (regression guard)', async () => {
+    // Defensive: if a driver path ever produces an unparseable value,
+    // the handler must degrade to null rather than throwing.
     mocks.countValue = 1
-    mocks.selectRows = [
+    mocks.listRows = [
       {
         id: 'u2',
         email: 'u2@example.com',
         name: 'User Two',
+        display_name: 'UserTwo',
         image: null,
         role: 'guest',
-        createdAt: new Date('not-a-date'),
-        updatedAt: null,
+        created_at: 'not-a-date',
+        updated_at: null,
+        has_google: 0,
+        has_passkey: 1,
+        last_activity_at: null,
       },
     ]
 
     const { default: handler } = await import('../../server/api/admin/members/index.get')
 
     const result = (await handler(createRouteEvent())) as {
-      data: Array<{ createdAt: string | null; updatedAt: string | null }>
+      data: Array<{
+        registeredAt: string | null
+        lastActivityAt: string | null
+        updatedAt: string | null
+      }>
     }
 
     expect(result.data).toHaveLength(1)
-    expect(result.data[0].createdAt).toBeNull()
-    expect(result.data[0].updatedAt).toBeNull()
+    expect(result.data[0]!.registeredAt).toBeNull()
+    // lastActivityAt falls back to registeredAt when the session sub-query
+    // yields null; when both are null the result is null.
+    expect(result.data[0]!.lastActivityAt).toBeNull()
+    expect(result.data[0]!.updatedAt).toBe('')
   })
 })

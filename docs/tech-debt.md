@@ -8,16 +8,21 @@
 
 ## Index
 
-| ID     | Title                                                  | Priority | Status | Discovered                    | Owner |
-| ------ | ------------------------------------------------------ | -------- | ------ | ----------------------------- | ----- |
-| TD-001 | mcp-token-store libsql 不相容                          | low      | done   | 2026-04-20 B16 #10            | —     |
-| TD-002 | guest_policy DB-direct UPDATE 造成 cache drift         | mid      | done   | 2026-04-20 B16 #7             | —     |
-| TD-003 | text-dimmed 對比度不足（cross-change residual）        | mid      | done   | 2026-04-20 B17 C#11.9         | —     |
-| TD-004 | 首頁 Google login button 高度 36px < WCAG 40px         | high     | done   | B17 viewport-baseline.spec.ts | —     |
-| TD-005 | Admin 頁面 a11y violations 批次（@nuxt/a11y 首輪掃描） | high     | done   | 2026-04-21 RAF @nuxt/a11y     | —     |
-| TD-006 | Nuxt UI subtle variant tonal badge 對比度不足          | mid      | done   | 2026-04-20 TD-003 e2e exclude | —     |
-| TD-007 | 裝飾 icon tonal color 低於 WCAG 1.4.11 non-text AA     | low      | done   | 2026-04-20 TD-006 review      | —     |
-| TD-008 | acceptance-tc-0x MCP 整合測試在 TD-001 修後破損        | mid      | done   | 2026-04-20 add-ai-gateway     | —     |
+| ID     | Title                                                     | Priority | Status | Discovered                        | Owner |
+| ------ | --------------------------------------------------------- | -------- | ------ | --------------------------------- | ----- |
+| TD-001 | mcp-token-store libsql 不相容                             | low      | done   | 2026-04-20 B16 #10                | —     |
+| TD-002 | guest_policy DB-direct UPDATE 造成 cache drift            | mid      | done   | 2026-04-20 B16 #7                 | —     |
+| TD-003 | text-dimmed 對比度不足（cross-change residual）           | mid      | done   | 2026-04-20 B17 C#11.9             | —     |
+| TD-004 | 首頁 Google login button 高度 36px < WCAG 40px            | high     | done   | B17 viewport-baseline.spec.ts     | —     |
+| TD-005 | Admin 頁面 a11y violations 批次（@nuxt/a11y 首輪掃描）    | high     | done   | 2026-04-21 RAF @nuxt/a11y         | —     |
+| TD-006 | Nuxt UI subtle variant tonal badge 對比度不足             | mid      | done   | 2026-04-20 TD-003 e2e exclude     | —     |
+| TD-007 | 裝飾 icon tonal color 低於 WCAG 1.4.11 non-text AA        | low      | done   | 2026-04-20 TD-006 review          | —     |
+| TD-008 | acceptance-tc-0x MCP 整合測試在 TD-001 修後破損           | mid      | done   | 2026-04-20 add-ai-gateway         | —     |
+| TD-009 | user_profiles.email_normalized 全面改 nullable            | mid      | open   | 2026-04-21 passkey-authentication | —     |
+| TD-010 | credentials / admin-members endpoint libsql 不相容        | mid      | open   | 2026-04-21 passkey §16 DR         | —     |
+| TD-011 | migration 0009 FK cascade 設計不符 self-delete / audit    | high     | open   | 2026-04-21 passkey §17.8          | —     |
+| TD-012 | passkey-first → link Google 被 better-auth email 檢驗擋住 | high     | open   | 2026-04-21 passkey §17.3          | —     |
+| TD-013 | /account/settings 新增 passkey 缺 naming dialog           | low      | done   | 2026-04-21 passkey §17.2          | —     |
 
 ---
 
@@ -371,3 +376,201 @@ TD-001 修復後（commit 1f6a4d1，mcp-token-store 遷移 Drizzle）兩類 fail
 - `pnpm test:integration` 全綠（> 95% 通過，非 flake）
 - `acceptance-tc-01 / 04 / 06 / 07 / 08 / 09 / 10 / 11 / 12 / 13 / 14 / 16 / 17 / 18 / 19 / 20` 皆 pass
 - 未來 Drizzle schema 再變動時 mock 能跟上（helper 集中化的副產品）
+
+---
+
+## TD-009 — user_profiles.email_normalized 全面改 nullable
+
+**Status**: open
+**Priority**: mid
+**Discovered**: 2026-04-21 — `passkey-authentication` change migration planning
+**Location**: `server/db/schema.ts` (`userProfiles.emailNormalized`), `server/database/migrations/0009_passkey_and_display_name.sql` (deferred from migration)
+**Related markers**: search `@followup[TD-009]` in repo
+
+### Problem
+
+`passkey-authentication` change 的 design 原本規劃 `user_profiles.email_normalized` 同步改 nullable（落實 Decision 2 的完整語意），但 migration 0009 實務評估後延後：
+
+- `user_profiles` 的 FK children 包含 `conversations`、`query_logs`、`messages`、`documents`，改 `email_normalized` nullable 必須 rebuild `user_profiles` + 其 FK 子樹（仿 0007 的 D1 cascade 模式）
+- 0009 本身已經 rebuild `user` 樹的 8 張表（user / account / session / member_role_changes / mcp_tokens / query_logs / citation_records / messages），再加 `user_profiles` 樹 rebuild 會讓 migration 超過安全 review surface（估計 700+ 行 SQL，大量 edge case）
+- 目前的 workaround：passkey-only 使用者的 `email_normalized` 寫入 sentinel 值 `'__passkey__:' || user.id`（保證 unique by PK），`isAdminEmailAllowlisted` 不會誤判（sentinel 含 `:`，不是合法 email 字元）
+
+### Fix approach
+
+獨立 change `passkey-user-profiles-nullable-email`，單一職責：
+
+1. Migration 0010 rebuild `user_profiles` + FK children（conversations、query_logs、messages、documents）
+2. `user_profiles.email_normalized` 改 `NULL` + partial unique index（`WHERE email_normalized IS NOT NULL AND email_normalized NOT LIKE '__passkey__:%'`）
+3. Data migration：掃 sentinel 值 → 改為 NULL
+4. 更新 `server/utils/` upsert 邏輯不再寫 sentinel
+5. 更新 `auth-storage-consistency` spec requirement（移除 sentinel scenario，換成純 nullable scenario）
+
+### Acceptance
+
+- `PRAGMA table_info(user_profiles)` 顯示 `email_normalized` 允許 NULL
+- 原 passkey-only 使用者 row 的 `email_normalized = NULL`（sentinel 已遷移）
+- 相關查詢 code path（`isAdminEmailAllowlisted` 等）皆加 `email_normalized IS NOT NULL` guard
+- `PRAGMA foreign_key_check` 零 row
+- `spectra analyze` 對 `passkey-authentication` archived spec 的 nullable rule 生效
+
+---
+
+## TD-010 — credentials / admin-members endpoint libsql 不相容
+
+**Status**: open
+**Priority**: mid
+**Discovered**: 2026-04-21 — `passkey-authentication` §16 Design Review 跑 `/review-screenshot` 時，`/account/settings` 與 `/admin/members` 兩頁回 500
+**Location**:
+
+- `server/api/auth/me/credentials.get.ts`（`db.all(sql\`SELECT ... COALESCE(display_name, "displayName", name) ...\`)`）
+- `server/api/admin/members/index.get.ts:127-164`（`db.all(sql\`... EXISTS (SELECT 1 FROM account) ...\`)`）
+
+**Related markers**: search `@followup[TD-010]` in repo
+
+### Problem
+
+兩個 endpoint 使用 `db.all(sql\`...\`)`raw SQL + tagged template（drizzle 的 D1-specific API），在 production D1 正常運作，但在 local dev 的 libsql 環境下`db.all` 不存在／行為不同，導致 endpoint 500。同類型問題見 TD-001（已修）。
+
+影響範圍：
+
+- `/account/settings` 頁面無法在 local 渲染 happy path（永遠 error state）
+- `/admin/members` 列表無法在 local 渲染 happy path（永遠 error state）
+- §16 Design Review 響應式截圖 6/12 只能拍到 error state；happy path 留待 §17 人工檢查（在 production／或修完 TD-010 的 local）驗證
+- `admin-members-list.spec.ts` 與 `admin-members-passkey-columns.spec.ts` 這類 integration test 若依賴 local libsql 會 mock／skip，production 側才真正驗證
+
+### Fix approach
+
+仿 TD-001 做法，把 raw SQL 改寫為 Drizzle ORM query：
+
+1. **`credentials.get.ts`**：
+   - `SELECT email, display_name, hasGoogle, passkeys[]` 拆成 3 條 drizzle query（user / account filter providerId='google' / passkey by userId）
+   - 取消 `COALESCE(display_name, "displayName", name)` — FD-001 既已改以 `fieldName: 'display_name'` 對齊 schema，drizzle `schema.user.displayName` 直接讀到 snake_case 值
+2. **`admin/members/index.get.ts`**：
+   - `EXISTS (SELECT 1 FROM account WHERE providerId = 'google' ...)` → drizzle `leftJoin` + `groupBy` 或 subquery（drizzle-orm 支援 `sql\`EXISTS(...)\`` inline but 需保 libsql 相容寫法）
+   - `credentialTypes` 聚合改以 application-layer 組裝（查 account 後 reduce）
+   - `registeredAt` / `lastActivityAt` drizzle query 直接可得（`user.createdAt`、`session.createdAt` max）
+
+### Acceptance
+
+- Local dev 環境（hub:db sqlite）執行 `curl /api/auth/me/credentials` with 有 session 的 cookie → 200 with correct payload
+- Local dev 執行 `curl /api/admin/members` with admin cookie → 200 with correct payload
+- 再次跑 `/review-screenshot` 應可拍到 happy path 的響應式佈局
+- production D1 側回歸：`admin-members-list.spec.ts` + `admin-members-passkey-columns.spec.ts` 全綠
+
+---
+
+## TD-011 — migration 0009 FK cascade 設計不符 self-delete / audit 語意
+
+**Status**: open
+**Priority**: high
+**Discovered**: 2026-04-21 — `passkey-authentication` §17.8 passkey-only 自刪實測，`/api/auth/account/delete` 回 500 Failed query，sqlite FK 阻擋 user row 刪除
+**Location**: `server/database/migrations/0009_passkey_and_display_name.sql`
+
+- `member_role_changes` (line ~296-304): `FOREIGN KEY (user_id) REFERENCES user_new(id)` 無 ON DELETE 子句 → 預設 NO ACTION → 阻擋 user row 刪除
+- `mcp_tokens` (line ~183): `created_by_user_id TEXT NOT NULL REFERENCES user_new(id)` 同樣無 ON DELETE → 阻擋刪除
+
+**Related markers**: search `@followup[TD-011]` in repo
+
+### Problem
+
+task 7.2 設計意圖：
+
+> `member_role_changes` 寫入 `reason = 'self-deletion'` 後保留為 tombstone
+
+但實際 migration 0009 給 `member_role_changes.user_id` 加上 FK 且沒有 ON DELETE 子句，SQLite 預設 NO ACTION = RESTRICT → 當存在 audit row 時，delete user row 被 DB 層阻擋。tombstone 完全無法寫入。
+
+`mcp_tokens.created_by_user_id` 類似問題，雖然語意該是「user 刪除 → token 也失效（cascade）」，但 migration 也沒寫 ON DELETE CASCADE。
+
+影響：
+
+- Passkey-only user 自刪（§17.8 人工檢查）在 **production + local** 皆 500
+- Audit tombstone 機制完全無效（`passkey-authentication` 的合規承諾 broken）
+- Admin 用 `/api/admin/members/:userId` 刪除使用者也會撞同一顆石頭
+
+本 session 已套用 local-only 修正（直接 rebuild 兩個表），production D1 仍未修。
+
+### Fix approach
+
+新 migration `0010_fk_cascade_repair.sql`：
+
+1. **`member_role_changes`**：rebuild 移除 FK constraint（audit tombstone 需要在 user 刪除後仍存活，所以 `user_id` 只是純 text reference，不設 FK）。index `idx_member_role_changes_user_created` 保留。
+2. **`mcp_tokens`**：rebuild 把 `created_by_user_id` 改為 `REFERENCES "user"(id) ON DELETE CASCADE`，讓 token 隨 user 刪除自動清除。
+3. 走 0007 / 0009 的 rebuild 模式（`PRAGMA legacy_alter_table=OFF` → `*_new` + `INSERT SELECT` → `DROP` → `RENAME`）。
+4. Release checklist：在 production D1 apply 前確認備份 + row count 對照。
+
+### Acceptance
+
+- `PRAGMA foreign_key_check` 對 `member_role_changes` / `mcp_tokens` 回 empty
+- `DELETE FROM "user" WHERE id = '<passkey-only-test-user>'` 成功（由 `/api/auth/account/delete` 觸發），audit row 保留，相關 token CASCADE 清除
+- §17.8 人工檢查 local + production 皆通過
+- `test/integration/passkey-self-delete.spec.ts` 新增 test case 覆蓋 audit tombstone 存在時能成功刪除 user
+
+---
+
+## TD-012 — passkey-first → link Google 被 better-auth email 檢驗擋住
+
+**Status**: open
+**Priority**: high
+**Discovered**: 2026-04-21 — `passkey-authentication` §17.3 實機測試 passkey-first 帳號點 `/account/settings` 的「綁定 Google 帳號」，`/api/auth/link-social` 回 200 但 OAuth callback 回 `please_restart_the_process`，後端 log 顯示 `Failed to parse state: link.email expected string, received null`
+
+**Location**:
+
+- `app/pages/account/settings.vue` `handleLinkGoogle` call path
+- better-auth core `parseGenericState` / `link-social` endpoint（`node_modules/better-auth/dist/api/routes/account.mjs` 約 line 148）要求 `session.user.email` 非空
+
+**Related markers**: search `@followup[TD-012]` in repo
+
+### Problem
+
+better-auth `linkSocial` endpoint 在建構 OAuth state 時，把 `session.user.email` 塞進 `link.email` 欄位並用 Zod 驗證必須是 string。passkey-first 帳號（`email = NULL`）直接通不過 state parse → OAuth callback 拒絕。
+
+這是 better-auth 設計層的限制（intent 是用 email 比對防 account takeover），無法透過 `allowDifferentEmails: true` 之類 config 繞過；config 在 parse 之後才生效。
+
+影響：`passkey-authentication` 的 Decision 5 / §17.3 scenario「passkey-first 使用者綁 Google」**無法透過 better-auth 原生 API 實作**。
+
+目前 workaround：暫無；使用者必須先用 Google OAuth 登入（建立 Google-only user），然後以其他方式合併 passkey。
+
+### Fix approach
+
+新增 custom endpoint pair（繞開 better-auth linkSocial，自建 OAuth flow）：
+
+1. `POST /api/auth/account/link-google-for-passkey-first`
+   - `requireUserSession` + 驗 `session.user.email === null`
+   - 建 OAuth state（自己的 cookie / KV key，帶 session.user.id）
+   - redirect 到 Google authorization URL（用現有 `NUXT_OAUTH_GOOGLE_CLIENT_ID` 與 redirect_uri）
+2. `GET /api/auth/account/link-google-for-passkey-first/callback`
+   - 收 Google `code` + 自家 state
+   - 用 code 換 access token + id_token（直接 fetch Google token endpoint）
+   - 解 id_token 取 email / name / image
+   - 檢查 email 是否已在其他 user.id 上使用 → 若 yes 回 `EMAIL_ALREADY_LINKED` 409
+   - `UPDATE "user" SET email = <google-email>, image = <google-image> WHERE id = <session.user.id>`
+   - `INSERT INTO account (userId, providerId='google', accountId, accessToken, idToken, refreshToken, scope, createdAt, updatedAt) VALUES (...)` 跟 better-auth schema 對齊
+   - `databaseHooks.session.create.before` 下次會自動走 reconciliation（跑 allowlist 比對 → 升 admin 若符合）
+   - redirect 回 `/account/settings?linked=google`
+3. `app/pages/account/settings.vue` 的 `handleLinkGoogle` 改指向新 endpoint（僅當 `credentials.email === null`；否則仍用 better-auth linkSocial）
+
+### Acceptance
+
+- passkey-first 使用者（email=NULL）點「綁定 Google 帳號」→ OAuth 走通 → email 填入 + Google account row 建立 + passkey row 保留 → 下次登入可用 passkey 或 Google 任一
+- 衝突處理：若 Google email 已屬另一 user.id → 409 UX 顯示清楚
+- Allowlist reconciliation：若綁的 Google email 在 `ADMIN_EMAIL_ALLOWLIST` → 下次 session refresh 自動升 admin（既有 `session.create.before` 機制）
+- `test/integration/passkey-first-link-google.spec.ts` 覆蓋 happy path + 衝突 409 + allowlist upgrade
+
+---
+
+## TD-013 — /account/settings 新增 passkey 缺 naming dialog
+
+**Status**: done
+**Resolved**: 2026-04-21 — `app/pages/account/settings.vue` 新增 `nameDialogOpen` / `passkeyNameInput` state + UModal（輸入 passkey 名稱 + 驗證 + 傳給 `client.passkey.addPasskey({ name })`）
+**Priority**: low
+**Discovered**: 2026-04-21 — `passkey-authentication` §17.2 實機驗證 Google-first 加綁 passkey，列表顯示「未命名 passkey」
+**Location**: `app/pages/account/settings.vue` `handleAddPasskey`
+**Related markers**: search `@followup[TD-013]` in repo
+
+### Problem
+
+`handleAddPasskey` 直接呼叫 `client.passkey.addPasskey()` 沒有傳 `name`，`passkey.name` 欄位留空 → 列表顯示「未命名 passkey」，多個裝置時難以辨識（尤其 revoke 誤刪風險）。
+
+### Fix applied
+
+加一個 naming dialog：點「新增 Passkey」不直接啟動 ceremony，先開 modal 讓使用者輸入名稱（maxlength 40，必填），確認後帶 `name` 呼叫 addPasskey。驗證失敗或空字串在 modal 內直接顯示 inline error。

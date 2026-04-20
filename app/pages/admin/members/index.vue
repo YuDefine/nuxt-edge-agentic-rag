@@ -90,24 +90,60 @@
     })
   }
 
+  // passkey-authentication §13.2 — Column layout reshuffled so the
+  // primary identifier is `displayName` (the immutable nickname) rather
+  // than `email`. Email becomes a secondary column which may render
+  // "—" for passkey-only users.
   const columns: TableColumn<AdminMemberRow>[] = [
-    { accessorKey: 'email', header: 'Email' },
+    { accessorKey: 'displayName', header: '暱稱' },
     {
-      accessorKey: 'name',
-      header: '姓名',
+      accessorKey: 'email',
+      header: 'Email',
       meta: { class: { td: 'hidden md:table-cell', th: 'hidden md:table-cell' } },
     },
     { accessorKey: 'role', header: '角色' },
     {
-      accessorKey: 'createdAt',
-      header: '建立時間',
+      id: 'credentialTypes',
+      header: '登入方式',
+      meta: { class: { td: 'hidden sm:table-cell', th: 'hidden sm:table-cell' } },
+    },
+    {
+      accessorKey: 'registeredAt',
+      header: '註冊時間',
       meta: { class: { td: 'hidden md:table-cell', th: 'hidden md:table-cell' } },
+    },
+    {
+      accessorKey: 'lastActivityAt',
+      header: '最後活動',
+      meta: { class: { td: 'hidden lg:table-cell', th: 'hidden lg:table-cell' } },
     },
     {
       id: 'actions',
       header: srOnlyHeader('操作'),
     },
   ]
+
+  function credentialLabel(type: 'google' | 'passkey'): string {
+    switch (type) {
+      case 'google':
+        return 'Google'
+      case 'passkey':
+        return 'Passkey'
+      default:
+        return assertNever(type, 'adminMembersIndex.credentialLabel')
+    }
+  }
+
+  function credentialIcon(type: 'google' | 'passkey'): string {
+    switch (type) {
+      case 'google':
+        return 'i-simple-icons-google'
+      case 'passkey':
+        return 'i-lucide-fingerprint'
+      default:
+        return assertNever(type, 'adminMembersIndex.credentialIcon')
+    }
+  }
 
   const roleFilterOptions = [
     { label: '全部', value: 'all' as const },
@@ -231,21 +267,24 @@
 
       <template v-else>
         <UTable :columns="columns" :data="members">
-          <template #email-cell="{ row }">
+          <template #displayName-cell="{ row }">
             <div class="flex items-center gap-3">
               <UAvatar
                 :src="row.original.image ?? undefined"
-                :alt="row.original.name ?? row.original.email ?? ''"
+                :alt="row.original.displayName ?? row.original.name ?? row.original.email ?? ''"
                 size="sm"
               />
               <span class="text-sm font-medium break-all text-default">
-                {{ row.original.email ?? '（未提供）' }}
+                {{ row.original.displayName ?? row.original.name ?? '—' }}
               </span>
             </div>
           </template>
 
-          <template #name-cell="{ row }">
-            <span class="text-sm text-default">{{ row.original.name ?? '—' }}</span>
+          <template #email-cell="{ row }">
+            <span v-if="row.original.email" class="text-sm break-all text-default">
+              {{ row.original.email }}
+            </span>
+            <span v-else class="text-sm text-muted" aria-label="沒有 email">—</span>
           </template>
 
           <template #role-cell="{ row }">
@@ -254,8 +293,34 @@
             </UBadge>
           </template>
 
-          <template #createdAt-cell="{ row }">
-            <span class="text-sm text-muted">{{ formatDate(row.original.createdAt) }}</span>
+          <template #credentialTypes-cell="{ row }">
+            <div class="flex flex-wrap gap-1">
+              <UBadge
+                v-for="credType in row.original.credentialTypes"
+                :key="credType"
+                color="neutral"
+                variant="subtle"
+                size="sm"
+                :icon="credentialIcon(credType)"
+              >
+                {{ credentialLabel(credType) }}
+              </UBadge>
+              <span
+                v-if="row.original.credentialTypes.length === 0"
+                class="text-xs text-muted"
+                aria-label="尚未綁定任何憑證"
+              >
+                —
+              </span>
+            </div>
+          </template>
+
+          <template #registeredAt-cell="{ row }">
+            <span class="text-sm text-muted">{{ formatDate(row.original.registeredAt) }}</span>
+          </template>
+
+          <template #lastActivityAt-cell="{ row }">
+            <span class="text-sm text-muted">{{ formatDate(row.original.lastActivityAt) }}</span>
           </template>
 
           <template #actions-cell="{ row }">

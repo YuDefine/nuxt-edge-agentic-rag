@@ -275,3 +275,34 @@ export const memberRoleChanges = sqliteTable(
   },
   (table) => [index('idx_member_role_changes_user_created').on(table.userId, table.createdAt)],
 )
+
+/**
+ * passkey-authentication: WebAuthn credential store owned by
+ * `@better-auth/passkey` plugin. Schema mirrors the plugin's emitted layout;
+ * this drizzle declaration is primarily for application-layer queries (e.g.
+ * admin member list joins to check credential type presence).
+ *
+ * `userId` references `user.id` (better-auth-owned, not in this file) with
+ * `ON DELETE CASCADE` — removing a user purges all their passkeys. See
+ * migration 0009.
+ */
+export const passkey = sqliteTable(
+  'passkey',
+  {
+    id: text('id').primaryKey(),
+    name: text('name'),
+    publicKey: text('publicKey').notNull(),
+    userId: text('userId').notNull(),
+    credentialID: text('credentialID').notNull(),
+    counter: integer('counter').notNull().default(0),
+    deviceType: text('deviceType').notNull(),
+    backedUp: integer('backedUp', { mode: 'boolean' }).notNull().default(false),
+    transports: text('transports'),
+    createdAt: integer('createdAt', { mode: 'timestamp_ms' }),
+    aaguid: text('aaguid'),
+  },
+  (table) => [
+    uniqueIndex('passkey_credentialID_idx').on(table.credentialID),
+    index('passkey_userId_idx').on(table.userId),
+  ],
+)

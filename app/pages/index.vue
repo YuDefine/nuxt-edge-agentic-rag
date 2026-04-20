@@ -7,15 +7,28 @@
     layout: false, // Manually handle layout switching
   })
 
-  const { loggedIn, signIn } = useUserSession()
+  const { loggedIn, signIn, fetchSession } = useUserSession()
   const { parseAuthError } = useAuthError()
+  // `describePasskeyError` comes from `app/utils/passkey-error.ts` which
+  // Nuxt auto-imports. Never surface raw plugin / browser English messages
+  // to the UI — always route errors through this helper.
+
+  // passkey-authentication / Decision 4 — UI-side feature flag mirror.
+  // When off, no passkey buttons render; Google remains the only login
+  // surface, matching v1.0.0 production defaults.
+  const runtimeConfig = useRuntimeConfig()
+  const passkeyFeatureEnabled = computed<boolean>(
+    () => runtimeConfig.public?.knowledge?.features?.passkey === true,
+  )
 
   // responsive-and-a11y-foundation §3.3 — chat-history drawer state is
   // shared with the chat layout header toggle via `useLayoutDrawer`.
   const historyDrawer = useLayoutDrawer('chat-history')
 
   const socialLoading = shallowRef(false)
+  const passkeyLoginLoading = shallowRef(false)
   const errorMessage = shallowRef('')
+  const registerDialogOpen = ref(false)
 
   // In v1.0 MVP, we only track the current session
   const currentSessionId = ref<string | undefined>(undefined)
@@ -31,6 +44,40 @@
     } finally {
       socialLoading.value = false
     }
+  }
+
+  async function handlePasskeyLogin() {
+    passkeyLoginLoading.value = true
+    errorMessage.value = ''
+
+    try {
+      const result = await signIn.passkey()
+      if (result.error) {
+        errorMessage.value = describePasskeyError(result.error, 'login')
+        return
+      }
+      // The passkey plugin atom listener triggers `$sessionSignal` on
+      // successful verify-authentication; nuxt-better-auth picks that up
+      // and re-hydrates `useUserSession()`. Forcing a session fetch here
+      // narrows the window before `loggedIn` flips to true.
+      await fetchSession({ force: true })
+    } catch (e: unknown) {
+      errorMessage.value = describePasskeyError(e, 'login')
+    } finally {
+      passkeyLoginLoading.value = false
+    }
+  }
+
+  function handleOpenPasskeyRegister() {
+    errorMessage.value = ''
+    registerDialogOpen.value = true
+  }
+
+  function handlePasskeyRegistered() {
+    errorMessage.value = ''
+    // `PasskeyRegisterDialog` already calls `refreshSession()` internally;
+    // nothing else needed here — the `v-if="!loggedIn"` branch will
+    // switch off on its own once the session atom reports signed-in.
   }
 
   function handleHistoryDrawerClick() {
@@ -77,9 +124,50 @@
           使用 Google 帳號登入
         </UButton>
 
+        <!-- passkey-authentication: dual-gate feature flag.
+             Both buttons only appear when
+             `public.knowledge.features.passkey` is true. -->
+        <template v-if="passkeyFeatureEnabled">
+          <div class="relative flex items-center">
+            <div class="flex-1 border-t border-default" aria-hidden="true" />
+            <span class="px-3 text-xs text-muted">或</span>
+            <div class="flex-1 border-t border-default" aria-hidden="true" />
+          </div>
+
+          <UButton
+            block
+            color="neutral"
+            variant="outline"
+            size="lg"
+            icon="i-lucide-fingerprint"
+            class="py-3"
+            :loading="passkeyLoginLoading"
+            @click="handlePasskeyLogin"
+          >
+            使用 Passkey 登入
+          </UButton>
+
+          <UButton
+            block
+            color="neutral"
+            variant="subtle"
+            size="md"
+            icon="i-lucide-user-plus"
+            @click="handleOpenPasskeyRegister"
+          >
+            使用 Passkey 註冊新帳號
+          </UButton>
+        </template>
+
         <p class="text-center text-xs text-muted">首次登入後，系統會根據帳號設定自動指派角色。</p>
       </div>
     </UCard>
+
+    <LazyAuthPasskeyRegisterDialog
+      v-if="passkeyFeatureEnabled"
+      v-model:open="registerDialogOpen"
+      @registered="handlePasskeyRegistered"
+    />
   </NuxtLayout>
 
   <!-- Signed-in: Chat -->
