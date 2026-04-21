@@ -149,6 +149,6 @@ test/
 
 ## 相關文件
 
-- [開發規則](../.claude/rules/) — 程式碼品質與開發流程規範
-- [Spectra 規格](../openspec/specs/) — 功能規格文件
-- [驗證指南](./verify/) — 開發環境設定與驗證步驟
+- [開發規則](./rules/index.md) — 程式碼品質與開發流程規範
+- [Spectra 規格](./specs/index.md) — 功能規格文件入口說明
+- [驗證指南](./verify/index.md) — 開發環境設定與驗證步驟
