@@ -5,53 +5,137 @@ import { createRouteEvent, installNuxtRouteTestGlobals } from './helpers/nuxt-ro
 /**
  * GET /api/admin/members — defensive timestamp handling.
  *
- * After passkey-authentication §13.1 the handler switched to raw SQL
- * (LEFT JOIN-ish aggregation with EXISTS / MAX sub-queries) for passkey
- * + account credential badges and last-activity timestamps. The
- * underlying drizzle timestamp mapper is no longer in the hot path —
- * `db.all()` returns raw rows — but we still need defensive handling
- * for:
+ * TD-010 (2026-04-21): the handler was refactored from raw SQL
+ * (`db.all(sql\`...\`)`) to the drizzle query builder so the endpoint
+ * works on both production D1 and local-dev libsql. The mock in this
+ * spec now fakes the query-builder chain (`select().from()...`) and
+ * branches on the projection shape rather than intercepting `db.all()`
+ * and inspecting the SQL template.
  *
- *   - `Date` instances (legacy shape; some driver paths still emit)
- *   - Numeric epoch millis (current cloudflare D1 path)
- *   - ISO strings
- *   - Invalid / null values → null
- *
- * `toIsoOrNull` in the handler handles all four. This spec exercises
- * the golden path + the regression guard.
+ * The two scenarios still target the defensive `toIsoOrNull` guard:
+ *   - Date timestamps (drizzle golden path)
+ *   - unparseable / null input  → null response
  */
 
 const ADMIN_SESSION = {
   user: { id: 'admin-self', email: 'admin@example.com' },
 }
 
+interface UserRow {
+  id: string
+  email: string | null
+  name: string | null
+  displayName: string | null
+  image: string | null
+  role: string | null
+  createdAt: Date | string | number | null
+  updatedAt: Date | string | number | null
+}
+
 const mocks = vi.hoisted(() => ({
   requireRuntimeAdminSession: vi.fn(),
   getValidatedQuery: vi.fn(),
-  listRows: [] as Array<Record<string, unknown>>,
+  userRows: [] as Array<UserRow>,
   countValue: 0,
+  googleUserIds: [] as string[],
+  passkeyUserIds: [] as string[],
+  sessionRows: [] as Array<{ userId: string; lastUpdatedAt: string | null }>,
+  userIdCall: 0,
 }))
 
 vi.mock('evlog', () => ({
   useLogger: () => ({ error: vi.fn(), set: vi.fn() }),
 }))
 
-vi.mock('hub:db', () => ({
-  db: {
-    all: vi.fn((query: unknown) => {
-      const strings = ((query as { __sql?: TemplateStringsArray } | null)?.__sql ?? []) as
-        | TemplateStringsArray
-        | never[]
-      const joined = Array.from(strings).join(' ')
-      if (joined.includes('COUNT(*)')) {
-        return Promise.resolve([{ n: mocks.countValue }])
-      }
-      return Promise.resolve(mocks.listRows)
-    }),
-  },
-}))
+// Drizzle query-builder chain mock. Branches on the shape passed to
+// `select()` to decide which data set to return. Every stage of the
+// chain (`from` / `where` / `orderBy` / `limit` / `offset` / `groupBy`)
+// returns a thenable so `await` resolves to the configured rows.
+function makeThenable<T>(rows: T) {
+  const chain = {
+    from: () => chain,
+    where: () => chain,
+    orderBy: () => chain,
+    limit: () => chain,
+    offset: () => chain,
+    groupBy: () => chain,
+    then: (resolve: (value: T) => void) => resolve(rows),
+  }
+  return chain
+}
+
+function buildHubDb() {
+  const schema = {
+    user: {
+      id: { __col: 'id' },
+      email: { __col: 'email' },
+      name: { __col: 'name' },
+      display_name: { __col: 'display_name' },
+      image: { __col: 'image' },
+      role: { __col: 'role' },
+      createdAt: { __col: 'createdAt' },
+      updatedAt: { __col: 'updatedAt' },
+    },
+    account: {
+      userId: { __col: 'userId' },
+      providerId: { __col: 'providerId' },
+    },
+    passkey: {
+      userId: { __col: 'userId' },
+    },
+    session: {
+      userId: { __col: 'userId' },
+      updatedAt: { __col: 'updatedAt' },
+    },
+  }
+
+  return {
+    db: {
+      select: (shape: Record<string, unknown>) => {
+        const keys = Object.keys(shape ?? {})
+        // Count: { n: count() }
+        if (keys.length === 1 && keys.includes('n')) {
+          return makeThenable([{ n: mocks.countValue }])
+        }
+        // User list: has `displayName` + `id` + `role`
+        if (keys.includes('displayName') && keys.includes('role')) {
+          if (shape.displayName !== schema.user.display_name) {
+            throw new Error('Expected members handler to select schema.user.display_name')
+          }
+          return makeThenable(mocks.userRows)
+        }
+        // Session aggregate: { userId, lastUpdatedAt }
+        if (keys.includes('userId') && keys.includes('lastUpdatedAt')) {
+          return makeThenable(mocks.sessionRows)
+        }
+        // Google / passkey batch: { userId } alone. The handler wires
+        // the same shape for both queries under Promise.all; we
+        // dispatch by call order (google first, passkey second) to
+        // mirror the production code.
+        if (keys.length === 1 && keys.includes('userId')) {
+          mocks.userIdCall += 1
+          if (mocks.userIdCall === 1) {
+            return makeThenable(mocks.googleUserIds.map((userId) => ({ userId })))
+          }
+          return makeThenable(mocks.passkeyUserIds.map((userId) => ({ userId })))
+        }
+        throw new Error(`Unexpected select shape: ${keys.join(',')}`)
+      },
+    },
+    schema,
+  }
+}
+
+vi.mock('hub:db', () => buildHubDb())
 
 vi.mock('drizzle-orm', () => ({
+  eq: (_col: unknown, _value: unknown) => ({ __op: 'eq' }),
+  and: (...conds: unknown[]) => ({ __op: 'and', conds }),
+  asc: (_col: unknown) => ({ __op: 'asc' }),
+  desc: (_col: unknown) => ({ __op: 'desc' }),
+  count: () => ({ __op: 'count' }),
+  max: (_col: unknown) => ({ __op: 'max' }),
+  inArray: (_col: unknown, _values: unknown[]) => ({ __op: 'inArray' }),
   sql: (strings: TemplateStringsArray, ...values: unknown[]) => ({
     __sql: strings,
     __values: values,
@@ -67,8 +151,12 @@ installNuxtRouteTestGlobals()
 describe('GET /api/admin/members — timestamp handling', () => {
   beforeEach(() => {
     mocks.requireRuntimeAdminSession.mockReset()
-    mocks.listRows = []
+    mocks.userRows = []
     mocks.countValue = 0
+    mocks.googleUserIds = []
+    mocks.passkeyUserIds = []
+    mocks.sessionRows = []
+    mocks.userIdCall = 0
 
     vi.stubGlobal('requireRuntimeAdminSession', mocks.requireRuntimeAdminSession)
     vi.stubGlobal('getValidatedQuery', mocks.getValidatedQuery)
@@ -80,24 +168,25 @@ describe('GET /api/admin/members — timestamp handling', () => {
     mocks.requireRuntimeAdminSession.mockResolvedValue(ADMIN_SESSION)
   })
 
-  it('emits ISO string for numeric epoch timestamps (golden path)', async () => {
+  it('emits ISO string for Date timestamps (drizzle golden path)', async () => {
     const epoch = 1776332449872
+    const ts = new Date(epoch)
     mocks.countValue = 1
-    mocks.listRows = [
+    mocks.userRows = [
       {
         id: 'u1',
         email: 'u1@example.com',
         name: 'User One',
-        display_name: 'UserOne',
+        displayName: 'UserOne',
         image: null,
         role: 'admin',
-        created_at: epoch,
-        updated_at: epoch,
-        has_google: 1,
-        has_passkey: 0,
-        last_activity_at: epoch,
+        createdAt: ts,
+        updatedAt: ts,
       },
     ]
+    mocks.googleUserIds = ['u1']
+    mocks.passkeyUserIds = []
+    mocks.sessionRows = [{ userId: 'u1', lastUpdatedAt: ts.toISOString() }]
 
     const { default: handler } = await import('../../server/api/admin/members/index.get')
 
@@ -112,31 +201,31 @@ describe('GET /api/admin/members — timestamp handling', () => {
     }
 
     expect(result.data).toHaveLength(1)
-    expect(result.data[0]!.createdAt).toBe(new Date(epoch).toISOString())
-    expect(result.data[0]!.updatedAt).toBe(new Date(epoch).toISOString())
-    expect(result.data[0]!.registeredAt).toBe(new Date(epoch).toISOString())
-    expect(result.data[0]!.lastActivityAt).toBe(new Date(epoch).toISOString())
+    expect(result.data[0]!.createdAt).toBe(ts.toISOString())
+    expect(result.data[0]!.updatedAt).toBe(ts.toISOString())
+    expect(result.data[0]!.registeredAt).toBe(ts.toISOString())
+    expect(result.data[0]!.lastActivityAt).toBe(ts.toISOString())
   })
 
   it('returns null registeredAt / lastActivityAt for unparseable input (regression guard)', async () => {
     // Defensive: if a driver path ever produces an unparseable value,
     // the handler must degrade to null rather than throwing.
     mocks.countValue = 1
-    mocks.listRows = [
+    mocks.userRows = [
       {
         id: 'u2',
         email: 'u2@example.com',
         name: 'User Two',
-        display_name: 'UserTwo',
+        displayName: 'UserTwo',
         image: null,
         role: 'guest',
-        created_at: 'not-a-date',
-        updated_at: null,
-        has_google: 0,
-        has_passkey: 1,
-        last_activity_at: null,
+        createdAt: 'not-a-date',
+        updatedAt: null,
       },
     ]
+    mocks.googleUserIds = []
+    mocks.passkeyUserIds = ['u2']
+    mocks.sessionRows = []
 
     const { default: handler } = await import('../../server/api/admin/members/index.get')
 
@@ -150,8 +239,7 @@ describe('GET /api/admin/members — timestamp handling', () => {
 
     expect(result.data).toHaveLength(1)
     expect(result.data[0]!.registeredAt).toBeNull()
-    // lastActivityAt falls back to registeredAt when the session sub-query
-    // yields null; when both are null the result is null.
+    // lastActivityAt falls back to updatedAt (null) then to registeredAt (null) → null
     expect(result.data[0]!.lastActivityAt).toBeNull()
     expect(result.data[0]!.updatedAt).toBe('')
   })

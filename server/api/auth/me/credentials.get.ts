@@ -45,17 +45,21 @@ export default defineEventHandler(async function meCredentialsHandler(event) {
   })
 
   const { db, schema } = await import('hub:db')
-  const { eq, and, sql } = await import('drizzle-orm')
+  const { eq, and } = await import('drizzle-orm')
 
-  // FD-001 resolved 2026-04-21: `additionalFields.displayName.fieldName =
-  // 'display_name'` now aligns the drizzle schema to the snake_case
-  // migration column, so raw SQL reads `display_name` directly. The prior
-  // COALESCE(display_name, "displayName", name) fallback referenced a
-  // non-existent `"displayName"` column and 500'd on local libsql.
+  // TD-010 (2026-04-21): all DB reads go through the drizzle query
+  // builder so the handler works on both production D1 and local-dev
+  // libsql. The previous version used `db.all(sql\`...\`)` for the user
+  // row, which is a D1-dialect-specific API that throws on libsql. See
+  // `server/utils/mcp-token-store.ts` for the canonical pattern (TD-001).
+  //
+  // `schema.user.displayName.fieldName = 'display_name'` (FD-001) aligns
+  // the drizzle column binding to the snake_case migration column, so
+  // the query emits `SELECT display_name` without a COALESCE fallback.
   //
   // All DB calls are wrapped in try/catch so raw SQL / stack never leaks
   // to the client response body (see `.claude/rules/error-handling.md`).
-  let userRow: { email: string | null; display_name: string | null } | undefined
+  let userRow: { email: string | null; displayName: string | null } | undefined
   let hasGoogle = false
   let passkeyRows: Array<{
     id: string
@@ -66,9 +70,14 @@ export default defineEventHandler(async function meCredentialsHandler(event) {
   }> = []
 
   try {
-    const userRows = (await db.all(
-      sql`SELECT email, display_name FROM "user" WHERE id = ${userId} LIMIT 1`,
-    )) as Array<{ email: string | null; display_name: string | null }>
+    const userRows = await db
+      .select({
+        email: schema.user.email,
+        displayName: schema.user.display_name,
+      })
+      .from(schema.user)
+      .where(eq(schema.user.id, userId))
+      .limit(1)
     userRow = userRows[0]
   } catch (error) {
     log.error(error as Error, { step: 'fetch-user-row' })
@@ -127,7 +136,7 @@ export default defineEventHandler(async function meCredentialsHandler(event) {
   return {
     data: {
       email: userRow.email,
-      displayName: userRow.display_name,
+      displayName: userRow.displayName,
       hasGoogle,
       passkeys,
     },

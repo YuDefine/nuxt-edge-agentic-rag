@@ -1,3 +1,5 @@
+// eslint-disable-next-line import/no-unassigned-import
+import 'reflect-metadata'
 import { passkey } from '@better-auth/passkey'
 import { defineServerAuth } from '@onmax/nuxt-better-auth/config'
 import { setSessionCookie } from 'better-auth/cookies'
@@ -163,7 +165,10 @@ export default defineServerAuth(({ db, runtimeConfig }) => {
             if (!hydratedUser) {
               throw new Error('PASSKEY_FIRST_USER_LOOKUP_FAILED')
             }
-            await setSessionCookie(ctx, { session: newSession, user: hydratedUser })
+            await setSessionCookie(ctx, {
+              session: newSession,
+              user: hydratedUser,
+            })
 
             return { userId: newUser.id }
           },
@@ -253,7 +258,9 @@ export default defineServerAuth(({ db, runtimeConfig }) => {
             // it via the register dialog. Google / email OAuth paths don't
             // run that dialog, so fall back to the profile `name`, or a
             // stable `user-<id>` placeholder when both are absent.
-            const incoming = user as typeof user & { displayName?: string | null }
+            const incoming = user as typeof user & {
+              displayName?: string | null
+            }
             const fallbackName =
               typeof user.name === 'string' && user.name.trim().length > 0
                 ? user.name.trim()
@@ -477,7 +484,11 @@ export default defineServerAuth(({ db, runtimeConfig }) => {
                 })
                 .onConflictDoUpdate({
                   target: schema.userProfiles.id,
-                  set: { emailNormalized, roleSnapshot: finalRole, adminSource },
+                  set: {
+                    emailNormalized,
+                    roleSnapshot: finalRole,
+                    adminSource,
+                  },
                 })
             } catch (error) {
               authLog.error('user_profiles sync failed', {
