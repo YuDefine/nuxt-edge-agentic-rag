@@ -62,7 +62,7 @@ jobs:
         run: pnpm format:check
 
       - name: Lint
-        run: pnpm lint
+        run: pnpm run lint
 
       - name: Typecheck
         run: pnpm typecheck

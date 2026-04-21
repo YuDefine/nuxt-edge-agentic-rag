@@ -66,7 +66,7 @@
 
 現行 [deploy workflow](../../.github/workflows/deploy.yml) 的部署路徑如下：
 
-1. 先跑 `ci` job：`pnpm format:check` → `pnpm lint` → `pnpm typecheck` → `pnpm test`
+1. 先跑 `ci` job：`pnpm format:check` → `pnpm run lint` → `pnpm typecheck` → `pnpm test`
 2. 只有 `ci` 全綠才會進入 `deploy-production` 或 `deploy-staging`
 3. production：對 `agentic-rag-db` 先跑 remote D1 migrations，再 build，再從 `.output/server` deploy
 4. staging：對 `agentic-rag-db-staging` 先跑 remote D1 migrations，再 build，接著渲染 `.output/server/wrangler.staging.json`，最後 deploy
