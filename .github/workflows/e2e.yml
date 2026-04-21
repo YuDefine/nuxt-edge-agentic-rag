@@ -30,14 +30,16 @@ jobs:
         with:
           ref: ${{ env.HEAD_SHA }}
 
-      - name: Setup Vite+ (vp)
-        uses: voidzero-dev/setup-vp@v1
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: true
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
 
       - name: Install dependencies
-        run: vp install
+        run: pnpm install --frozen-lockfile
 
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
@@ -48,13 +50,13 @@ jobs:
           NODE_OPTIONS: --max-old-space-size=4096
           NITRO_PRESET: node-server
           NUXT_SESSION_PASSWORD: e2e-ci-session-password-at-least-32-chars
-        run: vp run build
+        run: pnpm build
 
       - name: Run E2E tests
         env:
           BETTER_AUTH_SECRET: e2e-better-auth-secret-at-least-32-chars
           NUXT_SESSION_PASSWORD: e2e-ci-session-password-at-least-32-chars
-        run: vp run test:e2e
+        run: pnpm test:e2e
 
       - name: Upload Playwright report
         if: ${{ !cancelled() }}
