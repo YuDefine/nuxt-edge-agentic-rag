@@ -3,9 +3,10 @@
  * spectra-ux v1.5+: Collect follow-up markers from tasks.md + validate against register.
  *
  * Usage:
- *   node scripts/spectra-ux/collect-followups.mts             # human report
- *   node scripts/spectra-ux/collect-followups.mts --json      # machine-readable
+ *   node scripts/spectra-ux/collect-followups.mts                  # human report
+ *   node scripts/spectra-ux/collect-followups.mts --json           # machine-readable
  *   node scripts/spectra-ux/collect-followups.mts --fail-on-drift  # CI gate
+ *   node scripts/spectra-ux/collect-followups.mts --session-summary  # condensed surfacing
  *
  * Inputs:
  *   - openspec/changes/** /tasks.md  (active + archived; marker scan)
@@ -46,6 +47,15 @@ const REGISTER_PATH = join(ROOT, 'docs', 'tech-debt.md')
 const args = new Set(process.argv.slice(2))
 const jsonMode = args.has('--json')
 const failOnDrift = args.has('--fail-on-drift')
+const sessionMode = args.has('--session-summary')
+
+const PRIORITY_WEIGHT: Record<string, number> = {
+  critical: 4,
+  high: 3,
+  mid: 2,
+  low: 1,
+  unknown: 0,
+}
 
 async function walkTaskFiles(dir: string): Promise<string[]> {
   const results: string[] = []
@@ -251,6 +261,53 @@ async function main() {
         2,
       ),
     )
+  } else if (sessionMode) {
+    // Condensed form intended for SessionStart hook. Silent if nothing to
+    // report; otherwise ~5-15 lines suitable for stderr surfacing. Always
+    // exits 0 — this is surfacing, not gating.
+    const openCount = byStatus.open ?? 0
+    const inProgressCount = byStatus['in-progress'] ?? 0
+    const activeCount = openCount + inProgressCount
+
+    if (
+      activeCount === 0 &&
+      unregistered.length === 0 &&
+      incomplete.length === 0 &&
+      orphaned.length === 0
+    ) {
+      process.exit(0)
+    }
+
+    console.log(`# Follow-up Status — ${openCount} open, ${inProgressCount} in-progress`)
+
+    const activeEntries = register
+      .filter((e) => e.status === 'open' || e.status === 'in-progress')
+      .sort((a, b) => (PRIORITY_WEIGHT[b.priority] ?? 0) - (PRIORITY_WEIGHT[a.priority] ?? 0))
+
+    if (activeEntries.length > 0) {
+      const top = activeEntries.slice(0, 5)
+      console.log(`Top ${top.length} by priority:`)
+      for (const e of top) {
+        console.log(`  - ${e.id} [${e.priority}] ${e.title}`)
+      }
+    }
+
+    if (unregistered.length > 0) {
+      console.log(`⚠ Unregistered markers: ${unregistered.join(', ')}`)
+    }
+    if (incomplete.length > 0) {
+      const summary = incomplete
+        .map((e) => `${e.id} (${describeIncomplete(e).join('; ')})`)
+        .join(', ')
+      console.log(`⚠ Incomplete entries: ${summary}`)
+    }
+    if (orphaned.length > 0) {
+      console.log(
+        `ℹ Orphaned entries: ${orphaned.length} (run \`pnpm spectra:followups\` for list)`,
+      )
+    }
+
+    console.log('Detail: pnpm spectra:followups')
   } else {
     console.log('# Follow-up Register Report')
     console.log('')

@@ -12,23 +12,35 @@
 # (archived-as-active / td-status-mismatch / version-mismatch) at session
 # start — stdout is discarded, stderr is preserved.
 #
-# All business logic lives in scripts/spectra-ux/roadmap-sync.mts.
+# v1.8+: additionally surfaces follow-up register status (open TD count,
+# top-priority items, unregistered markers) to stderr via
+# `collect-followups.mts --session-summary`. Silent when nothing to
+# report. Always exits 0 — surfacing, not gating.
+#
+# All business logic lives in scripts/spectra-ux/{roadmap-sync,collect-followups}.mts.
 
 set -euo pipefail
 
 ROOT="${SPECTRA_UX_PROJECT_DIR:-${CLAUDE_PROJECT_DIR:-$(pwd)}}"
-SCRIPT="$ROOT/scripts/spectra-ux/roadmap-sync.mts"
-
-if [ ! -f "$SCRIPT" ]; then
-  exit 0
-fi
+ROADMAP_SCRIPT="$ROOT/scripts/spectra-ux/roadmap-sync.mts"
+FOLLOWUPS_SCRIPT="$ROOT/scripts/spectra-ux/collect-followups.mts"
 
 if ! command -v node >/dev/null 2>&1; then
   exit 0
 fi
 
-# stdout → /dev/null (normal status line is noise); stderr passes through
-# so MANUAL drift warnings reach the agent.
-cd "$ROOT" && node "$SCRIPT" >/dev/null || true
+cd "$ROOT" || exit 0
+
+# Roadmap sync: stdout → /dev/null (normal status line is noise); stderr
+# passes through so MANUAL drift warnings reach the agent.
+if [ -f "$ROADMAP_SCRIPT" ]; then
+  node "$ROADMAP_SCRIPT" >/dev/null || true
+fi
+
+# Follow-up surfacing: condensed summary to stderr so the agent sees
+# open TD and unregistered markers at session start. Silent if clean.
+if [ -f "$FOLLOWUPS_SCRIPT" ]; then
+  node "$FOLLOWUPS_SCRIPT" --session-summary 1>&2 || true
+fi
 
 exit 0

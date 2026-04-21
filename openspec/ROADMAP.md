@@ -4,14 +4,11 @@
 
 ## Current State
 
-> 狀態（2026-04-21 更新）：Production 跑 v0.24.3。無 active change、無 open tech debt、無 follow-up。專題報告升版至 `main-v0.0.47.md`（本地編輯中，尚未 commit），僅文件變更、無程式碼改動。
->
-> **本輪進行中**（2026-04-21）：
->
-> - **專題報告升版至 `main-v0.0.47.md`**（本地編輯完成，待 `/commit` 與升版）— 補齊 v46 thinking 檢視發現之結構空洞：§3.3.2.3 驗收延後項收束契約（表 3-10）、§2.4.5 部署成本與容量規劃（表 2-29 / 2-30）、附錄 E 實模型選型參考（表 E-1）、§4.1.2 特色分級敘述、§3.2.3 響應式職責切分敘述、圖表目錄總數校正（62 張）、參考文獻 accessed date 格式。1/2/5/7（封面日期、目錄頁碼、組員心得、圖 3-2/3-7 補拍）與架構圖留待 frozen-final / 定稿排版階段。
+> 狀態（2026-04-21 更新）：Production 跑 v0.24.4（尚未 push 至 remote — 無 `origin` 設定，tag `v0.24.4` 只存 local）。無 active change、無 open tech debt、無 follow-up。
 >
 > **最近完成**（2026-04-21）：
 >
+> - **專題報告升版至 `main-v0.0.47.md`**（commit `0368556` + deploy `1ab5262` / tag `v0.24.4`，patch bump）— 補齊 v46 thinking 檢視發現之結構空洞：§3.3.2.3 驗收延後項收束契約（表 3-10）、§2.4.5 部署成本與容量規劃（表 2-29 / 2-30）、附錄 E 實模型選型參考（表 E-1）、§4.1.2 特色分級敘述、§3.2.3 響應式職責切分敘述、圖表目錄總數校正（62 張）、參考文獻 accessed date 格式。1/2/5/7（封面日期、目錄頁碼、組員心得、圖 3-2/3-7 補拍）與架構圖留待 frozen-final / 定稿排版階段。
 > - **專題報告升版至 `main-v0.0.46.md`**（commit `b660c08` → deploy `f264132` / tag `v0.24.3`，patch bump）— 把 2026-04-21 跑通之驗收自動化（Unit 6 / MCP 51 / Integration 260 / TC 42 全綠）、§3.2.3 七張實機截圖（`screenshots/local/report-v46/`）、EV runbook 指向、表 4-1 三級狀態分級、附錄 D-1 AI Gateway env var 寫進第三、四章。`frozen-final` 正式驗收跑報仍留待實模型接入後。
 > - **conversation-create test 補 member role**（commit `87bd6ce` → deploy `f3962fa` / tag `v0.24.2`，patch bump）— 消除 `getGuestPolicy` 的 `hub:db` dynamic import warn log 4 次；test 數不變（260 passed / 1 skipped）。
 >
@@ -65,9 +62,9 @@
 
 ## Active Changes
 
-_last synced: 2026-04-20T17:45:07.572Z_
+_last synced: 2026-04-21T07:01:31.049Z_
 
-1 active change (0 ready · 0 in progress · 1 draft · 0 blocked)
+_No active changes._
 
 ### Ready to apply
 
@@ -79,8 +76,7 @@ _(none)_
 
 ### Draft
 
-- **passkey-authentication** — 0/78 tasks (0%)
-  - Specs: `admin-member-management-ui`, `auth-storage-consistency`, `member-and-permission-model`
+_(none)_
 
 ### Blocked
 
@@ -96,7 +92,7 @@ _(none)_
 
 ### Independent (can run in parallel)
 
-- `passkey-authentication`
+_(none)_
 
 ### Mutex (same spec touched)
 
