@@ -2,6 +2,15 @@ import type { EventHandlerRequest, H3Event } from 'h3'
 
 import { afterEach, beforeEach, vi } from 'vitest'
 
+function createMockLogger() {
+  return {
+    set: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  }
+}
+
 export function installNuxtRouteTestGlobals() {
   beforeEach(() => {
     vi.resetModules()
@@ -45,6 +54,7 @@ export function createRouteEvent(
       cloudflare: {
         env: {},
       },
+      log: createMockLogger(),
       params: {},
       ...overrideContext,
     },
