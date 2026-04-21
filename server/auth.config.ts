@@ -13,6 +13,7 @@ import {
   normalizeEmailAddress,
 } from '../shared/schemas/knowledge-runtime'
 import { nicknameSchema } from '../shared/schemas/nickname'
+import { getDrizzleDb } from './utils/database'
 import { recordRoleChange, ROLE_CHANGE_SYSTEM_ACTOR } from './utils/member-role-changes'
 
 const authLog = consola.withTag('auth')
@@ -332,7 +333,7 @@ export default defineServerAuth(({ db, runtimeConfig }) => {
             const nextEmail = (updates as { email?: string | null }).email
             if (!nextEmail) return
 
-            const { db: hubDb, schema } = await import('hub:db')
+            const { db: hubDb, schema } = await getDrizzleDb()
 
             // The better-auth hook context exposes the target user id via
             // `ctx?.context?.session?.user?.id` depending on call path.
@@ -363,7 +364,7 @@ export default defineServerAuth(({ db, runtimeConfig }) => {
       session: {
         create: {
           before: async (session) => {
-            const { db: hubDb, schema } = await import('hub:db')
+            const { db: hubDb, schema } = await getDrizzleDb()
             const [existing] = await hubDb
               .select({ email: schema.user.email, role: schema.user.role })
               .from(schema.user)

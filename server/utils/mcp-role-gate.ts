@@ -3,6 +3,7 @@ import type { H3Event } from 'h3'
 import { normaliseRole, type Role } from '#shared/types/auth'
 import { assertNever } from '#shared/utils/assert-never'
 
+import { getDrizzleDb } from './database'
 import { getGuestPolicy } from './guest-policy'
 import type { McpAuthContext } from './mcp-middleware'
 
@@ -103,7 +104,7 @@ export async function gateMcpToolAccess(
 export function createDefaultUserRoleLookup(): UserRoleLookup {
   return {
     async lookupRoleByUserId(userId: string): Promise<Role | null> {
-      const { db, schema } = await import('hub:db')
+      const { db, schema } = await getDrizzleDb()
       const { eq } = await import('drizzle-orm')
       const rows = await db
         .select({ role: schema.user.role })

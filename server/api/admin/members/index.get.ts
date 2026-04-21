@@ -2,6 +2,7 @@ import { useLogger } from 'evlog'
 import { z } from 'zod'
 
 import { requireRuntimeAdminSession } from '#server/utils/admin-session'
+import { getDrizzleDb } from '#server/utils/database'
 import { paginateList, paginationQuerySchema } from '#shared/schemas/pagination'
 import {
   CREDENTIAL_TYPE_VALUES,
@@ -91,7 +92,7 @@ export default defineEventHandler(async function listMembersHandler(event) {
     user: { id: session.user.id ?? null },
   })
 
-  const { db, schema } = await import('hub:db')
+  const { db, schema } = await getDrizzleDb()
   const { and, asc, count, desc, eq, inArray, max } = await import('drizzle-orm')
 
   // Resolve the ORDER BY into a pair of drizzle column expressions so

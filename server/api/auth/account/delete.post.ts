@@ -1,6 +1,7 @@
 import { useLogger } from 'evlog'
 import { eq } from 'drizzle-orm'
 
+import { getDrizzleDb } from '#server/utils/database'
 import { recordRoleChange, ROLE_CHANGE_SYSTEM_ACTOR } from '#server/utils/member-role-changes'
 import { normaliseRole } from '#shared/types/auth'
 
@@ -85,7 +86,7 @@ export default defineEventHandler(async function deleteAccountHandler(event) {
     })
   }
 
-  const { db, schema } = await import('hub:db')
+  const { db, schema } = await getDrizzleDb()
 
   // Fetch current role for the audit row.
   let existingUser

@@ -1,4 +1,5 @@
 import { consola } from 'consola'
+import { defineNitroPlugin } from 'nitropack/runtime/plugin'
 
 /**
  * Global error sanitizer — last line of defence against sensitive error
@@ -107,9 +108,10 @@ export default defineNitroPlugin((nitroApp) => {
   // The `beforeResponse` hook fires after an error is converted to a
   // response object; mutating the response body here is the last window
   // before bytes go out.
-  nitroApp.hooks.hook('beforeResponse', (event, response) => {
+  nitroApp.hooks.hook('beforeResponse', (_event, response) => {
     const body = (response as { body?: unknown }).body
     if (!body || typeof body !== 'object') return
+
     const b = body as Record<string, unknown>
     if (looksSensitive(typeof b.message === 'string' ? b.message : undefined)) {
       b.message = GENERIC_MESSAGE
