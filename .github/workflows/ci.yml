@@ -44,23 +44,25 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Setup Vite+ (vp)
-        uses: voidzero-dev/setup-vp@v1
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: true
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
 
       - name: Install dependencies
-        run: vp install
+        run: pnpm install --frozen-lockfile
 
       - name: Format check
-        run: vp run format:check
+        run: pnpm format:check
 
       - name: Lint
-        run: vp run lint
+        run: pnpm run lint
 
       - name: Typecheck
-        run: vp run typecheck
+        run: pnpm typecheck
 
       - name: Unit tests
-        run: vp run test
+        run: pnpm test
