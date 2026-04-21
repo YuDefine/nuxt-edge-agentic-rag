@@ -22,7 +22,17 @@ export default defineEventHandler(async function revokeMcpTokenHandler(event) {
 
   const store = createMcpTokenAdminStore()
 
-  const result = await store.revokeTokenById(params.id)
+  let result
+  try {
+    result = await store.revokeTokenById(params.id)
+  } catch (error) {
+    log.error(error as Error, { step: 'revoke-mcp-token' })
+    throw createError({
+      statusCode: 500,
+      statusMessage: 'Internal Server Error',
+      message: '暫時無法撤銷 MCP token，請稍後再試',
+    })
+  }
 
   switch (result.outcome) {
     case 'not-found':

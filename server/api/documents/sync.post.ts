@@ -28,44 +28,62 @@ export default defineEventHandler(async (event) => {
   const database = await getD1Database()
   const store = createDocumentSyncStore(database)
 
-  const result = await syncDocumentVersionSnapshot(
-    {
-      accessLevel: body.accessLevel,
-      adminUserId: user.id,
-      categorySlug: body.categorySlug,
-      checksumSha256: body.checksumSha256,
-      environment,
-      mimeType: body.mimeType,
-      objectKey: body.objectKey,
-      size: body.size,
-      slug: body.slug,
-      title: body.title,
-      uploadId: body.uploadId,
-    },
-    {
-      loadSourceText: async (objectKey) => {
-        const text = await bucket.getText(objectKey)
-
-        if (text === null) {
-          throw createError({
-            statusCode: 404,
-            statusMessage: 'Not Found',
-            message: 'Uploaded source file was not found',
-          })
-        }
-
-        return text
+  let result
+  try {
+    result = await syncDocumentVersionSnapshot(
+      {
+        accessLevel: body.accessLevel,
+        adminUserId: user.id,
+        categorySlug: body.categorySlug,
+        checksumSha256: body.checksumSha256,
+        environment,
+        mimeType: body.mimeType,
+        objectKey: body.objectKey,
+        size: body.size,
+        slug: body.slug,
+        title: body.title,
+        uploadId: body.uploadId,
       },
-      store,
-      writeChunkObjects: async (objects) => {
-        await Promise.all(
-          objects.map((object) =>
-            bucket.put(object.key, object.text, 'text/plain; charset=utf-8', object.customMetadata),
-          ),
-        )
+      {
+        loadSourceText: async (objectKey) => {
+          const text = await bucket.getText(objectKey)
+
+          if (text === null) {
+            throw createError({
+              statusCode: 404,
+              statusMessage: 'Not Found',
+              message: 'Uploaded source file was not found',
+            })
+          }
+
+          return text
+        },
+        store,
+        writeChunkObjects: async (objects) => {
+          await Promise.all(
+            objects.map((object) =>
+              bucket.put(
+                object.key,
+                object.text,
+                'text/plain; charset=utf-8',
+                object.customMetadata,
+              ),
+            ),
+          )
+        },
       },
-    },
-  )
+    )
+  } catch (error) {
+    if (isHttpError(error)) {
+      throw error
+    }
+    log.error(error as Error, { step: 'sync-document-snapshot' })
+    throw createError({
+      statusCode: 500,
+      statusMessage: 'Internal Server Error',
+      message: '文件同步失敗，請稍後再試',
+    })
+  }
 
   if (runtimeConfig.autoRag.apiToken) {
     const kvBinding = getRequiredKvBinding(event, runtimeConfig.bindings.rateLimitKv)
@@ -84,16 +102,29 @@ export default defineEventHandler(async (event) => {
       })
     } catch (error) {
       if (error instanceof AutoRagCooldownError) {
-        await store.setVersionIndexingStatus(result.version.id, {
-          indexStatus: 'preprocessing',
-          syncStatus: 'pending',
-        })
+        try {
+          await store.setVersionIndexingStatus(result.version.id, {
+            indexStatus: 'preprocessing',
+            syncStatus: 'pending',
+          })
+        } catch (storeError) {
+          log.error(storeError as Error, { step: 'set-version-pending' })
+          throw createError({
+            statusCode: 500,
+            statusMessage: 'Internal Server Error',
+            message: '暫時無法更新版本狀態，請稍後再試',
+          })
+        }
       } else {
         log.error(error as Error, { step: 'autorag-trigger' })
-        await store.setVersionIndexingStatus(result.version.id, {
-          indexStatus: 'preprocessing',
-          syncStatus: 'failed',
-        })
+        try {
+          await store.setVersionIndexingStatus(result.version.id, {
+            indexStatus: 'preprocessing',
+            syncStatus: 'failed',
+          })
+        } catch (storeError) {
+          log.error(storeError as Error, { step: 'set-version-failed' })
+        }
         throw createError({
           statusCode: 502,
           statusMessage: 'Bad Gateway',
@@ -102,10 +133,19 @@ export default defineEventHandler(async (event) => {
       }
     }
   } else {
-    await store.setVersionIndexingStatus(result.version.id, {
-      indexStatus: 'indexed',
-      syncStatus: 'completed',
-    })
+    try {
+      await store.setVersionIndexingStatus(result.version.id, {
+        indexStatus: 'indexed',
+        syncStatus: 'completed',
+      })
+    } catch (error) {
+      log.error(error as Error, { step: 'set-version-completed' })
+      throw createError({
+        statusCode: 500,
+        statusMessage: 'Internal Server Error',
+        message: '暫時無法更新版本狀態，請稍後再試',
+      })
+    }
   }
 
   return {
@@ -117,3 +157,7 @@ export default defineEventHandler(async (event) => {
     },
   }
 })
+
+function isHttpError(error: unknown): error is { statusCode: number } {
+  return typeof error === 'object' && error !== null && 'statusCode' in error
+}

@@ -42,12 +42,20 @@ export default defineEventHandler(async function getDebugLatencySummaryHandler(e
   })
 
   const store = createQueryLogDebugStore()
-  const summary = await store.summarizeLatency({ days: query.days })
-
-  return {
-    data: {
-      channels: summary.channels,
-      days: summary.days,
-    },
+  try {
+    const summary = await store.summarizeLatency({ days: query.days })
+    return {
+      data: {
+        channels: summary.channels,
+        days: summary.days,
+      },
+    }
+  } catch (error) {
+    log.error(error as Error, { step: 'summarize-latency' })
+    throw createError({
+      statusCode: 500,
+      statusMessage: 'Internal Server Error',
+      message: '暫時無法載入延遲統計，請稍後再試',
+    })
   }
 })

@@ -19,22 +19,32 @@ export default defineEventHandler(async function retryDocumentSyncHandler(event)
 
   const { db, schema } = await import('hub:db')
 
-  const [version] = await db
-    .select({
-      id: schema.documentVersions.id,
-      documentId: schema.documentVersions.documentId,
-      syncStatus: schema.documentVersions.syncStatus,
-      indexStatus: schema.documentVersions.indexStatus,
-      normalizedTextR2Key: schema.documentVersions.normalizedTextR2Key,
+  let version
+  try {
+    ;[version] = await db
+      .select({
+        id: schema.documentVersions.id,
+        documentId: schema.documentVersions.documentId,
+        syncStatus: schema.documentVersions.syncStatus,
+        indexStatus: schema.documentVersions.indexStatus,
+        normalizedTextR2Key: schema.documentVersions.normalizedTextR2Key,
+      })
+      .from(schema.documentVersions)
+      .where(
+        and(
+          eq(schema.documentVersions.id, params.versionId),
+          eq(schema.documentVersions.documentId, params.id),
+        ),
+      )
+      .limit(1)
+  } catch (error) {
+    log.error(error as Error, { step: 'fetch-document-version' })
+    throw createError({
+      statusCode: 500,
+      statusMessage: 'Internal Server Error',
+      message: '暫時無法載入版本資訊，請稍後再試',
     })
-    .from(schema.documentVersions)
-    .where(
-      and(
-        eq(schema.documentVersions.id, params.versionId),
-        eq(schema.documentVersions.documentId, params.id),
-      ),
-    )
-    .limit(1)
+  }
 
   if (!version) {
     throw createError({
@@ -72,11 +82,21 @@ export default defineEventHandler(async function retryDocumentSyncHandler(event)
     const normalizedTextMissing = !version.normalizedTextR2Key
 
     if (!normalizedTextMissing) {
-      const [chunkRow] = await db
-        .select({ chunkExists: schema.sourceChunks.id })
-        .from(schema.sourceChunks)
-        .where(eq(schema.sourceChunks.documentVersionId, version.id))
-        .limit(1)
+      let chunkRow
+      try {
+        ;[chunkRow] = await db
+          .select({ chunkExists: schema.sourceChunks.id })
+          .from(schema.sourceChunks)
+          .where(eq(schema.sourceChunks.documentVersionId, version.id))
+          .limit(1)
+      } catch (error) {
+        log.error(error as Error, { step: 'fetch-source-chunk' })
+        throw createError({
+          statusCode: 500,
+          statusMessage: 'Internal Server Error',
+          message: '暫時無法載入前處理資料，請稍後再試',
+        })
+      }
 
       if (!chunkRow) {
         throw createError({
@@ -98,19 +118,29 @@ export default defineEventHandler(async function retryDocumentSyncHandler(event)
   // value. A concurrent sync completion or concurrent retry could have updated
   // the row since we read it above; the compound WHERE prevents us from
   // regressing a completed sync back to 'running' and from double-enqueueing.
-  const updated = await db
-    .update(schema.documentVersions)
-    .set({
-      syncStatus: 'running',
-      updatedAt: new Date().toISOString(),
+  let updated: Array<{ id: string }>
+  try {
+    updated = await db
+      .update(schema.documentVersions)
+      .set({
+        syncStatus: 'running',
+        updatedAt: new Date().toISOString(),
+      })
+      .where(
+        and(
+          eq(schema.documentVersions.id, version.id),
+          inArray(schema.documentVersions.syncStatus, ['pending', 'failed']),
+        ),
+      )
+      .returning({ id: schema.documentVersions.id })
+  } catch (error) {
+    log.error(error as Error, { step: 'flip-sync-status-running' })
+    throw createError({
+      statusCode: 500,
+      statusMessage: 'Internal Server Error',
+      message: '暫時無法更新同步狀態，請稍後再試',
     })
-    .where(
-      and(
-        eq(schema.documentVersions.id, version.id),
-        inArray(schema.documentVersions.syncStatus, ['pending', 'failed']),
-      ),
-    )
-    .returning({ id: schema.documentVersions.id })
+  }
 
   if (updated.length === 0) {
     throw createError({

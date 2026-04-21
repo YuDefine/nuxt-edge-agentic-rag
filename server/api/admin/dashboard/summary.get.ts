@@ -37,21 +37,30 @@ export default defineEventHandler(async function adminDashboardSummaryHandler(ev
 
   const store = createAdminDashboardStore()
 
-  const [documentsTotal, queriesLast30Days, tokensActive, trend] = await Promise.all([
-    store.countDocuments(),
-    store.countRecentQueryLogs(30),
-    store.countActiveTokens(),
-    store.listRecentQueryTrend(7),
-  ])
+  try {
+    const [documentsTotal, queriesLast30Days, tokensActive, trend] = await Promise.all([
+      store.countDocuments(),
+      store.countRecentQueryLogs(30),
+      store.countActiveTokens(),
+      store.listRecentQueryTrend(7),
+    ])
 
-  return {
-    data: {
-      cards: {
-        documentsTotal,
-        queriesLast30Days,
-        tokensActive,
+    return {
+      data: {
+        cards: {
+          documentsTotal,
+          queriesLast30Days,
+          tokensActive,
+        },
+        trend,
       },
-      trend,
-    },
+    }
+  } catch (error) {
+    log.error(error as Error, { step: 'fetch-dashboard-summary' })
+    throw createError({
+      statusCode: 500,
+      statusMessage: 'Internal Server Error',
+      message: '暫時無法載入儀表板資料，請稍後再試',
+    })
   }
 })

@@ -23,23 +23,34 @@ export default defineEventHandler(async function deleteDocumentHandler(event) {
 
   const { db, schema } = await import('hub:db')
 
-  const [[documentRow], versionRows] = await Promise.all([
-    db
-      .select({
-        id: schema.documents.id,
-        status: schema.documents.status,
-      })
-      .from(schema.documents)
-      .where(eq(schema.documents.id, params.id))
-      .limit(1),
-    db
-      .select({
-        id: schema.documentVersions.id,
-        publishedAt: schema.documentVersions.publishedAt,
-      })
-      .from(schema.documentVersions)
-      .where(eq(schema.documentVersions.documentId, params.id)),
-  ])
+  let documentRow: { id: string; status: string } | undefined
+  let versionRows: Array<{ id: string; publishedAt: string | null }>
+  try {
+    ;[[documentRow], versionRows] = await Promise.all([
+      db
+        .select({
+          id: schema.documents.id,
+          status: schema.documents.status,
+        })
+        .from(schema.documents)
+        .where(eq(schema.documents.id, params.id))
+        .limit(1),
+      db
+        .select({
+          id: schema.documentVersions.id,
+          publishedAt: schema.documentVersions.publishedAt,
+        })
+        .from(schema.documentVersions)
+        .where(eq(schema.documentVersions.documentId, params.id)),
+    ])
+  } catch (error) {
+    log.error(error as Error, { step: 'fetch-document-and-versions' })
+    throw createError({
+      statusCode: 500,
+      statusMessage: 'Internal Server Error',
+      message: '暫時無法載入文件資訊，請稍後再試',
+    })
+  }
 
   if (!documentRow) {
     throw createError({
@@ -64,32 +75,43 @@ export default defineEventHandler(async function deleteDocumentHandler(event) {
     })
   }
 
-  const [chunkCountRow] = await db
-    .select({ count: count() })
-    .from(schema.sourceChunks)
-    .innerJoin(
-      schema.documentVersions,
-      eq(schema.sourceChunks.documentVersionId, schema.documentVersions.id),
-    )
-    .where(eq(schema.documentVersions.documentId, params.id))
+  let removedSourceChunkCount = 0
+  let deleted: Array<{ id: string }> = []
+  try {
+    const [chunkCountRow] = await db
+      .select({ count: count() })
+      .from(schema.sourceChunks)
+      .innerJoin(
+        schema.documentVersions,
+        eq(schema.sourceChunks.documentVersionId, schema.documentVersions.id),
+      )
+      .where(eq(schema.documentVersions.documentId, params.id))
 
-  const removedSourceChunkCount = chunkCountRow?.count ?? 0
+    removedSourceChunkCount = chunkCountRow?.count ?? 0
 
-  // Guard against TOCTOU: delete only if the document is still in 'draft' status
-  // AND still has no published versions. A concurrent publish could have flipped
-  // status to 'active' or set published_at between our read and this write; the
-  // compound WHERE ensures we never silently delete a document that is no longer
-  // eligible. We check affected rows via returning().
-  const deleted = await db
-    .delete(schema.documents)
-    .where(
-      and(
-        eq(schema.documents.id, params.id),
-        eq(schema.documents.status, 'draft'),
-        sql`NOT EXISTS (SELECT 1 FROM ${schema.documentVersions} WHERE ${schema.documentVersions.documentId} = ${schema.documents.id} AND ${schema.documentVersions.publishedAt} IS NOT NULL)`,
-      ),
-    )
-    .returning({ id: schema.documents.id })
+    // Guard against TOCTOU: delete only if the document is still in 'draft' status
+    // AND still has no published versions. A concurrent publish could have flipped
+    // status to 'active' or set published_at between our read and this write; the
+    // compound WHERE ensures we never silently delete a document that is no longer
+    // eligible. We check affected rows via returning().
+    deleted = await db
+      .delete(schema.documents)
+      .where(
+        and(
+          eq(schema.documents.id, params.id),
+          eq(schema.documents.status, 'draft'),
+          sql`NOT EXISTS (SELECT 1 FROM ${schema.documentVersions} WHERE ${schema.documentVersions.documentId} = ${schema.documents.id} AND ${schema.documentVersions.publishedAt} IS NOT NULL)`,
+        ),
+      )
+      .returning({ id: schema.documents.id })
+  } catch (error) {
+    log.error(error as Error, { step: 'delete-document-cascade' })
+    throw createError({
+      statusCode: 500,
+      statusMessage: 'Internal Server Error',
+      message: '暫時無法刪除文件，請稍後再試',
+    })
+  }
 
   if (deleted.length === 0) {
     // Another admin or background flow changed state between our check and this

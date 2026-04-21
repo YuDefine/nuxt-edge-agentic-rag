@@ -1,3 +1,4 @@
+import { useLogger } from 'evlog'
 import { z } from 'zod'
 
 const finalizeRequestSchema = z.object({
@@ -9,6 +10,7 @@ const finalizeRequestSchema = z.object({
 })
 
 export default defineEventHandler(async (event) => {
+  const log = useLogger(event)
   await requireRuntimeAdminSession(event)
 
   const body = await readZodBody(event, finalizeRequestSchema)
@@ -40,6 +42,11 @@ export default defineEventHandler(async (event) => {
       })
     }
 
-    throw error
+    log.error(error as Error, { step: 'finalize-upload' })
+    throw createError({
+      statusCode: 500,
+      statusMessage: 'Internal Server Error',
+      message: '無法完成上傳驗證，請稍後再試',
+    })
   }
 })

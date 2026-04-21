@@ -22,7 +22,17 @@ export default defineEventHandler(async function getQueryLogDetailHandler(event)
 
   const store = createQueryLogAdminStore()
 
-  const row = await store.getQueryLogById(params.id)
+  let row
+  try {
+    row = await store.getQueryLogById(params.id)
+  } catch (error) {
+    log.error(error as Error, { step: 'fetch-query-log' })
+    throw createError({
+      statusCode: 500,
+      statusMessage: 'Internal Server Error',
+      message: '暫時無法載入 query log，請稍後再試',
+    })
+  }
 
   if (!row) {
     throw createError({

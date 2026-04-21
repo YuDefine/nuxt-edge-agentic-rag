@@ -26,12 +26,21 @@ export default defineEventHandler(async function listMcpTokensHandler(event) {
 
   const store = createMcpTokenAdminStore()
 
-  return paginateList(
-    { page: query.page, pageSize: query.pageSize },
-    {
-      count: () => store.countTokensForAdmin({ status: query.status }),
-      list: ({ limit, offset }) =>
-        store.listTokensForAdmin({ limit, offset, status: query.status }),
-    },
-  )
+  try {
+    return await paginateList(
+      { page: query.page, pageSize: query.pageSize },
+      {
+        count: () => store.countTokensForAdmin({ status: query.status }),
+        list: ({ limit, offset }) =>
+          store.listTokensForAdmin({ limit, offset, status: query.status }),
+      },
+    )
+  } catch (error) {
+    log.error(error as Error, { step: 'list-mcp-tokens' })
+    throw createError({
+      statusCode: 500,
+      statusMessage: 'Internal Server Error',
+      message: '暫時無法載入 MCP token 清單，請稍後再試',
+    })
+  }
 })

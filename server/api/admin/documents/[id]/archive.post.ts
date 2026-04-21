@@ -18,15 +18,25 @@ export default defineEventHandler(async function archiveDocumentHandler(event) {
 
   const { db, schema } = await import('hub:db')
 
-  const [documentRow] = await db
-    .select({
-      id: schema.documents.id,
-      status: schema.documents.status,
-      archivedAt: schema.documents.archivedAt,
+  let documentRow
+  try {
+    ;[documentRow] = await db
+      .select({
+        id: schema.documents.id,
+        status: schema.documents.status,
+        archivedAt: schema.documents.archivedAt,
+      })
+      .from(schema.documents)
+      .where(eq(schema.documents.id, params.id))
+      .limit(1)
+  } catch (error) {
+    log.error(error as Error, { step: 'fetch-document' })
+    throw createError({
+      statusCode: 500,
+      statusMessage: 'Internal Server Error',
+      message: '暫時無法載入文件資訊，請稍後再試',
     })
-    .from(schema.documents)
-    .where(eq(schema.documents.id, params.id))
-    .limit(1)
+  }
 
   if (!documentRow) {
     throw createError({
@@ -52,14 +62,23 @@ export default defineEventHandler(async function archiveDocumentHandler(event) {
 
   // Idempotent write: if two archive calls race, the second overwrites archivedAt
   // with a later timestamp. End-state convergence is guaranteed.
-  await db
-    .update(schema.documents)
-    .set({
-      status: 'archived',
-      archivedAt,
-      updatedAt: archivedAt,
+  try {
+    await db
+      .update(schema.documents)
+      .set({
+        status: 'archived',
+        archivedAt,
+        updatedAt: archivedAt,
+      })
+      .where(eq(schema.documents.id, params.id))
+  } catch (error) {
+    log.error(error as Error, { step: 'archive-document' })
+    throw createError({
+      statusCode: 500,
+      statusMessage: 'Internal Server Error',
+      message: '暫時無法封存文件，請稍後再試',
     })
-    .where(eq(schema.documents.id, params.id))
+  }
 
   log.set({ result: { documentId: documentRow.id, status: 'archived', archivedAt, noOp: false } })
 
