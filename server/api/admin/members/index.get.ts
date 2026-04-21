@@ -14,16 +14,20 @@ import { assertNever } from '#shared/utils/assert-never'
 const SORT_VALUES = ['created_desc', 'created_asc', 'email_asc'] as const
 
 /**
- * Defensive: drizzle's `timestamp_ms` mapper returns a Date, but if a future
- * driver / migration round leaves a row with an unparseable shape, prefer
- * returning null over crashing the whole list response.
+ * Defensive normaliser: drizzle's `timestamp_ms` mapper returns a Date for
+ * `user.createdAt` / `user.updatedAt`, but `session.updatedAt` is a TEXT
+ * column (see `server/db/schema.ts` session declaration) so it arrives
+ * as an ISO string. If a future driver / migration round leaves a row
+ * with an unparseable shape, prefer returning null over crashing the
+ * whole list response — the `auth-storage-consistency` spec scenario
+ * "Handler returns 200 with null when a timestamp is unparseable"
+ * exercises this regression guard.
  *
- * After passkey-authentication §13 the handler switched to raw SQL to
- * enable `LEFT JOIN` aggregation on `passkey` / `account`; drivers now
- * surface timestamp columns as either a number (ms epoch) or a string
- * depending on the sqlite driver path, so we normalise both.
+ * TD-010 (2026-04-21) tightened the signature from `unknown` to the
+ * concrete union so call sites get compile-time help; the runtime
+ * branches stay identical.
  */
-function toIsoOrNull(value: unknown): string | null {
+function toIsoOrNull(value: Date | string | number | null | undefined): string | null {
   if (value instanceof Date && !Number.isNaN(value.getTime())) {
     return value.toISOString()
   }
@@ -41,16 +45,18 @@ function toIsoOrNull(value: unknown): string | null {
 /**
  * B16 §5.1 + passkey-authentication §13.1 — Admin member list.
  *
- * Source is the better-auth `user` table with LEFT JOIN aggregations:
- *   - `account` where `providerId = 'google'` → `hasGoogle`
- *   - `passkey` → `hasPasskey` + join over session.updatedAt for
- *     last-activity proxy.
+ * Source is the better-auth `user` table with per-page batched lookups
+ * against `account` (google binding), `passkey`, and `session` for the
+ * credential badges and last-activity proxy.
  *
- * The handler uses raw SQL because (a) the generated drizzle proxy
- * names `displayName` with camelCase while the migration SQL created
- * `display_name` (snake_case) — see tasks.md "Found During Apply" — and
- * (b) drizzle's CTE support for EXISTS / multi-join sub-aggregations
- * is awkward compared to a single SELECT with conditional MAX().
+ * TD-010 (2026-04-21): previously this handler used
+ * `db.all(sql\`...\`)` raw SQL with EXISTS sub-queries, which worked on
+ * production D1 but threw on local-dev libsql (`db.all` is not defined
+ * on the libsql driver path). The refactor moves every query onto the
+ * drizzle query builder (portable across D1 + libsql) and aggregates
+ * credential flags / `lastActivityAt` in the application layer. See
+ * `openspec/changes/drizzle-refactor-credentials-admin-members/design.md`
+ * Decision 3 for the trade-off vs. a single leftJoin + groupBy.
  *
  * Columns returned mirror `AdminMemberRow` in `shared/types/admin-members.ts`
  * so the client types against a single source of truth.
@@ -60,29 +66,15 @@ const querySchema = paginationQuerySchema.extend({
   sort: z.enum(SORT_VALUES).default('created_desc'),
 })
 
-interface RawMemberRow {
-  id: string
-  email: string | null
-  name: string | null
-  display_name: string | null
-  image: string | null
-  role: string | null
-  created_at: number | string | null
-  updated_at: number | string | null
-  has_google: number | null
-  has_passkey: number | null
-  last_activity_at: number | string | null
-}
-
 // Compile-time exhaustiveness guard — if `CREDENTIAL_TYPE_VALUES` grows
 // (e.g. a future `sso` credential), this mapping forces a TS error
 // rather than silently dropping the new category.
 type CredentialFlagMap = Record<CredentialType, boolean>
 
-function toCredentialTypes(hasGoogle: number | null, hasPasskey: number | null): CredentialType[] {
+function toCredentialTypes(hasGoogle: boolean, hasPasskey: boolean): CredentialType[] {
   const present: CredentialFlagMap = {
-    google: Boolean(hasGoogle),
-    passkey: Boolean(hasPasskey),
+    google: hasGoogle,
+    passkey: hasPasskey,
   }
   return CREDENTIAL_TYPE_VALUES.filter((kind) => present[kind])
 }
@@ -99,83 +91,120 @@ export default defineEventHandler(async function listMembersHandler(event) {
     user: { id: session.user.id ?? null },
   })
 
-  const { db } = await import('hub:db')
-  const { sql } = await import('drizzle-orm')
+  const { db, schema } = await import('hub:db')
+  const { and, asc, count, desc, eq, inArray, max } = await import('drizzle-orm')
 
+  // Resolve the ORDER BY into a pair of drizzle column expressions so
+  // the query builder emits a stable plan on both D1 and libsql.
   const orderByClause = (() => {
     switch (query.sort) {
       case 'created_desc':
-        return sql`u.createdAt DESC, u.id ASC`
+        return [desc(schema.user.createdAt), asc(schema.user.id)] as const
       case 'created_asc':
-        return sql`u.createdAt ASC, u.id ASC`
+        return [asc(schema.user.createdAt), asc(schema.user.id)] as const
       case 'email_asc':
-        return sql`u.email ASC, u.id ASC`
+        return [asc(schema.user.email), asc(schema.user.id)] as const
       default:
         return assertNever(query.sort, 'listMembersHandler.sort')
     }
   })()
 
-  // Role filter — narrow to the specific three-tier value when provided.
-  const roleFilter = query.role ? sql`WHERE u.role = ${query.role}` : sql``
+  const roleCondition = query.role ? eq(schema.user.role, query.role) : undefined
 
   try {
     return await paginateList(
       { page: query.page, pageSize: query.pageSize },
       {
         count: async () => {
-          const rows = (await db.all(
-            sql`SELECT COUNT(*) AS n FROM "user" u ${roleFilter}`,
-          )) as Array<{ n: number }>
+          const baseCount = db.select({ n: count() }).from(schema.user)
+          const rows = roleCondition ? await baseCount.where(roleCondition) : await baseCount
           return rows[0]?.n ?? 0
         },
         list: async ({ limit, offset }): Promise<AdminMemberRow[]> => {
-          // `EXISTS` sub-queries rather than outer joins to keep the
-          // result set one row per user (otherwise multi-passkey users
-          // would duplicate).
-          // `last_activity_at` falls back to `u.updatedAt` when the
-          // session table yields no row (fresh user).
-          const rows = (await db.all(
-            sql`SELECT
-                  u.id                         AS id,
-                  u.email                      AS email,
-                  u.name                       AS name,
-                  u.display_name               AS display_name,
-                  u.image                      AS image,
-                  u.role                       AS role,
-                  u.createdAt                  AS created_at,
-                  u.updatedAt                  AS updated_at,
-                  CASE WHEN EXISTS (
-                    SELECT 1 FROM account a
-                    WHERE a.userId = u.id AND a.providerId = 'google'
-                  ) THEN 1 ELSE 0 END          AS has_google,
-                  CASE WHEN EXISTS (
-                    SELECT 1 FROM passkey p
-                    WHERE p.userId = u.id
-                  ) THEN 1 ELSE 0 END          AS has_passkey,
-                  COALESCE(
-                    (SELECT MAX(s.updatedAt) FROM session s WHERE s.userId = u.id),
-                    u.updatedAt
-                  )                             AS last_activity_at
-                FROM "user" u
-                ${roleFilter}
-                ORDER BY ${orderByClause}
-                LIMIT ${limit} OFFSET ${offset}`,
-          )) as RawMemberRow[]
+          // Stage A — page of users, ordered + paginated. Uses the
+          // drizzle query builder so the runtime SQL is portable.
+          const baseList = db
+            .select({
+              id: schema.user.id,
+              email: schema.user.email,
+              name: schema.user.name,
+              displayName: schema.user.display_name,
+              image: schema.user.image,
+              role: schema.user.role,
+              createdAt: schema.user.createdAt,
+              updatedAt: schema.user.updatedAt,
+            })
+            .from(schema.user)
 
-          return rows.map((row) => {
-            const registeredAt = toIsoOrNull(row.created_at)
+          const users = await (roleCondition ? baseList.where(roleCondition) : baseList)
+            .orderBy(...orderByClause)
+            .limit(limit)
+            .offset(offset)
+
+          if (users.length === 0) {
+            return []
+          }
+
+          const pageUserIds = users.map((u) => u.id)
+
+          // Stage B — batched lookups for credential badges + session
+          // last-activity. Three parallel queries gated on `IN
+          // (pageUserIds)` — far simpler than leftJoin+groupBy+count on
+          // libsql, and because they run under `Promise.all` the wall
+          // time matches the single-SELECT + EXISTS plan.
+          const [googleRows, passkeyRows, sessionRows] = await Promise.all([
+            db
+              .select({ userId: schema.account.userId })
+              .from(schema.account)
+              .where(
+                and(
+                  inArray(schema.account.userId, pageUserIds),
+                  eq(schema.account.providerId, 'google'),
+                ),
+              ),
+            db
+              .select({ userId: schema.passkey.userId })
+              .from(schema.passkey)
+              .where(inArray(schema.passkey.userId, pageUserIds)),
+            db
+              .select({
+                userId: schema.session.userId,
+                lastUpdatedAt: max(schema.session.updatedAt),
+              })
+              .from(schema.session)
+              .where(inArray(schema.session.userId, pageUserIds))
+              .groupBy(schema.session.userId),
+          ])
+
+          // Stage C — application-layer reduce. Sets / Maps keep the
+          // per-row assembly O(1) and mirror the old EXISTS / MAX
+          // semantics exactly.
+          const googleSet = new Set(googleRows.map((row) => row.userId))
+          const passkeySet = new Set(passkeyRows.map((row) => row.userId))
+          const lastActivityMap = new Map<string, string | null>()
+          for (const row of sessionRows) {
+            lastActivityMap.set(row.userId, row.lastUpdatedAt ?? null)
+          }
+
+          return users.map((u) => {
+            const registeredAt = toIsoOrNull(u.createdAt)
+            const sessionMax = lastActivityMap.get(u.id) ?? null
+            // Fall back to `u.updatedAt` when the session table yields
+            // no row (fresh user without an active session). Matches
+            // the legacy COALESCE behaviour.
+            const lastActivityRaw: Date | string | number | null = sessionMax ?? u.updatedAt ?? null
             return {
-              id: row.id,
-              email: row.email,
-              name: row.name,
-              displayName: row.display_name,
-              image: row.image,
-              role: normaliseRole(row.role),
-              credentialTypes: toCredentialTypes(row.has_google, row.has_passkey),
+              id: u.id,
+              email: u.email,
+              name: u.name,
+              displayName: u.displayName,
+              image: u.image,
+              role: normaliseRole(u.role),
+              credentialTypes: toCredentialTypes(googleSet.has(u.id), passkeySet.has(u.id)),
               registeredAt,
-              lastActivityAt: toIsoOrNull(row.last_activity_at) ?? registeredAt,
+              lastActivityAt: toIsoOrNull(lastActivityRaw) ?? registeredAt,
               createdAt: registeredAt ?? '',
-              updatedAt: toIsoOrNull(row.updated_at) ?? '',
+              updatedAt: toIsoOrNull(u.updatedAt) ?? '',
             }
           })
         },

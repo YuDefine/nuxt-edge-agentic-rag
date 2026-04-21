@@ -23,6 +23,7 @@
 | TD-011 | migration 0009 FK cascade 設計不符 self-delete / audit    | high     | open   | 2026-04-21 passkey §17.8          | —     |
 | TD-012 | passkey-first → link Google 被 better-auth email 檢驗擋住 | high     | open   | 2026-04-21 passkey §17.3          | —     |
 | TD-013 | /account/settings 新增 passkey 缺 naming dialog           | low      | done   | 2026-04-21 passkey §17.2          | —     |
+| TD-014 | error-sanitizer 後 12 test 抛 evlog Logger not init       | mid      | open   | 2026-04-21 drizzle-refactor apply | —     |
 
 ---
 
@@ -427,6 +428,14 @@ TD-001 修復後（commit 1f6a4d1，mcp-token-store 遷移 Drizzle）兩類 fail
 
 **Related markers**: search `@followup[TD-010]` in repo
 
+**Progress update (2026-04-21)**:
+
+- Local dev `http://localhost:3010` 以 `/api/_dev/login` 建立 `admin@test.local` session 後重新驗證 TD-010 happy path。
+- `/api/auth/me/credentials` 回 200：`email = "admin@test.local"`, `displayName = "Test Admin"`, `hasGoogle = false`, `passkeys = []`。
+- `/api/admin/members?page=1&pageSize=20` 回 200，`data.length = 17`，列資料包含 `displayName` / `credentialTypes` / `registeredAt` / `lastActivityAt`。
+- Playwright 載入 `/account/settings` 與 `/admin/members` 皆 HTTP 200、停留在目標 URL、未偵測已知 error text；截圖在 `screenshots/local/td010-continuation/`。
+- Status 保持 `open`，直到人工確認 local UI、production D1 回歸與 §16 responsive pipeline 後再更新為 `done`。
+
 ### Problem
 
 兩個 endpoint 使用 `db.all(sql\`...\`)`raw SQL + tagged template（drizzle 的 D1-specific API），在 production D1 正常運作，但在 local dev 的 libsql 環境下`db.all` 不存在／行為不同，導致 endpoint 500。同類型問題見 TD-001（已修）。
@@ -471,6 +480,16 @@ TD-001 修復後（commit 1f6a4d1，mcp-token-store 遷移 Drizzle）兩類 fail
 
 **Related markers**: search `@followup[TD-011]` in repo
 
+**Progress update (2026-04-21)**:
+
+- `server/database/migrations/0010_fk_cascade_repair.sql` 已套用到 production D1 `agentic-rag-db`（database_id `3036df7f-d54b-4d36-a33d-ecbb551fc278`）。
+- Pre-apply backup 已下載：`backup-pre-0010-20260421.sql`。
+- Production baseline / post-apply row count 一致：`member_role_changes=2`, `mcp_tokens=3`, `query_logs=72`, `citation_records=37`, `messages=81`, `"user"=2`。
+- Post-apply PRAGMA 驗證通過：`foreign_key_check` empty；`member_role_changes` 無 FK；`mcp_tokens.created_by_user_id` 為 `ON DELETE CASCADE`；`query_logs.mcp_token_id` 為 `ON DELETE SET NULL`。
+- Local WebAuthn 自刪驗證通過：Playwright virtual authenticator 建立 passkey-first user `td011-mo8ftwv1`，插入 local `mcp_tokens` row 後完成 `/account/settings` 刪除流程；`POST /api/auth/account/delete` 回 200、導回 `/`、`member_role_changes.reason = 'self-deletion'` tombstone 保留、該 user 的 token count 回 0；截圖 `screenshots/local/td011-self-delete-local.png`。
+- Local `.data/db/sqlite.db` compatibility DB 也已修正 query_logs / citation_records / messages FK rebind，`query_logs.mcp_token_id` 指向 canonical `mcp_tokens(id) ON DELETE SET NULL`。
+- Status 保持 `open`，直到 §17.8 local / production passkey-only 自刪人工驗收與 TD entry 收尾完成。
+
 ### Problem
 
 task 7.2 設計意圖：
@@ -487,23 +506,27 @@ task 7.2 設計意圖：
 - Audit tombstone 機制完全無效（`passkey-authentication` 的合規承諾 broken）
 - Admin 用 `/api/admin/members/:userId` 刪除使用者也會撞同一顆石頭
 
-本 session 已套用 local-only 修正（直接 rebuild 兩個表），production D1 仍未修。
+本 session 曾套用 local-only 修正（直接 rebuild 兩個表）；後續已由 migration 0010 正規化並套用到 production D1。
 
 ### Fix approach
 
-新 migration `0010_fk_cascade_repair.sql`：
+新 migration `0010_fk_cascade_repair.sql`（範圍於 2026-04-21 spectra-apply 兩次擴大：先擴成 5 表 rebuild 鏈，再加 query_logs 語意變更）：
 
 1. **`member_role_changes`**：rebuild 移除 FK constraint（audit tombstone 需要在 user 刪除後仍存活，所以 `user_id` 只是純 text reference，不設 FK）。index `idx_member_role_changes_user_created` 保留。
 2. **`mcp_tokens`**：rebuild 把 `created_by_user_id` 改為 `REFERENCES "user"(id) ON DELETE CASCADE`，讓 token 隨 user 刪除自動清除。
-3. 走 0007 / 0009 的 rebuild 模式（`PRAGMA legacy_alter_table=OFF` → `*_new` + `INSERT SELECT` → `DROP` → `RENAME`）。
-4. Release checklist：在 production D1 apply 前確認備份 + row count 對照。
+3. **`query_logs`**：rebuild 把 `mcp_token_id` 改為 `REFERENCES "mcp_tokens"(id) ON DELETE SET NULL`（若保持預設 `NO ACTION` 則 user → mcp_tokens CASCADE 會被此 FK RESTRICT，TD-011 的 bug 只會往下移動一層；TDD red 測試已證實）。observability log 保留，token 歸屬在 token 已刪除後 NULL 化。
+4. **`citation_records` / `messages`**：連帶 FK re-bind 到新 `query_logs`，columns 與 ON DELETE 子句完全保持 0009 狀態。
+5. 走 0007 / 0008 / 0009 的 rebuild 模式（`PRAGMA defer_foreign_keys = ON` → `*_new` + `INSERT SELECT` → children-first `DROP` → `RENAME`）。children-first DROP（`messages → citation_records → query_logs → mcp_tokens`）避免 `messages.query_log_id ON DELETE SET NULL` 在 DROP query_logs 時靜默觸發。
+6. Release checklist：在 production D1 apply 前確認備份 + 五張 rebuild 表 row count 對照。
 
 ### Acceptance
 
-- `PRAGMA foreign_key_check` 對 `member_role_changes` / `mcp_tokens` 回 empty
+- `PRAGMA foreign_key_check` 對 `member_role_changes` / `mcp_tokens` / `query_logs` / `citation_records` / `messages` 回 empty
+- `PRAGMA foreign_key_list(query_logs)` 顯示 `mcp_token_id` 的 `on_delete = 'SET NULL'`
 - `DELETE FROM "user" WHERE id = '<passkey-only-test-user>'` 成功（由 `/api/auth/account/delete` 觸發），audit row 保留，相關 token CASCADE 清除
+- user 刪除後其 query_logs 仍存在，`mcp_token_id` 為 NULL，`query_redacted_text` / `created_at` / `channel` / `environment` 不變
 - §17.8 人工檢查 local + production 皆通過
-- `test/integration/passkey-self-delete.spec.ts` 新增 test case 覆蓋 audit tombstone 存在時能成功刪除 user
+- `test/integration/passkey-self-delete.spec.ts` 新增 test case 覆蓋 audit tombstone 存在時能成功刪除 user，以及 query_logs 在 token cascade 後保留且 `mcp_token_id = NULL`
 
 ---
 
@@ -574,3 +597,50 @@ better-auth `linkSocial` endpoint 在建構 OAuth state 時，把 `session.user.
 ### Fix applied
 
 加一個 naming dialog：點「新增 Passkey」不直接啟動 ceremony，先開 modal 讓使用者輸入名稱（maxlength 40，必填），確認後帶 `name` 呼叫 addPasskey。驗證失敗或空字串在 modal 內直接顯示 inline error。
+
+---
+
+## TD-014 — error-sanitizer 後 12 test 拋 evlog Logger not init
+
+**Status**: open
+**Priority**: mid
+**Discovered**: 2026-04-21 — `drizzle-refactor-credentials-admin-members` apply 階段跑 `pnpm test:integration` 發現，pre-existing 非本次引入
+**Location**: 影響的 test 檔：
+
+- `test/integration/acceptance-tc-ui-state.test.ts`（5 個 sub-test）
+- `test/integration/admin-documents-route.test.ts`（3 個）
+- `test/integration/dev-login-route.test.ts`（2 個）
+- `test/integration/publish-route.test.ts`（2 個）
+
+**Related markers**: search `@followup[TD-014]` in repo
+
+### Problem
+
+v0.25.0 commit `df49b11` 引入「全站 server API 錯誤訊息洩漏防護」的 error-sanitizer nitro plugin。該 plugin 改動了 evlog logger 的初始化時序，造成上述 12 個 integration test 在呼叫 handler 時拋出：
+
+```
+[evlog] Logger not initialized. Make sure the evlog Nitro plugin is registered. If using Nuxt, add "evlog" to your modules.
+```
+
+影響：
+
+- `pnpm test:integration` full run 現在有 12 個紅燈（但全是 pre-existing / 非 TD-010 引入）
+- CI 如果有 test gate 會被擋；production D1 端 runtime 看起來 OK（handler 仍正常執行，只是 test stub 少了 plugin）
+
+本 TD 不在 TD-010 scope（TD-010 是 refactor drizzle query builder，與 evlog plugin 時序無關），但 apply 階段發現需登記。
+
+### Fix approach
+
+待評估：
+
+1. 在 `test/integration/helpers/nuxt-route.ts` 的 `installNuxtRouteTestGlobals` 加 evlog plugin init stub（mock `useLogger` context），讓每個 test 進入 handler 前 logger 已就緒
+2. 或在 affected test 檔案 top-level `vi.mock('evlog', () => ({ useLogger: () => mockLogger }))`（部分 test 已這麼做、部分沒）
+3. 或改動 error-sanitizer plugin 讓它 lazy-init logger
+
+依照 root cause 選方案 1 或 2（3 會改動 production code）。
+
+### Acceptance
+
+- `pnpm test:integration` 全綠（除非後續有其他新的 real regression）
+- 不得以 `.skip` 繞過
+- TD-014 marker 在修復 PR 的 tasks 標註 @followup[TD-014]

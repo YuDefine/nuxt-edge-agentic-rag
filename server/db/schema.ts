@@ -113,9 +113,16 @@ export const mcpTokens = sqliteTable('mcp_tokens', {
    * always written a concrete admin id, so the column is now enforced
    * at both the schema and code layers.
    *
+   * **FK policy (SQL layer)**: `REFERENCES "user"(id) ON DELETE CASCADE`
+   * established by migration 0010 (fk-cascade-repair-for-self-delete /
+   * TD-011). When a user is deleted, their provisioned tokens are
+   * cascaded away atomically so no orphan tokens remain. The downstream
+   * `query_logs.mcp_token_id` uses `ON DELETE SET NULL` (migration 0010)
+   * so the log survives the cascade with its token attribution nulled.
+   *
    * **No `.references()`**: the `user` table is owned by better-auth in
    * `hub:db` and is not declared in this drizzle schema. The FK
-   * constraint is enforced at the SQL layer (migrations 0006/0007/0008).
+   * constraint is enforced at the SQL layer (migrations 0006/0007/0008/0010).
    */
   createdByUserId: text('created_by_user_id').notNull(),
 })
@@ -126,7 +133,7 @@ export const queryLogs = sqliteTable(
     id: text('id').primaryKey(),
     channel: text('channel').notNull(),
     userProfileId: text('user_profile_id').references(() => userProfiles.id),
-    mcpTokenId: text('mcp_token_id').references(() => mcpTokens.id),
+    mcpTokenId: text('mcp_token_id').references(() => mcpTokens.id, { onDelete: 'set null' }),
     environment: text('environment').notNull(),
     queryRedactedText: text('query_redacted_text').notNull(),
     riskFlagsJson: text('risk_flags_json').notNull().default('[]'),
@@ -261,6 +268,14 @@ export const systemSettings = sqliteTable('system_settings', {
  *
  * `userId` / `changedBy` are better-auth `user.id` strings; `changedBy`
  * additionally accepts the sentinels documented in migration 0006.
+ *
+ * **No FOREIGN KEY on `user_id`** (established by migration 0010,
+ * fk-cascade-repair-for-self-delete / TD-011). Audit tombstones written
+ * as the last act of `server/api/auth/account/delete.post.ts` (with
+ * `reason = 'self-deletion'`) must survive the subsequent
+ * `DELETE FROM "user"`; a FK RESTRICT would block that. Drizzle ORM
+ * doesn't declare FKs here either — this column is a plain text
+ * reference that may point at a user id that no longer exists.
  */
 export const memberRoleChanges = sqliteTable(
   'member_role_changes',
@@ -305,4 +320,32 @@ export const passkey = sqliteTable(
     uniqueIndex('passkey_credentialID_idx').on(table.credentialID),
     index('passkey_userId_idx').on(table.userId),
   ],
+)
+
+/**
+ * drizzle-refactor-credentials-admin-members (TD-010): better-auth's session
+ * table is NOT emitted into `.nuxt/better-auth/schema.sqlite.ts` (the
+ * generator only exports `user` and `account`). This drizzle declaration
+ * mirrors the SQL shape from migrations 0007 / 0009 so the admin-member-list
+ * handler can drive `MAX(session.updatedAt)` via drizzle query builder
+ * instead of `db.all(sql\`...\`)` raw SQL.
+ *
+ * `createdAt` / `updatedAt` are TEXT (not `timestamp_ms`) because the
+ * migrations preserved the better-auth historical storage type for session
+ * rows. Downstream `toIsoOrNull` normalises the ISO-string / numeric shape
+ * back to a Date.
+ */
+export const session = sqliteTable(
+  'session',
+  {
+    id: text('id').primaryKey(),
+    userId: text('userId').notNull(),
+    token: text('token').notNull().unique(),
+    expiresAt: text('expiresAt').notNull(),
+    ipAddress: text('ipAddress'),
+    userAgent: text('userAgent'),
+    createdAt: text('createdAt').notNull().default(timestampNow),
+    updatedAt: text('updatedAt').notNull().default(timestampNow),
+  },
+  (table) => [index('session_userId_idx').on(table.userId)],
 )
