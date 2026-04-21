@@ -1,4 +1,18 @@
+import { readFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
+import type { Plugin, RenderedChunk } from 'rollup'
 import { createKnowledgeRuntimeConfig } from './shared/schemas/knowledge-runtime'
+
+const require = createRequire(import.meta.url)
+const reflectMetadataPolyfill = readFileSync(require.resolve('reflect-metadata/Reflect.js'), 'utf8')
+const nativeReflectPolyfillPreamble = [
+  'const __nativeReflectApply = typeof globalThis.Reflect?.apply === "function" ? globalThis.Reflect.apply : ((target, thisArgument, argumentsList) => Function.prototype.apply.call(target, thisArgument, argumentsList));',
+  reflectMetadataPolyfill,
+  'globalThis.Reflect ??= {};',
+  'if (typeof globalThis.Reflect.apply !== "function") {',
+  '  Object.defineProperty(globalThis.Reflect, "apply", { configurable: true, writable: true, value: __nativeReflectApply });',
+  '}',
+].join('\n')
 
 const upstreamCircularDependencyPackages = [
   'node_modules/.pnpm/nitropack@',
@@ -37,6 +51,40 @@ function shouldIgnoreUpstreamCircularDependencyWarning(warning: {
     mentionsKnownUpstreamPackage &&
     (mentionsNitroVirtualModule || mentionsNitroRuntimeCore)
   )
+}
+
+function nitroServerBanner(chunk: RenderedChunk): string {
+  if (chunk.fileName === 'chunks/nitro/nitro.mjs') {
+    return `${nativeReflectPolyfillPreamble}\n`
+  }
+
+  return ''
+}
+
+function patchOpenTelemetryProxyTracer(): Plugin {
+  const modulePath = '/@opentelemetry/api/build/esm/trace/ProxyTracer.js'
+  const unsafeReflectApply = 'return Reflect.apply(tracer.startActiveSpan, tracer, arguments);'
+  const safeApply =
+    'return Function.prototype.apply.call(tracer.startActiveSpan, tracer, arguments);'
+
+  return {
+    name: 'patch-opentelemetry-proxy-tracer-reflect-apply',
+    transform(code, id) {
+      if (!id.includes(modulePath)) {
+        return null
+      }
+
+      if (!code.includes(unsafeReflectApply)) {
+        this.warn('OpenTelemetry ProxyTracer no longer contains the expected Reflect.apply call.')
+        return null
+      }
+
+      return {
+        code: code.replace(unsafeReflectApply, safeApply),
+        map: null,
+      }
+    },
+  }
 }
 
 // https://nuxt.com/docs/api/configuration/nuxt-config
@@ -224,6 +272,7 @@ export default defineNuxtConfig({
       crossOriginEmbedderPolicy: false,
       contentSecurityPolicy: {
         'base-uri': ["'none'"],
+        'connect-src': ["'self'", 'https://api.iconify.design'],
         'font-src': ["'self'", 'https:', 'data:'],
         'form-action': ["'self'"],
         'frame-ancestors': ["'none'"],
@@ -300,6 +349,11 @@ export default defineNuxtConfig({
     experimental: {
       tasks: true,
     },
+    esbuild: {
+      options: {
+        target: 'es2022',
+      },
+    },
     // Cloudflare Workers Cron Trigger → Nitro scheduled task.
     // Cron expression also declared in wrangler.jsonc (`triggers.crons`);
     // both must stay in sync.
@@ -308,6 +362,10 @@ export default defineNuxtConfig({
       '0 3 * * *': ['retention-cleanup'],
     },
     rollupConfig: {
+      plugins: [patchOpenTelemetryProxyTracer()],
+      output: {
+        banner: nitroServerBanner,
+      },
       onwarn(warning, defaultHandler) {
         if (shouldIgnoreUpstreamCircularDependencyWarning(warning)) {
           return

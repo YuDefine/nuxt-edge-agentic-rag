@@ -13,7 +13,7 @@
     "NUXT_PASSKEY_RP_NAME": "知識問答系統",
     "NUXT_KNOWLEDGE_AI_GATEWAY_ID": "agentic-rag-production",
     "NUXT_KNOWLEDGE_AI_GATEWAY_CACHE_ENABLED": "false",
-    "CLOUDFLARE_ACCOUNT_ID": "0eac599c12df10586d97a78179b9f11f"
+    "CLOUDFLARE_ACCOUNT_ID": "0eac599c12df10586d97a78179b9f11f",
   },
   "routes": [{ "pattern": "agentic-staging.yudefine.com.tw", "custom_domain": true }],
   "d1_databases": [
@@ -21,25 +21,25 @@
       "binding": "DB",
       "database_name": "agentic-rag-db-staging",
       "database_id": "d64077d7-b1c7-43f9-8dca-a1a1ff8c8350",
-      "migrations_dir": "server/database/migrations"
-    }
+      "migrations_dir": "server/database/migrations",
+    },
   ],
   "kv_namespaces": [
     {
       "binding": "KV",
-      "id": "4cf276b2f754485da165ec47882599a9"
-    }
+      "id": "4cf276b2f754485da165ec47882599a9",
+    },
   ],
   "ai": {
-    "binding": "AI"
+    "binding": "AI",
   },
   "r2_buckets": [
     {
       "binding": "BLOB",
-      "bucket_name": "agentic-rag-documents-staging"
-    }
+      "bucket_name": "agentic-rag-documents-staging",
+    },
   ],
   "triggers": {
-    "crons": ["0 3 * * *"]
-  }
+    "crons": ["0 3 * * *"],
+  },
 }
