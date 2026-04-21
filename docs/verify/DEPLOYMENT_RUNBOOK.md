@@ -10,7 +10,7 @@
 - **Environments**：
   - `local` — `.env` 驅動，`.data/` 目錄模擬 D1/KV/R2，`pnpm dev` 起 `http://localhost:3010`
   - `production` — 綁定上述 Cloudflare 資源，domain `agentic.yudefine.com.tw`
-  - `staging`（optional）— 與 production 結構相同但 resource ID 不同（詳見 §2.6）
+  - `staging` — 與 production 結構相同但 resource ID 不同，現已存在並綁定 `agentic-staging.yudefine.com.tw`（詳見 §2.6）
 - **不涵蓋**：Local 開發環境啟動、business logic、retention cleanup 日常作業（見對應專屬文件）
 
 ## 1. 環境變數清單（Deploy 視角）
@@ -19,15 +19,34 @@
 
 ### 1.1 Workers bindings（宣告於 `wrangler.jsonc`，不需 secret）
 
-| 變數                              | 用途               | 值            |
-| --------------------------------- | ------------------ | ------------- |
-| `NUXT_KNOWLEDGE_D1_DATABASE`      | D1 binding 名稱    | `DB`          |
-| `NUXT_KNOWLEDGE_DOCUMENTS_BUCKET` | R2 binding 名稱    | `BLOB`        |
-| `NUXT_KNOWLEDGE_RATE_LIMIT_KV`    | KV binding 名稱    | `KV`          |
-| `NUXT_KNOWLEDGE_AI_SEARCH_INDEX`  | AutoRAG index name | `agentic-rag` |
-| `NUXT_KNOWLEDGE_ENVIRONMENT`      | Runtime 環境標記   | `production`  |
+| 變數                              | 用途               | 值                |
+| --------------------------------- | ------------------ | ----------------- |
+| `NUXT_KNOWLEDGE_D1_DATABASE`      | D1 binding 名稱    | `DB`              |
+| `NUXT_KNOWLEDGE_DOCUMENTS_BUCKET` | R2 binding 名稱    | `BLOB`            |
+| `NUXT_KNOWLEDGE_RATE_LIMIT_KV`    | KV binding 名稱    | `KV`              |
+| `NUXT_KNOWLEDGE_AI_SEARCH_INDEX`  | AutoRAG index name | `agentic-rag`     |
+| `NUXT_KNOWLEDGE_ENVIRONMENT`      | Runtime 環境標記   | `production`      |
+| `NUXT_PASSKEY_RP_ID`              | WebAuthn RP ID     | `yudefine.com.tw` |
+| `NUXT_PASSKEY_RP_NAME`            | WebAuthn RP name   | `知識問答系統`    |
 
-### 1.2 Build-time（GitHub Secrets，注入 `pnpm build` 階段）
+### 1.2 Cloudflare Token 分工
+
+Cloudflare 相關 token 目前分成三類，不可混用：
+
+| Token / Secret                      | 用途                                         | 建議最小權限                                                              | 使用位置               |
+| ----------------------------------- | -------------------------------------------- | ------------------------------------------------------------------------- | ---------------------- |
+| `CLOUDFLARE_API_TOKEN`              | GitHub Actions deploy + remote D1 migrations | `Workers Scripts: Edit`、`D1: Edit`、`Workers Routes: Edit`、`Zone: Read` | GitHub Actions secret  |
+| `CLOUDFLARE_API_TOKEN_ANALYTICS`    | 讀 AI Gateway / Analytics 資料               | `Account → Analytics → Read`                                              | Worker secret / `.env` |
+| `NUXT_KNOWLEDGE_AUTO_RAG_API_TOKEN` | 寫入 AutoRAG / Workers AI 相關能力           | `Workers AI: Edit`                                                        | Worker secret          |
+
+限制原則：
+
+- `CLOUDFLARE_API_TOKEN` 的 Account resource 只選目前部署帳號
+- `CLOUDFLARE_API_TOKEN` 的 Zone resource 只選 `yudefine.com.tw`
+- `CLOUDFLARE_API_TOKEN_ANALYTICS` 必須是 read-only，**NEVER** 與 deploy token 共用
+- AutoRAG token 只用於知識索引 / AI 路徑，不承擔 deploy 權限
+
+### 1.3 Build-time（GitHub Secrets，注入 `pnpm build` 階段）
 
 | 變數                     | 用途                  | 範例                              | Sensitivity |
 | ------------------------ | --------------------- | --------------------------------- | ----------- |
@@ -37,7 +56,7 @@
 | `SENTRY_ORG`             | Sentry org slug       | `yuntech-project`                 | low         |
 | `SENTRY_PROJECT`         | Sentry project slug   | `nuxt-edge-agentic-rag`           | low         |
 
-### 1.3 Runtime secrets（`wrangler secret put`，或 wrangler-action `secrets:` 區塊注入）
+### 1.4 Runtime secrets（以 `wrangler secret put` 預先管理）
 
 | 變數                                       | 用途                            | Sensitivity |
 | ------------------------------------------ | ------------------------------- | ----------- |
@@ -52,16 +71,18 @@
 | `NUXT_KNOWLEDGE_UPLOADS_ACCESS_KEY_ID`     | R2 API access key               | **high**    |
 | `NUXT_KNOWLEDGE_UPLOADS_SECRET_ACCESS_KEY` | R2 API secret key               | **high**    |
 
-### 1.4 Feature flags（Production v1 預設關閉，`wrangler secret put` 或 `vars`）
+現行 [deploy workflow](../../.github/workflows/deploy.yml) 已改為「runtime secrets 預先存在 Worker secret store，GitHub Actions 只負責 build + deploy」。因此上述 secrets 不建議再透過 `wrangler-action` 每次部署時覆寫。
 
-| 變數                                     | v1 預設 | 說明                                      |
-| ---------------------------------------- | ------- | ----------------------------------------- |
-| `NUXT_KNOWLEDGE_FEATURE_PASSKEY`         | `false` | Passkey 登入（未來版本）                  |
-| `NUXT_KNOWLEDGE_FEATURE_MCP_SESSION`     | `false` | MCP session token（未來版本）             |
-| `NUXT_KNOWLEDGE_FEATURE_CLOUD_FALLBACK`  | `false` | 雲端 LLM fallback（未來版本）             |
-| `NUXT_KNOWLEDGE_FEATURE_ADMIN_DASHBOARD` | `false` | Admin dashboard 釋出門（governance）      |
-| `NUXT_ADMIN_DASHBOARD_ENABLED`           | `true`  | Admin dashboard feature gate（post-core） |
-| `NUXT_DEBUG_SURFACE_ENABLED`             | `false` | Production debug surface killswitch       |
+### 1.5 Feature flags（Production 預設關閉；可由 `wrangler secret put` 或 `vars` 顯式覆寫）
+
+| 變數                                     | 目前 production 值 | 說明                                                               |
+| ---------------------------------------- | ------------------ | ------------------------------------------------------------------ |
+| `NUXT_KNOWLEDGE_FEATURE_PASSKEY`         | `true`             | Passkey 登入（需要 `NUXT_PASSKEY_RP_ID` / `NUXT_PASSKEY_RP_NAME`） |
+| `NUXT_KNOWLEDGE_FEATURE_MCP_SESSION`     | `false`            | MCP session token（未來版本）                                      |
+| `NUXT_KNOWLEDGE_FEATURE_CLOUD_FALLBACK`  | `false`            | 雲端 LLM fallback（未來版本）                                      |
+| `NUXT_KNOWLEDGE_FEATURE_ADMIN_DASHBOARD` | `false`            | Admin dashboard 釋出門（governance）                               |
+| `NUXT_ADMIN_DASHBOARD_ENABLED`           | `true`             | Admin dashboard feature gate（post-core）                          |
+| `NUXT_DEBUG_SURFACE_ENABLED`             | `false`            | Production debug surface killswitch                                |
 
 ⚠️ `ADMIN_EMAIL_ALLOWLIST` 對外部同仁**敏感**（等於列出誰有管理權）。雖語意上不是 secret，實務上請透過 `wrangler secret` 設定而非 `vars`。
 
@@ -74,6 +95,7 @@
 - Cloudflare account（Workers paid plan，需存取 AutoRAG）
 - `wrangler` CLI 已登入：`pnpm exec wrangler login`
 - `pnpm exec wrangler whoami` 顯示正確 account
+- 若走 GitHub Actions，repo secrets 需至少包含：`CLOUDFLARE_API_TOKEN`、`CLOUDFLARE_ACCOUNT_ID`、`PROD_SITE_URL`，staging 另需 `STAGING_SITE_URL`
 - Google Cloud OAuth client 已建立（見 §2.5）
 - `node >= 22` + `pnpm >= 10.33`（對齊 `package.json` `packageManager`）
 - 本 repo 已 clone、依賴已安裝：`pnpm install --frozen-lockfile`
@@ -196,9 +218,10 @@ pnpm exec wrangler secret list
 3. 改 `routes[0].pattern` 為 staging domain（如 `agentic-staging.yudefine.com.tw`）
 4. 重跑 §2.2 / §2.3 建立 staging 專用 D1 / R2 / KV（資源名稱加 `-staging` 後綴）
 5. 改 `d1_databases[0].database_id` 與 `kv_namespaces[0].id` 為 staging 資源 ID
-6. 每個 secret 改 prefix（`STAGING_NUXT_SESSION_PASSWORD` 等）並透過 `wrangler deploy --config wrangler.staging.jsonc` 部署
+6. staging Worker 的 runtime secrets 直接寫入 staging worker secret store；GitHub Actions 不使用 `STAGING_NUXT_SESSION_PASSWORD` 這類 prefix secrets 覆寫 runtime secrets
+7. GitHub Actions 需具備 `STAGING_SITE_URL` 才能執行 `smoke-test-staging`
 
-CI workflow 的 staging job 示意見 `.github/workflows/deploy.yml` 的 `deploy-staging` 區塊。
+CI workflow 的 staging job 已存在於 [deploy workflow](../../.github/workflows/deploy.yml) 的 `deploy-staging` 區塊。2026-04-21 已實際建立 staging D1/KV/R2、staging Worker 與 custom domain，並驗證 `https://agentic-staging.yudefine.com.tw` 回 HTTP 200。
 
 ### 2.7 首次部署與煙霧測試
 
@@ -215,6 +238,8 @@ cd .output/server
 pnpm exec wrangler deploy
 cd -
 ```
+
+若走 GitHub Actions，請注意 deploy job 前一定先經過 `ci` job；只要 `pnpm format:check`、`pnpm lint`、`pnpm typecheck` 或 `pnpm test` 任一步失敗，production / staging deploy 都會被 skip。
 
 **預期輸出**：
 

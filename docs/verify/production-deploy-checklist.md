@@ -1,6 +1,6 @@
 # Production Deploy Checklist
 
-> 此文件記錄 Deploy to Production 的執行步驟。本專案 `v1.0.0` 採 local + production 雙環境，不獨立部署 staging。
+> 此文件記錄目前 GitHub Actions 與 Cloudflare 的部署前置條件與執行步驟。現況為 local + production，另有已建立並可手動 dispatch 的 staging 部署路徑。
 
 ## 前置條件
 
@@ -8,56 +8,72 @@
 
 在 GitHub Repository Settings > Secrets and variables > Actions 加入以下 secrets：
 
-| Secret                                     | 說明                             | 取得方式                             |
-| ------------------------------------------ | -------------------------------- | ------------------------------------ |
-| `CLOUDFLARE_API_TOKEN`                     | Cloudflare API Token             | Cloudflare Dashboard > API Tokens    |
-| `CLOUDFLARE_ACCOUNT_ID`                    | Cloudflare Account ID            | Cloudflare Dashboard > Overview      |
-| `NUXT_SESSION_PASSWORD`                    | Session 加密金鑰（≥32 字元）     | `openssl rand -base64 32`            |
-| `BETTER_AUTH_SECRET`                       | Better Auth 加密金鑰（≥32 字元） | `openssl rand -base64 32`            |
-| `NUXT_OAUTH_GOOGLE_CLIENT_ID`              | Google OAuth Client ID           | Google Cloud Console                 |
-| `NUXT_OAUTH_GOOGLE_CLIENT_SECRET`          | Google OAuth Client Secret       | Google Cloud Console                 |
-| `ADMIN_EMAIL_ALLOWLIST`                    | 管理員 Email（逗號分隔）         | 例：`admin@example.com`              |
-| `NUXT_KNOWLEDGE_UPLOADS_ACCOUNT_ID`        | Cloudflare Account ID（同上）    | Cloudflare Dashboard                 |
-| `NUXT_KNOWLEDGE_UPLOADS_BUCKET_NAME`       | R2 Bucket 名稱                   | Cloudflare R2 Dashboard              |
-| `NUXT_KNOWLEDGE_UPLOADS_ACCESS_KEY_ID`     | R2 API Token Access Key ID       | Cloudflare R2 > Manage R2 API Tokens |
-| `NUXT_KNOWLEDGE_UPLOADS_SECRET_ACCESS_KEY` | R2 API Token Secret              | Cloudflare R2 > Manage R2 API Tokens |
-| `NUXT_PUBLIC_SITE_URL`                     | Production site URL              | 例：`https://production.example.com` |
+| Secret                   | 說明                        | 取得方式                                      |
+| ------------------------ | --------------------------- | --------------------------------------------- |
+| `CLOUDFLARE_API_TOKEN`   | Cloudflare API Token        | Cloudflare Dashboard > API Tokens             |
+| `CLOUDFLARE_ACCOUNT_ID`  | Cloudflare Account ID       | Cloudflare Dashboard > Overview               |
+| `PROD_SITE_URL`          | Production site URL         | 例：`https://agentic.yudefine.com.tw`         |
+| `STAGING_SITE_URL`       | Staging site URL            | 例：`https://agentic-staging.yudefine.com.tw` |
+| `NUXT_PUBLIC_SENTRY_DSN` | Sentry 前端 DSN             | Sentry                                        |
+| `SENTRY_AUTH_TOKEN`      | Sentry release upload token | Sentry                                        |
+| `SENTRY_ORG`             | Sentry org slug             | Sentry                                        |
+| `SENTRY_PROJECT`         | Sentry project slug         | Sentry                                        |
+| `DISCORD_WEBHOOK_URL`    | Deploy 通知 webhook（可選） | Discord                                       |
 
-### 2. 更新 deploy-production.yml
+> 目前 workflow 不會在每次 deploy 時從 GitHub Actions 同步 runtime secrets 到 Worker。`NUXT_SESSION_PASSWORD`、`BETTER_AUTH_SECRET`、OAuth secrets、R2 upload keys、`ADMIN_EMAIL_ALLOWLIST` 等 runtime secrets 應預先以 `wrangler secret put` 寫入各環境的 Worker secret store。
 
-編輯 `.github/workflows/deploy.yml`，在 Deploy step 加入缺少的 secrets：
+### 1.1 `CLOUDFLARE_API_TOKEN` 最小權限
 
-```yaml
-- name: Deploy to Cloudflare Workers
-  uses: cloudflare/wrangler-action@v3
-  with:
-    apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-    accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-    workingDirectory: .output/server
-    command: deploy
-    secrets: |
-      NUXT_SESSION_PASSWORD
-      BETTER_AUTH_SECRET
-      NUXT_OAUTH_GOOGLE_CLIENT_ID
-      NUXT_OAUTH_GOOGLE_CLIENT_SECRET
-      ADMIN_EMAIL_ALLOWLIST
-      NUXT_KNOWLEDGE_UPLOADS_ACCOUNT_ID
-      NUXT_KNOWLEDGE_UPLOADS_BUCKET_NAME
-      NUXT_KNOWLEDGE_UPLOADS_ACCESS_KEY_ID
-      NUXT_KNOWLEDGE_UPLOADS_SECRET_ACCESS_KEY
-  env:
-    NUXT_SESSION_PASSWORD: ${{ secrets.NUXT_SESSION_PASSWORD }}
-    BETTER_AUTH_SECRET: ${{ secrets.BETTER_AUTH_SECRET }}
-    NUXT_OAUTH_GOOGLE_CLIENT_ID: ${{ secrets.NUXT_OAUTH_GOOGLE_CLIENT_ID }}
-    NUXT_OAUTH_GOOGLE_CLIENT_SECRET: ${{ secrets.NUXT_OAUTH_GOOGLE_CLIENT_SECRET }}
-    ADMIN_EMAIL_ALLOWLIST: ${{ secrets.ADMIN_EMAIL_ALLOWLIST }}
-    NUXT_KNOWLEDGE_UPLOADS_ACCOUNT_ID: ${{ secrets.NUXT_KNOWLEDGE_UPLOADS_ACCOUNT_ID }}
-    NUXT_KNOWLEDGE_UPLOADS_BUCKET_NAME: ${{ secrets.NUXT_KNOWLEDGE_UPLOADS_BUCKET_NAME }}
-    NUXT_KNOWLEDGE_UPLOADS_ACCESS_KEY_ID: ${{ secrets.NUXT_KNOWLEDGE_UPLOADS_ACCESS_KEY_ID }}
-    NUXT_KNOWLEDGE_UPLOADS_SECRET_ACCESS_KEY: ${{ secrets.NUXT_KNOWLEDGE_UPLOADS_SECRET_ACCESS_KEY }}
-```
+此 token 供 GitHub Actions 的 `wrangler-action` 使用，現行 workflow 只做兩件事：
 
-### 3. Cloudflare 資源設定
+1. `d1 migrations apply ... --remote`
+2. `wrangler deploy`
+
+建議最小權限如下：
+
+| Scope 類型 | 權限                    | 用途                            |
+| ---------- | ----------------------- | ------------------------------- |
+| Account    | `Workers Scripts: Edit` | 部署 Worker                     |
+| Account    | `D1: Edit`              | 套用 remote migration           |
+| Zone       | `Workers Routes: Edit`  | 綁定 / 更新 custom domain route |
+| Zone       | `Zone: Read`            | 讓 Wrangler 解析 zone 與 route  |
+
+限制原則：
+
+- Account resource 只選目前部署帳號
+- Zone resource 只選 `yudefine.com.tw`
+- **NEVER** 與 `CLOUDFLARE_API_TOKEN_ANALYTICS` 共用同一顆 token
+
+### 2. Worker Runtime Secrets（預先管理，不走 GitHub Actions 同步）
+
+以下 secrets 應直接存在 Worker secret store：
+
+| Secret                                     | 說明                             |
+| ------------------------------------------ | -------------------------------- |
+| `NUXT_SESSION_PASSWORD`                    | Session 加密金鑰（≥32 字元）     |
+| `BETTER_AUTH_SECRET`                       | Better Auth 加密金鑰（≥32 字元） |
+| `NUXT_OAUTH_GOOGLE_CLIENT_ID`              | Google OAuth Client ID           |
+| `NUXT_OAUTH_GOOGLE_CLIENT_SECRET`          | Google OAuth Client Secret       |
+| `ADMIN_EMAIL_ALLOWLIST`                    | 管理員 Email（逗號分隔）         |
+| `NUXT_PUBLIC_SITE_URL`                     | 該環境實際 site URL              |
+| `NUXT_KNOWLEDGE_UPLOADS_ACCOUNT_ID`        | Cloudflare Account ID            |
+| `NUXT_KNOWLEDGE_UPLOADS_BUCKET_NAME`       | R2 Bucket 名稱                   |
+| `NUXT_KNOWLEDGE_UPLOADS_ACCESS_KEY_ID`     | R2 API Access Key ID             |
+| `NUXT_KNOWLEDGE_UPLOADS_SECRET_ACCESS_KEY` | R2 API Secret                    |
+| `NUXT_KNOWLEDGE_AUTO_RAG_API_TOKEN`        | AutoRAG / Workers AI token       |
+
+### 3. 目前 workflow 真實行為
+
+現行 [deploy workflow](../../.github/workflows/deploy.yml) 的部署路徑如下：
+
+1. 先跑 `ci` job：`pnpm format:check` → `pnpm lint` → `pnpm typecheck` → `pnpm test`
+2. 只有 `ci` 全綠才會進入 `deploy-production` 或 `deploy-staging`
+3. production：對 `agentic-rag-db` 先跑 remote D1 migrations，再 build，再從 `.output/server` deploy
+4. staging：對 `agentic-rag-db-staging` 先跑 remote D1 migrations，再 build，接著渲染 `.output/server/wrangler.staging.json`，最後 deploy
+
+> 2026-04-21 實測：手動 dispatch 的 staging workflow 失敗點在 `Format check`，不是 token 權限；deploy job 因 `ci` 未通過而被 skip。
+
+### 4. Cloudflare 資源設定
 
 在 Cloudflare Dashboard 建立以下資源（如尚未建立）：
 
@@ -66,7 +82,7 @@
 - [ ] **R2 Bucket**: 用於文件儲存
 - [ ] **AI Gateway**（可選）: 用於 AI Search
 
-### 4. Google OAuth 設定
+### 5. Google OAuth 設定
 
 在 Google Cloud Console：
 
@@ -79,7 +95,8 @@
 ### 方法 A：透過 GitHub Actions（推薦）
 
 1. Push 到 `main` branch，或
-2. 到 GitHub Actions > Deploy Production > Run workflow
+2. 到 GitHub Actions > Deploy > Run workflow
+3. `target` 選 `production` 或 `staging`
 
 ### 方法 B：手動部署
 
@@ -217,7 +234,8 @@ done
 
 2. **OAuth redirect error**
    - 確認 Google OAuth redirect URI 設定正確
-   - 確認 NUXT_PUBLIC_SITE_URL 設定正確
+
+- 確認目標環境 Worker secret `NUXT_PUBLIC_SITE_URL` 與 GitHub Actions 對應的 `PROD_SITE_URL` / `STAGING_SITE_URL` 一致
 
 3. **Admin access denied**
    - 確認 ADMIN_EMAIL_ALLOWLIST 包含你的 email
