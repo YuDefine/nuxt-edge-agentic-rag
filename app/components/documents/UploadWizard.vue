@@ -388,6 +388,12 @@
     handleFileSelect(files)
   }
 
+  function handleFileInputChange(event: Event) {
+    const input = event.target
+    if (!(input instanceof HTMLInputElement)) return
+    void handleFileSelect(input.files)
+  }
+
   function validateFile(file: File): { valid: boolean; error?: string } {
     const extension = file.name.toLowerCase().match(/\.[^/.]+$/)?.[0] ?? ''
     const mimeType = file.type || 'application/octet-stream'
@@ -743,7 +749,7 @@
           type="file"
           accept=".txt,.md,.pdf,text/plain,text/markdown,application/pdf"
           class="hidden"
-          @change="(e) => handleFileSelect((e.target as HTMLInputElement).files)"
+          @change="handleFileInputChange"
         />
         <UButton color="neutral" variant="outline" size="sm" @click="triggerFileSelect">
           選擇檔案
