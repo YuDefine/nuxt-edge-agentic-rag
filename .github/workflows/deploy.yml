@@ -112,7 +112,9 @@ jobs:
       - name: Build
         run: pnpm build
         env:
+          BETTER_AUTH_SECRET: ${{ secrets.PROD_BETTER_AUTH_SECRET || 'build-only-prod-better-auth-secret-32chars' }}
           NODE_OPTIONS: --max-old-space-size=4096
+          NUXT_SESSION_PASSWORD: ${{ secrets.PROD_NUXT_SESSION_PASSWORD || 'build-only-prod-session-password-32chars' }}
           NUXT_PUBLIC_SENTRY_DSN: ${{ secrets.NUXT_PUBLIC_SENTRY_DSN }}
           NUXT_PUBLIC_SITE_URL: ${{ secrets.PROD_SITE_URL }}
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
@@ -167,12 +169,14 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           # 注意 database name 為 staging 專用；視 wrangler 設定採 --env staging
           # 或 --config wrangler.staging.jsonc 其一
-          command: d1 migrations apply agentic-rag-db-staging --remote
+          command: d1 migrations apply agentic-rag-db-staging --remote --config wrangler.staging.jsonc
 
       - name: Build (staging)
         run: pnpm build
         env:
+          BETTER_AUTH_SECRET: ${{ secrets.STAGING_BETTER_AUTH_SECRET || 'build-only-staging-better-auth-secret-32chars' }}
           NODE_OPTIONS: --max-old-space-size=4096
+          NUXT_SESSION_PASSWORD: ${{ secrets.STAGING_NUXT_SESSION_PASSWORD || 'build-only-staging-session-password-32chars' }}
           NUXT_PUBLIC_SENTRY_DSN: ${{ secrets.NUXT_PUBLIC_SENTRY_DSN }}
           NUXT_PUBLIC_SITE_URL: ${{ secrets.STAGING_SITE_URL }}
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
