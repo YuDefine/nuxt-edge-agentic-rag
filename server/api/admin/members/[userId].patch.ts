@@ -2,6 +2,7 @@ import { useLogger } from 'evlog'
 import { z } from 'zod'
 
 import { requireRuntimeAdminSession } from '#server/utils/admin-session'
+import { getDrizzleDb } from '#server/utils/database'
 import { recordRoleChange } from '#server/utils/member-role-changes'
 import { getKnowledgeRuntimeConfig } from '#server/utils/knowledge-runtime'
 import { normaliseRole, ROLE_VALUES, type Role } from '#shared/types/auth'
@@ -81,7 +82,7 @@ export default defineEventHandler(async function updateMemberRoleHandler(event) 
   const runtimeConfig = getKnowledgeRuntimeConfig()
   const allowlist = runtimeConfig.adminEmailAllowlist
 
-  const { db, schema } = await import('hub:db')
+  const { db, schema } = await getDrizzleDb()
   const { eq } = await import('drizzle-orm')
 
   let target

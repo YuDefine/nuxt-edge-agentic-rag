@@ -1,5 +1,7 @@
 import { useLogger } from 'evlog'
 
+import { getDrizzleDb } from '#server/utils/database'
+
 /**
  * passkey-authentication — Logged-in user's credential summary.
  *
@@ -44,7 +46,7 @@ export default defineEventHandler(async function meCredentialsHandler(event) {
     user: { id: userId },
   })
 
-  const { db, schema } = await import('hub:db')
+  const { db, schema } = await getDrizzleDb()
   const { eq, and } = await import('drizzle-orm')
 
   // TD-010 (2026-04-21): all DB reads go through the drizzle query

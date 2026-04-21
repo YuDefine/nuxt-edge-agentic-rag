@@ -3,6 +3,7 @@ import { useLogger } from 'evlog'
 import { z } from 'zod'
 import { and, eq } from 'drizzle-orm'
 import { getRuntimeAdminAccess } from '#server/utils/knowledge-runtime'
+import { getDrizzleDb } from '#server/utils/database'
 
 /**
  * Development-only login endpoint for testing.
@@ -30,7 +31,7 @@ import { getRuntimeAdminAccess } from '#server/utils/knowledge-runtime'
  * Used to sync role with admin allowlist after login/signup.
  */
 async function updateUserRole(userId: string, role: string): Promise<void> {
-  const { db, schema } = await import('hub:db')
+  const { db, schema } = await getDrizzleDb()
   await db.update(schema.user).set({ role }).where(eq(schema.user.id, userId))
 }
 
@@ -48,7 +49,7 @@ function hashCredentialPassword(password: string): string {
 
 async function ensureCredentialAccount(email: string, password: string): Promise<void> {
   const normalizedEmail = email.toLowerCase()
-  const { db, schema } = await import('hub:db')
+  const { db, schema } = await getDrizzleDb()
 
   const [existingUser] = await db
     .select({ id: schema.user.id })
