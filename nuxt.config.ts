@@ -4,6 +4,7 @@ import type { Plugin, RenderedChunk } from 'rollup'
 import { createKnowledgeRuntimeConfig } from './shared/schemas/knowledge-runtime'
 
 const require = createRequire(import.meta.url)
+const isVitest = process.env.VITEST === 'true'
 const reflectMetadataPolyfill = readFileSync(require.resolve('reflect-metadata/Reflect.js'), 'utf8')
 const nativeReflectPolyfillPreamble = [
   'const __nativeReflectApply = typeof globalThis.Reflect?.apply === "function" ? globalThis.Reflect.apply : ((target, thisArgument, argumentsList) => Function.prototype.apply.call(target, thisArgument, argumentsList));',
@@ -69,7 +70,7 @@ function patchOpenTelemetryProxyTracer(): Plugin {
 
   return {
     name: 'patch-opentelemetry-proxy-tracer-reflect-apply',
-    transform(code, id) {
+    transform(code: string, id: string) {
       if (!id.includes(modulePath)) {
         return null
       }
@@ -314,21 +315,23 @@ export default defineNuxtConfig({
 
   vite: {
     build: {
-      rollupOptions: {
-        onwarn(warning, defaultHandler) {
-          const message = typeof warning.message === 'string' ? warning.message : ''
+      rollupOptions: isVitest
+        ? undefined
+        : {
+            onwarn(warning, defaultHandler) {
+              const message = typeof warning.message === 'string' ? warning.message : ''
 
-          if (
-            message.includes('Sourcemap is likely to be incorrect') &&
-            (message.includes('nuxt:module-preload-polyfill') ||
-              message.includes('@tailwindcss/vite:generate:build'))
-          ) {
-            return
-          }
+              if (
+                message.includes('Sourcemap is likely to be incorrect') &&
+                (message.includes('nuxt:module-preload-polyfill') ||
+                  message.includes('@tailwindcss/vite:generate:build'))
+              ) {
+                return
+              }
 
-          defaultHandler(warning)
-        },
-      },
+              defaultHandler(warning)
+            },
+          },
     },
   },
   evlog: {
@@ -361,26 +364,28 @@ export default defineNuxtConfig({
       // Daily at 03:00 UTC.
       '0 3 * * *': ['retention-cleanup'],
     },
-    rollupConfig: {
-      plugins: [patchOpenTelemetryProxyTracer()],
-      output: {
-        banner: nitroServerBanner,
-      },
-      onwarn(warning, defaultHandler) {
-        if (shouldIgnoreUpstreamCircularDependencyWarning(warning)) {
-          return
-        }
+    rollupConfig: isVitest
+      ? {}
+      : {
+          plugins: [patchOpenTelemetryProxyTracer()],
+          output: {
+            banner: nitroServerBanner,
+          },
+          onwarn(warning, defaultHandler) {
+            if (shouldIgnoreUpstreamCircularDependencyWarning(warning)) {
+              return
+            }
 
-        if (
-          warning.code === 'THIS_IS_UNDEFINED' &&
-          typeof warning.id === 'string' &&
-          warning.id.includes('/mime/dist/src/Mime.js')
-        ) {
-          return
-        }
+            if (
+              warning.code === 'THIS_IS_UNDEFINED' &&
+              typeof warning.id === 'string' &&
+              warning.id.includes('/mime/dist/src/Mime.js')
+            ) {
+              return
+            }
 
-        defaultHandler(warning)
-      },
-    },
+            defaultHandler(warning)
+          },
+        },
   },
 })
