@@ -239,7 +239,7 @@ pnpm exec wrangler deploy
 cd -
 ```
 
-若走 GitHub Actions，請注意 deploy job 前一定先經過 `ci` job；只要 `pnpm format:check`、`pnpm lint`、`pnpm typecheck` 或 `pnpm test` 任一步失敗，production / staging deploy 都會被 skip。
+若走 GitHub Actions，請注意 deploy job 前一定先經過 `ci` job；只要 `pnpm format:check`、`pnpm run lint`、`pnpm typecheck` 或 `pnpm test` 任一步失敗，production / staging deploy 都會被 skip。
 
 **預期輸出**：
 
