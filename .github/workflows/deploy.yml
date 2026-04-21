@@ -2,18 +2,13 @@
 #
 # 對應 docs/verify/DEPLOYMENT_RUNBOOK.md 與報告附錄 D-2。
 #
-# ⚠️ 此檔為「建議版本」。`.github/workflows/` 目錄受 Claude Code guard 永久保護，
-#    必須由使用者手動 copy-paste 此檔覆寫 `.github/workflows/deploy.yml` 後執行
-#    `git diff .github/workflows/deploy.yml` 檢查差異。
-#
 # 與既有 deploy.yml 的差異：
 #   1. 新增 workflow_dispatch inputs.target（production / staging）
 #   2. 新增 D1 migrations apply step（部署 code 前先 apply schema）
-#   3. 拆分 `deploy-production` / `deploy-staging` 兩個 job（後者預設 `if: false`）
-#   4. 新增 `BETTER_AUTH_SECRET` / `ADMIN_EMAIL_ALLOWLIST` / `AUTO_RAG_API_TOKEN`
-#      / `UPLOADS_*` 等被 production-deploy-checklist.md 標記為必要但原 workflow
-#      漏掉的 secrets
-#   5. 所有 secrets 名稱補上 PROD_ / STAGING_ prefix，避免跨環境覆寫
+#   3. 拆分 `deploy-production` / `deploy-staging` 兩個 job
+#   4. runtime secrets 由 Cloudflare Worker secret store 預先管理，GitHub Actions
+#      只負責 build + deploy，不在每次部署時同步覆寫 secrets
+#   5. 所有 build-time site URL secrets 補上 PROD_ / STAGING_ prefix，避免跨環境覆寫
 #
 # 觸發策略：
 #   - push tag v*       → production deploy（透過 needs: ci）
@@ -124,9 +119,6 @@ jobs:
           SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
           SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
 
-      # Secrets 逐一列在 `secrets:` 後，wrangler-action 會把對應 env 注入
-      # Cloudflare secret storage。已存在的 secret 會被覆蓋為 env 值，未列的
-      # secret 保留原值。詳見 docs/verify/DEPLOYMENT_RUNBOOK.md §1.3。
       - name: Deploy to Cloudflare Workers (production)
         uses: cloudflare/wrangler-action@v3
         with:
@@ -134,28 +126,6 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: .output/server
           command: deploy
-          secrets: |
-            NUXT_SESSION_PASSWORD
-            BETTER_AUTH_SECRET
-            NUXT_OAUTH_GOOGLE_CLIENT_ID
-            NUXT_OAUTH_GOOGLE_CLIENT_SECRET
-            ADMIN_EMAIL_ALLOWLIST
-            NUXT_KNOWLEDGE_AUTO_RAG_API_TOKEN
-            NUXT_KNOWLEDGE_UPLOADS_ACCOUNT_ID
-            NUXT_KNOWLEDGE_UPLOADS_BUCKET_NAME
-            NUXT_KNOWLEDGE_UPLOADS_ACCESS_KEY_ID
-            NUXT_KNOWLEDGE_UPLOADS_SECRET_ACCESS_KEY
-        env:
-          NUXT_SESSION_PASSWORD: ${{ secrets.PROD_NUXT_SESSION_PASSWORD }}
-          BETTER_AUTH_SECRET: ${{ secrets.PROD_BETTER_AUTH_SECRET }}
-          NUXT_OAUTH_GOOGLE_CLIENT_ID: ${{ secrets.PROD_NUXT_OAUTH_GOOGLE_CLIENT_ID }}
-          NUXT_OAUTH_GOOGLE_CLIENT_SECRET: ${{ secrets.PROD_NUXT_OAUTH_GOOGLE_CLIENT_SECRET }}
-          ADMIN_EMAIL_ALLOWLIST: ${{ secrets.PROD_ADMIN_EMAIL_ALLOWLIST }}
-          NUXT_KNOWLEDGE_AUTO_RAG_API_TOKEN: ${{ secrets.PROD_NUXT_KNOWLEDGE_AUTO_RAG_API_TOKEN }}
-          NUXT_KNOWLEDGE_UPLOADS_ACCOUNT_ID: ${{ secrets.PROD_NUXT_KNOWLEDGE_UPLOADS_ACCOUNT_ID }}
-          NUXT_KNOWLEDGE_UPLOADS_BUCKET_NAME: ${{ secrets.PROD_NUXT_KNOWLEDGE_UPLOADS_BUCKET_NAME }}
-          NUXT_KNOWLEDGE_UPLOADS_ACCESS_KEY_ID: ${{ secrets.PROD_NUXT_KNOWLEDGE_UPLOADS_ACCESS_KEY_ID }}
-          NUXT_KNOWLEDGE_UPLOADS_SECRET_ACCESS_KEY: ${{ secrets.PROD_NUXT_KNOWLEDGE_UPLOADS_SECRET_ACCESS_KEY }}
 
   # ---------------------------------------------------------------------------
   # STAGING deploy — illustrative
@@ -164,11 +134,9 @@ jobs:
   #   1. 已建立 staging D1/R2/KV 資源（各加 -staging 後綴）
   #   2. 已建立 wrangler.staging.jsonc 或以 --env staging 區分
   #   3. GitHub 已設定 STAGING_* prefix 的 secrets
-  # 啟用方式：把 `if: false` 移除，並 workflow_dispatch 時選 target=staging
   deploy-staging:
     needs: ci
     if: |
-      false &&
       github.event_name == 'workflow_dispatch' &&
       github.event.inputs.target == 'staging'
     runs-on: ubuntu-latest
@@ -207,6 +175,12 @@ jobs:
           NODE_OPTIONS: --max-old-space-size=4096
           NUXT_PUBLIC_SENTRY_DSN: ${{ secrets.NUXT_PUBLIC_SENTRY_DSN }}
           NUXT_PUBLIC_SITE_URL: ${{ secrets.STAGING_SITE_URL }}
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+
+      - name: Render staging wrangler config
+        run: node scripts/render-staging-wrangler.mjs
 
       - name: Deploy to Cloudflare Workers (staging)
         uses: cloudflare/wrangler-action@v3
@@ -214,30 +188,7 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: .output/server
-          # 視實際設定：若用多 env 則改為 `deploy --env staging`
-          command: deploy --config ../../wrangler.staging.jsonc
-          secrets: |
-            NUXT_SESSION_PASSWORD
-            BETTER_AUTH_SECRET
-            NUXT_OAUTH_GOOGLE_CLIENT_ID
-            NUXT_OAUTH_GOOGLE_CLIENT_SECRET
-            ADMIN_EMAIL_ALLOWLIST
-            NUXT_KNOWLEDGE_AUTO_RAG_API_TOKEN
-            NUXT_KNOWLEDGE_UPLOADS_ACCOUNT_ID
-            NUXT_KNOWLEDGE_UPLOADS_BUCKET_NAME
-            NUXT_KNOWLEDGE_UPLOADS_ACCESS_KEY_ID
-            NUXT_KNOWLEDGE_UPLOADS_SECRET_ACCESS_KEY
-        env:
-          NUXT_SESSION_PASSWORD: ${{ secrets.STAGING_NUXT_SESSION_PASSWORD }}
-          BETTER_AUTH_SECRET: ${{ secrets.STAGING_BETTER_AUTH_SECRET }}
-          NUXT_OAUTH_GOOGLE_CLIENT_ID: ${{ secrets.STAGING_NUXT_OAUTH_GOOGLE_CLIENT_ID }}
-          NUXT_OAUTH_GOOGLE_CLIENT_SECRET: ${{ secrets.STAGING_NUXT_OAUTH_GOOGLE_CLIENT_SECRET }}
-          ADMIN_EMAIL_ALLOWLIST: ${{ secrets.STAGING_ADMIN_EMAIL_ALLOWLIST }}
-          NUXT_KNOWLEDGE_AUTO_RAG_API_TOKEN: ${{ secrets.STAGING_NUXT_KNOWLEDGE_AUTO_RAG_API_TOKEN }}
-          NUXT_KNOWLEDGE_UPLOADS_ACCOUNT_ID: ${{ secrets.STAGING_NUXT_KNOWLEDGE_UPLOADS_ACCOUNT_ID }}
-          NUXT_KNOWLEDGE_UPLOADS_BUCKET_NAME: ${{ secrets.STAGING_NUXT_KNOWLEDGE_UPLOADS_BUCKET_NAME }}
-          NUXT_KNOWLEDGE_UPLOADS_ACCESS_KEY_ID: ${{ secrets.STAGING_NUXT_KNOWLEDGE_UPLOADS_ACCESS_KEY_ID }}
-          NUXT_KNOWLEDGE_UPLOADS_SECRET_ACCESS_KEY: ${{ secrets.STAGING_NUXT_KNOWLEDGE_UPLOADS_SECRET_ACCESS_KEY }}
+          command: deploy --config wrangler.staging.json
 
   # ---------------------------------------------------------------------------
   # Smoke test — 部署後 health check
@@ -260,12 +211,30 @@ jobs:
           fi
           echo "Healthy (HTTP $STATUS)"
 
+  smoke-test-staging:
+    needs: [deploy-staging]
+    if: always() && needs.deploy-staging.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Wait for propagation
+        run: sleep 30
+
+      - name: Health check
+        run: |
+          STATUS=$(curl -sf -o /dev/null -w '%{http_code}' "${{ secrets.STAGING_SITE_URL }}" --max-time 10)
+          if [ "$STATUS" != "200" ]; then
+            echo "::error::Health check failed: HTTP $STATUS"
+            exit 1
+          fi
+          echo "Healthy (HTTP $STATUS)"
+
   # ---------------------------------------------------------------------------
   # Notify — Discord webhook（失敗時通知 stakeholders）
   # ---------------------------------------------------------------------------
   notify:
     if: always()
-    needs: [ci, deploy-production, smoke-test]
+    needs: [ci, deploy-production, smoke-test, deploy-staging, smoke-test-staging]
     runs-on: ubuntu-latest
     timeout-minutes: 1
     steps:
@@ -273,15 +242,27 @@ jobs:
         if: env.WEBHOOK_URL != ''
         env:
           WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          TARGET: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.target || 'production' }}
           CI_RESULT: ${{ needs.ci.result }}
-          DEPLOY_RESULT: ${{ needs.deploy-production.result }}
-          SMOKE_RESULT: ${{ needs.smoke-test.result }}
+          PROD_DEPLOY_RESULT: ${{ needs.deploy-production.result }}
+          PROD_SMOKE_RESULT: ${{ needs.smoke-test.result }}
+          STAGING_DEPLOY_RESULT: ${{ needs.deploy-staging.result }}
+          STAGING_SMOKE_RESULT: ${{ needs.smoke-test-staging.result }}
         run: |
           TAG="${GITHUB_REF_NAME}"
-          if [ "$CI_RESULT" = "success" ] && [ "$DEPLOY_RESULT" = "success" ] && [ "$SMOKE_RESULT" = "success" ]; then
-            COLOR=3066993; STATUS="Deploy succeeded — ${TAG}"
+
+          if [ "$TARGET" = "staging" ]; then
+            DEPLOY_RESULT="$STAGING_DEPLOY_RESULT"
+            SMOKE_RESULT="$STAGING_SMOKE_RESULT"
           else
-            COLOR=15158332; STATUS="Deploy failed — ${TAG}"
+            DEPLOY_RESULT="$PROD_DEPLOY_RESULT"
+            SMOKE_RESULT="$PROD_SMOKE_RESULT"
+          fi
+
+          if [ "$CI_RESULT" = "success" ] && [ "$DEPLOY_RESULT" = "success" ] && [ "$SMOKE_RESULT" = "success" ]; then
+            COLOR=3066993; STATUS="Deploy succeeded (${TARGET}) — ${TAG}"
+          else
+            COLOR=15158332; STATUS="Deploy failed (${TARGET}) — ${TAG}"
           fi
 
           RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
