@@ -126,7 +126,7 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          workingDirectory: .output/server
+          workingDirectory: .output
           command: deploy
 
   # ---------------------------------------------------------------------------
@@ -191,8 +191,8 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          workingDirectory: .output/server
-          command: deploy --config wrangler.staging.json
+          workingDirectory: .output
+          command: deploy --config server/wrangler.staging.json
 
   # ---------------------------------------------------------------------------
   # Smoke test — 部署後 health check
