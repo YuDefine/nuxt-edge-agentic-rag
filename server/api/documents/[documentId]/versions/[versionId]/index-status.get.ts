@@ -21,7 +21,17 @@ export default defineEventHandler(async (event) => {
 
   const database = await getD1Database()
   const store = createDocumentSyncStore(database)
-  let version = await store.findVersionById(versionId)
+  let version
+  try {
+    version = await store.findVersionById(versionId)
+  } catch (error) {
+    log.error(error as Error, { step: 'find-version' })
+    throw createError({
+      statusCode: 500,
+      statusMessage: 'Internal Server Error',
+      message: '暫時無法載入版本資訊，請稍後再試',
+    })
+  }
 
   if (!version || version.documentId !== documentId) {
     throw createError({
@@ -65,6 +75,10 @@ export default defineEventHandler(async (event) => {
             version = (await store.findVersionById(versionId)) ?? version
           }
         } catch (error) {
+          // Non-fatal: job-status reconciliation errors are logged and
+          // swallowed. We return the most recently persisted version state
+          // so the client still gets a usable response. No response body
+          // is produced from `error`, so raw SQL / stack cannot leak.
           log.error(error as Error, { jobId, step: 'autorag-job-status' })
         }
       }

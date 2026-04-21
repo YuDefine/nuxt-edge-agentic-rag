@@ -14,7 +14,17 @@ export default defineEventHandler(async function getGuestPolicyHandler(event) {
   const log = useLogger(event)
 
   const session = await requireRuntimeAdminSession(event)
-  const value = await getGuestPolicy(event)
+  let value
+  try {
+    value = await getGuestPolicy(event)
+  } catch (error) {
+    log.error(error as Error, { step: 'get-guest-policy' })
+    throw createError({
+      statusCode: 500,
+      statusMessage: 'Internal Server Error',
+      message: '暫時無法載入訪客政策，請稍後再試',
+    })
+  }
 
   log.set({
     operation: 'admin-guest-policy-read',

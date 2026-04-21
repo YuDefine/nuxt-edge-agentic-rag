@@ -41,11 +41,20 @@ export default defineEventHandler(async function listQueryLogsHandler(event) {
     status: query.status,
   }
 
-  return paginateList(
-    { page: query.page, pageSize: query.pageSize },
-    {
-      count: () => store.countQueryLogs(filter),
-      list: ({ limit, offset }) => store.listQueryLogs({ ...filter, limit, offset }),
-    },
-  )
+  try {
+    return await paginateList(
+      { page: query.page, pageSize: query.pageSize },
+      {
+        count: () => store.countQueryLogs(filter),
+        list: ({ limit, offset }) => store.listQueryLogs({ ...filter, limit, offset }),
+      },
+    )
+  } catch (error) {
+    log.error(error as Error, { step: 'list-query-logs' })
+    throw createError({
+      statusCode: 500,
+      statusMessage: 'Internal Server Error',
+      message: '暫時無法載入 query log 清單，請稍後再試',
+    })
+  }
 })

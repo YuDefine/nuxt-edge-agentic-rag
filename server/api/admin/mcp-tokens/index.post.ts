@@ -52,7 +52,16 @@ export default defineEventHandler(async (event) => {
     scopes: body.scopes,
   })
 
-  await tokenStore.createToken(record)
+  try {
+    await tokenStore.createToken(record)
+  } catch (error) {
+    log.error(error as Error, { step: 'create-mcp-token' })
+    throw createError({
+      statusCode: 500,
+      statusMessage: 'Internal Server Error',
+      message: '暫時無法建立 MCP token，請稍後再試',
+    })
+  }
 
   log.set({
     operation: 'mcp_token_create',

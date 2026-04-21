@@ -33,7 +33,17 @@ export default defineEventHandler(async function getDebugQueryLogDetailHandler(e
   })
 
   const store = createQueryLogDebugStore()
-  const row = await store.getDebugQueryLogById(params.id)
+  let row
+  try {
+    row = await store.getDebugQueryLogById(params.id)
+  } catch (error) {
+    log.error(error as Error, { step: 'fetch-debug-query-log' })
+    throw createError({
+      statusCode: 500,
+      statusMessage: 'Internal Server Error',
+      message: '暫時無法載入 query log，請稍後再試',
+    })
+  }
 
   if (!row) {
     throw createError({

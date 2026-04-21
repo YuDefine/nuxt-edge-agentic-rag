@@ -31,10 +31,19 @@ export default defineEventHandler(async function patchGuestPolicyHandler(event) 
     result: { value: body.value },
   })
 
-  await setGuestPolicy(event, {
-    value: body.value,
-    changedBy: session.user.id ?? 'unknown-admin',
-  })
+  try {
+    await setGuestPolicy(event, {
+      value: body.value,
+      changedBy: session.user.id ?? 'unknown-admin',
+    })
+  } catch (error) {
+    log.error(error as Error, { step: 'set-guest-policy' })
+    throw createError({
+      statusCode: 500,
+      statusMessage: 'Internal Server Error',
+      message: '暫時無法更新訪客政策，請稍後再試',
+    })
+  }
 
   return { data: { value: body.value } }
 })

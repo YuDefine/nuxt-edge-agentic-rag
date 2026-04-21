@@ -1,3 +1,4 @@
+import { useLogger } from 'evlog'
 import { z } from 'zod'
 
 const presignRequestSchema = z.object({
@@ -8,29 +9,39 @@ const presignRequestSchema = z.object({
 })
 
 export default defineEventHandler(async (event) => {
+  const log = useLogger(event)
   const { user } = await requireRuntimeAdminSession(event)
   const body = await readZodBody(event, presignRequestSchema)
   const uploadConfig = loadKnowledgeUploadsConfig()
 
-  return createStagedUploadTarget(
-    {
-      accountId: uploadConfig.accountId,
-      adminUserId: user.id,
-      bucketName: uploadConfig.bucketName,
-      checksumSha256: body.checksumSha256,
-      environment: uploadConfig.environment,
-      expiresInSeconds: uploadConfig.presignExpiresSeconds,
-      filename: body.filename,
-      mimeType: body.mimeType,
-      size: body.size,
-    },
-    {
-      signUploadUrl: (input) =>
-        signR2UploadUrl({
-          ...input,
-          accessKeyId: uploadConfig.accessKeyId,
-          secretAccessKey: uploadConfig.secretAccessKey,
-        }),
-    },
-  )
+  try {
+    return await createStagedUploadTarget(
+      {
+        accountId: uploadConfig.accountId,
+        adminUserId: user.id,
+        bucketName: uploadConfig.bucketName,
+        checksumSha256: body.checksumSha256,
+        environment: uploadConfig.environment,
+        expiresInSeconds: uploadConfig.presignExpiresSeconds,
+        filename: body.filename,
+        mimeType: body.mimeType,
+        size: body.size,
+      },
+      {
+        signUploadUrl: (input) =>
+          signR2UploadUrl({
+            ...input,
+            accessKeyId: uploadConfig.accessKeyId,
+            secretAccessKey: uploadConfig.secretAccessKey,
+          }),
+      },
+    )
+  } catch (error) {
+    log.error(error as Error, { step: 'create-staged-upload' })
+    throw createError({
+      statusCode: 500,
+      statusMessage: 'Internal Server Error',
+      message: '無法建立上傳網址，請稍後再試',
+    })
+  }
 })
