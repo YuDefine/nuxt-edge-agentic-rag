@@ -81,6 +81,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: production
+    outputs:
+      deployment_url: ${{ steps.deploy_production.outputs.deployment-url }}
     concurrency:
       group: deploy-production
       cancel-in-progress: false
@@ -122,6 +124,7 @@ jobs:
           SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
 
       - name: Deploy to Cloudflare Workers (production)
+        id: deploy_production
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -144,6 +147,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: staging
+    outputs:
+      deployment_url: ${{ steps.deploy_staging.outputs.deployment-url }}
     concurrency:
       group: deploy-staging
       cancel-in-progress: true
@@ -187,6 +192,7 @@ jobs:
         run: node scripts/render-staging-wrangler.mjs
 
       - name: Deploy to Cloudflare Workers (staging)
+        id: deploy_staging
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -202,19 +208,59 @@ jobs:
     if: always() && needs.deploy-production.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 4
+    env:
+      BROWSER_USER_AGENT: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36
+      CUSTOM_DOMAIN_URL: ${{ secrets.PROD_SITE_URL }}
+      DEPLOYMENT_URL: ${{ needs.deploy-production.outputs.deployment_url }}
     steps:
       - name: Health check
         run: |
-          for attempt in $(seq 1 12); do
-            STATUS=$(curl -s -o /dev/null -w '%{http_code}' "${{ secrets.PROD_SITE_URL }}" --max-time 10 || true)
-            if [ "$STATUS" = "200" ]; then
-              echo "Healthy (HTTP $STATUS) on attempt $attempt"
-              exit 0
+          check_url() {
+            local label="$1"
+            local url="$2"
+            local attempts="$3"
+
+            if [ -z "$url" ]; then
+              echo "::warning::$label URL is empty; skip health check target"
+              return 2
             fi
-            echo "Attempt $attempt: HTTP ${STATUS:-000}"
-            sleep 10
-          done
-          echo "::error::Health check failed after retries"
+
+            for attempt in $(seq 1 "$attempts"); do
+              STATUS=$(curl -sS -L -A "$BROWSER_USER_AGENT" -o /dev/null -w '%{http_code}' "$url" --max-time 15 || true)
+              if [ "$STATUS" = "200" ]; then
+                echo "$label healthy (HTTP $STATUS) on attempt $attempt"
+                return 0
+              fi
+
+              echo "$label attempt $attempt: HTTP ${STATUS:-000}"
+
+              if [ "$STATUS" = "403" ]; then
+                echo "::warning::$label returned 403 from GitHub runner; likely blocked by Cloudflare WAF/Bot protection"
+                return 3
+              fi
+
+              sleep 10
+            done
+
+            return 1
+          }
+
+          if check_url "Custom domain" "$CUSTOM_DOMAIN_URL" 6; then
+            exit 0
+          else
+            CUSTOM_DOMAIN_RESULT=$?
+          fi
+
+          if [ "$CUSTOM_DOMAIN_RESULT" = "3" ] && [ -n "$DEPLOYMENT_URL" ] && [ "$DEPLOYMENT_URL" != "$CUSTOM_DOMAIN_URL" ]; then
+            echo "Fallback to deployment URL: $DEPLOYMENT_URL"
+            if check_url "Deployment URL" "$DEPLOYMENT_URL" 6; then
+              exit 0
+            else
+              DEPLOYMENT_RESULT=$?
+            fi
+          fi
+
+          echo "::error::Health check failed (custom domain result=$CUSTOM_DOMAIN_RESULT, deployment url=${DEPLOYMENT_URL:-<empty>})"
           exit 1
 
   smoke-test-staging:
@@ -222,19 +268,59 @@ jobs:
     if: always() && needs.deploy-staging.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 4
+    env:
+      BROWSER_USER_AGENT: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36
+      CUSTOM_DOMAIN_URL: ${{ secrets.STAGING_SITE_URL }}
+      DEPLOYMENT_URL: ${{ needs.deploy-staging.outputs.deployment_url }}
     steps:
       - name: Health check
         run: |
-          for attempt in $(seq 1 12); do
-            STATUS=$(curl -s -o /dev/null -w '%{http_code}' "${{ secrets.STAGING_SITE_URL }}" --max-time 10 || true)
-            if [ "$STATUS" = "200" ]; then
-              echo "Healthy (HTTP $STATUS) on attempt $attempt"
-              exit 0
+          check_url() {
+            local label="$1"
+            local url="$2"
+            local attempts="$3"
+
+            if [ -z "$url" ]; then
+              echo "::warning::$label URL is empty; skip health check target"
+              return 2
             fi
-            echo "Attempt $attempt: HTTP ${STATUS:-000}"
-            sleep 10
-          done
-          echo "::error::Health check failed after retries"
+
+            for attempt in $(seq 1 "$attempts"); do
+              STATUS=$(curl -sS -L -A "$BROWSER_USER_AGENT" -o /dev/null -w '%{http_code}' "$url" --max-time 15 || true)
+              if [ "$STATUS" = "200" ]; then
+                echo "$label healthy (HTTP $STATUS) on attempt $attempt"
+                return 0
+              fi
+
+              echo "$label attempt $attempt: HTTP ${STATUS:-000}"
+
+              if [ "$STATUS" = "403" ]; then
+                echo "::warning::$label returned 403 from GitHub runner; likely blocked by Cloudflare WAF/Bot protection"
+                return 3
+              fi
+
+              sleep 10
+            done
+
+            return 1
+          }
+
+          if check_url "Custom domain" "$CUSTOM_DOMAIN_URL" 6; then
+            exit 0
+          else
+            CUSTOM_DOMAIN_RESULT=$?
+          fi
+
+          if [ "$CUSTOM_DOMAIN_RESULT" = "3" ] && [ -n "$DEPLOYMENT_URL" ] && [ "$DEPLOYMENT_URL" != "$CUSTOM_DOMAIN_URL" ]; then
+            echo "Fallback to deployment URL: $DEPLOYMENT_URL"
+            if check_url "Deployment URL" "$DEPLOYMENT_URL" 6; then
+              exit 0
+            else
+              DEPLOYMENT_RESULT=$?
+            fi
+          fi
+
+          echo "::error::Health check failed (custom domain result=$CUSTOM_DOMAIN_RESULT, deployment url=${DEPLOYMENT_URL:-<empty>})"
           exit 1
 
   # ---------------------------------------------------------------------------
