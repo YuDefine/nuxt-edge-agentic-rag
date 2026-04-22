@@ -327,7 +327,7 @@ git push origin --tags
 # 或走 workflow_dispatch：GitHub → Actions → Deploy → Run workflow
 ```
 
-監看 Actions 執行：既有 CI run 綠 → `verify-ci-gate` 綠 → deploy job 綠 → smoke-test job 綠（若 GitHub runner 被 Cloudflare WAF 擋下會記 warning `403`，但不視為 deploy 失敗）→ notify 送出。
+監看 Actions 執行：既有 CI run 綠 → `verify-ci-gate` 綠 → deploy job 綠 → smoke-test job 綠。若 custom domain 在 GitHub runner 端被 Cloudflare WAF 擋下而回 `403`，workflow 仍會記 warning，但 **至少要有一個 target（通常是 deployment URL）真正回 `200`**；若所有 target 都只回 `403`，smoke-test 會視為失敗，避免把未確認健康的部署誤報為成功。
 
 **方法 B — 手動（緊急 hotfix 或 CI 壞掉時）**：
 
