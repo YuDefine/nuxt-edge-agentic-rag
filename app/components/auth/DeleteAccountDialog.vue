@@ -14,8 +14,10 @@
    *      - Google path (Phase 11 Google-linked users): same flow via
    *        `signIn.social({ provider: 'google' })`.
    *   3. After reauth succeeds, the confirm button unlocks.
-   *   4. Confirm → `POST /api/auth/account/delete` → sign out → emit
-   *      `deleted` so the parent can navigate to `/`.
+   *   4. Confirm → `POST /api/auth/account/delete` → sign out via the
+   *      same `onSuccess` redirect path used by the global layouts so the
+   *      stale auth atom cannot leave `/account/settings` mounted after
+   *      the session is gone.
    */
 
   const props = defineProps<{
@@ -103,7 +105,15 @@
         color: 'neutral',
         icon: 'i-lucide-check',
       })
-      await signOut()
+      try {
+        await signOut({
+          onSuccess: async () => {
+            await navigateTo('/', { replace: true })
+          },
+        })
+      } catch {
+        await navigateTo('/', { replace: true })
+      }
       emit('deleted')
       isOpen.value = false
     } catch (error) {
