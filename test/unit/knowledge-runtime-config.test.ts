@@ -70,6 +70,13 @@ describe('knowledge runtime bootstrap', () => {
           judgeMin: 0.45,
         },
       },
+      mcpConnectors: {
+        oauth: {
+          accessTokenTtlSeconds: 600,
+          authorizationCodeTtlSeconds: 120,
+        },
+        clients: [],
+      },
     })
   })
 })

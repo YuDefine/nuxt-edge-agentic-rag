@@ -80,6 +80,23 @@ export interface KnowledgeFeatureFlags {
   passkey: boolean
 }
 
+export interface McpConnectorClientConfig {
+  clientId: string
+  enabled: boolean
+  allowedScopes: string[]
+  environments: KnowledgeEnvironment[]
+  name: string
+  redirectUris: string[]
+}
+
+export interface KnowledgeMcpConnectorsConfig {
+  oauth: {
+    accessTokenTtlSeconds: number
+    authorizationCodeTtlSeconds: number
+  }
+  clients: McpConnectorClientConfig[]
+}
+
 export interface KnowledgeRuntimeConfig {
   adminEmailAllowlist: string[]
   aiGateway: KnowledgeAiGatewayConfig
@@ -88,6 +105,7 @@ export interface KnowledgeRuntimeConfig {
   environment: KnowledgeEnvironment
   features: KnowledgeFeatureFlags
   governance: KnowledgeGovernanceConfig
+  mcpConnectors: KnowledgeMcpConnectorsConfig
   uploads: KnowledgeUploadsConfig
 }
 
@@ -111,6 +129,20 @@ export interface KnowledgeRuntimeConfigInput {
     Record<(typeof KNOWLEDGE_FEATURE_FLAG_VALUES)[number], boolean | string | undefined>
   >
   governance?: KnowledgeGovernanceInput
+  mcpConnectors?: {
+    oauth?: {
+      accessTokenTtlSeconds?: number | string
+      authorizationCodeTtlSeconds?: number | string
+    }
+    clients?: Array<{
+      clientId?: string
+      enabled?: boolean | string
+      allowedScopes?: string[]
+      environments?: string[]
+      name?: string
+      redirectUris?: string[]
+    }>
+  }
   uploads?: Partial<KnowledgeUploadsConfig> & {
     presignExpiresSeconds?: number | string
   }
@@ -170,6 +202,22 @@ const knowledgeRuntimeConfigSchema = z.object({
       directAnswerMin: z.number().min(0).max(1),
       judgeMin: z.number().min(0).max(1),
     }),
+  }),
+  mcpConnectors: z.object({
+    oauth: z.object({
+      accessTokenTtlSeconds: z.number().int().min(1).max(86400),
+      authorizationCodeTtlSeconds: z.number().int().min(1).max(3600),
+    }),
+    clients: z.array(
+      z.object({
+        clientId: z.string().trim().min(1),
+        enabled: z.boolean(),
+        allowedScopes: z.array(z.enum(MCP_TOKEN_SCOPE_VALUES)),
+        environments: z.array(z.enum(KNOWLEDGE_ENVIRONMENT_VALUES)).min(1),
+        name: z.string().trim().min(1),
+        redirectUris: z.array(z.string().url()).min(1),
+      }),
+    ),
   }),
   uploads: z.object({
     accountId: z.string(),
@@ -233,6 +281,14 @@ function parsePositiveInteger(value: number | string | undefined, fallback: numb
   }
 
   return fallback
+}
+
+function parseStringArray(values?: string[]): string[] {
+  if (!Array.isArray(values)) {
+    return []
+  }
+
+  return [...new Set(values.map((value) => value.trim()).filter(Boolean))]
 }
 
 export function normalizeEmailAddress(email: string): string {
@@ -365,6 +421,26 @@ export function createKnowledgeRuntimeConfig(
       features,
       governance: input.governance,
     }),
+    mcpConnectors: {
+      oauth: {
+        accessTokenTtlSeconds: parsePositiveInteger(
+          input.mcpConnectors?.oauth?.accessTokenTtlSeconds,
+          600,
+        ),
+        authorizationCodeTtlSeconds: parsePositiveInteger(
+          input.mcpConnectors?.oauth?.authorizationCodeTtlSeconds,
+          120,
+        ),
+      },
+      clients: (input.mcpConnectors?.clients ?? []).map((client) => ({
+        clientId: client.clientId?.trim() ?? '',
+        enabled: parseBooleanFlag(client.enabled, false),
+        allowedScopes: parseStringArray(client.allowedScopes),
+        environments: parseStringArray(client.environments) as KnowledgeEnvironment[],
+        name: client.name?.trim() ?? '',
+        redirectUris: parseStringArray(client.redirectUris),
+      })),
+    },
     uploads: {
       accountId: input.uploads?.accountId ?? '',
       accessKeyId: input.uploads?.accessKeyId ?? '',

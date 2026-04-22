@@ -28,6 +28,17 @@ const knowledgeRuntimeConfig = createKnowledgeRuntimeConfig({
     mcpSession: process.env.NUXT_KNOWLEDGE_FEATURE_MCP_SESSION,
     passkey: process.env.NUXT_KNOWLEDGE_FEATURE_PASSKEY,
   },
+  mcpConnectors: {
+    oauth: {
+      accessTokenTtlSeconds: process.env.NUXT_KNOWLEDGE_MCP_ACCESS_TOKEN_TTL_SECONDS
+        ? Number(process.env.NUXT_KNOWLEDGE_MCP_ACCESS_TOKEN_TTL_SECONDS)
+        : undefined,
+      authorizationCodeTtlSeconds: process.env.NUXT_KNOWLEDGE_MCP_AUTHORIZATION_CODE_TTL_SECONDS
+        ? Number(process.env.NUXT_KNOWLEDGE_MCP_AUTHORIZATION_CODE_TTL_SECONDS)
+        : undefined,
+    },
+    clients: [],
+  },
   uploads: {
     accountId: process.env.NUXT_KNOWLEDGE_UPLOADS_ACCOUNT_ID,
     accessKeyId: process.env.NUXT_KNOWLEDGE_UPLOADS_ACCESS_KEY_ID,
