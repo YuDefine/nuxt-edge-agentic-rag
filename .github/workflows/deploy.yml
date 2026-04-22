@@ -155,6 +155,16 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          # staging 曾出現 migration ledger 已標記 bootstrap 完成、但實際 auth
+          # base tables 缺失的歷史狀態；先以 idempotent bootstrap SQL 補齊底表，
+          # 再套用後續 migrations，避免 0002 直接撞到 `no such table: user`。
+          command: d1 execute agentic-rag-db-staging --remote --config wrangler.staging.jsonc --file server/database/migrations/0001_bootstrap_v1_core.sql
+
+      - name: Apply staged migrations (staging)
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           # 注意 database name 為 staging 專用；視 wrangler 設定採 --env staging
           # 或 --config wrangler.staging.jsonc 其一
           command: d1 migrations apply agentic-rag-db-staging --remote --config wrangler.staging.jsonc
@@ -199,6 +209,9 @@ jobs:
       HEALTH_CHECK_DELAY_MS: 10000
       HEALTH_CHECK_MAX_TIME_MS: 15000
     steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
       - name: Health check
         run: node scripts/check-deploy-health.mjs
 
@@ -215,6 +228,9 @@ jobs:
       HEALTH_CHECK_DELAY_MS: 10000
       HEALTH_CHECK_MAX_TIME_MS: 15000
     steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
       - name: Health check
         run: node scripts/check-deploy-health.mjs
 
