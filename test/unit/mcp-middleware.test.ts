@@ -178,10 +178,87 @@ describe('runMcpMiddleware (§1.3 red)', () => {
       },
     })
 
-    const auth = (event.context as { mcpAuth?: { scopes: string[]; tokenId: string } }).mcpAuth
+    const auth = (
+      event.context as {
+        mcpAuth?: {
+          principal: { authSource: string; userId: string }
+          scopes: string[]
+          tokenId: string
+        }
+      }
+    ).mcpAuth
     expect(auth).toBeDefined()
+    expect(auth?.principal).toEqual({
+      authSource: 'legacy_token',
+      userId: 'admin-1',
+    })
     expect(auth?.tokenId).toBe('token-1')
     expect(auth?.scopes).toEqual(['knowledge.ask', 'knowledge.search'])
     expect(kv.put).toHaveBeenCalled()
+  })
+
+  it('accepts oauth access tokens and normalizes them into the same auth context', async () => {
+    const { createMcpOauthGrantStore } = await import('#server/utils/mcp-oauth-grants')
+    const { runMcpMiddleware } = await import('#server/utils/mcp-middleware')
+
+    const kvStore = new Map<string, string>()
+    const kv = {
+      get: vi.fn(async (key: string) => kvStore.get(key) ?? null),
+      put: vi.fn(async (key: string, value: string) => {
+        kvStore.set(key, value)
+      }),
+    }
+    const grants = createMcpOauthGrantStore({
+      accessTokenTtlSeconds: 600,
+      authorizationCodeTtlSeconds: 120,
+      kv,
+    })
+    const code = await grants.issueAuthorizationCode({
+      clientId: 'claude-remote',
+      redirectUri: 'https://claude.example/callback',
+      scopes: ['knowledge.ask'],
+      userId: 'user-1',
+    })
+    const token = await grants.exchangeAuthorizationCode({
+      clientId: 'claude-remote',
+      code,
+      redirectUri: 'https://claude.example/callback',
+    })
+
+    const event = createEvent({
+      authorization: `Bearer ${token.accessToken}`,
+      env: { KV: kv },
+    })
+    const legacyLookup = vi.fn().mockResolvedValue(null)
+
+    await runMcpMiddleware(event, {
+      environment: 'local',
+      kvBindingName: 'KV',
+      extractToolNames: async () => ['askKnowledge'],
+      tokenStore: {
+        findUsableTokenByHash: legacyLookup,
+        touchLastUsedAt: vi.fn(),
+      },
+      userRoleLookup: {
+        async lookupRoleByUserId(userId: string) {
+          return userId === 'user-1' ? 'member' : null
+        },
+      },
+    })
+
+    const auth = (
+      event.context as {
+        mcpAuth?: {
+          principal: { authSource: string; userId: string }
+          scopes: string[]
+        }
+      }
+    ).mcpAuth
+    expect(auth?.principal).toEqual({
+      authSource: 'oauth_access_token',
+      userId: 'user-1',
+    })
+    expect(auth?.scopes).toEqual(['knowledge.ask'])
+    expect(legacyLookup).not.toHaveBeenCalled()
   })
 })

@@ -59,12 +59,12 @@ export async function gateMcpToolAccess(
     userRoleLookup: UserRoleLookup
   },
 ): Promise<void> {
-  const creatorId = params.auth.token?.createdByUserId
-  if (!creatorId) {
+  const principalUserId = params.auth.principal.userId || params.auth.token?.createdByUserId
+  if (!principalUserId) {
     throw new McpRoleGateError('MCP token has no creator', 403, 'UNKNOWN_TOKEN_OWNER')
   }
 
-  const role = await params.userRoleLookup.lookupRoleByUserId(creatorId)
+  const role = await params.userRoleLookup.lookupRoleByUserId(principalUserId)
   if (role === null) {
     throw new McpRoleGateError('MCP token references an unknown user', 403, 'UNKNOWN_TOKEN_OWNER')
   }
