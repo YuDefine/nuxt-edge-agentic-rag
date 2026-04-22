@@ -2,7 +2,7 @@ import { defineConfig } from 'vitepress'
 
 export default defineConfig({
   title: 'Nuxt Edge Agentic RAG Docs',
-  description: '專案文件站與維運知識庫。',
+  description: '面向開發、驗證與維運的專案文件站。',
   lastUpdated: true,
   cleanUrls: true,
   themeConfig: {
@@ -11,7 +11,8 @@ export default defineConfig({
     },
     nav: [
       { text: '首頁', link: '/' },
-      { text: 'README', link: '/README' },
+      { text: 'Onboarding', link: '/onboarding' },
+      { text: '開發文件', link: '/README' },
       { text: '驗證指南', link: '/verify/' },
       { text: '規則', link: '/rules/' },
       { text: '規格', link: '/specs/' },
@@ -24,7 +25,8 @@ export default defineConfig({
           text: '開始使用',
           items: [
             { text: '文件首頁', link: '/' },
-            { text: 'docs README', link: '/README' },
+            { text: 'Onboarding Guide', link: '/onboarding' },
+            { text: '開發者文件總覽', link: '/README' },
             { text: '專案結構', link: '/STRUCTURE' },
             { text: '驗證指南總覽', link: '/verify/' },
             { text: '開發規則入口', link: '/rules/' },
@@ -106,6 +108,7 @@ export default defineConfig({
           text: 'Runbooks',
           items: [
             { text: '總覽', link: '/runbooks/' },
+            { text: 'Claude Desktop MCP', link: '/runbooks/claude-desktop-mcp' },
             { text: 'Guest Policy', link: '/runbooks/guest-policy' },
           ],
         },

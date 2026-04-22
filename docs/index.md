@@ -3,62 +3,79 @@ layout: home
 
 hero:
   name: Nuxt Edge Agentic RAG Docs
-  text: 開發者文件入口
-  tagline: 讓新進開發者能先找到路，再進到正確文件，而不是先淹沒在檔名裡。
+  text: 開發者文件中心
+  tagline: 面向開發、驗證與維運的正式文件入口，協助開發者快速定位正確來源與操作手冊。
   actions:
     - theme: brand
-      text: 先看結構
-      link: /STRUCTURE
+      text: 新手上手
+      link: /onboarding
     - theme: alt
-      text: docs README
+      text: 閱讀文件導覽
       link: /README
     - theme: alt
       text: 驗證指南
       link: /verify/
 
 features:
-  - title: 先找任務，再找文件
-    details: 入口頁改成依工作情境導向，部署、驗證、規則、決策各自有明確入口。
-  - title: 兼顧 repo 與文件站
-    details: 補上 docs 與 verify 的 README，讓 GitHub 檔案樹與 VitePress 兩邊都好找。
-  - title: 保守整理，不打斷引用
-    details: 既有檔名與位置先保留，先把導航品質做對，再考慮第二階段 rename。
+  - title: 任務導向導覽
+    details: 依照開發、驗證、維運與決策查找需求安排入口，不需先掃完整檔名清單。
+  - title: 明確區分來源
+    details: docs 提供可閱讀的導覽與操作說明；規則與 Spectra 規格仍維持在原始來源維護。
+  - title: 適合新進開發者接手
+    details: 先建立專案地圖，再依任務進入對應文件，降低 onboarding 與交接成本。
 ---
 
-## 你現在應該從哪裡開始
+## 適用對象
 
-### 我是第一次接手這個 repo
+- 第一次接手這個 repo，需要快速建立文件地圖的開發者。
+- 需要部署、驗證、除錯或回溯決策背景的維運與開發人員。
+- 需要查詢規則、規格與治理文件邊界的協作者。
 
-1. 看 [README](./README.md)
-2. 看 [STRUCTURE](./STRUCTURE.md)
-3. 再依任務進 verify、rules、specs 或 decisions
+## 快速開始
 
-### 我要部署、驗證或處理故障
+1. 執行 `pnpm docs:dev` 啟動本機文件站預覽，預設埠號為 `4173`。
+2. 執行 `pnpm docs:build` 驗證 VitePress 可正常建置。
+3. 若要模擬正式站點，執行 `pnpm docs:preview`。
+4. 若你是第一次接手專案，先讀 [Onboarding Guide](./onboarding.md)。
 
-- 進 [verify/index](./verify/index.md)
-- 從 Deployment Runbook、Disaster Recovery Runbook、checklists 開始
+## 建議閱讀順序
 
-### 我要改功能，但不確定有哪些既有規則
+### 第一次接手專案
 
-- 看 [rules/index](./rules/index.md)
-- 看 [specs/index](./specs/index.md)
-- 需要背景再補 [decisions/index](./decisions/index.md)
+1. 先看 [開發者文件總覽](./README.md)
+2. 再看 [專案結構](./STRUCTURE.md)
+3. 依任務進入 [驗證指南](./verify/index.md)、[規則入口](./rules/index.md)、[規格入口](./specs/index.md) 或 [決策紀錄](./decisions/index.md)
 
-## 目前整理方式
+### 功能開發前查規則與規格
 
-- 根目錄保留專案層文件，例如結構說明、design tokens、manual review 與 tech debt。
-- verify、runbooks、decisions、sample-documents 各自有 section index，先把入口理清。
-- docs 與 verify 都補了 README，讓 repo 檔案樹與文件站的入口一致。
-- 既有 Markdown 檔案不搬家，降低與目前工作樹衝突的風險。
+- 先看 [規則入口](./rules/index.md) 確認開發約束與流程。
+- 再看 [規格入口](./specs/index.md) 確認目前的 Spectra 規格與變更。
+- 若需要歷史背景，再補讀 [決策紀錄](./decisions/index.md)。
 
-## 文件邊界
+### 部署、驗證或故障處理
 
-- 文件站裡放的是可公開渲染、適合閱讀的 Markdown。
-- 真正的規則內容仍以 `.claude/rules/` 與 `.github/instructions/` 為主。
-- 真正的 spec 內容仍以 `openspec/specs/` 與 `openspec/changes/` 為主。
+- 進入 [驗證指南總覽](./verify/index.md) 查部署、驗收、A11y 與回復流程。
+- 短篇操作手冊集中於 [Runbooks](./runbooks/index.md)。
 
-## 現在文件站已經做到的事
+## 文件邊界與來源
 
-- 有首頁、側欄、section index 與 repo README 入口。
-- verify 區已按主題分組，不再是單一長清單。
-- build 已通過，可直接用 `pnpm docs:dev` 預覽。
+- `docs/` 是 VitePress 的內容來源，也是 repo 內可直接瀏覽的文件入口。
+- `rules/` 與 `specs/` 在文件站中提供導覽；實際原始來源分別位於 `.claude/rules/`、`.github/instructions/`、`openspec/specs/` 與 `openspec/changes/`。
+- `verify/`、`runbooks/`、`decisions/` 與根目錄治理文件屬於開發者可直接閱讀與維護的正式文件。
+
+## 維護原則
+
+- 新增 section index 或調整文件入口時，需同步更新 [docs/.vitepress/config.ts](./.vitepress/config.ts) 的 nav 與 sidebar。
+- 優先改善導覽與敘述品質，再評估檔名搬動或資料夾重組。
+- 若要 rename 已存在文件，必須先更新 openspec、報告、workflow 與程式碼中的明確引用。
+
+## 主要入口
+
+- [Onboarding Guide](./onboarding.md)
+- [開發者文件總覽](./README.md)
+- [專案結構](./STRUCTURE.md)
+- [驗證指南](./verify/index.md)
+- [Runbooks](./runbooks/index.md)
+- [決策紀錄](./decisions/index.md)
+- [規則入口](./rules/index.md)
+- [規格入口](./specs/index.md)

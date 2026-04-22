@@ -4,7 +4,7 @@
 
 ## 0. 適用範圍
 
-- **Target platform**：Cloudflare Workers（`nitro.preset: cloudflare_module`）
+- **Target platform**：Nuxt 應用程式部署到 Cloudflare Workers（`nitro.preset: cloudflare_module`）；VitePress 文件站部署到 Cloudflare Pages
 - **Production domain**：`agentic.yudefine.com.tw`（custom route 設於 `wrangler.jsonc`）
 - **資源綁定**：D1 `DB` / R2 `BLOB` / KV `KV` / Workers AI `AI` / AutoRAG index `agentic-rag`
 - **Environments**：
@@ -96,6 +96,7 @@ Cloudflare 相關 token 目前分成三類，不可混用：
 - `wrangler` CLI 已登入：`pnpm exec wrangler login`
 - `pnpm exec wrangler whoami` 顯示正確 account
 - 若走 GitHub Actions，repo secrets 需至少包含：`CLOUDFLARE_API_TOKEN`、`CLOUDFLARE_ACCOUNT_ID`、`PROD_SITE_URL`，staging 另需 `STAGING_SITE_URL`
+- 若要啟用 VitePress 文件站部署，另需設定 repository variable `DOCS_CF_PAGES_PROJECT_NAME`、`DOCS_CF_ZONE_NAME`、`DOCS_PRODUCTION_URL`、`DOCS_STAGING_URL`；可選設定 `DOCS_CF_PAGES_PRODUCTION_BRANCH` 與 `DOCS_CF_PAGES_STAGING_BRANCH` 覆寫預設的 `main` / `staging`
 - Google Cloud OAuth client 已建立（見 §2.5）
 - `node >= 22` + `pnpm >= 10.33`（對齊 `package.json` `packageManager`）
 - 本 repo 已 clone、依賴已安裝：`pnpm install --frozen-lockfile`
@@ -247,6 +248,30 @@ cd -
 ```
 
 若走 GitHub Actions，deploy workflow 不會再次重跑 format / lint / typecheck / test；它會先驗證「同一個 commit SHA 已經存在成功的 `.github/workflows/ci.yml` run」，通過後才允許 production / staging deploy。若該 SHA 尚未有成功 CI，deploy 會在 `verify-ci-gate` 直接停止。
+
+### 2.8 VitePress 文件站部署
+
+VitePress 文件站使用 [deploy workflow](../../.github/workflows/deploy.yml) 內的 docs jobs 發布到 Cloudflare Pages，與應用程式 deploy 共用同一條 GitHub Actions 入口。
+
+目前設定值：
+
+- `DOCS_CF_PAGES_PROJECT_NAME=nuxt-edge-agentic-rag-docs`
+- `DOCS_CF_ZONE_NAME=yudefine.com.tw`
+- `DOCS_PRODUCTION_URL=https://agentic-docs.yudefine.com.tw`
+- `DOCS_STAGING_URL=https://agentic-docs-staging.yudefine.com.tw`
+
+1. 先在 Cloudflare Pages 建立專案。
+2. 在 GitHub repository variables 設定 `DOCS_CF_PAGES_PROJECT_NAME` 與 `DOCS_CF_ZONE_NAME`。
+3. 在 GitHub repository variables 設定 `DOCS_PRODUCTION_URL`、`DOCS_STAGING_URL`，作為文件站 production / staging 網址的 source of truth。
+4. 若 production branch 不是 `main`，或 staging preview branch 不是 `staging`，再額外設定 `DOCS_CF_PAGES_PRODUCTION_BRANCH`、`DOCS_CF_PAGES_STAGING_BRANCH`。
+5. production 文件站會在 `v*` tag deploy 或手動 `workflow_dispatch(target=production)` 時發布，並在 deploy 後自動同步 production custom domain。
+6. staging 文件站會在手動 `workflow_dispatch(target=staging)` 時發布到 Cloudflare Pages 的 preview branch，並在 deploy 後自動把 staging custom domain 指向 `staging.<project>.pages.dev` branch alias。
+7. 同一條 deploy workflow 內，app 與 docs 會共用 `verify-ci-gate`，之後各自執行 build / deploy job。
+8. docs job 會先執行 `pnpm docs:build`，成功後才呼叫 `pnpm exec wrangler pages deploy docs/.vitepress/dist ...`。
+9. 若 `DOCS_PRODUCTION_URL` 或 `DOCS_STAGING_URL` 已設定，workflow 會在 deploy 後自動同步 Cloudflare Pages custom domain 與 proxied DNS CNAME。
+10. 若 `DOCS_PRODUCTION_URL` 或 `DOCS_STAGING_URL` 已設定，workflow 會在 deploy 後用 `scripts/check-deploy-health.mjs` 對對應網址做 health check。
+
+若 custom domain 或 DNS 狀態需要補跑修復，可手動執行 [docs-domain-sync workflow](../../.github/workflows/docs-domain-sync.yml)，並選擇 `all`、`production` 或 `staging`。
 
 **預期輸出**：
 
