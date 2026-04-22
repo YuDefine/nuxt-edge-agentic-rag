@@ -2,10 +2,11 @@ import { test, expect, type Page } from '@playwright/test'
 import { fileURLToPath } from 'url'
 import path from 'path'
 
+import { BASE_URL } from './helpers'
+
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
-const BASE = 'http://localhost:3000'
 const SCREENSHOT_DIR = path.join(__dirname, '../screenshots/local/citation-ui-collapse')
 
 // Mock data
@@ -101,7 +102,7 @@ test.describe('Desktop citation UI @ 1920x1080', () => {
     await setupAllMocks(page)
 
     // Navigate — mocks are active, SSR will see mocked session
-    await page.goto(`${BASE}/`)
+    await page.goto(`${BASE_URL}/`)
     await page.waitForLoadState('networkidle')
 
     // Screenshot: page after load (should show chat UI, not login)
@@ -201,7 +202,7 @@ test.describe('Mobile citation UI @ 375x667', () => {
   test('Mobile 點擊晶片彈出 Bottom Sheet (UDrawer)', async ({ page }) => {
     await setupAllMocks(page)
 
-    await page.goto(`${BASE}/`)
+    await page.goto(`${BASE_URL}/`)
     await page.waitForLoadState('networkidle')
 
     // Screenshot: mobile page load
