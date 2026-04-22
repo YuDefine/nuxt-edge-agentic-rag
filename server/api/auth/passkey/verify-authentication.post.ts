@@ -1,4 +1,4 @@
-import { createError, defineEventHandler, getRequestHeaders, readBody } from 'h3'
+import { createError, defineEventHandler, getRequestHeaders, getRequestURL, readBody } from 'h3'
 
 import {
   PasskeyVerifyAuthenticationRouteError,
@@ -19,7 +19,7 @@ export default defineEventHandler(async (event) => {
   const headers = new Headers(getRequestHeaders(event) as HeadersInit)
 
   try {
-    return await forwardPasskeyVerifyAuthentication(auth, headers, body)
+    return await forwardPasskeyVerifyAuthentication(auth, getRequestURL(event), headers, body)
   } catch (error) {
     if (error instanceof PasskeyVerifyAuthenticationRouteError) {
       throw createError({

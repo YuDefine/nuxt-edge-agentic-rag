@@ -8,17 +8,16 @@ import {
 } from '../../server/utils/passkey-verify-authentication'
 
 describe('passkey verify-authentication route hotfix', () => {
-  it('forwards a validated plain body to Better Auth direct API', async () => {
+  it('forwards a validated plain body through Better Auth handler with a clean Request', async () => {
     const response = new Response(JSON.stringify({ ok: true }), { status: 200 })
-    const verifyPasskeyAuthentication = vi.fn().mockResolvedValue(response)
+    const handler = vi.fn().mockResolvedValue(response)
     const auth = {
-      api: {
-        verifyPasskeyAuthentication,
-      },
+      handler,
     }
     const headers = new Headers([['origin', 'https://agentic.yudefine.com.tw']])
+    const requestUrl = 'https://agentic.yudefine.com.tw/api/auth/passkey/verify-authentication'
 
-    const result = await forwardPasskeyVerifyAuthentication(auth, headers, {
+    const result = await forwardPasskeyVerifyAuthentication(auth, requestUrl, headers, {
       response: {
         id: 'credential-id',
         nested: { key: 'value' },
@@ -26,15 +25,17 @@ describe('passkey verify-authentication route hotfix', () => {
     })
 
     expect(result).toBe(response)
-    expect(verifyPasskeyAuthentication).toHaveBeenCalledWith({
-      asResponse: true,
-      body: {
-        response: {
-          id: 'credential-id',
-          nested: { key: 'value' },
-        },
+    expect(handler).toHaveBeenCalledTimes(1)
+    const [request] = handler.mock.calls[0] as [Request]
+    expect(request.url).toBe(requestUrl)
+    expect(request.method).toBe('POST')
+    expect(request.headers.get('content-type')).toBe('application/json')
+    expect(request.headers.get('origin')).toBe('https://agentic.yudefine.com.tw')
+    await expect(request.json()).resolves.toEqual({
+      response: {
+        id: 'credential-id',
+        nested: { key: 'value' },
       },
-      headers,
     })
   })
 
@@ -50,12 +51,17 @@ describe('passkey verify-authentication route hotfix', () => {
     )
   })
 
-  it('returns service unavailable when the direct auth endpoint is missing', async () => {
-    const promise = forwardPasskeyVerifyAuthentication({}, new Headers(), {
-      response: {
-        id: 'credential-id',
+  it('returns service unavailable when the Better Auth handler is missing', async () => {
+    const promise = forwardPasskeyVerifyAuthentication(
+      {},
+      'https://agentic.yudefine.com.tw/api/auth/passkey/verify-authentication',
+      new Headers(),
+      {
+        response: {
+          id: 'credential-id',
+        },
       },
-    })
+    )
 
     await expect(promise).rejects.toBeInstanceOf(PasskeyVerifyAuthenticationRouteError)
     await expect(promise).rejects.toMatchObject({
