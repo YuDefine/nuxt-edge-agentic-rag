@@ -2,6 +2,7 @@
 import { readFile, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { Script } from 'node:vm'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const projectRoot = dirname(__dirname)
@@ -9,8 +10,13 @@ const buildConfigPath = join(projectRoot, '.output', 'server', 'wrangler.json')
 const stagingOverridesPath = join(projectRoot, 'wrangler.staging.jsonc')
 const outputPath = join(projectRoot, '.output', 'server', 'wrangler.staging.json')
 
-async function readJson(path) {
-  return JSON.parse(await readFile(path, 'utf-8'))
+function parseJsonc(source, path) {
+  return new Script(`(${source})`, { filename: path }).runInNewContext()
+}
+
+async function readConfig(path) {
+  const source = await readFile(path, 'utf-8')
+  return path.endsWith('.jsonc') ? parseJsonc(source, path) : JSON.parse(source)
 }
 
 function mergeD1Databases(buildConfig, stagingOverrides) {
@@ -23,8 +29,8 @@ function mergeD1Databases(buildConfig, stagingOverrides) {
 }
 
 async function main() {
-  const buildConfig = await readJson(buildConfigPath)
-  const stagingOverrides = await readJson(stagingOverridesPath)
+  const buildConfig = await readConfig(buildConfigPath)
+  const stagingOverrides = await readConfig(stagingOverridesPath)
 
   const rendered = {
     ...buildConfig,
