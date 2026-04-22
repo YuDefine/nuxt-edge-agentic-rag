@@ -2,7 +2,7 @@ import { z } from 'zod'
 
 export const KNOWLEDGE_ACCESS_LEVEL_VALUES = ['internal', 'restricted'] as const
 export const KNOWLEDGE_CHANNEL_VALUES = ['web', 'mcp'] as const
-export const KNOWLEDGE_ENVIRONMENT_VALUES = ['local', 'production'] as const
+export const KNOWLEDGE_ENVIRONMENT_VALUES = ['local', 'staging', 'production'] as const
 export const KNOWLEDGE_FEATURE_FLAG_VALUES = [
   'passkey',
   'mcpSession',

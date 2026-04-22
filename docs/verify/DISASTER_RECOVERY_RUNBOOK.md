@@ -14,12 +14,13 @@
 
 然後依症狀分類：
 
-| 症狀                                      | 走哪節               |
-| ----------------------------------------- | -------------------- |
-| Deploy 後全站 5xx / 顯示錯誤              | §1 應用層 rollback   |
-| Deploy 後部分 API 500，log 含 D1 error    | §2 D1 migration 退版 |
-| 文件 / 版本檔在 R2 被誤刪或誤覆蓋         | §3 R2 物件還原       |
-| OAuth 失效 / allowlist 誤刪 / secret 洩漏 | §4 Secrets 還原      |
+| 症狀                                       | 走哪節                  |
+| ------------------------------------------ | ----------------------- |
+| Deploy 後全站 5xx / 顯示錯誤               | §1 應用層 rollback      |
+| Deploy 後部分 API 500，log 含 D1 error     | §2 D1 migration 退版    |
+| 文件 / 版本檔在 R2 被誤刪或誤覆蓋          | §3 R2 物件還原          |
+| OAuth 失效 / allowlist 誤刪 / secret 洩漏  | §4 Secrets 還原         |
+| Remote MCP authorize / token exchange 失效 | §4.8 Connector rollback |
 
 多個症狀並存 → 先處理**應用層 rollback**（§1 通常最快、風險最低），再根據 rollback 後仍存在的問題處理其他層。
 
@@ -348,6 +349,28 @@ Secret 輪替不影響資料，但可能影響 UX：
 - Session secret 輪替 → 所有 user 強制重登
 - OAuth secret 輪替 → 輪替瞬間到 deploy 完成約 30 秒的 OAuth callback 會失敗（retry 即可）
 - R2 token 輪替 → 輪替瞬間到 deploy 完成約 30 秒的 pre-sign 會失敗
+
+### 4.8 Remote MCP connector rollback
+
+**何時用**：
+
+- `/api/auth/mcp/authorize` 大量回 `Unknown MCP connector client`
+- redirect URI allowlist 配錯，正式 connector 全面無法登入
+- token exchange / middleware principal normalize 出現 blocking regression
+
+**步驟**：
+
+1. 先把 `NUXT_KNOWLEDGE_MCP_CONNECTOR_CLIENTS_JSON` 中對應 client 設成 `enabled=false`
+2. 重新部署，確認 `/api/auth/mcp/authorize` 對該 client 立即拒絕，不再發生錯誤 consent / token flow
+3. 若需要維持作業能力，暫時切回 legacy MCP token + Claude Desktop bridge
+4. 保留失敗當下的設定快照與 log，之後再做 forward-fix
+
+**驗證 Checklist**：
+
+- [ ] `/api/auth/mcp/authorize` 不再出現非預期 500
+- [ ] 已知壞掉的 connector client 被明確拒絕，而非進入半殘授權流程
+- [ ] legacy token / bridge smoke 仍可用
+- [ ] incident timeline 已記錄錯誤的 `clientId`、`redirectUri`、部署版本
 
 ## 5. 事故時序樣板（Timeline Template）
 

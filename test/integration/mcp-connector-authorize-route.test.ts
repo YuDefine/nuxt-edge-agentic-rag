@@ -57,6 +57,19 @@ describe('GET /api/auth/mcp/authorize', () => {
     await expect(handler(createRouteEvent())).rejects.toMatchObject({ statusCode: 401 })
   })
 
+  it('rejects authenticated sessions that do not resolve to a local account id', async () => {
+    mocks.requireUserSession.mockResolvedValueOnce({
+      user: {},
+    })
+
+    const { default: handler } = await import('../../server/api/auth/mcp/authorize.get')
+
+    await expect(handler(createRouteEvent())).rejects.toMatchObject({
+      statusCode: 403,
+      message: 'MCP authorization requires a local account',
+    })
+  })
+
   it('rejects unknown connector clients before consent data is returned', async () => {
     mocks.getQuery.mockReturnValueOnce({
       client_id: 'unknown-client',

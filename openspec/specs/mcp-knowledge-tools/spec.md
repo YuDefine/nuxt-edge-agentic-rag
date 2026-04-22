@@ -8,7 +8,7 @@ TBD - created by archiving change 'bootstrap-v1-core-from-report'. Update Purpos
 
 ### Requirement: Stateless MCP Authentication
 
-The MCP surface SHALL accept only `Authorization: Bearer <token>` authentication, store token values as hashes, require tool-specific scopes, and reject `conversationId` or `MCP-Session-Id` state coupling in `v1.0.0`. Missing or invalid tokens SHALL return `401`, and scope failures or restricted citation replay attempts SHALL return `403`.
+The MCP surface SHALL accept `Authorization: Bearer <token>` authentication for both remote OAuth access tokens and legacy MCP tokens, require tool-specific scopes, and reject `conversationId` or `MCP-Session-Id` state coupling in `v1.0.0`. OAuth access tokens SHALL resolve to a local MCP principal whose subject is the local `user.id`; legacy MCP tokens SHALL continue to resolve through hashed token lookup during migration. Missing or invalid tokens SHALL return `401`, and scope failures or restricted citation replay attempts SHALL return `403`.
 
 #### Scenario: Missing token returns 401
 
@@ -16,11 +16,50 @@ The MCP surface SHALL accept only `Authorization: Bearer <token>` authentication
 - **THEN** the endpoint returns `401`
 - **AND** no retrieval, model, or replay work starts
 
+#### Scenario: OAuth token authenticates as a local principal
+
+- **WHEN** an MCP request presents a valid remote OAuth access token
+- **THEN** the MCP middleware resolves the token to a local principal whose subject is the local `user.id`
+- **AND** downstream tool authorization uses that principal without requiring a legacy `mcp_tokens` row
+
 #### Scenario: Restricted citation replay without scope returns 403
 
-- **WHEN** `getDocumentChunk` resolves a citation that points to `restricted` content and the token lacks `knowledge.restricted.read`
+- **WHEN** `getDocumentChunk` resolves a citation that points to `restricted` content and the caller lacks `knowledge.restricted.read`
 - **THEN** the endpoint returns `403`
 - **AND** the response does not reveal the restricted chunk text
+
+<!-- @trace
+source: oauth-user-delegated-remote-mcp
+updated: 2026-04-22
+code:
+  - app/pages/auth/mcp/authorize.vue
+  - app/components/auth/McpConnectorConsentCard.vue
+  - app/components/auth/McpConnectorLoginCard.vue
+  - playwright.config.ts
+  - nuxt.config.ts
+  - app/composables/useMcpConnectorAuthorization.ts
+  - reports/latest.md
+  - shared/utils/mcp-connector-client-registry.ts
+  - shared/utils/mcp-connector-redirect.ts
+  - server/api/auth/mcp/authorize.get.ts
+  - docs/runbooks/claude-desktop-mcp.md
+  - app/components/admin/tokens/TokenCreateModal.vue
+  - docs/verify/DISASTER_RECOVERY_RUNBOOK.md
+  - docs/verify/production-deploy-checklist.md
+  - docs/verify/DEPLOYMENT_RUNBOOK.md
+  - app/utils/mcp-connector-return-to.ts
+  - app/pages/admin/tokens/index.vue
+  - server/api/auth/mcp/authorize.post.ts
+  - app/pages/auth/callback.vue
+  - docs/design-review-findings.md
+tests:
+  - e2e/mcp-connector-authorize.spec.ts
+  - test/integration/mcp-connector-authorize-route.test.ts
+  - test/unit/mcp-connector-redirect.test.ts
+  - test/unit/mcp-connector-client-registry.test.ts
+  - test/integration/mcp-oauth-tool-access.test.ts
+  - test/integration/mcp-connector-authorize-post-account-guard.test.ts
+-->
 
 ---
 

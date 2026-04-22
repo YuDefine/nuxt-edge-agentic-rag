@@ -4,14 +4,15 @@
 
 ## Current State
 
-> 狀態（2026-04-22 更新）：目前 branch `main`，release 版本已升到 `v0.27.0`。本輪完成三條主線：專題報告治理與工作區重整、VitePress 開發者文件與 Cloudflare Pages 部署、remote MCP OAuth connector 的後端基礎與 Claude Desktop bridge。報告 current draft 仍以 `reports/latest.md` 作為單一本體；`reports/archive/` 保存版本化快照。Open tech debt：TD-009 mid / TD-010 mid / TD-011 high / TD-012 high / TD-014 mid。
+> 狀態（2026-04-22 更新）：目前 branch `main`，release 版本已升到 `v0.27.0`。本輪完成三條主線：專題報告治理與工作區重整、VitePress 開發者文件與 Cloudflare Pages 部署、Claude-first remote MCP OAuth connector。報告 current draft 仍以 `reports/latest.md` 作為單一本體；`reports/archive/` 保存版本化快照。Open tech debt：TD-009 mid / TD-010 mid / TD-011 high / TD-012 high / TD-014 mid。
 >
 > **最新進度**（2026-04-22）：
 >
 > - **專題報告治理 / 工作區重整** 已完成並入版：報告本體與 archive 目錄完成收斂，repo root 的歷史 `main-v*` 與舊 backup 已搬移，current report / archive 路徑規則已同步到 `AGENTS.md`、`CLAUDE.md`、`docs/STRUCTURE.md` 與 governance specs。
 > - **文件站正式化 + Cloudflare Pages 流程** 已完成實作：README、docs landing / onboarding / verify / runbooks / specs index 已改寫為開發者導向文件；docs deploy 已整合進主 deploy workflow，並補上 custom domain sync 與 smoke test fallback。
-> - **`oauth-user-delegated-remote-mcp`** 已完成 9/19 tasks：後端 authorization / token routes、known client allowlist、OAuth access token principal normalize、guest policy guard、Claude Desktop bridge 與基礎 runbook 已就位；剩 local-account binding、legacy token migration-only 收斂、UI / Design Review、runbook/report 補寫與 rollout 驗證。
+> - **`oauth-user-delegated-remote-mcp`** 已完成 archive：delta specs 已同步回主 specs，remote MCP OAuth connector 正式進入 archive。
 > - **既有 active changes** `fk-cascade-repair-for-self-delete` 與 `drizzle-refactor-credentials-admin-members` 仍在收尾階段，尚待 production manual closeout 與 tech debt 狀態回填。
+> - **`multi-format-document-ingestion`** 已完成 proposal / design / tasks，現在由 `spectra` 標記為 `in-progress`，但尚未開始實作任務。
 
 ## Next Moves
 
@@ -19,14 +20,6 @@
 
 - [high] 監看本次 `main` push 與 `v0.27.0` tag 的 GitHub Actions，確認 app 與 docs 的 production / staging deploy 全綠
 - [high] 驗證 docs custom domains：`agentic-docs.yudefine.com.tw` 與 `agentic-docs-staging.yudefine.com.tw` 均可正常開啟，必要時檢查 Pages `pages.dev` fallback
-
-### `oauth-user-delegated-remote-mcp` 收尾
-
-- [high] 完成 task 1.3：把 connector authorization 明確綁到既有本地帳號，補齊未綁定帳號的拒絕與導引流程
-- [high] 完成 task 3.5：將 legacy MCP token 收斂為 migration-only / internal tooling 定位，避免與 OAuth connector 並列
-- [mid] 完成 tasks 4.1 / 4.2：補齊 connector authorization / consent UI 與 admin token 管理文案
-- [mid] 完成 tasks 5.1 / 5.2：補齊 Design Review、responsive 與 a11y 驗證
-- [mid] 完成 tasks 6.1 / 6.2 / 6.3 / 6.4：更新 runbooks / `reports/latest.md`，並做完整 rollout 驗證
 
 ### 既有 active changes closeout
 
@@ -50,9 +43,9 @@
 
 ## Active Changes
 
-_last synced: 2026-04-22T12:11:15.572Z_
+_last synced: 2026-04-22T13:12:00+08:00_
 
-4 active changes (0 ready · 3 in progress · 1 draft · 0 blocked)
+3 active changes (0 ready · 3 in progress · 0 blocked)
 
 ### Ready to apply
 
@@ -64,11 +57,6 @@ _(none)_
   - Specs: `admin-member-management-ui`, `auth-storage-consistency`, `passkey-authentication`, `responsive-and-a11y-foundation`
 - **fk-cascade-repair-for-self-delete** — 41/44 tasks (93%)
   - Specs: `auth-storage-consistency`, `member-and-permission-model`, `passkey-authentication`
-- **oauth-user-delegated-remote-mcp** — 9/19 tasks (47%)
-  - Specs: `guest-access-policy`, `knowledge-access-control`, `mcp-knowledge-tools`
-
-### Draft
-
 - **multi-format-document-ingestion** — 0/21 tasks (0%)
   - Specs: `admin-document-management-ui`, `document-ingestion-and-publishing`
 
@@ -87,7 +75,7 @@ _(none)_
 ### Independent (can run in parallel)
 
 - `multi-format-document-ingestion`
-- `oauth-user-delegated-remote-mcp`
+- `drizzle-refactor-credentials-admin-members`
 
 ### Mutex (same spec touched)
 
