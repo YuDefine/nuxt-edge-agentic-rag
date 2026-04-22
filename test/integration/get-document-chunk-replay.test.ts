@@ -122,11 +122,16 @@ vi.mock('../../server/utils/mcp-ask', () => ({
   createMcpQueryLogStore: replayRouteMocks.createMcpQueryLogStore,
 }))
 
-vi.mock('../../server/utils/mcp-auth', () => ({
-  McpAuthError: replayRouteMocks.MockMcpAuthError,
-  requireMcpBearerToken: replayRouteMocks.requireMcpBearerToken,
-  requireMcpScope: replayRouteMocks.requireMcpScope,
-}))
+vi.mock('../../server/utils/mcp-auth', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../server/utils/mcp-auth')>()
+
+  return {
+    ...actual,
+    McpAuthError: replayRouteMocks.MockMcpAuthError,
+    requireMcpBearerToken: replayRouteMocks.requireMcpBearerToken,
+    requireMcpScope: replayRouteMocks.requireMcpScope,
+  }
+})
 
 vi.mock('../../server/utils/mcp-rate-limit', () => ({
   consumeMcpToolRateLimit: replayRouteMocks.consumeMcpToolRateLimit,
