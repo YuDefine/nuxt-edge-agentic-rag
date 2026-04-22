@@ -58,17 +58,25 @@ jobs:
 
       - name: Build Nuxt
         env:
+          ADMIN_EMAIL_ALLOWLIST: admin@test.local
           BETTER_AUTH_SECRET: e2e-better-auth-secret-at-least-32-chars
           NODE_OPTIONS: --max-old-space-size=4096
           NITRO_PRESET: node-server
           NUXT_HUB_LIBSQL_URL: file:.data/db/sqlite.db
+          NUXT_KNOWLEDGE_FEATURE_PASSKEY: true
+          NUXT_PASSKEY_RP_ID: localhost
+          NUXT_PASSKEY_RP_NAME: Agentic E2E
           NUXT_SESSION_PASSWORD: e2e-ci-session-password-at-least-32-chars
         run: pnpm build
 
       - name: Run E2E tests
         env:
+          ADMIN_EMAIL_ALLOWLIST: admin@test.local
           BETTER_AUTH_SECRET: e2e-better-auth-secret-at-least-32-chars
           NUXT_HUB_LIBSQL_URL: file:.data/db/sqlite.db
+          NUXT_KNOWLEDGE_FEATURE_PASSKEY: true
+          NUXT_PASSKEY_RP_ID: localhost
+          NUXT_PASSKEY_RP_NAME: Agentic E2E
           NUXT_SESSION_PASSWORD: e2e-ci-session-password-at-least-32-chars
         run: pnpm test:e2e
 

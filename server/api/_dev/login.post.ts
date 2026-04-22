@@ -102,6 +102,94 @@ const bodySchema = z.object({
   name: z.string().min(1).optional(),
 })
 
+type DevLoginUser = {
+  id: string
+  email: string
+  name?: string | null
+  role?: string | null
+}
+
+type DevLoginAuthPayload = {
+  user?: DevLoginUser
+  message?: string
+}
+
+function getAuthPayloadMessage(payload: unknown): string {
+  if (!payload || typeof payload !== 'object' || !('message' in payload)) {
+    return ''
+  }
+
+  const message = payload.message
+  return typeof message === 'string' ? message : ''
+}
+
+function isConcurrentSignUpConflict(status: number, payload: unknown): boolean {
+  if (status === 409) {
+    return true
+  }
+
+  return /already exists|unique constraint|failed to create user/i.test(
+    getAuthPayloadMessage(payload),
+  )
+}
+
+async function trySignInEmail(
+  auth: ReturnType<typeof serverAuth>,
+  email: string,
+  password: string,
+) {
+  return await auth.api.signInEmail({
+    body: {
+      email,
+      password,
+    },
+    asResponse: true,
+  })
+}
+
+async function finishSignedInResponse(
+  event: Parameters<typeof appendResponseHeader>[0],
+  response: Response,
+  role: string,
+  action: 'signed_in' | 'created_and_signed_in',
+  log: {
+    error: (error: Error, context?: Record<string, unknown>) => void
+  },
+) {
+  const data = (await response.json()) as DevLoginAuthPayload
+
+  if (data.user && data.user.role !== role) {
+    try {
+      await updateUserRole(data.user.id, role)
+    } catch (error) {
+      log.error(error as Error, { step: 'update-user-role' })
+      throw createError({
+        statusCode: 500,
+        statusMessage: 'Internal Server Error',
+        message: 'Failed to sync user role',
+      })
+    }
+  }
+
+  const setCookieHeader = response.headers.get('set-cookie')
+  if (setCookieHeader) {
+    appendResponseHeader(event, 'set-cookie', setCookieHeader)
+  }
+
+  return {
+    success: true,
+    action,
+    user: data.user
+      ? {
+          id: data.user.id,
+          email: data.user.email,
+          name: data.user.name,
+          role,
+        }
+      : undefined,
+  }
+}
+
 export default defineEventHandler(async (event) => {
   const log = useLogger(event)
   // Gate: only allow in local environment
@@ -141,48 +229,10 @@ export default defineEventHandler(async (event) => {
 
   // Try to sign in first (user might already exist)
   try {
-    const signInResponse = await auth.api.signInEmail({
-      body: {
-        email: body.email,
-        password,
-      },
-      asResponse: true,
-    })
+    const signInResponse = await trySignInEmail(auth, body.email, password)
 
-    // If sign in succeeded, check if we need to update role
     if (signInResponse.ok) {
-      const data = await signInResponse.json()
-
-      // Sync role with admin allowlist if needed
-      if (data.user && data.user.role !== role) {
-        try {
-          await updateUserRole(data.user.id, role)
-        } catch (error) {
-          log.error(error as Error, { step: 'update-user-role' })
-          throw createError({
-            statusCode: 500,
-            statusMessage: 'Internal Server Error',
-            message: 'Failed to sync user role',
-          })
-        }
-      }
-
-      // Copy session cookies to response
-      const setCookieHeader = signInResponse.headers.get('set-cookie')
-      if (setCookieHeader) {
-        appendResponseHeader(event, 'set-cookie', setCookieHeader)
-      }
-
-      return {
-        success: true,
-        action: 'signed_in',
-        user: {
-          id: data.user.id,
-          email: data.user.email,
-          name: data.user.name,
-          role,
-        },
-      }
+      return await finishSignedInResponse(event, signInResponse, role, 'signed_in', log)
     }
   } catch {
     // Sign in failed, try to create user
@@ -205,36 +255,26 @@ export default defineEventHandler(async (event) => {
     })
 
     if (!signUpResponse.ok) {
-      const errorData = await signUpResponse.json().catch(() => ({}))
+      const errorData = (await signUpResponse.json().catch(() => ({}))) as DevLoginAuthPayload
+
+      if (isConcurrentSignUpConflict(signUpResponse.status, errorData)) {
+        try {
+          const retrySignInResponse = await trySignInEmail(auth, body.email, password)
+          if (retrySignInResponse.ok) {
+            return await finishSignedInResponse(event, retrySignInResponse, role, 'signed_in', log)
+          }
+        } catch (retryError) {
+          log.error(retryError as Error, { step: 'dev-login-signin-after-conflict' })
+        }
+      }
+
       throw createError({
         statusCode: signUpResponse.status,
-        message: errorData.message || 'Failed to create user',
+        message: getAuthPayloadMessage(errorData) || 'Failed to create user',
       })
     }
 
-    const data = await signUpResponse.json()
-
-    // Sync role with admin allowlist
-    if (data.user) {
-      await updateUserRole(data.user.id, role)
-    }
-
-    // Copy session cookies to response
-    const setCookieHeader = signUpResponse.headers.get('set-cookie')
-    if (setCookieHeader) {
-      appendResponseHeader(event, 'set-cookie', setCookieHeader)
-    }
-
-    return {
-      success: true,
-      action: 'created_and_signed_in',
-      user: {
-        id: data.user.id,
-        email: data.user.email,
-        name: data.user.name,
-        role,
-      },
-    }
+    return await finishSignedInResponse(event, signUpResponse, role, 'created_and_signed_in', log)
   } catch (error: unknown) {
     if (error instanceof Error && 'statusCode' in error) {
       throw error
