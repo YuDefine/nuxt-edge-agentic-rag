@@ -151,11 +151,16 @@ vi.mock('../../server/utils/mcp-ask', () => ({
   createMcpQueryLogStore: mcpRouteMocks.createMcpQueryLogStore,
 }))
 
-vi.mock('../../server/utils/mcp-auth', () => ({
-  McpAuthError: mcpRouteMocks.MockMcpAuthError,
-  requireMcpBearerToken: mcpRouteMocks.requireMcpBearerToken,
-  requireMcpScope: mcpRouteMocks.requireMcpScope,
-}))
+vi.mock('../../server/utils/mcp-auth', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../server/utils/mcp-auth')>()
+
+  return {
+    ...actual,
+    McpAuthError: mcpRouteMocks.MockMcpAuthError,
+    requireMcpBearerToken: mcpRouteMocks.requireMcpBearerToken,
+    requireMcpScope: mcpRouteMocks.requireMcpScope,
+  }
+})
 
 vi.mock('../../server/utils/mcp-categories', () => ({
   createMcpCategoryStore: mcpRouteMocks.createMcpCategoryStore,
