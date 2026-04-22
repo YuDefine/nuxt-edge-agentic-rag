@@ -121,10 +121,17 @@ pnpm exec wrangler d1 list
 pnpm exec wrangler r2 bucket create agentic-rag-documents
 ```
 
-如需 CORS（前端 PUT pre-signed URL），套用專案根目錄的 `r2-cors.json`：
+如需 CORS（前端 PUT pre-signed URL），套用專案根目錄的 `r2-cors.json`。目前該檔需同時允許：
+
+- `http://localhost:3010`
+- `https://agentic.yudefine.com.tw`
+- `https://agentic-staging.yudefine.com.tw`
+
+Production / staging bucket 都要各自套用一次：
 
 ```bash
 pnpm exec wrangler r2 bucket cors set agentic-rag-documents --file=r2-cors.json
+pnpm exec wrangler r2 bucket cors set agentic-rag-documents-staging --file=r2-cors.json
 ```
 
 #### KV Namespace
@@ -320,7 +327,7 @@ git push origin --tags
 # 或走 workflow_dispatch：GitHub → Actions → Deploy → Run workflow
 ```
 
-監看 Actions 執行：CI job 綠 → deploy job 綠 → smoke-test job 綠 → notify 送出。
+監看 Actions 執行：CI job 綠 → deploy job 綠 → smoke-test job 綠（若 GitHub runner 被 Cloudflare WAF 擋下會記 warning `403`，但不視為 deploy 失敗）→ notify 送出。
 
 **方法 B — 手動（緊急 hotfix 或 CI 壞掉時）**：
 
