@@ -2,6 +2,8 @@ import { createNitroRollupConfig } from './build/nitro/rollup'
 import { createKnowledgeRuntimeConfig } from './shared/schemas/knowledge-runtime'
 
 const isVitest = process.env.VITEST === 'true'
+const disableNuxtHints =
+  process.env.NUXT_DISABLE_HINTS === 'true' || process.env.PLAYWRIGHT === 'true'
 
 // https://nuxt.com/docs/api/configuration/nuxt-config
 const knowledgeRuntimeConfig = createKnowledgeRuntimeConfig({
@@ -54,7 +56,7 @@ export default defineNuxtConfig({
     '@pinia/colada-nuxt',
     '@nuxt/test-utils/module',
     'evlog/nuxt',
-    '@nuxt/hints',
+    ...(!disableNuxtHints ? ['@nuxt/hints'] : []),
     '@nuxtjs/mcp-toolkit',
     '@nuxt/a11y',
   ],
