@@ -11,8 +11,8 @@
 #   5. 所有 build-time site URL secrets 補上 PROD_ / STAGING_ prefix，避免跨環境覆寫
 #
 # 觸發策略：
-#   - push tag v*       → production deploy（透過 needs: ci）
-#   - workflow_dispatch → 可選 production 或 staging
+#   - push tag v*       → production deploy（先驗證同 SHA 已有成功的 CI run）
+#   - workflow_dispatch → 可選 production 或 staging（同上，不重跑 CI）
 #
 # STAGING 區塊為 illustrative — 若尚未建立 staging 環境，可將 `deploy-staging`
 # job 保留為註解或維持 `if: false` 避免觸發失敗。啟用步驟見
@@ -35,46 +35,29 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   # ---------------------------------------------------------------------------
-  # CI gate — 所有 deploy target 前置條件
+  # CI gate — 驗證同一個 SHA 已經有成功的 CI workflow，不重跑整套檢查
   # ---------------------------------------------------------------------------
-  ci:
+  verify-ci-gate:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 2
     steps:
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v4
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Format check
-        run: pnpm format:check
-
-      - name: Lint
-        run: pnpm run lint
-
-      - name: Typecheck
-        run: pnpm typecheck
-
-      - name: Run tests
-        run: pnpm test
+      - name: Verify successful CI run exists for this SHA
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/check-ci-gate.mjs
 
   # ---------------------------------------------------------------------------
   # PRODUCTION deploy — 由 tag push 或 workflow_dispatch(target=production) 觸發
   # ---------------------------------------------------------------------------
   deploy-production:
-    needs: ci
+    needs: verify-ci-gate
     if: |
       (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
       (github.event_name == 'workflow_dispatch' && github.event.inputs.target == 'production')
@@ -140,7 +123,7 @@ jobs:
   #   2. 已建立 wrangler.staging.jsonc 或以 --env staging 區分
   #   3. GitHub 已設定 STAGING_* prefix 的 secrets
   deploy-staging:
-    needs: ci
+    needs: verify-ci-gate
     if: |
       github.event_name == 'workflow_dispatch' &&
       github.event.inputs.target == 'staging'
@@ -240,7 +223,7 @@ jobs:
   # ---------------------------------------------------------------------------
   notify:
     if: always()
-    needs: [ci, deploy-production, smoke-test, deploy-staging, smoke-test-staging]
+    needs: [verify-ci-gate, deploy-production, smoke-test, deploy-staging, smoke-test-staging]
     runs-on: ubuntu-latest
     timeout-minutes: 1
     steps:
@@ -249,7 +232,7 @@ jobs:
         env:
           WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           TARGET: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.target || 'production' }}
-          CI_RESULT: ${{ needs.ci.result }}
+          CI_RESULT: ${{ needs.verify-ci-gate.result }}
           PROD_DEPLOY_RESULT: ${{ needs.deploy-production.result }}
           PROD_SMOKE_RESULT: ${{ needs.smoke-test.result }}
           STAGING_DEPLOY_RESULT: ${{ needs.deploy-staging.result }}
