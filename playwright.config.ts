@@ -13,7 +13,7 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: 'pnpm dev',
+    command: 'NUXT_DISABLE_HINTS=true pnpm dev',
     port: 3010,
     reuseExistingServer: true,
   },

@@ -63,6 +63,7 @@
     "nuxt-security": "^2.5.1",
     "reflect-metadata": "0.2.2",
     "tailwindcss": "^4.2.4",
+    "unstorage": "^1.17.5",
     "wrangler": "^4.84.1",
     "zod": "^4.3.6"
   },
