@@ -1,0 +1,61 @@
+name: Sync Docs Domains
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'Domain sync target'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+          - production
+          - staging
+
+permissions:
+  contents: read
+
+jobs:
+  sync-docs-domains:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: ${{ github.event.inputs.target == 'staging' && 'staging' || 'production' }}
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      DOCS_CF_PAGES_PROJECT_NAME: ${{ vars['DOCS_CF_PAGES_PROJECT_NAME'] }}
+      DOCS_CF_PAGES_STAGING_BRANCH: ${{ vars['DOCS_CF_PAGES_STAGING_BRANCH'] || 'staging' }}
+      DOCS_CF_ZONE_NAME: ${{ vars['DOCS_CF_ZONE_NAME'] }}
+      DOCS_PRODUCTION_URL: ${{ vars['DOCS_PRODUCTION_URL'] }}
+      DOCS_STAGING_URL: ${{ vars['DOCS_STAGING_URL'] }}
+      DOCS_DOMAIN_SYNC_TARGET: ${{ github.event.inputs.target }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Validate docs domain configuration
+        run: |
+          for name in DOCS_CF_PAGES_PROJECT_NAME DOCS_CF_ZONE_NAME; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Missing repository variable $name"
+              exit 1
+            fi
+          done
+
+          if [ "$DOCS_DOMAIN_SYNC_TARGET" = 'production' ] && [ -z "$DOCS_PRODUCTION_URL" ]; then
+            echo "::error::Missing repository variable DOCS_PRODUCTION_URL"
+            exit 1
+          fi
+
+          if [ "$DOCS_DOMAIN_SYNC_TARGET" = 'staging' ] && [ -z "$DOCS_STAGING_URL" ]; then
+            echo "::error::Missing repository variable DOCS_STAGING_URL"
+            exit 1
+          fi
+
+      - name: Sync Cloudflare Pages domains and DNS
+        run: node scripts/sync-docs-pages-domains.mjs

@@ -1,17 +1,25 @@
 # Runbooks
 
-這一區放較短、偏操作指向的 runbook。現在內容不多，但先做 section index，之後新增 runbook 時可以直接沿用同一入口。
+本區收錄短篇、單一主題、可直接操作的手冊，適合在已知道問題類型或任務範圍時快速查閱。
+
+## 適用情境
+
+- 需要執行某一個明確操作，而不是閱讀完整驗證流程。
+- 已知主題明確，希望快速取得步驟與注意事項。
+- 想先查局部操作，再回到較完整的驗證或架構文件補背景。
 
 ## 現有文件
 
+- [claude-desktop-mcp](./claude-desktop-mcp.md)
 - [guest-policy](./guest-policy.md)
 
-## 這一區和 verify 的差別
+## 與驗證指南的差異
 
-- runbooks：短、單一主題、快速操作。
-- verify：較完整的驗證流程、部署手冊、checklist 與 QA 文件。
+- Runbooks：篇幅較短，聚焦單一主題與直接操作。
+- [驗證指南](../verify/index.md)：涵蓋較完整的驗證流程、部署手冊、checklist 與 QA 文件。
 
-## 整理原則
+## 維護原則
 
-- runbook 放短流程與單一主題操作。
-- 比較完整的驗證或部署手冊，仍放在 verify 區。
+- 適合放入單一主題、可獨立執行的操作手冊。
+- 若文件需要涵蓋完整驗證流程、跨步驟檢查或多角色協作，應優先放在 verify 區。
+- 新增 runbook 後，需同步更新 [docs/.vitepress/config.ts](../.vitepress/config.ts) 的 sidebar。
