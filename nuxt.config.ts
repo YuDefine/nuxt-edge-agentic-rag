@@ -1,92 +1,7 @@
-import { readFileSync } from 'node:fs'
-import { createRequire } from 'node:module'
-import type { Plugin, RenderedChunk } from 'rollup'
+import { createNitroRollupConfig } from './build/nitro/rollup'
 import { createKnowledgeRuntimeConfig } from './shared/schemas/knowledge-runtime'
 
-const require = createRequire(import.meta.url)
 const isVitest = process.env.VITEST === 'true'
-const reflectMetadataPolyfill = readFileSync(require.resolve('reflect-metadata/Reflect.js'), 'utf8')
-const nativeReflectPolyfillPreamble = [
-  'const __nativeReflectApply = typeof globalThis.Reflect?.apply === "function" ? globalThis.Reflect.apply : ((target, thisArgument, argumentsList) => Function.prototype.apply.call(target, thisArgument, argumentsList));',
-  reflectMetadataPolyfill,
-  'globalThis.Reflect ??= {};',
-  'if (typeof globalThis.Reflect.apply !== "function") {',
-  '  Object.defineProperty(globalThis.Reflect, "apply", { configurable: true, writable: true, value: __nativeReflectApply });',
-  '}',
-].join('\n')
-
-const upstreamCircularDependencyPackages = [
-  'node_modules/.pnpm/nitropack@',
-  'node_modules/.pnpm/@nuxt+nitro-server@',
-  'node_modules/.pnpm/@nuxthub+core@',
-  'node_modules/.pnpm/@nuxt+image@',
-  'node_modules/.pnpm/@onmax+nuxt-better-auth@',
-  'node_modules/.pnpm/@nuxt+hints@',
-  'node_modules/.pnpm/nuxt-security@',
-  'node_modules/.pnpm/@nuxtjs+mcp-toolkit@',
-] as const
-
-function shouldIgnoreUpstreamCircularDependencyWarning(warning: {
-  code?: string
-  message?: string
-}): boolean {
-  if (warning.code !== 'CIRCULAR_DEPENDENCY') {
-    return false
-  }
-
-  const message = typeof warning.message === 'string' ? warning.message : ''
-  const mentionsProjectCode = /(^| -> )(app|server|shared|scripts)[\\/]/.test(message)
-  const mentionsKnownUpstreamPackage = upstreamCircularDependencyPackages.some((signature) =>
-    message.includes(signature),
-  )
-  const mentionsNitroVirtualModule =
-    message.includes('virtual:#nitro-internal-virtual') ||
-    message.includes('virtual:#internal/nuxt/island-renderer.mjs') ||
-    message.includes('virtual:#imports')
-  const mentionsNitroRuntimeCore =
-    message.includes('nitropack/dist/runtime/internal/app.mjs') ||
-    message.includes('nitropack/dist/runtime/index.mjs')
-
-  return (
-    !mentionsProjectCode &&
-    mentionsKnownUpstreamPackage &&
-    (mentionsNitroVirtualModule || mentionsNitroRuntimeCore)
-  )
-}
-
-function nitroServerBanner(chunk: RenderedChunk): string {
-  if (chunk.fileName === 'chunks/nitro/nitro.mjs') {
-    return `${nativeReflectPolyfillPreamble}\n`
-  }
-
-  return ''
-}
-
-function patchOpenTelemetryProxyTracer(): Plugin {
-  const modulePath = '/@opentelemetry/api/build/esm/trace/ProxyTracer.js'
-  const unsafeReflectApply = 'return Reflect.apply(tracer.startActiveSpan, tracer, arguments);'
-  const safeApply =
-    'return Function.prototype.apply.call(tracer.startActiveSpan, tracer, arguments);'
-
-  return {
-    name: 'patch-opentelemetry-proxy-tracer-reflect-apply',
-    transform(code: string, id: string) {
-      if (!id.includes(modulePath)) {
-        return null
-      }
-
-      if (!code.includes(unsafeReflectApply)) {
-        this.warn('OpenTelemetry ProxyTracer no longer contains the expected Reflect.apply call.')
-        return null
-      }
-
-      return {
-        code: code.replace(unsafeReflectApply, safeApply),
-        map: null,
-      }
-    },
-  }
-}
 
 // https://nuxt.com/docs/api/configuration/nuxt-config
 const knowledgeRuntimeConfig = createKnowledgeRuntimeConfig({
@@ -364,28 +279,6 @@ export default defineNuxtConfig({
       // Daily at 03:00 UTC.
       '0 3 * * *': ['retention-cleanup'],
     },
-    rollupConfig: isVitest
-      ? {}
-      : {
-          plugins: [patchOpenTelemetryProxyTracer()],
-          output: {
-            banner: nitroServerBanner,
-          },
-          onwarn(warning, defaultHandler) {
-            if (shouldIgnoreUpstreamCircularDependencyWarning(warning)) {
-              return
-            }
-
-            if (
-              warning.code === 'THIS_IS_UNDEFINED' &&
-              typeof warning.id === 'string' &&
-              warning.id.includes('/mime/dist/src/Mime.js')
-            ) {
-              return
-            }
-
-            defaultHandler(warning)
-          },
-        },
+    rollupConfig: isVitest ? {} : createNitroRollupConfig(),
   },
 })
