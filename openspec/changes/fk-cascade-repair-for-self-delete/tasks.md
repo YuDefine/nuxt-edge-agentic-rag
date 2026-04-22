@@ -59,7 +59,7 @@
 
 ## 7. Production apply 作業書與 Rollback 準備
 
-- [x] 7.1 Pre-apply backup：`wrangler d1 export agentic-rag-db --remote --output=backup-pre-0010-20260421.sql` 已成功下載，檔案大小 179K，作為 0010 apply 前 rollback 素材。**@followup[TD-011]**
+- [x] 7.1 Pre-apply backup：`wrangler d1 export agentic-rag-db --remote --output=backups/backup-pre-0010-20260421.sql` 已成功下載，檔案大小 179K，作為 0010 apply 前 rollback 素材。**@followup[TD-011]**
 - [x] 7.2 Pre-apply 對照 task 1.3 row counts 後，執行 `wrangler d1 migrations apply agentic-rag-db --remote`；Wrangler 回報 `0010_fk_cascade_repair.sql ✅`，後續 `wrangler d1 migrations list agentic-rag-db --remote` 回 `No migrations to apply!`。**@followup[TD-011]**
 - [x] 7.3 Post-apply 在 production D1 執行完整 PRAGMA 驗證：`PRAGMA foreign_key_check` 回 empty；`member_role_changes` FK list empty；`mcp_tokens.created_by_user_id` → `"user"(id) ON DELETE CASCADE`；`query_logs.mcp_token_id` → `mcp_tokens(id) ON DELETE SET NULL`；`citation_records.query_log_id` → `query_logs(id) ON DELETE CASCADE`；`messages.query_log_id` → `query_logs(id) ON DELETE SET NULL`。**@followup[TD-011]**
 - [x] 7.4 Post-apply 六筆 row counts 與 task 1.3 baseline 一致：`member_role_changes=2`, `mcp_tokens=3`, `query_logs=72`, `citation_records=37`, `messages=81`, `"user"=2`；無需啟動 rollback。**@followup[TD-011]**
