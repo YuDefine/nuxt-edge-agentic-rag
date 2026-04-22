@@ -38,7 +38,6 @@ describe('POST /api/auth/mcp/token', () => {
       accessTokenTtlSeconds: 600,
       authorizationCodeTtlSeconds: 120,
       kv,
-      now: () => 1_700_000_000_000,
     })
     const code = await grants.issueAuthorizationCode({
       clientId: 'claude-remote',
@@ -94,7 +93,6 @@ describe('POST /api/auth/mcp/token', () => {
       accessTokenTtlSeconds: 600,
       authorizationCodeTtlSeconds: 120,
       kv,
-      now: () => 1_700_000_000_000,
     })
     const code = await grants.issueAuthorizationCode({
       clientId: 'claude-remote',
