@@ -1,8 +1,8 @@
 import { createError, defineEventHandler, getRequestHeaders, getRequestURL, readBody } from 'h3'
 
 import {
+  handlePasskeyVerifyAuthentication,
   PasskeyVerifyAuthenticationRouteError,
-  forwardPasskeyVerifyAuthentication,
   isPasskeyVerifyAuthenticationEnabled,
 } from '../../../utils/passkey-verify-authentication'
 
@@ -19,7 +19,7 @@ export default defineEventHandler(async (event) => {
   const headers = new Headers(getRequestHeaders(event) as HeadersInit)
 
   try {
-    return await forwardPasskeyVerifyAuthentication(auth, getRequestURL(event), headers, body)
+    return await handlePasskeyVerifyAuthentication(auth, getRequestURL(event), headers, body)
   } catch (error) {
     if (error instanceof PasskeyVerifyAuthenticationRouteError) {
       throw createError({
