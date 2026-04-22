@@ -129,7 +129,8 @@ export async function runHealthChecks(options) {
     return {
       ok: true,
       reason: 'blocked_by_waf',
-      warning: 'GitHub runner received HTTP 403 from all health check targets; likely blocked by Cloudflare WAF/Bot protection.',
+      warning:
+        'GitHub runner received HTTP 403 from all health check targets; likely blocked by Cloudflare WAF/Bot protection.',
       attempts,
     }
   }
