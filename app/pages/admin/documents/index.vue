@@ -65,7 +65,7 @@
           <div class="mx-auto mb-4 flex size-16 items-center justify-center rounded-full bg-muted">
             <UIcon name="i-lucide-cloud-off" class="size-8 text-muted" />
           </div>
-          <h3 class="mb-2 text-lg font-semibold text-default">無法載入文件列表</h3>
+          <h2 class="mb-2 text-lg font-semibold text-default">無法載入文件列表</h2>
           <p class="mb-6 max-w-sm text-sm text-muted">連線可能暫時中斷，請檢查網路後再試。</p>
           <UButton
             color="neutral"

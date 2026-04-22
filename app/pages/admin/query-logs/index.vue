@@ -274,7 +274,7 @@
           <div class="mx-auto mb-4 flex size-16 items-center justify-center rounded-full bg-muted">
             <UIcon name="i-lucide-shield-off" class="size-8 text-muted" />
           </div>
-          <h3 class="mb-2 text-lg font-semibold text-default">權限不足</h3>
+          <h2 class="mb-2 text-lg font-semibold text-default">權限不足</h2>
           <p class="mb-6 max-w-sm text-sm text-muted">
             此頁面僅限管理員使用。若您認為這是錯誤，請聯絡系統管理員。
           </p>
@@ -287,7 +287,7 @@
           <div class="mx-auto mb-4 flex size-16 items-center justify-center rounded-full bg-muted">
             <UIcon name="i-lucide-cloud-off" class="size-8 text-muted" />
           </div>
-          <h3 class="mb-2 text-lg font-semibold text-default">無法載入查詢日誌</h3>
+          <h2 class="mb-2 text-lg font-semibold text-default">無法載入查詢日誌</h2>
           <p class="mb-6 max-w-sm text-sm text-muted">連線可能暫時中斷，請檢查網路後再試。</p>
           <UButton
             color="neutral"
@@ -306,7 +306,7 @@
           <div class="mx-auto mb-4 flex size-16 items-center justify-center rounded-full bg-muted">
             <UIcon name="i-lucide-search" class="size-8 text-default" />
           </div>
-          <h3 class="mb-2 text-lg font-semibold text-default">沒有符合條件的查詢日誌</h3>
+          <h2 class="mb-2 text-lg font-semibold text-default">沒有符合條件的查詢日誌</h2>
           <p class="mb-6 max-w-sm text-sm text-muted">
             請調整篩選條件，或稍候新查詢產生後再回來檢視。
           </p>
