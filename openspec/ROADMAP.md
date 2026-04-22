@@ -4,14 +4,16 @@
 
 ## Current State
 
-> 狀態（2026-04-22 更新）：目前 branch `main`，release 版本已升到 `v0.28.1`。本輪已完成專題報告治理、文件站部署、remote MCP OAuth connector archive，以及 production passkey reauth hotfix commit；報告 current draft 仍以 `reports/latest.md` 作為單一本體，`reports/archive/` 保存版本化快照。Open tech debt：TD-009 mid / TD-010 mid / TD-011 high / TD-012 high / TD-014 mid。
+> 狀態（2026-04-23 更新）：目前 branch `main`，release 版本已升到 `v0.28.2`。本輪已完成專題報告治理、文件站部署、remote MCP OAuth connector archive，以及 production passkey reauth hotfix deploy 驗證；報告 current draft 仍以 `reports/latest.md` 作為單一本體，`reports/archive/` 保存版本化快照。Open tech debt：TD-009 mid / TD-010 mid / TD-011 high / TD-012 high / TD-014 mid。
 >
-> **最新進度**（2026-04-22）：
+> **最新進度**（2026-04-23）：
 >
 > - **專題報告治理 / 工作區重整** 已完成並入版：報告本體與 archive 目錄完成收斂，repo root 的歷史 `main-v*` 與舊 backup 已搬移，current report / archive 路徑規則已同步到 `AGENTS.md`、`CLAUDE.md`、`docs/STRUCTURE.md` 與 governance specs。
 > - **文件站正式化 + Cloudflare Pages 流程** 已完成實作：README、docs landing / onboarding / verify / runbooks / specs index 已改寫為開發者導向文件；docs deploy 已整合進主 deploy workflow，並補上 custom domain sync 與 smoke test fallback。
 > - **`oauth-user-delegated-remote-mcp`** 已完成 archive：delta specs 已同步回主 specs，remote MCP OAuth connector 正式進入 archive。
-> - **passkey reauth hotfix** 已於 `v0.28.1` commit：`better-auth` / `@better-auth/passkey` 升至 `1.6.7`、`better-call` 鎖至 `1.3.5`、`vite` / `vitest` 對齊 `0.1.19`，並新增 `verify-authentication` endpoint-level regression test；但 production live 驗證仍待 redeploy 後完成。
+> - **passkey reauth hotfix** 已於 `v0.28.2` deploy：`better-auth` / `@better-auth/passkey` 升至 `1.6.7`、`better-call` 鎖至 `1.3.5`、`vite` / `vitest` 對齊 `0.1.19`，並新增 `verify-authentication` endpoint-level regression test；production live 驗證已完成，但 `POST /api/auth/passkey/verify-authentication` 仍在 Worker runtime 回 `500`（`TypeError: a14.ownKeys is not a function or its return value is not iterable`），hotfix 尚未真正解除 blocker。
+> - **passkey reauth 第二層 mitigation** 已在 local 完成：新增 Better Auth safe logger，把 logging 邊界的 raw args 先轉字串並吞掉 sink serialization failure，避免 Worker runtime 再把原始 passkey 錯誤放大成 opaque `500`；新的 unit test、既有 `verify-authentication` integration test 與 `pnpm build` 都已通過，但尚未 redeploy 到 production。
+> - **deploy 現況**：`v0.28.2` app deploy 與 smoke-test 皆成功，但 docs custom domain sync 仍因 Cloudflare API `403 Authentication error` 使 workflow 顯示失敗；app production 站點本身已上新版。
 > - **既有 active changes** `fk-cascade-repair-for-self-delete` 與 `drizzle-refactor-credentials-admin-members` 仍在收尾階段，尚待 production manual closeout 與 tech debt 狀態回填。
 > - **`multi-format-document-ingestion`** 已完成 proposal / design / tasks，現在由 `spectra` 標記為 `in-progress`，但尚未開始實作任務。
 
@@ -19,8 +21,8 @@
 
 ### Release 驗證（本輪最高優先）
 
-- [high] 監看本次 `main` push 與 `v0.28.1` tag 的 GitHub Actions，確認 app 與 docs 的 production / staging deploy 全綠
-- [high] redeploy 完成後重驗 production `POST /api/auth/passkey/verify-authentication`，確認 passkey reauth hotfix 不再出現 `a14.ownKeys...` 500
+- [high] 先 deploy local safe logger mitigation，重新驗 production `POST /api/auth/passkey/verify-authentication`
+- [high] 若 production 仍失敗，依新的 live log / response 繼續追 `better-auth` Worker runtime 真正根因；若恢復，立刻重驗 passkey-only self-delete
 - [mid] 驗證 docs custom domains：`agentic-docs.yudefine.com.tw` 與 `agentic-docs-staging.yudefine.com.tw` 均可正常開啟，必要時檢查 Pages `pages.dev` fallback
 
 ### 既有 active changes closeout
