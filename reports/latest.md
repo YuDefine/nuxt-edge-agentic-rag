@@ -936,7 +936,7 @@ else:
 
 本系統將身分與上下文區分為三層：
 
-1. **認證核心表與登入 Session**：由 better-auth 管理，用於 Web 使用者的 Google OAuth 驗證；若後續擴充其他登入方式，仍應留在此層。
+1. **認證核心表與登入 Session**：由 better-auth 管理，用於 Web 使用者的 Google OAuth、Passkey 與對應 Session 驗證；其他登入方式若後續擴充，仍應留在此層。
 2. **應用層角色設定**：由 `user_profiles` 管理角色、狀態與管理員來源，不直接複製整份 auth schema；現階段的管理員名單真相來源為部署環境變數 `ADMIN_EMAIL_ALLOWLIST`，每次 privileged request 仍須以正規化 Session email 對 allowlist 重新計算，D1 僅保存登入後角色快照與 `admin_source` 供 UI、審計與查詢使用。
 3. **Web 對話持久化**：現階段不保存 Web 問答原文；所有進入 `messages` 的內容皆先經敏感資料偵測與遮罩管線處理後寫入 `messages.content_redacted`，形成「原文零落地」的結構性保障。`content_text` 與 `message_state` 三態欄位列為後續治理深化階段擴充（屆時另以 migration 增補），在此之前高風險輸入會以「攔截 → 只留 `query_logs.status = 'blocked'` + 遮罩後 `messages` 稽核副本 + 拒答回應」的方式處理，不寫入任何原文。
 4. **對話可見性重算**：`conversations.access_level` 代表該對話目前最高敏感等級（後續治理深化階段建表後啟用）。讀取對話時必須依目前角色重新檢查；若使用者失去 `restricted` 權限，原受限對話不得回傳。拒答或遮罩訊息在 UI 僅顯示固定占位訊息，不回顯原文。
@@ -1261,7 +1261,7 @@ else:
 
 #### 2.4.1.1 身分驗證與角色控制
 
-- 現階段採 better-auth 整合 Google OAuth，並以 `user_profiles` 承接 Admin/Member/Guest 三級角色、狀態與身分來源；Passkey 不納入目前範圍。[13][20][22]
+- 現階段採 better-auth 整合 Google OAuth 與 Passkey，並以 `user_profiles` 承接 Admin/Member/Guest 三級角色、狀態與身分來源；Passkey 已在 staging / production 啟用，且其 build-time / runtime 設定必須一致。[13][20][22]
 - 三級角色擴充已將授權模型由「Admin vs 非 Admin」二元模型升級為三級 RBAC：
   - **Admin**：管理全部功能；身分唯一真相來源為部署環境變數 `ADMIN_EMAIL_ALLOWLIST`。所有 Admin 專屬操作於授權時仍須依目前 Session email 重新比對 allowlist，不得僅依據既有 D1 角色快照。
   - **Member**：已由 Admin 確認的成員；擁有完整 Web 問答與 MCP 使用權限，可讀取 `internal` 文件；遇 `restricted` 文件仍需再由文件 access_level 與 token scope 判定。
@@ -1526,22 +1526,22 @@ Scale envelope 的語意：
 
 表 3-2 軟體環境版本
 
-| 類別                    | 技術                                                   | 版本                        | 用途                                                    |
-| ----------------------- | ------------------------------------------------------ | --------------------------- | ------------------------------------------------------- |
-| Framework               | Nuxt                                                   | 4.4.2                       | 全端框架                                                |
-| Deployment              | NuxtHub                                                | 0.10.7                      | Cloudflare 部署整合                                     |
-| Database                | D1 + Drizzle ORM                                       | D1：GA；Drizzle ORM：0.45.2 | 結構化資料儲存與 ORM                                    |
-| Object Storage          | R2                                                     | GA                          | 原始文件與版本檔                                        |
-| Cache / Session Storage | KV                                                     | GA                          | 快取與速率限制                                          |
-| Auth                    | Better Auth + `@onmax/nuxt-better-auth`                | 1.6.5 + 0.0.2-alpha.19      | Google OAuth                                            |
-| Managed Retrieval       | Cloudflare AI Search                                   | 以 2026-04 官方公開功能為準 | 受管理檢索                                              |
-| Storage SDK             | `@aws-sdk/client-s3` + `@aws-sdk/s3-request-presigner` | 3.1032.0                    | R2 signed URL 簽發（S3 相容協定）                       |
-| Answer Runtime          | `models.defaultAnswer`（角色常數）                     | 專案內建 fallback 合成器    | 單文件回答、引用組裝與輸出                              |
-| Judge Runtime           | `models.agentJudge`（角色常數）                        | 專案內建結構式判斷器        | Query Reformulation、邊界判定與跨文件整合               |
-| MCP Runtime             | `@nuxtjs/mcp-toolkit`                                  | 0.13.4                      | 4 個核心 MCP Tools 實作（單一 `/mcp` JSON-RPC）         |
-| AI Usage Observability  | Cloudflare AI Gateway                                  | 以 2026-04 官方公開功能為準 | 聚合 tokens、requests、cache hit rate 與 Neurons 使用量 |
-| UI                      | Nuxt UI                                                | 4.6.1                       | 介面元件庫                                              |
-| Accessibility           | `@nuxt/a11y`                                           | 1.0.0-alpha.1               | 無障礙檢查 dev report 與 WCAG AA 基線驗證               |
+| 類別                    | 技術                                                             | 版本                           | 用途                                                    |
+| ----------------------- | ---------------------------------------------------------------- | ------------------------------ | ------------------------------------------------------- |
+| Framework               | Nuxt                                                             | 4.4.2                          | 全端框架                                                |
+| Deployment              | NuxtHub                                                          | 0.10.7                         | Cloudflare 部署整合                                     |
+| Database                | D1 + Drizzle ORM                                                 | D1：GA；Drizzle ORM：0.45.2    | 結構化資料儲存與 ORM                                    |
+| Object Storage          | R2                                                               | GA                             | 原始文件與版本檔                                        |
+| Cache / Session Storage | KV                                                               | GA                             | 快取與速率限制                                          |
+| Auth                    | Better Auth + `@better-auth/passkey` + `@onmax/nuxt-better-auth` | 1.6.7 + 1.6.7 + 0.0.2-alpha.19 | Google OAuth + Passkey                                  |
+| Managed Retrieval       | Cloudflare AI Search                                             | 以 2026-04 官方公開功能為準    | 受管理檢索                                              |
+| Storage SDK             | `@aws-sdk/client-s3` + `@aws-sdk/s3-request-presigner`           | 3.1034.0                       | R2 signed URL 簽發（S3 相容協定）                       |
+| Answer Runtime          | `models.defaultAnswer`（角色常數）                               | 專案內建 fallback 合成器       | 單文件回答、引用組裝與輸出                              |
+| Judge Runtime           | `models.agentJudge`（角色常數）                                  | 專案內建結構式判斷器           | Query Reformulation、邊界判定與跨文件整合               |
+| MCP Runtime             | `@nuxtjs/mcp-toolkit`                                            | 0.14.0                         | 4 個核心 MCP Tools 實作（單一 `/mcp` JSON-RPC）         |
+| AI Usage Observability  | Cloudflare AI Gateway                                            | 以 2026-04 官方公開功能為準    | 聚合 tokens、requests、cache hit rate 與 Neurons 使用量 |
+| UI                      | Nuxt UI                                                          | 4.6.1                          | 介面元件庫                                              |
+| Accessibility           | `@nuxt/a11y`                                                     | 1.0.0-alpha.1                  | 無障礙檢查 dev report 與 WCAG AA 基線驗證               |
 
 ### 3.1.3 開發工具環境
 
@@ -1551,7 +1551,7 @@ Scale envelope 的語意：
 | ------------------ | ---------------- | ------------------------- |
 | Node.js            | 24.15.0          | JavaScript 執行環境       |
 | pnpm               | 10.33.0          | 套件管理                  |
-| Wrangler           | 4.83.0           | Cloudflare 部署與本機操作 |
+| Wrangler           | 4.84.1           | Cloudflare 部署與本機操作 |
 | Python             | 3.13.12          | 報告處理與輔助腳本        |
 | GitHub Copilot CLI | 依工作區安裝版本 | AI 輔助開發               |
 | spectra            | 依專案安裝版本   | 規格驅動開發流程          |
@@ -2476,6 +2476,8 @@ jobs:
 ```
 
 此 workflow 現已包含可手動 dispatch 的 `deploy-staging` job；staging 之 build-time `NUXT_PUBLIC_SITE_URL` 由 `STAGING_SITE_URL` 注入，wrangler route 綁定 `agentic-staging.yudefine.com.tw`，且 staging runtime `NUXT_KNOWLEDGE_ENVIRONMENT` 需明確標為 `staging` 以避免觀測與治理資料誤記為 production。2026-04-22 另補上 passkey / environment 的 build-time env 注入：`NUXT_KNOWLEDGE_ENVIRONMENT`、`NUXT_KNOWLEDGE_FEATURE_PASSKEY`、`NUXT_PASSKEY_RP_ID`、`NUXT_PASSKEY_RP_NAME` 與對應 binding vars 必須在 GitHub Actions `pnpm build` 階段同步提供，不能只依賴 `wrangler.jsonc` 或 `wrangler.staging.jsonc` 的 runtime vars；否則 public config 會把 passkey flag 編成 `false`，且 better-auth passkey routes 會在部署產物中缺席。deploy workflow 另已改為先驗證「同一個 commit SHA 已經有成功的 `.github/workflows/ci.yml` run」，避免在 deploy 內重複再跑一次 CI；deploy 後的 `smoke-test` / `smoke-test-staging` 共用 `scripts/check-deploy-health.mjs`，custom domain 若在 GitHub runner 端因 Cloudflare WAF / Bot protection 回 `403` 只會記 warning，但仍要求至少一個 target（通常是 deployment URL）實際回 `200`，若所有 target 都只回 `403` 則視為 smoke test 失敗。
+
+在補齊上述 build-time env 後，production 首頁與 passkey register route 已恢復，但 2026-04-22 live 驗證仍發現第二層 blocker：passkey-only 使用者於 `/account/settings` 執行刪帳 reauth 時，`GET /api/auth/passkey/generate-authenticate-options` 回 `200`，`POST /api/auth/passkey/verify-authentication` 則回 `500`，Worker log 顯示 `TypeError: a14.ownKeys is not a function or its return value is not iterable`。因此本地 hotfix 已將 `better-auth` 與 `@better-auth/passkey` 升至 `1.6.7`，並在 `pnpm-workspace.yaml` 以 workspace override 鎖定 `better-call = 1.3.5`、同步將 `vite` / `vitest` manifest specifier 對齊至 `0.1.19`，避免 edge/runtime 與測試工具鏈再次漂移；同輪也把 `pnpm test` 主路徑調整為不帶 coverage，另以 `pnpm test:coverage` 保留顯式 coverage 入口，避免預設測試流程再出現 mixed-version warning。自動化驗證目前覆蓋三層：`test/unit/better-auth-passkey-hotfix-version.test.ts` 會檢查 package specifier、coverage 版本、workspace override、`pnpm-lock.yaml` 的實際 resolved entries，以及舊版 `better-auth` / `@better-auth/passkey` / `better-call` / `@vitest/coverage-v8` / `vite` / `vitest` 未重新混入；`test/integration/passkey-verify-authentication-hotfix.spec.ts` 會在 Node test environment 直接匯入 `@better-auth/passkey` 的 `verifyPasskeyAuthentication` endpoint，使用真實 ES256 WebAuthn fixture 驗證 success path 與 session cookie wiring 不會在目前依賴組合下失敗；`test/integration/passkey-authentication-flow.spec.ts` 與 `test/integration/account-self-delete.spec.ts` 則維持 passkey wiring invariant 與 delete-account reauth-window 的結構保護，`pnpm build` 亦已通過。這些自動化能降低依賴與 endpoint-level 回歸風險，但仍**不能等同於 Cloudflare Worker live runtime 驗證**；真正的 production 修復仍待 redeploy 後重跑 `POST /api/auth/passkey/verify-authentication`、以及 `fk-cascade-repair-for-self-delete` 的 8.5 / 8.6 / 8.7 人工檢查。
 
 #### D.2.3 Post-deploy 煙霧測試與 Tag 命名
 
