@@ -246,7 +246,7 @@ pnpm exec wrangler deploy
 cd -
 ```
 
-若走 GitHub Actions，請注意 deploy job 前一定先經過 `ci` job；只要 `pnpm format:check`、`pnpm run lint`、`pnpm typecheck` 或 `pnpm test` 任一步失敗，production / staging deploy 都會被 skip。
+若走 GitHub Actions，deploy workflow 不會再次重跑 format / lint / typecheck / test；它會先驗證「同一個 commit SHA 已經存在成功的 `.github/workflows/ci.yml` run」，通過後才允許 production / staging deploy。若該 SHA 尚未有成功 CI，deploy 會在 `verify-ci-gate` 直接停止。
 
 **預期輸出**：
 
@@ -327,7 +327,7 @@ git push origin --tags
 # 或走 workflow_dispatch：GitHub → Actions → Deploy → Run workflow
 ```
 
-監看 Actions 執行：CI job 綠 → deploy job 綠 → smoke-test job 綠（若 GitHub runner 被 Cloudflare WAF 擋下會記 warning `403`，但不視為 deploy 失敗）→ notify 送出。
+監看 Actions 執行：既有 CI run 綠 → `verify-ci-gate` 綠 → deploy job 綠 → smoke-test job 綠（若 GitHub runner 被 Cloudflare WAF 擋下會記 warning `403`，但不視為 deploy 失敗）→ notify 送出。
 
 **方法 B — 手動（緊急 hotfix 或 CI 壞掉時）**：
 

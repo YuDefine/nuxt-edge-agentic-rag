@@ -12,8 +12,13 @@ on:
       - 'nuxt.config.ts'
       - 'package.json'
       - 'pnpm-lock.yaml'
+      - 'scripts/check-ci-gate.mjs'
+      - 'scripts/check-deploy-health.mjs'
+      - 'test/unit/ci-gate.test.ts'
+      - 'test/unit/deploy-health-check.test.ts'
       - 'tsconfig*.json'
       - '.github/workflows/ci.yml'
+      - '.github/workflows/deploy.yml'
   push:
     branches: [main]
     paths:
@@ -24,8 +29,13 @@ on:
       - 'nuxt.config.ts'
       - 'package.json'
       - 'pnpm-lock.yaml'
+      - 'scripts/check-ci-gate.mjs'
+      - 'scripts/check-deploy-health.mjs'
+      - 'test/unit/ci-gate.test.ts'
+      - 'test/unit/deploy-health-check.test.ts'
       - 'tsconfig*.json'
       - '.github/workflows/ci.yml'
+      - '.github/workflows/deploy.yml'
   workflow_dispatch:
 
 permissions:
