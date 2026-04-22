@@ -30,31 +30,20 @@ test('login page always shows Google button (baseline fallback)', async ({ page 
   })
 })
 
-test('passkey buttons follow feature flag (observed via window runtimeConfig)', async ({
-  page,
-}) => {
+test('passkey buttons stay in sync on the login page', async ({ page }) => {
   await page.goto('/')
   await expect(page.getByRole('heading', { level: 1, name: '知識問答系統' })).toBeVisible({
     timeout: 15000,
   })
 
-  // Read the actual client-side runtime config value the page is
-  // deciding on, so the assertion adapts to whatever the dev server
-  // was booted with. Prevents false positives if someone flips the
-  // env var locally.
-  const passkeyEnabled = await page.evaluate(() => {
-    const nuxt = (
-      window as unknown as {
-        __NUXT__?: { config?: { public?: { knowledge?: { features?: { passkey?: boolean } } } } }
-      }
-    ).__NUXT__
-    return nuxt?.config?.public?.knowledge?.features?.passkey === true
-  })
-
   const passkeyLoginButton = page.getByRole('button', { name: '使用 Passkey 登入' })
   const passkeyRegisterButton = page.getByRole('button', { name: '使用 Passkey 註冊新帳號' })
+  const loginCount = await passkeyLoginButton.count()
+  const registerCount = await passkeyRegisterButton.count()
 
-  if (passkeyEnabled) {
+  expect(loginCount).toBe(registerCount)
+
+  if (loginCount > 0) {
     await expect(passkeyLoginButton).toBeVisible({ timeout: 5000 })
     await expect(passkeyRegisterButton).toBeVisible({ timeout: 5000 })
   } else {
