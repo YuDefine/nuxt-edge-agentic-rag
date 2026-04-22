@@ -21,14 +21,14 @@ defineConfig({
       {
         test: {
           name: 'unit',
-          include: ['tests/unit/**/*.test.ts'],
+          include: ['test/unit/**/*.test.ts'],
           environment: 'node',
         },
       },
       {
         test: {
           name: 'integration',
-          include: ['tests/integration/**/*.test.ts'],
+          include: ['test/integration/**/*.test.ts'],
           environment: 'jsdom',
         },
       },
@@ -105,14 +105,14 @@ defineConfig({
       {
         test: {
           name: 'unit',
-          include: ['tests/unit/**/*.test.ts'],
+          include: ['test/unit/**/*.test.ts'],
           environment: 'node',
         },
       },
       {
         test: {
           name: 'browser',
-          include: ['tests/browser/**/*.test.ts'],
+          include: ['test/browser/**/*.test.ts'],
           browser: {
             enabled: true,
             name: 'chromium',
@@ -144,14 +144,14 @@ defineConfig({
         test: {
           ...sharedConfig,
           name: 'unit',
-          include: ['tests/unit/**/*.test.ts'],
+          include: ['test/unit/**/*.test.ts'],
         },
       },
       {
         test: {
           ...sharedConfig,
           name: 'e2e',
-          include: ['tests/e2e/**/*.test.ts'],
+          include: ['e2e/**/*.spec.ts'],
         },
       },
     ],

@@ -199,15 +199,15 @@ mkdir -p screenshots/local/<semantic-topic>/dark
 
 ## Playwright CLI 用法（響應式 / 跨瀏覽器 / 多分頁）
 
-當 browser-use 不夠用時，寫 Playwright script 臨時跑或沉澱到 `tests/e2e/`：
+當 browser-use 不夠用時，寫 Playwright script 臨時跑或沉澱到 `e2e/screenshots/`：
 
 ```bash
 # 一次跑完三個 viewport
-npx playwright test tests/e2e/screenshots/<topic>.spec.ts \\
+npx playwright test e2e/screenshots/<topic>.spec.ts \\
   --project=desktop --project=tablet --project=mobile
 ```
 
-Script 骨架（`tests/e2e/screenshots/<topic>.spec.ts`）：
+Script 骨架（`e2e/screenshots/<topic>.spec.ts`）：
 
 ```typescript
 import { test, expect } from '@playwright/test'
@@ -234,7 +234,7 @@ for (const bp of BREAKPOINTS) {
 跨瀏覽器：在 `playwright.config.ts` 的 `projects` 加 `{ name: 'webkit', use: devices['Desktop Safari'] }`，然後 `--project=webkit`。
 多分頁：`const p2 = await context.newPage()`。
 
-若專案尚無 `playwright.config.ts`，先 `pnpm create playwright` 建立（選 `tests/e2e` 目錄）。
+若專案尚無 `playwright.config.ts`，先 `pnpm create playwright` 建立，並把 `testDir` 對齊到 `e2e/`。
 
 ## Dev-login Route 模板
 

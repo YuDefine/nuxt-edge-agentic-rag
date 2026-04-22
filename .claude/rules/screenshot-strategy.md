@@ -73,10 +73,10 @@ screenshots/<environment>/<語義>/
 - `<environment>`: `local` / `staging` / `production`
 - `<語義>`: `review/` / `debug/` / `<change-name>/`
 - Review 報告: `screenshots/<env>/<語義>/review.md`
-- Playwright spec: `tests/e2e/<topic>.spec.ts`，輸出同樣放 `screenshots/`
+- Playwright spec: `e2e/screenshots/<topic>.spec.ts`，輸出同樣放 `screenshots/`
 - **MUST** `mkdir -p` 確保目錄存在
 - `screenshots/` 已 gitignored
 
 ## 沉澱規則
 
-同一組截圖被重複拍第 3 次 → **必須** 沉澱為 Playwright CLI spec，避免每次從頭描述。spec 放 `tests/e2e/screenshots/`，可手動跑或併入 CI。
+同一組截圖被重複拍第 3 次 → **必須** 沉澱為 Playwright CLI spec，避免每次從頭描述。spec 放 `e2e/screenshots/`，可手動跑或併入 CI。
