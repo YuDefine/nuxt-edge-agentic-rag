@@ -127,10 +127,12 @@ export async function runHealthChecks(options) {
   const allBlockedByWaf = attempts.length > 0 && attempts.every((item) => item.statusCode === '403')
   if (allBlockedByWaf) {
     return {
-      ok: true,
+      ok: false,
       reason: 'blocked_by_waf',
       warning:
-        'GitHub runner received HTTP 403 from all health check targets; likely blocked by Cloudflare WAF/Bot protection.',
+        'GitHub runner received HTTP 403 from all health check targets; likely blocked by Cloudflare WAF/Bot protection, but no endpoint returned HTTP 200.',
+      error:
+        'Health check failed: every configured target returned HTTP 403, so deployment health could not be confirmed.',
       attempts,
     }
   }
@@ -159,7 +161,6 @@ async function main() {
 
   if (result.reason === 'blocked_by_waf' && result.warning) {
     console.log(`::warning::${result.warning}`)
-    process.exit(0)
   }
 
   if (!result.ok) {

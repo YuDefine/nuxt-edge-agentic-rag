@@ -54,7 +54,7 @@ describe('deploy health check', () => {
     expect(requestUrl).toHaveBeenCalledTimes(2)
   })
 
-  it('treats WAF-blocked 403 from both targets as warning-only success', async () => {
+  it('fails when every health check target is blocked by WAF and none returns 200', async () => {
     const requestUrl = vi.fn<(_: string) => Promise<MockHealthCheckResult>>().mockResolvedValue({
       statusCode: '403',
       url: 'https://agentic.yudefine.com.tw',
@@ -66,9 +66,10 @@ describe('deploy health check', () => {
       requestUrl,
     })
 
-    expect(result.ok).toBe(true)
+    expect(result.ok).toBe(false)
     expect(result.reason).toBe('blocked_by_waf')
     expect(result.warning).toMatch(/403/i)
+    expect(result.error).toMatch(/could not be confirmed/i)
   })
 
   it('fails when neither target is healthy and the failure is not a WAF 403', async () => {
