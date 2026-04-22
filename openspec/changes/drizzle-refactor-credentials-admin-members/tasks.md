@@ -56,8 +56,8 @@
 >
 > 2026-04-21 continuation evidence（未自動勾選，待使用者確認）：local dev `http://localhost:3010` 以 `/api/_dev/login` 建立 `admin@test.local` session 後，`/api/auth/me/credentials` 回 200 `{ email: "admin@test.local", displayName: "Test Admin", hasGoogle: false, passkeys: [] }`；`/api/admin/members?page=1&pageSize=20` 回 200 且 `data.length = 17`。Playwright 重新載入 `/account/settings` 與 `/admin/members` 皆 HTTP 200、停留在目標 URL、未偵測 `error state` / `暫時無法` / `無法載入` / `500` 等已知 error text；截圖位於 `screenshots/local/td010-continuation/account-settings.png` 與 `screenshots/local/td010-continuation/admin-members.png`。
 
-- [ ] 7.1 `/account/settings` 在 local dev 可載入 happy path（顯示 email / displayName / passkey list / Link Google 區塊），無 error state
-- [ ] 7.2 `/admin/members` 在 local dev 可載入 happy path（顯示會員列表、credential badges、last activity），無 error state
+- [x] 7.1 `/account/settings` 在 local dev 可載入 happy path（顯示 email / displayName / passkey list / Link Google 區塊），無 error state
+- [x] 7.2 `/admin/members` 在 local dev 可載入 happy path（顯示會員列表、credential badges、last activity），無 error state
 - [ ] 7.3 Production D1 回歸：deploy 後對 `/account/settings` 與 `/admin/members` 實際操作無行為漂移（response shape / UI / 排序 / 分頁一致）
-- [ ] 7.4 passkey-authentication §16 Design Review 可在 local 跑完整響應式 pipeline（xs / md / xl 三 breakpoint happy path 截圖皆可拍到非 error state）
+- [x] 7.4 passkey-authentication §16 Design Review 可在 local 跑完整響應式 pipeline（xs / md / xl 三 breakpoint happy path 截圖皆可拍到非 error state）
 - [ ] 7.5 TD-010 entry 於 `docs/tech-debt.md` 更新 Status: done（archive 前最後一步）
