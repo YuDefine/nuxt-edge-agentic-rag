@@ -15,11 +15,7 @@ interface PasskeyVerifyAuthenticationRuntimeConfig {
   }
 }
 
-type PasskeyVerifyAuthenticationInvoker = (input: {
-  asResponse: true
-  body: PasskeyVerifyAuthenticationBody
-  headers: Headers
-}) => Promise<Response>
+type PasskeyVerifyAuthenticationHandler = (request: Request) => Promise<Response>
 
 interface PasskeyVerifyAuthenticationRouteErrorInput {
   message?: string
@@ -81,16 +77,10 @@ export function parsePasskeyVerifyAuthenticationBody(
 
 function requirePasskeyVerifyAuthenticationInvoker(
   auth: unknown,
-): PasskeyVerifyAuthenticationInvoker {
-  const verifyPasskeyAuthentication = (
-    auth as {
-      api?: {
-        verifyPasskeyAuthentication?: unknown
-      }
-    }
-  )?.api?.verifyPasskeyAuthentication
+): PasskeyVerifyAuthenticationHandler {
+  const handler = (auth as { handler?: unknown }).handler
 
-  if (typeof verifyPasskeyAuthentication !== 'function') {
+  if (typeof handler !== 'function') {
     throw new PasskeyVerifyAuthenticationRouteError({
       statusCode: 503,
       statusMessage: 'Service Unavailable',
@@ -98,17 +88,24 @@ function requirePasskeyVerifyAuthenticationInvoker(
     })
   }
 
-  return verifyPasskeyAuthentication as PasskeyVerifyAuthenticationInvoker
+  return handler as PasskeyVerifyAuthenticationHandler
 }
 
 export async function forwardPasskeyVerifyAuthentication(
   auth: unknown,
+  requestUrl: URL | string,
   headers: Headers,
   body: unknown,
 ): Promise<Response> {
-  return requirePasskeyVerifyAuthenticationInvoker(auth)({
-    asResponse: true,
-    body: parsePasskeyVerifyAuthenticationBody(body),
-    headers,
-  })
+  const sanitizedBody = parsePasskeyVerifyAuthenticationBody(body)
+  const forwardedHeaders = new Headers(headers)
+  forwardedHeaders.set('content-type', 'application/json')
+
+  return requirePasskeyVerifyAuthenticationInvoker(auth)(
+    new Request(requestUrl, {
+      method: 'POST',
+      headers: forwardedHeaders,
+      body: JSON.stringify(sanitizedBody),
+    }),
+  )
 }
