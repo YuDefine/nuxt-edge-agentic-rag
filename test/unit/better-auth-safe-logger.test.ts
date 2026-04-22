@@ -18,6 +18,13 @@ function createBrokenOwnKeysValue(): object {
 }
 
 describe('better-auth safe logger', () => {
+  it('disables Better Auth color probing for worker safety', () => {
+    const logger = createBetterAuthSafeLogger()
+
+    expect(logger.disableColors).toBe(true)
+    expect(logger.level).toBe('warn')
+  })
+
   it('coerces broken proxy arguments into strings before forwarding them', () => {
     const sink = {
       debug: vi.fn(),
@@ -56,6 +63,18 @@ describe('better-auth safe logger', () => {
   it('renders unserializable values without throwing', () => {
     expect(() => serializeBetterAuthLogArg(createBrokenOwnKeysValue())).not.toThrow()
     expect(typeof serializeBetterAuthLogArg(createBrokenOwnKeysValue())).toBe('string')
+  })
+
+  it('uses a plain console-backed default sink without throwing', () => {
+    const logger = createBetterAuthSafeLogger()
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    expect(() =>
+      logger.log?.('error', 'Failed to verify authentication', createBrokenOwnKeysValue()),
+    ).not.toThrow()
+
+    expect(errorSpy).toHaveBeenCalledTimes(1)
+    errorSpy.mockRestore()
   })
 
   it('wires the safe logger into Better Auth server config', () => {
