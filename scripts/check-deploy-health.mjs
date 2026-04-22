@@ -146,6 +146,7 @@ export async function runHealthChecks(options) {
 }
 
 async function main() {
+  const acceptWafBlock = (process.env.HEALTH_CHECK_ACCEPT_WAF_BLOCK ?? 'false') === 'true'
   const result = await runHealthChecks({
     customDomainUrl: process.env.CUSTOM_DOMAIN_URL,
     deploymentUrl: process.env.DEPLOYMENT_URL,
@@ -164,6 +165,13 @@ async function main() {
   }
 
   if (!result.ok) {
+    if (result.reason === 'blocked_by_waf' && acceptWafBlock) {
+      console.log(
+        'Health check soft-passed: GitHub runner was blocked by Cloudflare WAF/Bot protection.',
+      )
+      return
+    }
+
     console.log(`::error::${result.error}`)
     process.exit(1)
   }
