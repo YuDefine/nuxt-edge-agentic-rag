@@ -1,2 +1,5 @@
 # Auto-generated from .claude/settings.json
 includeGitInstructions = false
+
+[features]
+codex_hooks = true

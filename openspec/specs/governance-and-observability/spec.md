@@ -50,7 +50,7 @@ The system SHALL retain `query_logs`, `citation_records`, `source_chunks.chunk_t
 
 ### Requirement: Environment Isolation
 
-Local/Dev, Staging/Preview, and Production SHALL use separate D1, R2, KV, and AI Search resources. Secrets, OAuth credentials, binding names, and feature flags SHALL enter through runtime config or deployment settings, and Production SHALL default `features.passkey`, `features.mcpSession`, `features.cloudFallback`, and `features.adminDashboard` to false.
+Local/Dev, Staging/Preview, and Production SHALL use separate D1, R2, KV, and AI Search resources. Secrets, OAuth credentials, binding names, and feature flags SHALL enter through runtime config or deployment settings. `features.passkey` SHALL be explicitly enabled for staging and production deployments that advertise passkey support, while `features.mcpSession`, `features.cloudFallback`, and `features.adminDashboard` remain disabled by default in Production unless separately rolled out.
 
 #### Scenario: Preview deployment uses isolated resources
 
@@ -58,8 +58,9 @@ Local/Dev, Staging/Preview, and Production SHALL use separate D1, R2, KV, and AI
 - **THEN** its D1, R2, KV, and AI Search bindings are distinct from Production
 - **AND** test data cannot mutate Production truth sources
 
-#### Scenario: Production starts with deferred feature flags off
+#### Scenario: Production enables passkey while other deferred flags stay off
 
 - **WHEN** Production boots `v1.0.0`
-- **THEN** `features.passkey`, `features.mcpSession`, `features.cloudFallback`, and `features.adminDashboard` remain disabled by default
+- **THEN** `features.passkey` is enabled through deployment configuration for both build-time and runtime config
+- **AND** `features.mcpSession`, `features.cloudFallback`, and `features.adminDashboard` remain disabled by default
 - **AND** those flags only change through runtime configuration updates

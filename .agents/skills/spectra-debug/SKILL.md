@@ -1,12 +1,12 @@
 ---
 name: spectra-debug
-description: 'Systematically debug a problem using a four-phase workflow. Use when encountering bugs, errors, test failures, unexpected behavior, or when the user says "debug", "fix this error", "why is this failing", "investigate", or "troubleshoot".'
+description: "Systematically debug a problem using a four-phase workflow"
 license: MIT
 compatibility: Requires spectra CLI.
 metadata:
   author: spectra
-  version: '1.0'
-  generatedBy: 'Spectra'
+  version: "1.0"
+  generatedBy: "Spectra"
 ---
 
 Systematically debug a problem using a four-phase workflow.
