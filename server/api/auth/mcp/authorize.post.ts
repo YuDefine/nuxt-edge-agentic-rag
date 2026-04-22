@@ -20,6 +20,13 @@ const requestSchema = z
 
 export default defineEventHandler(async function mcpAuthorizePostHandler(event) {
   const session = await requireUserSession(event)
+  if (!session.user.id) {
+    throw createError({
+      statusCode: 403,
+      statusMessage: 'Forbidden',
+      message: 'MCP authorization requires a local account',
+    })
+  }
   const rawBody = (await readBody(event).catch(() => ({}))) ?? {}
   const parsedBody = requestSchema.safeParse(rawBody)
 

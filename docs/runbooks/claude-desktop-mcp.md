@@ -1,204 +1,186 @@
-# Claude Desktop MCP 連接
+# Claude Remote MCP 連接
 
-本手冊說明如何把本專案的 remote MCP 服務接到 Claude Desktop。
+本手冊說明如何讓本專案的 `/mcp` 以 **Claude-first remote connector** 方式上線，並保留 legacy Bearer token + Desktop bridge 作為 migration / internal tooling 路徑。
 
 ## 結論先講
 
-- Claude 官方已支援 remote MCP，且 Claude.ai、Claude Desktop、Claude mobile 共用同一套 connector/auth 基礎設施。
-- 但 Claude 官方目前明確不支援使用者手貼 static bearer token 作為 remote connector 驗證方式。
-- 本專案目前的 MCP 驗證是純 `Authorization: Bearer <token>`，沒有 OAuth。
-- 所以現況下不能把本專案的 `/mcp` 直接加成 Claude 的 remote custom connector。
-- 目前最穩的接法是：Claude Desktop 連本機 stdio bridge，由 bridge 代為呼叫遠端 `/mcp` 並附上 Bearer token。
+- 正式主路線已改為：**既有本地帳號 + known connector allowlist + OAuth-compatible remote MCP**
+- 正式 consumer 以 **Claude remote connector** 為主，目標涵蓋 Claude web / desktop / mobile
+- `Authorization: Bearer <legacy token>` 仍可用，但定位只限 migration、Inspector、內部驗證與非使用者型 automation
+- 若要給一般使用者直接授權使用，**不要**再引導他們手貼 legacy token
 
-## 為什麼不能直接用 Claude Remote Connector
-
-Claude 官方 connector auth 文件目前列出的重點如下：
-
-- hosted Claude surfaces 共用同一套 auth 基礎設施
-- remote connector 支援 OAuth 類型與 `none`
-- `static_bearer` 目前不支援
-
-本專案目前的 server 端行為則是：
-
-- `/mcp` 每次請求都必須帶 Bearer token
-- token 由 admin 建立，只會回傳明文一次
-- server 端只存 token hash，不存明文
-
-因此兩邊目前是卡在 auth 模式不相容，不是 MCP 工具本身不相容。
-
-## 推薦做法
-
-### 方案 A：現在就要接 Claude Desktop
-
-使用本 repo 內建的本機 bridge：
-
-- bridge 檔案：`scripts/claude-desktop-mcp-bridge.mjs`
-- Claude Desktop 走本機 stdio MCP
-- bridge 轉送到遠端 `/mcp`
-- bridge 自動補上 `Authorization: Bearer <token>`
-- 遠端 URL 預設必須使用 `https://`；只有 `localhost`、`127.0.0.1`、`::1` 的本機開發端點允許 `http://`
-
-### 方案 B：未來要支援 Claude.ai / Desktop / mobile 直接連
-
-把本專案 MCP auth 升級為 Claude remote connector 支援的 OAuth 模式。
-
-在那之前，不要把目前的 Bearer token 流程誤認為可直接用在 Claude custom connector。
-
-## 前置條件
-
-1. 已安裝 Claude Desktop。
-2. 本機可執行 `node`。
-3. 你有一組可用的 MCP token。
-4. 遠端 `/mcp` 端點可從你的電腦連線。
-
-## 建立 MCP Token
-
-### 方式 1：管理後台
-
-使用管理介面的 MCP Token 管理頁建立 token。
-
-建議 scope：
-
-- `knowledge.search`
-- `knowledge.ask`
-- `knowledge.citation.read`
-- `knowledge.category.list`
-
-只有在你確定 Claude Desktop 可以讀 restricted 資料時，才加：
-
-- `knowledge.restricted.read`
-
-### 方式 2：腳本
-
-本 repo 已有建立 token 的腳本：
-
-```bash
-npx tsx scripts/create-mcp-token.ts \
-  --name "Claude Desktop" \
-  --scopes "knowledge.search,knowledge.ask,knowledge.citation.read,knowledge.category.list"
-```
-
-此腳本成功後會直接印出測試用的 `/mcp` curl 範例。
-
-## Claude Desktop 設定
-
-macOS 設定檔位置：
+## 架構摘要
 
 ```text
-~/Library/Application Support/Claude/claude_desktop_config.json
+Claude remote connector
+  -> GET /api/auth/mcp/authorize
+  -> 使用者以既有 better-auth 帳號登入
+  -> consent UI 確認 granted scopes
+  -> POST /api/auth/mcp/authorize
+  -> POST /api/auth/mcp/token
+  -> Bearer <oauth access token> 呼叫 /mcp
+  -> middleware 解析 principal.userId
+  -> role / guest policy / restricted replay 沿用既有治理
 ```
 
-### 最直接的設定
+同一個 `/mcp` endpoint 仍同時接受：
 
-把下列內容加入 `mcpServers`：
+- OAuth access token：正式 remote connector 路線
+- legacy MCP token：migration-only 路線
+
+## 必備設定
+
+### 1. Runtime config
+
+以下變數會影響 remote connector rollout：
+
+| 變數                                                | 用途                   | 建議值                   |
+| --------------------------------------------------- | ---------------------- | ------------------------ |
+| `NUXT_KNOWLEDGE_MCP_CONNECTOR_CLIENTS_JSON`         | known client allowlist | 至少包含 `claude-remote` |
+| `NUXT_KNOWLEDGE_MCP_ACCESS_TOKEN_TTL_SECONDS`       | access token TTL       | `600`                    |
+| `NUXT_KNOWLEDGE_MCP_AUTHORIZATION_CODE_TTL_SECONDS` | authorization code TTL | `120`                    |
+
+`NUXT_KNOWLEDGE_MCP_CONNECTOR_CLIENTS_JSON` 範例：
 
 ```json
-{
-  "mcpServers": {
-    "agentic-rag-remote": {
-      "command": "node",
-      "args": [
-        "/ABSOLUTE/PATH/TO/scripts/claude-desktop-mcp-bridge.mjs",
-        "--mcp-url",
-        "https://agentic.yudefine.com.tw/mcp",
-        "--token",
-        "<YOUR_MCP_TOKEN>"
-      ]
-    }
+[
+  {
+    "clientId": "claude-remote",
+    "enabled": true,
+    "allowedScopes": [
+      "knowledge.ask",
+      "knowledge.search",
+      "knowledge.category.list",
+      "knowledge.citation.read"
+    ],
+    "environments": ["production"],
+    "name": "Claude Remote",
+    "redirectUris": ["https://claude.example/callback"]
   }
-}
+]
 ```
 
-請把以下欄位換成實際值：
+注意事項：
 
-- `/ABSOLUTE/PATH/TO/...`：repo 在你電腦上的絕對路徑
-- `https://agentic.yudefine.com.tw/mcp`：你的環境 `/mcp` 端點
-- `<YOUR_MCP_TOKEN>`：剛建立的明文 token
+- 這是 **allowlist config**，不是 secret；可用 `wrangler secret put` 或 `vars` 管理，但 production 仍建議走受控流程更新
+- 若值缺失、JSON 格式錯誤、或不是陣列，Nuxt 啟動會直接失敗，避免 silent misconfig
+- 若 registry 為空，remote connector 授權流程會在 `/api/auth/mcp/authorize` 直接拒絕 unknown client
 
-### 比較安全的設定
+### 2. 本地帳號前提
 
-若你不想把 token 出現在 process args，可改成 shell 包一層：
+使用者必須先有本系統既有帳號。授權流程 **不會** 自動建帳。
 
-```json
-{
-  "mcpServers": {
-    "agentic-rag-remote": {
-      "command": "bash",
-      "args": [
-        "-lc",
-        "export MCP_REMOTE_URL='https://agentic.yudefine.com.tw/mcp'; export MCP_AUTH_TOKEN='<YOUR_MCP_TOKEN>'; node /ABSOLUTE/PATH/TO/scripts/claude-desktop-mcp-bridge.mjs"
-      ]
-    }
-  }
-}
-```
+允許的登入來源：
 
-bridge 支援以下環境變數：
+- Google OAuth
+- Passkey（若 feature flag 開啟）
 
-- `MCP_REMOTE_URL`
-- `MCP_AUTH_TOKEN`
-- `MCP_TIMEOUT_MS`
+若 session 沒有對應本地 `user.id`，授權頁會顯示「無法辨識本地帳號」並拒絕繼續。
 
-注意：bridge 會轉送 JSON-RPC request 與 notification；若遠端端點設錯，Bearer token 也會一併送出，所以不要把 `MCP_REMOTE_URL` 指向不受信任主機。
+## Claude remote connector 上線流程
 
-## 啟用步驟
+### Operator 準備
 
-1. 存檔 `claude_desktop_config.json`。
-2. 完全關閉 Claude Desktop。
-3. 重新啟動 Claude Desktop。
-4. 開一個新對話，確認輸入框附近出現 MCP 工具指示。
+1. 設好 `NUXT_KNOWLEDGE_MCP_CONNECTOR_CLIENTS_JSON`
+2. 確認 client 的 `redirectUris`、`allowedScopes`、`environments` 正確
+3. 確認部署環境可從外網存取 `/api/auth/mcp/authorize`、`/api/auth/mcp/token`、`/mcp`
+4. 確認測試帳號已可登入本系統，且角色 / guest policy 符合預期
 
-## 驗證方式
+### 使用者授權流程
 
-可以先問 Claude Desktop：
+1. Claude 送使用者到 `/auth/mcp/authorize?...`
+2. 未登入者先看到本地帳號登入卡片
+3. 已登入者看到 consent 卡片，列出：
+   - 目前授權帳號
+   - connector 名稱
+   - requested / granted scopes
+4. 使用者按「允許並繼續」後，系統發 authorization code 回 connector
+5. connector 用 code 打 `/api/auth/mcp/token`
+6. 之後以 `Bearer <oauth access token>` 呼叫 `/mcp`
 
-- 列出目前可用的知識庫工具
-- 幫我搜尋某個已存在的文件關鍵字
-- 幫我列出知識庫分類
+### Smoke checklist
 
-如果 bridge 與 token 都正常，Claude Desktop 應能看到 remote server 的 tools/list 結果。
+1. 未登入打授權頁，看到登入卡片而不是 500
+2. 已登入 member 打授權頁，看到 consent 與正確 scope
+3. 拒絕授權時，redirect URI 收到 `error=access_denied`
+4. 同意授權後，token exchange 拿到 `access_token`、`token_type=Bearer`
+5. 用 access token 打 `/mcp`：
+   - `listCategories` / `searchKnowledge` 成功
+   - `askKnowledge` 成功或依 guest policy 被正確阻擋
+   - restricted replay 仍需 `knowledge.restricted.read`
 
-## 本專案的 MCP Auth 流程
+## Guest policy 與權限語意
 
-本專案目前的 auth 流程如下：
+OAuth principal 與 Web 使用相同的本地使用者真相：
 
-1. admin 透過 `/api/admin/mcp-tokens` 建立 token。
-2. server 回傳明文 token 一次；之後只保留 hash。
-3. client 呼叫 `/mcp` 時必須帶 `Authorization: Bearer <token>`。
-4. server 對明文 token 做 SHA-256，查 active token record。
-5. 查到後更新 `last_used_at`。
-6. middleware 寫入 `event.context.mcpAuth`。
-7. 每個 tool 再檢查對應 scope。
-8. scope 通過後，還要再經過 rate limit 與 role × guest policy gate。
+- `admin` / `member`：正常依 scope 存取
+- `guest` + `same_as_member`：照 member 規則
+- `guest` + `browse_only`：可用 `searchKnowledge` / `listCategories` / `getDocumentChunk`，`askKnowledge` 會被拒絕
+- `guest` + `no_access`：所有 MCP tools 都會回 `ACCOUNT_PENDING`
 
-## Scope 對應
+這些規則對 OAuth access token 與 legacy token 共用同一套 `knowledge.*` scope vocabulary。
 
-| Tool               | Required scope            |
-| ------------------ | ------------------------- |
-| `searchKnowledge`  | `knowledge.search`        |
-| `askKnowledge`     | `knowledge.ask`           |
-| `getDocumentChunk` | `knowledge.citation.read` |
-| `listCategories`   | `knowledge.category.list` |
+## Legacy Bearer token 路徑
 
-restricted 文件可見性另外受 `knowledge.restricted.read` 控制。
+legacy MCP token **仍存在**，但用途改為：
 
-## 風險與注意事項
+- migration 期間的相容驗證
+- MCP Inspector / curl / integration smoke
+- 本機 Claude Desktop stdio bridge
+- 明確受控的 non-user automation
 
-- 不要把 production 高權限 token 長期放在多人共用電腦。
-- 建議為 Claude Desktop 建一組專用 token，並設定到期日。
-- 若只需要一般查詢，不要給 `knowledge.restricted.read`。
-- bridge 只是 auth/transport workaround，不會改變 server 端權限模型。
+不建議用途：
 
-## 已驗證項目
+- 一般使用者 remote connector
+- 文件把它寫成與 OAuth 並列的正式接入方式
 
-本 repo 內已有 smoke test 驗證 bridge 會：
+### Claude Desktop bridge
+
+若現在就要在本機接 Claude Desktop，可繼續用：
+
+- `scripts/claude-desktop-mcp-bridge.mjs`
+
+bridge 仍會：
 
 - 接收本機 stdio JSON-RPC
-- 轉送到 remote `/mcp`
-- 自動附上 Bearer token
+- 轉送到遠端 `/mcp`
+- 自動附上 `Authorization: Bearer <legacy token>`
 
-對應測試：`test/integration/claude-desktop-mcp-bridge.test.ts`
+這條路徑是 workaround，不是正式 remote connector onboarding。
 
-## 下一步建議
+## 失敗處置與 rollback
 
-若你的目標是讓 Claude.ai、Claude Desktop、Claude mobile 都能直接用同一個 connector，下一個工程項應該是把目前的 MCP Bearer token auth 升級為 Claude remote connector 支援的 OAuth 流程，而不是繼續擴充 static bearer workaround。
+### 立即停用 remote connector
+
+若 rollout 出現 blocking issue，可先：
+
+1. 將 `NUXT_KNOWLEDGE_MCP_CONNECTOR_CLIENTS_JSON` 中對應 client 的 `enabled` 改為 `false`
+2. 重新部署
+3. 保留 legacy token / bridge 路徑做暫時回退
+
+### 常見失敗點
+
+| 症狀                                                                | 可能原因                                    | 處置                                             |
+| ------------------------------------------------------------------- | ------------------------------------------- | ------------------------------------------------ |
+| `/api/auth/mcp/authorize` 回 `Unknown MCP connector client`         | allowlist 未配置或 `clientId` 不符          | 檢查 `NUXT_KNOWLEDGE_MCP_CONNECTOR_CLIENTS_JSON` |
+| `/api/auth/mcp/authorize` 回 `Redirect URI is not allowed`          | redirect URI 未在 allowlist                 | 補上正確 redirect URI 後重新部署                 |
+| 授權頁顯示「無法辨識本地帳號」                                      | session 沒有本地 `user.id`                  | 先完成一般登入 / account linking                 |
+| `/api/auth/mcp/token` 回 `Authorization code is invalid or expired` | code 過期或重複使用                         | 重新走一次授權流程                               |
+| OAuth token 打 `/mcp` 仍被 403                                      | guest policy / scope / restricted rule 命中 | 檢查使用者角色、scope 與 policy                  |
+
+## 驗證對應
+
+- integration:
+  - `test/integration/mcp-connector-authorize-route.test.ts`
+  - `test/integration/mcp-connector-authorize-post-route.test.ts`
+  - `test/integration/mcp-connector-token-route.test.ts`
+  - `test/integration/mcp-oauth-tool-access.test.ts`
+- unit:
+  - `test/unit/mcp-connector-clients.test.ts`
+  - `test/unit/mcp-connector-client-registry.test.ts`
+  - `test/unit/mcp-middleware.test.ts`
+  - `test/unit/mcp-role-gate.test.ts`
+- e2e:
+  - `e2e/mcp-connector-authorize.spec.ts`
+- legacy bridge:
+  - `test/integration/claude-desktop-mcp-bridge.test.ts`

@@ -131,3 +131,20 @@ describe('knowledge runtime aiGateway', () => {
     expect(config.aiGateway.id).toBe('')
   })
 })
+
+describe('knowledge runtime environment parsing', () => {
+  it('preserves staging as a first-class runtime environment', () => {
+    const config = createKnowledgeRuntimeConfig({
+      environment: 'staging',
+      features: {
+        passkey: true,
+      },
+    })
+
+    expect(config.environment).toBe('staging')
+    expect(config.governance.environment).toBe('staging')
+    expect(config.features.passkey).toBe(true)
+    expect(config.governance.configSnapshotVersion).toContain('env=staging')
+    expect(config.governance.configSnapshotVersion).toContain('features.passkey=on')
+  })
+})

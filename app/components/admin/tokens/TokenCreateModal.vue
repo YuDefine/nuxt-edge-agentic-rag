@@ -143,7 +143,7 @@
 <template>
   <UModal
     :open="props.open"
-    title="建立 MCP Token"
+    title="建立 Legacy MCP Token"
     :dismissible="!submitting"
     @update:open="(value) => emit('update:open', value)"
   >
@@ -201,6 +201,14 @@
         class="flex flex-col gap-4"
         @submit="handleSubmit"
       >
+        <UAlert
+          color="warning"
+          variant="subtle"
+          icon="i-lucide-badge-alert"
+          title="這不是 remote connector 的正式登入方式"
+          description="請只在 migration、內部驗證、Inspector 或非使用者型 automation 情境下建立這種 static bearer token。"
+        />
+
         <UFormField label="名稱" name="name" required>
           <UInput
             v-model="state.name"

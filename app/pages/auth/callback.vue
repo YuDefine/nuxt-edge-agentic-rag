@@ -2,14 +2,23 @@
   definePageMeta({ layout: 'auth', auth: false })
 
   const route = useRoute()
+  const { fetchSession } = useUserSession()
   const error = shallowRef<string | null>(null)
   const isTimeout = shallowRef(false)
 
   // 捕獲 OAuth callback 錯誤
-  onMounted(() => {
+  onMounted(async () => {
+    const pendingMcpAuthorizePath = consumeMcpConnectorReturnTo()
     const errorParam = route.query.error
     if (typeof errorParam === 'string' && errorParam) {
       error.value = decodeURIComponent(errorParam)
+      return
+    }
+
+    if (pendingMcpAuthorizePath) {
+      await fetchSession({ force: true }).catch(() => {})
+      await navigateTo(pendingMcpAuthorizePath, { replace: true })
+      return
     }
 
     // 10 秒後顯示 timeout 提示

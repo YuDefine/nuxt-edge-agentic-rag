@@ -20,6 +20,13 @@ function requireQueryValue(value: unknown, fieldName: string): string {
 
 export default defineEventHandler(async function mcpAuthorizeHandler(event) {
   const session = await requireUserSession(event)
+  if (!session.user.id) {
+    throw createError({
+      statusCode: 403,
+      statusMessage: 'Forbidden',
+      message: 'MCP authorization requires a local account',
+    })
+  }
   const query = getQuery(event)
   const knowledgeRuntimeConfig = getKnowledgeRuntimeConfig()
 

@@ -22,6 +22,8 @@
 
 > 目前 workflow 不會在每次 deploy 時從 GitHub Actions 同步 runtime secrets 到 Worker。`NUXT_SESSION_PASSWORD`、`BETTER_AUTH_SECRET`、OAuth secrets、R2 upload keys、`ADMIN_EMAIL_ALLOWLIST` 等 runtime secrets 應預先以 `wrangler secret put` 寫入各環境的 Worker secret store。
 
+> 2026-04-22 補充：`nuxt.config.ts` 會在 build time 讀取 `NUXT_KNOWLEDGE_ENVIRONMENT`、`NUXT_KNOWLEDGE_FEATURE_PASSKEY`、`NUXT_PASSKEY_RP_ID`、`NUXT_PASSKEY_RP_NAME`。這四個值若只存在於 Worker runtime vars、沒有同時注入 GitHub Actions 的 build env，production artifact 會把 passkey UI gate 編成 `false`，且 `/api/auth/passkey/*` 路由不會註冊。
+
 若 staging 需要前端直傳 R2，production / staging bucket 都要套用根目錄 `r2-cors.json`，並確認其中包含：
 
 - `http://localhost:3010`
@@ -54,19 +56,20 @@
 
 以下 secrets 應直接存在 Worker secret store：
 
-| Secret                                     | 說明                             |
-| ------------------------------------------ | -------------------------------- |
-| `NUXT_SESSION_PASSWORD`                    | Session 加密金鑰（≥32 字元）     |
-| `BETTER_AUTH_SECRET`                       | Better Auth 加密金鑰（≥32 字元） |
-| `NUXT_OAUTH_GOOGLE_CLIENT_ID`              | Google OAuth Client ID           |
-| `NUXT_OAUTH_GOOGLE_CLIENT_SECRET`          | Google OAuth Client Secret       |
-| `ADMIN_EMAIL_ALLOWLIST`                    | 管理員 Email（逗號分隔）         |
-| `NUXT_PUBLIC_SITE_URL`                     | 該環境實際 site URL              |
-| `NUXT_KNOWLEDGE_UPLOADS_ACCOUNT_ID`        | Cloudflare Account ID            |
-| `NUXT_KNOWLEDGE_UPLOADS_BUCKET_NAME`       | R2 Bucket 名稱                   |
-| `NUXT_KNOWLEDGE_UPLOADS_ACCESS_KEY_ID`     | R2 API Access Key ID             |
-| `NUXT_KNOWLEDGE_UPLOADS_SECRET_ACCESS_KEY` | R2 API Secret                    |
-| `NUXT_KNOWLEDGE_AUTO_RAG_API_TOKEN`        | AutoRAG / Workers AI token       |
+| Secret                                      | 說明                             |
+| ------------------------------------------- | -------------------------------- |
+| `NUXT_SESSION_PASSWORD`                     | Session 加密金鑰（≥32 字元）     |
+| `BETTER_AUTH_SECRET`                        | Better Auth 加密金鑰（≥32 字元） |
+| `NUXT_OAUTH_GOOGLE_CLIENT_ID`               | Google OAuth Client ID           |
+| `NUXT_OAUTH_GOOGLE_CLIENT_SECRET`           | Google OAuth Client Secret       |
+| `ADMIN_EMAIL_ALLOWLIST`                     | 管理員 Email（逗號分隔）         |
+| `NUXT_PUBLIC_SITE_URL`                      | 該環境實際 site URL              |
+| `NUXT_KNOWLEDGE_UPLOADS_ACCOUNT_ID`         | Cloudflare Account ID            |
+| `NUXT_KNOWLEDGE_UPLOADS_BUCKET_NAME`        | R2 Bucket 名稱                   |
+| `NUXT_KNOWLEDGE_UPLOADS_ACCESS_KEY_ID`      | R2 API Access Key ID             |
+| `NUXT_KNOWLEDGE_UPLOADS_SECRET_ACCESS_KEY`  | R2 API Secret                    |
+| `NUXT_KNOWLEDGE_AUTO_RAG_API_TOKEN`         | AutoRAG / Workers AI token       |
+| `NUXT_KNOWLEDGE_MCP_CONNECTOR_CLIENTS_JSON` | known connector allowlist        |
 
 ### 3. 目前 workflow 真實行為
 
@@ -76,6 +79,8 @@
 2. 只有 `ci` 全綠才會進入 `deploy-production` 或 `deploy-staging`
 3. production：對 `agentic-rag-db` 先跑 remote D1 migrations，再 build，再從 `.output/server` deploy
 4. staging：對 `agentic-rag-db-staging` 先跑 remote D1 migrations，再 build，接著渲染 `.output/server/wrangler.staging.json`，最後 deploy
+
+其中 build step 必須顯式帶入 `NUXT_KNOWLEDGE_ENVIRONMENT`、`NUXT_KNOWLEDGE_FEATURE_PASSKEY`、`NUXT_PASSKEY_RP_ID`、`NUXT_PASSKEY_RP_NAME` 與對應的非 secret binding vars；不可假設 `wrangler.jsonc` / `wrangler.staging.jsonc` 的 runtime vars 會自動反映到 `pnpm build`。
 
 > 2026-04-22 更新：workflow 的 smoke test 已改為共用 `scripts/check-deploy-health.mjs`。若 GitHub runner 對 custom domain 收到 `403` 且判定為 Cloudflare WAF / Bot protection，job 會記 warning 並放行，不再把 deploy 本體誤判為失敗。
 
@@ -217,6 +222,43 @@ curl -s -X POST "$BASE_URL/mcp" \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"getDocumentChunk","arguments":{"citationId":"<restricted-citation-id>"}}}'
 # 預期：403 Forbidden
 ```
+
+### #4-B Remote MCP OAuth 驗證
+
+```bash
+# 1. 先確認 runtime 已配置 known connector client
+echo "$NUXT_KNOWLEDGE_MCP_CONNECTOR_CLIENTS_JSON"
+
+# 2. 已登入本地帳號後，在瀏覽器開啟：
+# https://agentic.yudefine.com.tw/auth/mcp/authorize?client_id=claude-remote&redirect_uri=<connector-callback>&scope=knowledge.ask%20knowledge.search%20knowledge.category.list
+
+# 3. 同意授權後，connector 以 code 打 token endpoint
+curl -s -X POST "$BASE_URL/api/auth/mcp/token" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "grant_type": "authorization_code",
+    "code": "<authorization-code>",
+    "client_id": "claude-remote",
+    "redirect_uri": "<connector-callback>"
+  }' | jq .
+
+# 預期：回 access_token / token_type=Bearer / expires_in / scope
+
+# 4. 用 access token 打 /mcp
+export MCP_OAUTH_TOKEN="<oauth access token>"
+
+curl -s -X POST "$BASE_URL/mcp" \
+  -H "Authorization: Bearer $MCP_OAUTH_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"listCategories","arguments":{"includeCounts":true}}}' | jq .
+```
+
+預期：
+
+- consent 頁顯示目前登入帳號與 requested scopes
+- token exchange 成功
+- `/mcp` 可用 OAuth access token 成功呼叫 browse-safe tools
+- 若測試帳號為 guest，仍需符合 browse-only / no-access 規則
 
 ### #5 Audit Log 與 Rate Limit 驗證
 

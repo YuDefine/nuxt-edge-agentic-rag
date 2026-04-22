@@ -159,3 +159,31 @@
   - **✅ Resolved 2026-04-20**：TD-005 commit 285482b 修復 — `#13-14` 用 `<UFormField>` 包裹（USelect×3 + UInput×2）同時解 button-name + label；`#15-17` 新增 `shared/utils/table.ts` `srOnlyHeader(label)` utility 統一 UTable actions header；`#18` `/admin/debug/latency` 補 `<h2 sr-only>` 並改用 `aria-labelledby` 單一 source of truth，unauthorized/empty/error 分支 `<h3>` 改為 `<h2>` 填全分支覆蓋。Regression guard：`e2e/td005-a11y-admin.spec.ts` 掃四頁 4/4 pass。
 
 累積 Findings: **28 項**。
+
+---
+
+## oauth-user-delegated-remote-mcp — 2026-04-22
+
+**影響範圍**:
+
+- `app/pages/auth/mcp/authorize.vue`
+- `app/components/auth/McpConnectorLoginCard.vue`
+- `app/components/auth/McpConnectorConsentCard.vue`
+
+本輪 Design Review 未發現新的 blocking finding；主要工作是修正 consent 頁把 composable `Ref` 直接往子元件傳遞，導致 runtime 標題與按鈕 state 異常的問題。修正後以下檢查通過：
+
+- Playwright：`e2e/mcp-connector-authorize.spec.ts`
+  - signed-out login guidance
+  - xs / md / xl 三斷點無 horizontal overflow
+  - consent 主操作可見且可透過鍵盤抵達
+- axe-core targeted rules：`button-name` / `link-name` / `label` / `page-has-heading-one` 為 0 violation
+- 本次 UI 仍符合 `.impeccable.md` 的 neutral monochrome 規則，未觸發額外 `/design improve` 修正回合
+
+| #   | 類別  | 問題摘要                                                                                 | 嚴重度  | 發現來源   |
+| --- | ----- | ---------------------------------------------------------------------------------------- | ------- | ---------- |
+| 29  | state | consent 頁初版把 `Ref` wrapper 傳入子元件，造成 `clientName` / button state runtime 錯誤 | warning | Playwright |
+
+備註：
+
+- 這是 state wiring 問題，不是新的視覺語言漂移；修復後未再觀察到新的 responsive / a11y blocking issue。
+- 累積 Findings 更新為 **29 項**。

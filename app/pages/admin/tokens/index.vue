@@ -130,8 +130,10 @@
   <div class="flex flex-col gap-6">
     <div class="flex items-center justify-between gap-3">
       <div>
-        <h1 class="text-2xl font-bold text-default">MCP Token 管理</h1>
-        <p class="mt-1 text-sm text-muted">建立、檢視並撤銷 MCP 代理存取 token。</p>
+        <h1 class="text-2xl font-bold text-default">Legacy MCP Token 管理</h1>
+        <p class="mt-1 text-sm text-muted">
+          僅供 migration、內部驗證與非使用者型 automation 使用，不是 remote connector 正式入口。
+        </p>
       </div>
       <UButton color="primary" variant="solid" size="md" icon="i-lucide-plus" @click="openCreate">
         建立 Token
@@ -139,6 +141,16 @@
     </div>
 
     <UCard>
+      <template #header>
+        <LazyUAlert
+          color="warning"
+          variant="subtle"
+          icon="i-lucide-badge-alert"
+          title="OAuth user-delegated remote MCP 已是正式主路線"
+          description="Claude remote connector 應走使用者授權流程；此頁只保留 legacy bearer token 的過渡與內部工具用途。"
+        />
+      </template>
+
       <template v-if="pageState === 'loading'">
         <div class="flex flex-col items-center justify-center py-16">
           <UIcon
@@ -188,7 +200,7 @@
           </div>
           <h3 class="mb-2 text-lg font-semibold text-default">尚未建立任何 Token</h3>
           <p class="mb-6 max-w-sm text-sm text-muted">
-            建立第一個 MCP token 後，代理即可使用它存取知識庫 API。
+            若你需要 migration 驗證、Inspector 或非使用者型 automation，可建立第一個 legacy token。
           </p>
           <UButton
             color="primary"
@@ -197,7 +209,7 @@
             icon="i-lucide-plus"
             @click="openCreate"
           >
-            建立第一個 Token
+            建立第一個 Legacy Token
           </UButton>
         </div>
       </template>

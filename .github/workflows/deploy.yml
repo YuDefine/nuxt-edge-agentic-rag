@@ -99,9 +99,24 @@ jobs:
         env:
           BETTER_AUTH_SECRET: ${{ secrets.PROD_BETTER_AUTH_SECRET || 'build-only-prod-better-auth-secret-32chars' }}
           NODE_OPTIONS: --max-old-space-size=4096
+          # `nuxt.config.ts` reads these at build time for both the public
+          # passkey UI gate and the server auth plugin registration. If they
+          # are omitted here, the built artifact silently compiles passkey as
+          # disabled (`false`) even though runtime wrangler vars say `true`.
+          NUXT_KNOWLEDGE_AI_GATEWAY_CACHE_ENABLED: 'true'
+          NUXT_KNOWLEDGE_AI_GATEWAY_ID: agentic-rag-production
+          NUXT_KNOWLEDGE_AI_SEARCH_INDEX: agentic-rag
+          NUXT_KNOWLEDGE_D1_DATABASE: DB
+          NUXT_KNOWLEDGE_DOCUMENTS_BUCKET: BLOB
+          NUXT_KNOWLEDGE_ENVIRONMENT: production
+          NUXT_KNOWLEDGE_MCP_CONNECTOR_CLIENTS_JSON: ${{ vars['PROD_MCP_CONNECTOR_CLIENTS_JSON'] || secrets.PROD_MCP_CONNECTOR_CLIENTS_JSON }}
+          NUXT_KNOWLEDGE_FEATURE_PASSKEY: 'true'
+          NUXT_KNOWLEDGE_RATE_LIMIT_KV: KV
           NUXT_SESSION_PASSWORD: ${{ secrets.PROD_NUXT_SESSION_PASSWORD || 'build-only-prod-session-password-32chars' }}
           NUXT_PUBLIC_SENTRY_DSN: ${{ secrets.NUXT_PUBLIC_SENTRY_DSN }}
           NUXT_PUBLIC_SITE_URL: ${{ secrets.PROD_SITE_URL }}
+          NUXT_PASSKEY_RP_ID: yudefine.com.tw
+          NUXT_PASSKEY_RP_NAME: 知識問答系統
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
           SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
           SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
@@ -174,9 +189,22 @@ jobs:
         env:
           BETTER_AUTH_SECRET: ${{ secrets.STAGING_BETTER_AUTH_SECRET || 'build-only-staging-better-auth-secret-32chars' }}
           NODE_OPTIONS: --max-old-space-size=4096
+          # Keep staging's compiled config aligned with `wrangler.staging.jsonc`
+          # so passkey routes and UI flags do not drift from runtime intent.
+          NUXT_KNOWLEDGE_AI_GATEWAY_CACHE_ENABLED: 'false'
+          NUXT_KNOWLEDGE_AI_GATEWAY_ID: agentic-rag-staging
+          NUXT_KNOWLEDGE_AI_SEARCH_INDEX: agentic-rag-staging
+          NUXT_KNOWLEDGE_D1_DATABASE: DB
+          NUXT_KNOWLEDGE_DOCUMENTS_BUCKET: BLOB
+          NUXT_KNOWLEDGE_ENVIRONMENT: staging
+          NUXT_KNOWLEDGE_MCP_CONNECTOR_CLIENTS_JSON: ${{ vars['STAGING_MCP_CONNECTOR_CLIENTS_JSON'] || secrets.STAGING_MCP_CONNECTOR_CLIENTS_JSON }}
+          NUXT_KNOWLEDGE_FEATURE_PASSKEY: 'true'
+          NUXT_KNOWLEDGE_RATE_LIMIT_KV: KV
           NUXT_SESSION_PASSWORD: ${{ secrets.STAGING_NUXT_SESSION_PASSWORD || 'build-only-staging-session-password-32chars' }}
           NUXT_PUBLIC_SENTRY_DSN: ${{ secrets.NUXT_PUBLIC_SENTRY_DSN }}
           NUXT_PUBLIC_SITE_URL: ${{ secrets.STAGING_SITE_URL }}
+          NUXT_PASSKEY_RP_ID: yudefine.com.tw
+          NUXT_PASSKEY_RP_NAME: 知識問答系統
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
           SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
           SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}

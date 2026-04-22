@@ -24,7 +24,7 @@ The `guest_policy` setting SHALL be one of exactly three values: `same_as_member
 
 ### Requirement: Browse-Only Policy Restricts Guest Question Submission
 
-When `guest_policy = 'browse_only'`, the system SHALL allow guest users to view published non-restricted documents and citation previews, but SHALL NOT allow them to submit new questions via Web `/chat` or MCP `askKnowledge`.
+When `guest_policy = 'browse_only'`, the system SHALL allow guest users to view published non-restricted documents and citation previews, but SHALL NOT allow them to submit new questions via Web `/chat` or MCP `askKnowledge`. This rule SHALL apply to guest principals resolved from remote OAuth access tokens and to any remaining guest-scoped legacy MCP tokens during migration.
 
 #### Scenario: Guest submits question under browse_only policy on Web
 
@@ -32,9 +32,9 @@ When `guest_policy = 'browse_only'`, the system SHALL allow guest users to view 
 - **THEN** the server rejects the request with HTTP 403 and a message explaining guests are in browse-only mode
 - **AND** the chat UI disables the input field and displays a browse-only banner
 
-#### Scenario: Guest calls askKnowledge under browse_only via MCP
+#### Scenario: Guest principal calls askKnowledge under browse_only via MCP
 
-- **WHEN** `guest_policy = 'browse_only'` and a guest-owned MCP token calls `askKnowledge`
+- **WHEN** `guest_policy = 'browse_only'` and an MCP request resolves to a guest principal
 - **THEN** the tool responds with HTTP 403 and error code `GUEST_ASK_DISABLED`
 
 #### Scenario: Guest still lists categories under browse_only
@@ -42,11 +42,44 @@ When `guest_policy = 'browse_only'`, the system SHALL allow guest users to view 
 - **WHEN** `guest_policy = 'browse_only'` and a guest calls `listCategories` or browses the document catalog UI
 - **THEN** the system returns public non-restricted categories and documents
 
+<!-- @trace
+source: oauth-user-delegated-remote-mcp
+updated: 2026-04-22
+code:
+  - app/pages/auth/mcp/authorize.vue
+  - app/components/auth/McpConnectorConsentCard.vue
+  - app/components/auth/McpConnectorLoginCard.vue
+  - playwright.config.ts
+  - nuxt.config.ts
+  - app/composables/useMcpConnectorAuthorization.ts
+  - reports/latest.md
+  - shared/utils/mcp-connector-client-registry.ts
+  - shared/utils/mcp-connector-redirect.ts
+  - server/api/auth/mcp/authorize.get.ts
+  - docs/runbooks/claude-desktop-mcp.md
+  - app/components/admin/tokens/TokenCreateModal.vue
+  - docs/verify/DISASTER_RECOVERY_RUNBOOK.md
+  - docs/verify/production-deploy-checklist.md
+  - docs/verify/DEPLOYMENT_RUNBOOK.md
+  - app/utils/mcp-connector-return-to.ts
+  - app/pages/admin/tokens/index.vue
+  - server/api/auth/mcp/authorize.post.ts
+  - app/pages/auth/callback.vue
+  - docs/design-review-findings.md
+tests:
+  - e2e/mcp-connector-authorize.spec.ts
+  - test/integration/mcp-connector-authorize-route.test.ts
+  - test/unit/mcp-connector-redirect.test.ts
+  - test/unit/mcp-connector-client-registry.test.ts
+  - test/integration/mcp-oauth-tool-access.test.ts
+  - test/integration/mcp-connector-authorize-post-account-guard.test.ts
+-->
+
 ---
 
 ### Requirement: No-Access Policy Blocks All Feature Surfaces For Guests
 
-When `guest_policy = 'no_access'`, the system SHALL deny guest users access to every feature surface except a dedicated `/account-pending` page and its supporting auth endpoints. MCP tools SHALL respond with HTTP 403 and error code `ACCOUNT_PENDING` for guest-owned tokens.
+When `guest_policy = 'no_access'`, the system SHALL deny guest users access to every feature surface except a dedicated `/account-pending` page and its supporting auth endpoints. MCP tools SHALL respond with HTTP 403 and error code `ACCOUNT_PENDING` for guest principals resolved from remote OAuth access tokens and for any remaining guest-scoped legacy MCP tokens during migration.
 
 #### Scenario: Guest visits chat under no_access policy
 
@@ -54,10 +87,43 @@ When `guest_policy = 'no_access'`, the system SHALL deny guest users access to e
 - **THEN** the app redirects to `/account-pending`
 - **AND** `/account-pending` displays a message instructing the guest to contact an admin
 
-#### Scenario: Guest MCP token is fully blocked under no_access
+#### Scenario: Guest MCP principal is fully blocked under no_access
 
-- **WHEN** `guest_policy = 'no_access'` and a guest-owned MCP token calls any tool
+- **WHEN** `guest_policy = 'no_access'` and an MCP request resolves to a guest principal
 - **THEN** the tool responds with HTTP 403 and error code `ACCOUNT_PENDING`
+
+<!-- @trace
+source: oauth-user-delegated-remote-mcp
+updated: 2026-04-22
+code:
+  - app/pages/auth/mcp/authorize.vue
+  - app/components/auth/McpConnectorConsentCard.vue
+  - app/components/auth/McpConnectorLoginCard.vue
+  - playwright.config.ts
+  - nuxt.config.ts
+  - app/composables/useMcpConnectorAuthorization.ts
+  - reports/latest.md
+  - shared/utils/mcp-connector-client-registry.ts
+  - shared/utils/mcp-connector-redirect.ts
+  - server/api/auth/mcp/authorize.get.ts
+  - docs/runbooks/claude-desktop-mcp.md
+  - app/components/admin/tokens/TokenCreateModal.vue
+  - docs/verify/DISASTER_RECOVERY_RUNBOOK.md
+  - docs/verify/production-deploy-checklist.md
+  - docs/verify/DEPLOYMENT_RUNBOOK.md
+  - app/utils/mcp-connector-return-to.ts
+  - app/pages/admin/tokens/index.vue
+  - server/api/auth/mcp/authorize.post.ts
+  - app/pages/auth/callback.vue
+  - docs/design-review-findings.md
+tests:
+  - e2e/mcp-connector-authorize.spec.ts
+  - test/integration/mcp-connector-authorize-route.test.ts
+  - test/unit/mcp-connector-redirect.test.ts
+  - test/unit/mcp-connector-client-registry.test.ts
+  - test/integration/mcp-oauth-tool-access.test.ts
+  - test/integration/mcp-connector-authorize-post-account-guard.test.ts
+-->
 
 ---
 

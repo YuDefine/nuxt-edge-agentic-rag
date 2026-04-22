@@ -1,5 +1,6 @@
 import { createNitroRollupConfig } from './build/nitro/rollup'
 import { createKnowledgeRuntimeConfig } from './shared/schemas/knowledge-runtime'
+import { parseMcpConnectorClientsEnv } from './shared/utils/mcp-connector-client-registry'
 
 const isVitest = process.env.VITEST === 'true'
 const disableNuxtHints =
@@ -37,7 +38,7 @@ const knowledgeRuntimeConfig = createKnowledgeRuntimeConfig({
         ? Number(process.env.NUXT_KNOWLEDGE_MCP_AUTHORIZATION_CODE_TTL_SECONDS)
         : undefined,
     },
-    clients: [],
+    clients: parseMcpConnectorClientsEnv(process.env.NUXT_KNOWLEDGE_MCP_CONNECTOR_CLIENTS_JSON),
   },
   uploads: {
     accountId: process.env.NUXT_KNOWLEDGE_UPLOADS_ACCOUNT_ID,

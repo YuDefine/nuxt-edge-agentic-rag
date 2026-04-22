@@ -1,6 +1,6 @@
 # 專題口試答辯準備文件
 
-> **專題標題**：基於邊緣原生架構之混合式檢索增強生成系統設計與實作：以中小企業知識庫為例
+> **專題標題**：基於邊緣原生架構之代理式檢索增強生成系統設計與實作：以中小企業知識庫為例
 >
 > **使用說明**：本文件為口試準備用，包含可能被挑戰的問題與防禦策略。建議熟悉所有論點，並準備資料佐證。
 >
@@ -8,7 +8,7 @@
 >
 > - **已實作主軸**：`current-version-only`、`citationId` 回放、三級權限治理、遮罩後查詢日誌、signed upload 與文件版本生命週期。
 > - **下一階段擴充**：`pdf` / `docx` / `xlsx` / `pptx` 的 canonical snapshot ingestion、legacy Office conversion、音檔 / 影片 transcript pipeline、條件式 cloud fallback。
-> - **避免說法**：不要把「架構保留能力」說成「目前已完成自動路由」，也不要把估算數字（例如 70/30、80%、<50ms）當成這一版已驗證的 production 統計。
+> - **避免說法**：不要把「架構保留能力」說成「目前已完成自動路由」，也不要把 acceptance test 已驗證的 self-correction 路徑講成 live runtime 一定會自動觸發；估算數字（例如 70/30、80%、<50ms）也不要當成這一版已驗證的 production 統計。
 
 ---
 
@@ -265,7 +265,43 @@ API 回應時間比較：
 
 ## 四、RAG 技術挑戰
 
-### 4.1 Self-Correction 真的有效嗎？
+### 4.1 你們真的算 Agentic RAG 嗎？
+
+**挑戰問題**：
+
+> 「你們有標榜 Agentic RAG，但看起來不像多代理系統；這樣真的算嗎？」
+
+**建議先講一句話**：
+
+> 「算，但要講精準。本專題不是『完全自主規劃的 multi-agent system』，而是『治理型 / 編排型 Agentic RAG』；代理性主要體現在應用層會根據檢索證據與治理規則，決定回答、拒答、記錄決策路徑、保存引用，並在 follow-up 時重新驗證先前引用是否仍然有效。」
+
+**已落地的 Agentic RAG 要素**：
+
+1. **Query Normalization + current-version-only 檢索**：不是把原始問題直接丟給生成模型，而是先做標準化，再只使用 `active / current` 證據。
+2. **應用層決策分流**：依檢索分數區分 direct answer、judge、refuse，而不是固定 retrieve → generate 單一路徑。
+3. **Citation replay**：回答不是只給自然語言結果，還要保存 `citationId` 並支援回放。
+4. **Conversation stale protection**：follow-up 不把舊答案當真理快取，而是重新檢查先前引用的 `document_version_id` 是否仍為 current。
+5. **Web / MCP 共用治理主幹**：不是只有 Web chat 能用，MCP tool 也沿用同一套知識問答契約。
+
+**要主動承認的邊界**：
+
+1. **目前 runtime 的 answer / judge 仍以 fallback 實作為主**：回答生成偏向依證據片段組裝，judge 也不是完整的模型式判斷器。
+2. **Self-Correction 的 orchestration 與測試已完成，但 live runtime 的 reformulation 尚未 fully model-based**：因此不要說成「現在每一題模糊問題都會自動改寫成功」。
+3. **比較準確的定位**：本版完成的是 Agentic RAG 的治理閉環與流程編排，不是追求高度自主的多步規劃代理。
+
+**最穩妥的收束說法**：
+
+> 「如果用一句話總結，本系統已完成 Agentic RAG 的治理骨架與可驗證流程，但回答生成與 query reformulation 目前仍以 fallback 實作為主，後續才再接正式模型能力。」
+
+**不要這樣說**：
+
+- 「我們已經完成完整 autonomous agent。」
+- 「現在 live demo 一定會進第二輪 self-correction。」
+- 「我們的 agent 會自己規劃工具鏈並多步推理完成所有任務。」
+
+---
+
+### 4.2 Self-Correction 真的有效嗎？
 
 **挑戰問題**：
 
@@ -300,7 +336,7 @@ Query → Retrieve → 評估信心度
 
 ---
 
-### 4.2 向量檢索的準確度如何保證？
+### 4.3 向量檢索的準確度如何保證？
 
 **挑戰問題**：
 
@@ -732,11 +768,12 @@ claude  # 啟動 Claude Code
 - 延遲與效能：若沒有本專題自己的正式量測，就不要講成既定 benchmark。
 - 本版更適合主張「治理主幹完成」，而不是「每個數字都已跑完大規模驗證」。
 
-### 這一版真正要背熟的三件事
+### 這一版真正要背熟的四件事
 
 - 為什麼要先做 `current-version-only`、citation replay、權限治理，而不是直接比模型強弱。
 - 為什麼文件格式要分級支援，而不是一次宣稱全部都能 ingest。
 - 為什麼 Hybrid Managed RAG 的重點是「先治理、後模型」，不是「已完成固定比例的自動切換」。
+- 為什麼本專題可以稱為 Agentic RAG，但更精確地說是「治理型 / 編排型 Agentic RAG」，而不是已完成 fully autonomous multi-agent。
 
 ---
 
@@ -745,7 +782,7 @@ claude  # 啟動 Claude Code
 ### 準備的展示情境
 
 1. **簡單問題**：「如何設定報價單？」→ 展示可引用、可回放的回答
-2. **複雜問題**：「比較 A 流程和 B 流程的差異」→ 展示跨文件檢索、引用與必要時的第二輪 retrieval path
+2. **複雜問題**：「比較 A 流程和 B 流程的差異」→ 展示跨文件檢索與引用；若要談 Self-Correction，建議搭配 acceptance evidence 截圖或錄影，而不要依賴 live demo 固定觸發第二輪 path
 3. **知識庫外問題**：「今天天氣如何？」→ 展示拒答機制
 4. **Passkey 登入**：用手機指紋登入 → 展示無密碼體驗
 5. **OAuth 登入**：Google 一鍵登入
@@ -755,7 +792,7 @@ claude  # 啟動 Claude Code
 1. 系統架構圖（已在報告中）
 2. 延遲比較圖
 3. 成本試算表
-4. Self-Correction 流程圖
+4. Self-Correction 流程圖 + TC-04 / A05 acceptance evidence 截圖或錄影
 5. 登入畫面截圖
 
 ---
@@ -786,19 +823,19 @@ claude  # 啟動 Claude Code
 
 ### 示範步驟
 
-| 步驟 | 動作                                                                                                                               | 預期畫面 / 行為                                                                                      | 對應 Acceptance / TC               |
-| ---- | ---------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- | ---------------------------------- |
-| 1    | 以新 Google 帳號登入（非 allowlist）                                                                                               | 登入後角色為 Guest，看到訪客介面或等候審核提示                                                       | A08                                |
-| 2    | 切換至 seed admin 登入，進入「成員管理」畫面，將步驟 1 之訪客升格為 Member                                                         | 成員列表顯示該帳號，role 變更為 Member；`admin_source` 顯示 allowlist / promotion                    | A08（含 B16 scope 擴張）           |
-| 3    | Member 重新登入，看到空知識庫 onboarding CTA「尚無可問答文件」                                                                     | empty state 圖示 + 說明文字「請聯絡管理員建立第一份文件」                                            | 表 3-6 UI 四態（TC-UI-01）         |
-| 4    | Admin 進入「文件管理」上傳 3 份文件（採購 SOP、人事制度 restricted、報表說明）                                                     | Upload Wizard 四階段進度（上傳 % → 前處理 → smoke 驗證 → 發布成功）                                  | TC-UI-02 loading、EV-01、EV-03     |
-| 5    | Admin 執行發布 transaction，使 3 份文件進入 current 狀態                                                                           | 每份文件 `is_current = true`、`document_versions.index_status = indexed`                             | A04（current-version-only）、EV-01 |
-| 6    | Member 於 Chat 問「PO 和 PR 有什麼差別？」                                                                                         | direct path 串流回答，含【引1】指向採購 SOP current 版引用卡片，可點開回放原文                       | TC-01、A02、A03                    |
-| 7    | Member 問「上個月報表怎麼看？」                                                                                                    | 第一輪較模糊 → 系統進入第二輪 reformulation / retrieval path → 成功回到可引用回答                    | TC-04、A05                         |
-| 8    | Member 問「今天天氣如何？」                                                                                                        | 拒答並顯示「改換關鍵字 / 查看相關文件 / 聯絡管理員」三項引導（B2 拒答 UX）                           | TC-07、A06                         |
-| 9    | 外部 AI Client（Claude Desktop / Cursor）以 MCP Bearer token 呼叫 `askKnowledge` → `getDocumentChunk`，驗證 citation replay 一致性 | JSON-RPC 回應含 `citationId`，replay 內容與 Web 引用卡片片段一致                                     | TC-12、A07、A03                    |
-| 10   | Admin 進入「Query Logs」檢視剛才 MCP + Web 操作的稽核紀錄                                                                          | 列表呈現 channel、outcome、query_type、redaction 狀態等欄位，不顯示未遮罩原文                        | A12、A11、§2.4.1.5 敏感資料治理    |
-| 11   | Admin 進入「訪客權限 Dial」設定頁，將 dial 切為 `browse_only`，以 Guest 重登                                                       | Guest 進入 `/chat` 看到「此環境目前僅開放瀏覽，不可問答」提示；POST `/api/chat` 被 server 拒絕回 403 | A08（含 B16 訪客 dial）            |
+| 步驟 | 動作                                                                                                                               | 預期畫面 / 行為                                                                                                                                                                | 對應 Acceptance / TC               |
+| ---- | ---------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------- |
+| 1    | 以新 Google 帳號登入（非 allowlist）                                                                                               | 登入後角色為 Guest，看到訪客介面或等候審核提示                                                                                                                                 | A08                                |
+| 2    | 切換至 seed admin 登入，進入「成員管理」畫面，將步驟 1 之訪客升格為 Member                                                         | 成員列表顯示該帳號，role 變更為 Member；`admin_source` 顯示 allowlist / promotion                                                                                              | A08（含 B16 scope 擴張）           |
+| 3    | Member 重新登入，看到空知識庫 onboarding CTA「尚無可問答文件」                                                                     | empty state 圖示 + 說明文字「請聯絡管理員建立第一份文件」                                                                                                                      | 表 3-6 UI 四態（TC-UI-01）         |
+| 4    | Admin 進入「文件管理」上傳 3 份文件（採購 SOP、人事制度 restricted、報表說明）                                                     | Upload Wizard 四階段進度（上傳 % → 前處理 → smoke 驗證 → 發布成功）                                                                                                            | TC-UI-02 loading、EV-01、EV-03     |
+| 5    | Admin 執行發布 transaction，使 3 份文件進入 current 狀態                                                                           | 每份文件 `is_current = true`、`document_versions.index_status = indexed`                                                                                                       | A04（current-version-only）、EV-01 |
+| 6    | Member 於 Chat 問「PO 和 PR 有什麼差別？」                                                                                         | direct path 串流回答，含【引1】指向採購 SOP current 版引用卡片，可點開回放原文                                                                                                 | TC-01、A02、A03                    |
+| 7    | Member 問「上個月報表怎麼看？」                                                                                                    | live demo 可展示模糊查詢的回答或拒答表現；若要證明第二輪 reformulation / retrieval，建議同步展示 TC-04 / A05 acceptance evidence，而不要把 live runtime 說成固定一定觸發第二輪 | TC-04、A05（建議以測試證據輔助）   |
+| 8    | Member 問「今天天氣如何？」                                                                                                        | 拒答並顯示「改換關鍵字 / 查看相關文件 / 聯絡管理員」三項引導（B2 拒答 UX）                                                                                                     | TC-07、A06                         |
+| 9    | 外部 AI Client（Claude Desktop / Cursor）以 MCP Bearer token 呼叫 `askKnowledge` → `getDocumentChunk`，驗證 citation replay 一致性 | JSON-RPC 回應含 `citationId`，replay 內容與 Web 引用卡片片段一致                                                                                                               | TC-12、A07、A03                    |
+| 10   | Admin 進入「Query Logs」檢視剛才 MCP + Web 操作的稽核紀錄                                                                          | 列表呈現 channel、outcome、query_type、redaction 狀態等欄位，不顯示未遮罩原文                                                                                                  | A12、A11、§2.4.1.5 敏感資料治理    |
+| 11   | Admin 進入「訪客權限 Dial」設定頁，將 dial 切為 `browse_only`，以 Guest 重登                                                       | Guest 進入 `/chat` 看到「此環境目前僅開放瀏覽，不可問答」提示；POST `/api/chat` 被 server 拒絕回 403                                                                           | A08（含 B16 訪客 dial）            |
 
 ### 備援情境
 
@@ -816,6 +853,52 @@ claude  # 啟動 Claude Code
 2. 重設訪客權限 Dial 為 `same_as_member`
 3. 保留 `query_logs` 與 `citation_records` 180 天作為稽核證據（符合 §2.4.1.4 保留期限）
 4. 依需要手動 archive 示範用文件
+
+---
+
+## 十四、高機率追問 10 題（30 秒短答版）
+
+以下回答刻意寫成口語短版，目標是在 20–30 秒內講清楚，不追求面面俱到。
+
+### 14.1 你們這個真的算 Agentic RAG 嗎？
+
+> 「算，但要講精準。我們不是多代理自主規劃系統，而是治理型的 Agentic RAG。代理性主要在應用層會根據檢索結果決定回答、拒答、記錄 decision path、保存引用，並在 follow-up 時重新驗證先前引用是否還是 current。」
+
+### 14.2 為什麼不直接用 ChatGPT 或 Gemini 回答就好？
+
+> 「因為本專題重點不是單純把問題送給模型，而是先建立可治理的知識問答主幹。也就是先確保只用 current 版本證據、可以引用回放、權限一致、必要時拒答，再決定是否需要外部模型協助。這樣比較符合企業知識庫的可追溯與可稽核需求。」
+
+### 14.3 你們目前最有說服力的完成度是什麼？
+
+> 「我會說是三件事：current-version-only、citation replay、以及權限與稽核閉環。也就是系統不是只回答而已，而是能說明答案根據哪個 current 文件版本、誰可以問、問了之後在 log 裡看得到什麼決策路徑。」
+
+### 14.4 Self-Correction 現在是 fully live 嗎？
+
+> 「目前要誠實說不是 fully model-based live。這一版已完成 self-correction 的 orchestration 與 acceptance test，但 runtime 的 judge 與回答生成仍以 fallback 實作為主。所以答辯時我會說流程與治理骨架已完成，正式模型能力是下一步擴充。」
+
+### 14.5 為什麼你們一直強調 current-version-only？
+
+> 「因為企業文件會改版，如果系統引用到舊版內容，答案可能 technically 合理但業務上已經錯了。current-version-only 的價值就是把回答限制在目前有效版本，並讓 follow-up 時也重新驗證先前引用有沒有過期，這是企業場景很重要的治理點。」
+
+### 14.6 為什麼 citation replay 比『回答漂亮』更重要？
+
+> 「因為企業要的不只是像真的答案，而是可以追溯的答案。citation replay 讓使用者或管理者可以回看當時引用到哪個 chunk、哪個版本，這樣才能做稽核、除錯與信任建立。沒有 replay，RAG 很容易退化成只是比較有根據的黑箱回答。」
+
+### 14.7 為什麼選 Cloudflare Edge，而不是一般 VPS？
+
+> 「因為這個題目比較適合短時、高頻、治理清楚的請求型工作負載。Cloudflare Workers、D1、R2、KV、AI Search 可以把部署與維運複雜度壓低，讓專題焦點放在知識治理與問答流程，而不是花很多時間處理伺服器維運。」
+
+### 14.8 這套系統對企業的實際價值是什麼？
+
+> 「它的價值不是取代所有人，而是先吸收一批重複、標準化、可引用的內部問題，像 SOP、報表操作、制度查詢。這樣可以減少支援人員反覆回答同一類問題，同時讓答案來源可追溯，比通用聊天機器人更貼近企業內部治理需求。」
+
+### 14.9 你覺得目前最大的限制是什麼？
+
+> 「最大的限制是回答生成、judge 與 query reformulation 還沒有 fully 接到正式模型能力，所以這一版更像治理骨架先到位。另外，文件格式目前也採分級支援，核心驗收仍以 md、txt、預轉 Markdown 為主，複雜格式會放在下一階段。」
+
+### 14.10 如果再給你一個階段，你會先做什麼？
+
+> 「我會先做三件事。第一，接上正式的 judge 與 reformulation 模型能力；第二，把 pdf、docx、xlsx、pptx 納入 canonical snapshot ingestion；第三，補更完整的量化評測，包含拒答準確性、引用正確性與 self-correction 的收益。這三件事會直接把目前的治理骨架推進成更完整的產品型系統。」
 
 ---
 

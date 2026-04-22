@@ -26,7 +26,7 @@ The system SHALL derive admin privileges from the runtime `ADMIN_EMAIL_ALLOWLIST
 
 ### Requirement: Channel Access Matrix
 
-The system SHALL derive `allowed_access_levels` before the first retrieval step for every Web or MCP request. Web User sessions SHALL receive `['internal']`, Web Admin sessions SHALL receive `['internal', 'restricted']`, MCP tokens without `knowledge.restricted.read` SHALL receive `['internal']`, and MCP tokens with `knowledge.restricted.read` SHALL receive `['internal', 'restricted']`. Unauthenticated users SHALL NOT access chat, admin, or MCP token management surfaces.
+The system SHALL derive `allowed_access_levels` before the first retrieval step for every Web or MCP request. Web User sessions SHALL receive `['internal']`, Web Admin sessions SHALL receive `['internal', 'restricted']`, remote MCP principals without `knowledge.restricted.read` SHALL receive `['internal']`, and remote MCP principals with `knowledge.restricted.read` SHALL receive `['internal', 'restricted']` only when the resolved local user is eligible for restricted access under the existing role model. Legacy MCP tokens SHALL remain supported only during migration, and they SHALL be normalized into the same principal context before retrieval and replay checks run. Unauthenticated users SHALL NOT access chat, admin, or MCP token management surfaces.
 
 #### Scenario: Web user cannot retrieve restricted evidence
 
@@ -34,11 +34,50 @@ The system SHALL derive `allowed_access_levels` before the first retrieval step 
 - **THEN** the retrieval filters only include `internal`
 - **AND** the response does not expose restricted evidence
 
-#### Scenario: Restricted MCP token widens visible access levels
+#### Scenario: Eligible MCP principal widens visible access levels
 
-- **WHEN** an active MCP token includes `knowledge.restricted.read`
+- **WHEN** a remote MCP request resolves to a local principal that both carries `knowledge.restricted.read` and is eligible for restricted access under the application's role rules
 - **THEN** the derived `allowed_access_levels` include both `internal` and `restricted`
 - **AND** downstream retrieval and replay checks use that expanded visibility set
+
+#### Scenario: Ineligible MCP principal cannot escalate with scope alone
+
+- **WHEN** a remote MCP request resolves to a local principal that requests or carries `knowledge.restricted.read` but is not eligible for restricted access under the application's role rules
+- **THEN** the derived `allowed_access_levels` remain `['internal']`
+- **AND** the response does not expose restricted evidence
+
+<!-- @trace
+source: oauth-user-delegated-remote-mcp
+updated: 2026-04-22
+code:
+  - app/pages/auth/mcp/authorize.vue
+  - app/components/auth/McpConnectorConsentCard.vue
+  - app/components/auth/McpConnectorLoginCard.vue
+  - playwright.config.ts
+  - nuxt.config.ts
+  - app/composables/useMcpConnectorAuthorization.ts
+  - reports/latest.md
+  - shared/utils/mcp-connector-client-registry.ts
+  - shared/utils/mcp-connector-redirect.ts
+  - server/api/auth/mcp/authorize.get.ts
+  - docs/runbooks/claude-desktop-mcp.md
+  - app/components/admin/tokens/TokenCreateModal.vue
+  - docs/verify/DISASTER_RECOVERY_RUNBOOK.md
+  - docs/verify/production-deploy-checklist.md
+  - docs/verify/DEPLOYMENT_RUNBOOK.md
+  - app/utils/mcp-connector-return-to.ts
+  - app/pages/admin/tokens/index.vue
+  - server/api/auth/mcp/authorize.post.ts
+  - app/pages/auth/callback.vue
+  - docs/design-review-findings.md
+tests:
+  - e2e/mcp-connector-authorize.spec.ts
+  - test/integration/mcp-connector-authorize-route.test.ts
+  - test/unit/mcp-connector-redirect.test.ts
+  - test/unit/mcp-connector-client-registry.test.ts
+  - test/integration/mcp-oauth-tool-access.test.ts
+  - test/integration/mcp-connector-authorize-post-account-guard.test.ts
+-->
 
 ---
 

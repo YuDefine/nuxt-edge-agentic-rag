@@ -29,6 +29,8 @@
 | `NUXT_PASSKEY_RP_ID`              | WebAuthn RP ID     | `yudefine.com.tw` |
 | `NUXT_PASSKEY_RP_NAME`            | WebAuthn RP name   | `知識問答系統`    |
 
+> `NUXT_KNOWLEDGE_ENVIRONMENT`、`NUXT_KNOWLEDGE_FEATURE_PASSKEY`、`NUXT_PASSKEY_RP_ID`、`NUXT_PASSKEY_RP_NAME` 不只影響 Worker runtime，也會在 `pnpm build` 時被 `nuxt.config.ts` 讀入。若 GitHub Actions build env 漏掉這些值，最終 artifact 可能把 passkey UI / better-auth passkey routes 編成停用狀態，即使 `wrangler.jsonc` 的 runtime vars 已設為啟用。
+
 ### 1.2 Cloudflare Token 分工
 
 Cloudflare 相關 token 目前分成三類，不可混用：
@@ -58,31 +60,68 @@ Cloudflare 相關 token 目前分成三類，不可混用：
 
 ### 1.4 Runtime secrets（以 `wrangler secret put` 預先管理）
 
-| 變數                                       | 用途                            | Sensitivity |
-| ------------------------------------------ | ------------------------------- | ----------- |
-| `NUXT_SESSION_PASSWORD`                    | Session cookie 加密（≥32 字元） | **high**    |
-| `BETTER_AUTH_SECRET`                       | Better Auth token（≥32 字元）   | **high**    |
-| `NUXT_OAUTH_GOOGLE_CLIENT_ID`              | Google OAuth client ID          | medium      |
-| `NUXT_OAUTH_GOOGLE_CLIENT_SECRET`          | Google OAuth client secret      | **high**    |
-| `ADMIN_EMAIL_ALLOWLIST`                    | Admin email 清單（逗號分隔）    | medium      |
-| `NUXT_KNOWLEDGE_AUTO_RAG_API_TOKEN`        | AutoRAG API token               | **high**    |
-| `NUXT_KNOWLEDGE_UPLOADS_ACCOUNT_ID`        | Cloudflare account ID           | low         |
-| `NUXT_KNOWLEDGE_UPLOADS_BUCKET_NAME`       | R2 bucket name (pre-signing)    | low         |
-| `NUXT_KNOWLEDGE_UPLOADS_ACCESS_KEY_ID`     | R2 API access key               | **high**    |
-| `NUXT_KNOWLEDGE_UPLOADS_SECRET_ACCESS_KEY` | R2 API secret key               | **high**    |
+| 變數                                        | 用途                              | Sensitivity |
+| ------------------------------------------- | --------------------------------- | ----------- |
+| `NUXT_SESSION_PASSWORD`                     | Session cookie 加密（≥32 字元）   | **high**    |
+| `BETTER_AUTH_SECRET`                        | Better Auth token（≥32 字元）     | **high**    |
+| `NUXT_OAUTH_GOOGLE_CLIENT_ID`               | Google OAuth client ID            | medium      |
+| `NUXT_OAUTH_GOOGLE_CLIENT_SECRET`           | Google OAuth client secret        | **high**    |
+| `ADMIN_EMAIL_ALLOWLIST`                     | Admin email 清單（逗號分隔）      | medium      |
+| `NUXT_KNOWLEDGE_MCP_CONNECTOR_CLIENTS_JSON` | known remote MCP client allowlist | medium      |
+| `NUXT_KNOWLEDGE_AUTO_RAG_API_TOKEN`         | AutoRAG API token                 | **high**    |
+| `NUXT_KNOWLEDGE_UPLOADS_ACCOUNT_ID`         | Cloudflare account ID             | low         |
+| `NUXT_KNOWLEDGE_UPLOADS_BUCKET_NAME`        | R2 bucket name (pre-signing)      | low         |
+| `NUXT_KNOWLEDGE_UPLOADS_ACCESS_KEY_ID`      | R2 API access key                 | **high**    |
+| `NUXT_KNOWLEDGE_UPLOADS_SECRET_ACCESS_KEY`  | R2 API secret key                 | **high**    |
 
 現行 [deploy workflow](../../.github/workflows/deploy.yml) 已改為「runtime secrets 預先存在 Worker secret store，GitHub Actions 只負責 build + deploy」。因此上述 secrets 不建議再透過 `wrangler-action` 每次部署時覆寫。
 
-### 1.5 Feature flags（Production 預設關閉；可由 `wrangler secret put` 或 `vars` 顯式覆寫）
+### 1.5 Feature flags（依環境顯式設定；deploy build env 與 runtime vars 皆需對齊）
 
-| 變數                                     | 目前 production 值 | 說明                                                               |
-| ---------------------------------------- | ------------------ | ------------------------------------------------------------------ |
-| `NUXT_KNOWLEDGE_FEATURE_PASSKEY`         | `true`             | Passkey 登入（需要 `NUXT_PASSKEY_RP_ID` / `NUXT_PASSKEY_RP_NAME`） |
-| `NUXT_KNOWLEDGE_FEATURE_MCP_SESSION`     | `false`            | MCP session token（未來版本）                                      |
-| `NUXT_KNOWLEDGE_FEATURE_CLOUD_FALLBACK`  | `false`            | 雲端 LLM fallback（未來版本）                                      |
-| `NUXT_KNOWLEDGE_FEATURE_ADMIN_DASHBOARD` | `false`            | Admin dashboard 釋出門（governance）                               |
-| `NUXT_ADMIN_DASHBOARD_ENABLED`           | `true`             | Admin dashboard feature gate（post-core）                          |
-| `NUXT_DEBUG_SURFACE_ENABLED`             | `false`            | Production debug surface killswitch                                |
+| 變數                                     | 目前 production 值 | 說明                                                                                          |
+| ---------------------------------------- | ------------------ | --------------------------------------------------------------------------------------------- |
+| `NUXT_KNOWLEDGE_FEATURE_PASSKEY`         | `true`             | Passkey 登入（staging / production 皆需同步為 `true`，且 build env 與 runtime vars 不可漂移） |
+| `NUXT_KNOWLEDGE_FEATURE_MCP_SESSION`     | `false`            | MCP session token（未來版本）                                                                 |
+| `NUXT_KNOWLEDGE_FEATURE_CLOUD_FALLBACK`  | `false`            | 雲端 LLM fallback（未來版本）                                                                 |
+| `NUXT_KNOWLEDGE_FEATURE_ADMIN_DASHBOARD` | `false`            | Admin dashboard 釋出門（governance）                                                          |
+| `NUXT_ADMIN_DASHBOARD_ENABLED`           | `true`             | Admin dashboard feature gate（post-core）                                                     |
+| `NUXT_DEBUG_SURFACE_ENABLED`             | `false`            | Production debug surface killswitch                                                           |
+
+### 1.6 Remote MCP rollout config
+
+OAuth-first remote MCP rollout 另需確認以下值：
+
+| 變數                                                | 用途                             | 建議值                   |
+| --------------------------------------------------- | -------------------------------- | ------------------------ |
+| `NUXT_KNOWLEDGE_MCP_ACCESS_TOKEN_TTL_SECONDS`       | remote MCP access token TTL      | `600`                    |
+| `NUXT_KNOWLEDGE_MCP_AUTHORIZATION_CODE_TTL_SECONDS` | auth code TTL                    | `120`                    |
+| `NUXT_KNOWLEDGE_MCP_CONNECTOR_CLIENTS_JSON`         | known connector client allowlist | 至少包含 `claude-remote` |
+
+`NUXT_KNOWLEDGE_MCP_CONNECTOR_CLIENTS_JSON` 範例：
+
+```json
+[
+  {
+    "clientId": "claude-remote",
+    "enabled": true,
+    "allowedScopes": [
+      "knowledge.ask",
+      "knowledge.search",
+      "knowledge.category.list",
+      "knowledge.citation.read"
+    ],
+    "environments": ["production"],
+    "name": "Claude Remote",
+    "redirectUris": ["https://claude.example/callback"]
+  }
+]
+```
+
+限制原則：
+
+- 若此值缺失，OAuth remote connector 實質上等同停用
+- JSON 格式錯誤或非陣列會讓 Nuxt 在啟動時 fail fast
+- `enabled=false` 可作為最小 rollback 單位，無須先拆掉 `/mcp`
 
 ⚠️ `ADMIN_EMAIL_ALLOWLIST` 對外部同仁**敏感**（等於列出誰有管理權）。雖語意上不是 secret，實務上請透過 `wrangler secret` 設定而非 `vars`。
 
@@ -386,6 +425,23 @@ curl -sf https://agentic.yudefine.com.tw/api/auth/session \
 
 完整人工驗收指令見 `production-deploy-checklist.md` §「人工驗收命令」。
 
+### 3.4.1 Remote MCP smoke
+
+若本次部署包含 remote MCP auth / consent / allowlist 變更，額外跑一次：
+
+1. 用已存在本地帳號開啟 `/auth/mcp/authorize?client_id=...`
+2. 確認 consent UI 能顯示 connector 名稱、granted scopes、目前授權帳號
+3. 完成 authorization code + token exchange
+4. 用取得的 access token 對 `/mcp` 呼叫：
+   - `listCategories`
+   - `searchKnowledge`
+   - `askKnowledge`
+5. 若測試帳號是 guest，再驗：
+   - `browse_only` 時 `askKnowledge` 403 `GUEST_ASK_DISABLED`
+   - `no_access` 時 browse-safe tool 403 `ACCOUNT_PENDING`
+
+若第 1 步就失敗，先檢查 `NUXT_KNOWLEDGE_MCP_CONNECTOR_CLIENTS_JSON` 是否包含正確的 `clientId` / `redirectUris` / `environments`。
+
 ### 3.5 Tag 命名慣例
 
 - `v<MAJOR>.<MINOR>.<PATCH>` — semantic versioning，對齊 `package.json`
@@ -456,6 +512,21 @@ NODE_OPTIONS=--max-old-space-size=6144 pnpm build
 
 **原因**：`wrangler.jsonc` `triggers.crons` 與 `nuxt.config.ts` `nitro.scheduledTasks` 的 cron expression 不同步。
 **處置**：見 `RETENTION_CLEANUP_RUNBOOK.md` §7。
+
+### 5.6 Remote MCP authorize 回 `Unknown MCP connector client`
+
+**原因**：`NUXT_KNOWLEDGE_MCP_CONNECTOR_CLIENTS_JSON` 未配置、JSON parse 失敗、或 `clientId` 與 connector 不符。
+**處置**：
+
+1. 檢查 Worker secret / vars 中的 `NUXT_KNOWLEDGE_MCP_CONNECTOR_CLIENTS_JSON`
+2. 確認為合法 JSON 陣列
+3. 確認目標 client `enabled=true`
+4. 重新部署後再試
+
+### 5.7 Remote MCP authorize 回 `Redirect URI is not allowed`
+
+**原因**：connector 實際 callback URI 不在 allowlist。
+**處置**：補上正確 `redirectUris` 後重新部署，不要在 runtime 臨時放寬比對。
 
 ## 6. 相關文件
 
