@@ -1,8 +1,8 @@
-import { consola } from 'consola'
-
 type BetterAuthLogLevel = 'debug' | 'info' | 'warn' | 'error'
 
 interface BetterAuthLoggerOptions {
+  disableColors?: boolean
+  disabled?: boolean
   level?: BetterAuthLogLevel
   log?: (level: BetterAuthLogLevel, message: string, ...args: unknown[]) => void
 }
@@ -14,7 +14,14 @@ interface BetterAuthLogSink {
   error: (...args: unknown[]) => void
 }
 
-const betterAuthLog = consola.withTag('better-auth')
+const workerConsole = globalThis.console
+
+const DEFAULT_SINK: BetterAuthLogSink = {
+  debug: (...args) => workerConsole.debug('[better-auth:debug]', ...args),
+  info: (...args) => workerConsole.info('[better-auth:info]', ...args),
+  warn: (...args) => workerConsole.warn('[better-auth:warn]', ...args),
+  error: (...args) => workerConsole.error('[better-auth:error]', ...args),
+}
 
 function formatError(error: Error): string {
   const name = typeof error.name === 'string' && error.name.length > 0 ? error.name : 'Error'
@@ -110,17 +117,22 @@ function emitFallbackLog(
       `(logger failure) ${serializeBetterAuthLogArg(sinkError)}`,
     ].join(' ')
 
-    const stream = level === 'error' || level === 'warn' ? process.stderr : process.stdout
-    stream.write(`${payload}\n`)
+    if (level === 'error' || level === 'warn') {
+      workerConsole.error(payload)
+      return
+    }
+
+    workerConsole.log(payload)
   } catch {
     // Intentionally swallow fallback logging failures: auth endpoints must not fail on logging.
   }
 }
 
 export function createBetterAuthSafeLogger(
-  sink: BetterAuthLogSink = betterAuthLog,
+  sink: BetterAuthLogSink = DEFAULT_SINK,
 ): BetterAuthLoggerOptions {
   return {
+    disableColors: true,
     level: 'warn',
     log(level: BetterAuthLogLevel, message: string, ...args: unknown[]) {
       const renderedArgs = args.map(serializeBetterAuthLogArg)
