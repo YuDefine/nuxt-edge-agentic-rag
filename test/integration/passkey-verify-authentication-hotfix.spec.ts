@@ -2,7 +2,6 @@ import { createHash, createSign, generateKeyPairSync } from 'node:crypto'
 import { createRequire } from 'node:module'
 import { pathToFileURL } from 'node:url'
 
-import { serializeSignedCookie } from 'better-call'
 import { describe, expect, it, vi } from 'vitest'
 
 interface SimpleWebAuthnHelpersModule {
@@ -28,6 +27,20 @@ const simpleWebAuthnHelpersUrl = pathToFileURL(
 ).href
 
 let simpleWebAuthnHelpersPromise: Promise<SimpleWebAuthnHelpersModule> | null = null
+
+async function signCookieValue(value: string, secret: string): Promise<string> {
+  const key = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(secret),
+    { hash: 'SHA-256', name: 'HMAC' },
+    false,
+    ['sign'],
+  )
+  const signature = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(value))
+  const signatureBase64 = Buffer.from(signature).toString('base64')
+
+  return encodeURIComponent(`${value}.${signatureBase64}`)
+}
 
 interface MockAuthContext {
   asResponse: boolean
@@ -167,12 +180,7 @@ async function createPasskeyAuthenticationFixture(): Promise<PasskeyAuthenticati
 async function createMockVerifyAuthenticationContext(
   fixture: PasskeyAuthenticationFixture,
 ): Promise<MockAuthContext> {
-  const signedChallengeCookie = await serializeSignedCookie(
-    'better-auth-passkey',
-    'verification-token-1',
-    'test-secret',
-    {},
-  )
+  const signedChallengeCookie = `better-auth-passkey=${await signCookieValue('verification-token-1', 'test-secret')}`
 
   return {
     asResponse: true,
