@@ -4,7 +4,7 @@
 
 ## Current State
 
-> 狀態（2026-04-23 更新）：目前 branch `main`，release 版本已升到 `v0.28.3`。本輪已完成專題報告治理、文件站部署、remote MCP OAuth connector archive，以及 production passkey reauth hotfix deploy 驗證；報告 current draft 仍以 `reports/latest.md` 作為單一本體，`reports/archive/` 保存版本化快照。Open tech debt：TD-009 mid / TD-010 mid / TD-011 high / TD-012 high / TD-014 mid。
+> 狀態（2026-04-23 更新）：目前 branch `main`，release 版本已升到 `v0.28.4`。本輪已完成專題報告治理、文件站部署、remote MCP OAuth connector archive，以及 production passkey reauth hotfix deploy 驗證；報告 current draft 仍以 `reports/latest.md` 作為單一本體，`reports/archive/` 保存版本化快照。Open tech debt：TD-009 mid / TD-010 mid / TD-011 high / TD-012 high / TD-014 mid。
 >
 > **最新進度**（2026-04-23）：
 >
