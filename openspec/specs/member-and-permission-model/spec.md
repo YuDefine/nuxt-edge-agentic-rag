@@ -373,3 +373,112 @@ tests:
   - test/unit/nickname-input.test.ts
   - e2e/account-settings.spec.ts
 -->
+
+---
+
+### Requirement: Audit Trail Survives User Deletion
+
+The `member_role_changes` table SHALL retain every row across the lifetime of the deployment even when the referenced `user` row has been deleted. The `user_id` column SHALL be treated as a plain text reference to a better-auth `user.id` that is potentially orphaned, and the database SHALL NOT enforce a FOREIGN KEY relationship from `member_role_changes.user_id` to `user(id)`. Tombstone rows written during account deletion (`reason = 'self-deletion'`) SHALL remain queryable for compliance and audit purposes after the user row is gone.
+
+#### Scenario: Tombstone row remains after user deletion
+
+- **WHEN** a user with id `U` triggers account self-deletion and the handler commits `DELETE FROM "user" WHERE id = U`
+- **THEN** at least one `member_role_changes` row with `user_id = U` and `reason = 'self-deletion'` SHALL still exist in the table
+- **AND** `SELECT reason FROM member_role_changes WHERE user_id = U ORDER BY created_at DESC LIMIT 1` SHALL return `'self-deletion'`
+
+#### Scenario: Orphan tombstone rows do not block admin role history queries
+
+- **WHEN** an admin queries `SELECT * FROM member_role_changes WHERE user_id = <deleted user id>` to investigate a past member's role history
+- **THEN** the query SHALL return all historical rows for that user id
+- **AND** the query SHALL NOT fail because the `user` row no longer exists
+
+#### Scenario: recordRoleChange writes tombstone without FK restriction
+
+- **WHEN** the application code invokes `recordRoleChange({ userId: U, reason: 'self-deletion', ... })` immediately before deleting the `user` row with id `U`
+- **THEN** the insert SHALL succeed
+- **AND** the subsequent `DELETE FROM "user" WHERE id = U` SHALL NOT raise a `SQLITE_CONSTRAINT_FOREIGNKEY` error caused by the just-inserted `member_role_changes` row
+
+<!-- @trace
+source: fk-cascade-repair-for-self-delete
+updated: 2026-04-23
+code:
+  - .codex/hooks/post-bash-error-debug.sh
+  - docs/solutions/auth/better-auth-passkey-worker-catchall-override.md
+  - docs/verify/DISASTER_RECOVERY_RUNBOOK.md
+  - server/utils/passkey-verify-authentication.ts
+  - .codex/hooks/_codex_hook_wrapper.sh
+  - nuxt.config.ts
+  - .codex/agents/screenshot-review.toml
+  - app/pages/auth/mcp/authorize.vue
+  - docs/verify/production-deploy-checklist.md
+  - .agents/skills/spectra-propose/SKILL.md
+  - server/api/auth/passkey/verify-authentication.post.ts
+  - app/components/auth/McpConnectorLoginCard.vue
+  - .codex/hooks/stop-accumulate.sh
+  - .agents/skills/commit/SKILL.md
+  - .codex/config.toml
+  - .codex/agents/check-runner.toml
+  - docs/design-review-findings.md
+  - server/auth.config.ts
+  - app/utils/mcp-connector-return-to.ts
+  - docs/solutions/README.md
+  - playwright.config.ts
+  - shared/utils/mcp-connector-client-registry.ts
+  - AGENTS.md
+  - .codex/hooks/post-edit-roadmap-sync.sh
+  - .codex/hooks/session-start-roadmap-sync.sh
+  - .agents/skills/spectra-audit/SKILL.md
+  - shared/schemas/knowledge-runtime.ts
+  - docs/runbooks/claude-desktop-mcp.md
+  - app/components/auth/DeleteAccountDialog.vue
+  - .codex/hooks/pre-archive-followup-gate.sh
+  - template/HANDOFF.md
+  - .github/instructions/skills.instructions.md
+  - server/utils/better-auth-safe-logger.ts
+  - docs/verify/DEPLOYMENT_RUNBOOK.md
+  - server/api/auth/mcp/authorize.get.ts
+  - .codex/agents/code-review.toml
+  - .agents/skills/spectra-debug/SKILL.md
+  - .agents/skills/spectra-discuss/SKILL.md
+  - app/pages/account/settings.vue
+  - .agents/skills/spectra-ask/SKILL.md
+  - shared/utils/mcp-connector-redirect.ts
+  - .agents/skills/spectra-apply/SKILL.md
+  - deliverables/defense/答辯準備_口試Q&A.md
+  - .github/instructions/follow_up_register.instructions.md
+  - app/pages/admin/tokens/index.vue
+  - server/api/auth/mcp/authorize.post.ts
+  - app/components/admin/tokens/TokenCreateModal.vue
+  - .agents/skills/spectra-archive/SKILL.md
+  - reports/latest.md
+  - app/pages/auth/callback.vue
+  - docs/solutions/auth/passkey-self-delete-hard-redirect.md
+  - app/components/auth/McpConnectorConsentCard.vue
+  - docs/solutions/tooling/posttooluse-hook-non-json-stdin.md
+  - docs/tech-debt.md
+  - CLAUDE.md
+  - .github/instructions/proactive_skills.instructions.md
+  - package.json
+  - .agents/skills/spectra-commit/SKILL.md
+  - .codex/hooks.json
+  - .github/copilot-instructions.md
+  - app/composables/useMcpConnectorAuthorization.ts
+  - .agents/skills/spectra-ingest/SKILL.md
+  - pnpm-workspace.yaml
+  - .github/instructions/scope_discipline.instructions.md
+  - .github/workflows/deploy.yml
+tests:
+  - test/unit/better-auth-passkey-hotfix-version.test.ts
+  - test/unit/knowledge-runtime-config.test.ts
+  - test/unit/better-auth-worker-cookie-cache-hotfix.test.ts
+  - test/integration/mcp-oauth-tool-access.test.ts
+  - test/integration/mcp-connector-authorize-route.test.ts
+  - test/integration/mcp-connector-authorize-post-account-guard.test.ts
+  - test/integration/passkey-verify-authentication-hotfix.spec.ts
+  - e2e/mcp-connector-authorize.spec.ts
+  - test/unit/better-auth-safe-logger.test.ts
+  - test/unit/mcp-connector-client-registry.test.ts
+  - test/unit/passkey-verify-authentication.test.ts
+  - test/unit/deploy-workflow-passkey-env.test.ts
+  - test/unit/mcp-connector-redirect.test.ts
+-->
