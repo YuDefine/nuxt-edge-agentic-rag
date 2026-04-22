@@ -13,6 +13,7 @@ import {
   normalizeEmailAddress,
 } from '../shared/schemas/knowledge-runtime'
 import { nicknameSchema } from '../shared/schemas/nickname'
+import { createBetterAuthSafeLogger } from './utils/better-auth-safe-logger'
 import { getDrizzleDb } from './utils/database'
 import { recordRoleChange, ROLE_CHANGE_SYSTEM_ACTOR } from './utils/member-role-changes'
 
@@ -197,6 +198,7 @@ export default defineServerAuth(({ db, runtimeConfig }) => {
   return {
     database: db,
     emailAndPassword: { enabled: enableEmailAndPassword },
+    logger: createBetterAuthSafeLogger(),
     /**
      * passkey-authentication: Declare `displayName` as a required custom
      * field on the better-auth `user` model so the plugin and drizzle
