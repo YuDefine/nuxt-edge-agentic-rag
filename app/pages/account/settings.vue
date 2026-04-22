@@ -170,10 +170,6 @@
     })
   }
 
-  async function handleAccountDeleted(): Promise<void> {
-    await navigateTo('/', { replace: true })
-  }
-
   function formatDate(dateString: string | null | undefined): string {
     if (!dateString) return '—'
     return new Date(dateString).toLocaleString('zh-TW', {
@@ -416,7 +412,6 @@
       v-model:open="deleteDialogOpen"
       :has-passkey="credentials.passkeys.length > 0"
       :has-google="credentials.hasGoogle"
-      @deleted="handleAccountDeleted"
     />
 
     <!-- Passkey naming dialog -->
