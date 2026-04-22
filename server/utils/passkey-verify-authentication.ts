@@ -1,5 +1,3 @@
-import { createError } from 'h3'
-
 import {
   createKnowledgeRuntimeConfig,
   type KnowledgeRuntimeConfigInput,
@@ -23,6 +21,24 @@ type PasskeyVerifyAuthenticationInvoker = (input: {
   headers: Headers
 }) => Promise<Response>
 
+interface PasskeyVerifyAuthenticationRouteErrorInput {
+  message?: string
+  statusCode: number
+  statusMessage: string
+}
+
+export class PasskeyVerifyAuthenticationRouteError extends Error {
+  readonly statusCode: number
+  readonly statusMessage: string
+
+  constructor(input: PasskeyVerifyAuthenticationRouteErrorInput) {
+    super(input.message ?? input.statusMessage)
+    this.name = 'PasskeyVerifyAuthenticationRouteError'
+    this.statusCode = input.statusCode
+    this.statusMessage = input.statusMessage
+  }
+}
+
 export function isPasskeyVerifyAuthenticationEnabled(
   runtimeConfig: PasskeyVerifyAuthenticationRuntimeConfig,
 ): boolean {
@@ -38,7 +54,7 @@ export function parsePasskeyVerifyAuthenticationBody(
   body: unknown,
 ): PasskeyVerifyAuthenticationBody {
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
-    throw createError({
+    throw new PasskeyVerifyAuthenticationRouteError({
       statusCode: 400,
       statusMessage: 'Passkey authentication payload invalid',
     })
@@ -47,7 +63,7 @@ export function parsePasskeyVerifyAuthenticationBody(
   const response = (body as { response?: unknown }).response
 
   if (!response || typeof response !== 'object' || Array.isArray(response)) {
-    throw createError({
+    throw new PasskeyVerifyAuthenticationRouteError({
       statusCode: 400,
       statusMessage: 'Passkey authentication payload invalid',
     })
@@ -75,7 +91,7 @@ function requirePasskeyVerifyAuthenticationInvoker(
   )?.api?.verifyPasskeyAuthentication
 
   if (typeof verifyPasskeyAuthentication !== 'function') {
-    throw createError({
+    throw new PasskeyVerifyAuthenticationRouteError({
       statusCode: 503,
       statusMessage: 'Service Unavailable',
       message: 'Passkey authentication unavailable',

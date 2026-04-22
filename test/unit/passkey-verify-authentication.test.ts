@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import {
+  PasskeyVerifyAuthenticationRouteError,
   forwardPasskeyVerifyAuthentication,
   isPasskeyVerifyAuthenticationEnabled,
   parsePasskeyVerifyAuthenticationBody,
@@ -50,15 +51,17 @@ describe('passkey verify-authentication route hotfix', () => {
   })
 
   it('returns service unavailable when the direct auth endpoint is missing', async () => {
-    await expect(
-      forwardPasskeyVerifyAuthentication({}, new Headers(), {
-        response: {
-          id: 'credential-id',
-        },
-      }),
-    ).rejects.toMatchObject({
+    const promise = forwardPasskeyVerifyAuthentication({}, new Headers(), {
+      response: {
+        id: 'credential-id',
+      },
+    })
+
+    await expect(promise).rejects.toBeInstanceOf(PasskeyVerifyAuthenticationRouteError)
+    await expect(promise).rejects.toMatchObject({
       message: 'Passkey authentication unavailable',
       statusCode: 503,
+      statusMessage: 'Service Unavailable',
     })
   })
 
