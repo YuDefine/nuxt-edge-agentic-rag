@@ -22,6 +22,12 @@
 
 > 目前 workflow 不會在每次 deploy 時從 GitHub Actions 同步 runtime secrets 到 Worker。`NUXT_SESSION_PASSWORD`、`BETTER_AUTH_SECRET`、OAuth secrets、R2 upload keys、`ADMIN_EMAIL_ALLOWLIST` 等 runtime secrets 應預先以 `wrangler secret put` 寫入各環境的 Worker secret store。
 
+若 staging 需要前端直傳 R2，production / staging bucket 都要套用根目錄 `r2-cors.json`，並確認其中包含：
+
+- `http://localhost:3010`
+- `https://agentic.yudefine.com.tw`
+- `https://agentic-staging.yudefine.com.tw`
+
 ### 1.1 `CLOUDFLARE_API_TOKEN` 最小權限
 
 此 token 供 GitHub Actions 的 `wrangler-action` 使用，現行 workflow 只做兩件事：
@@ -71,7 +77,7 @@
 3. production：對 `agentic-rag-db` 先跑 remote D1 migrations，再 build，再從 `.output/server` deploy
 4. staging：對 `agentic-rag-db-staging` 先跑 remote D1 migrations，再 build，接著渲染 `.output/server/wrangler.staging.json`，最後 deploy
 
-> 2026-04-21 實測：手動 dispatch 的 staging workflow 失敗點在 `Format check`，不是 token 權限；deploy job 因 `ci` 未通過而被 skip。
+> 2026-04-22 更新：workflow 的 smoke test 已改為共用 `scripts/check-deploy-health.mjs`。若 GitHub runner 對 custom domain 收到 `403` 且判定為 Cloudflare WAF / Bot protection，job 會記 warning 並放行，不再把 deploy 本體誤判為失敗。
 
 ### 4. Cloudflare 資源設定
 
@@ -81,14 +87,17 @@
 - [ ] **KV Namespace**: 用於 rate limiting
 - [ ] **R2 Bucket**: 用於文件儲存
 - [ ] **AI Gateway**（可選）: 用於 AI Search
+- [ ] production / staging bucket 都已套用 `r2-cors.json`
 
 ### 5. Google OAuth 設定
 
 在 Google Cloud Console：
 
 - [ ] 建立 OAuth 2.0 Client ID（Web application 類型）
-- [ ] 設定 Authorized redirect URIs：`https://<production-url>/api/auth/callback/google`
-- [ ] 設定 Authorized JavaScript origins：`https://<production-url>`
+- [ ] production client 設定 Authorized redirect URIs：`https://<production-url>/api/auth/callback/google`
+- [ ] production client 設定 Authorized JavaScript origins：`https://<production-url>`
+- [ ] staging client 另外建立一組 OAuth credentials，設定 Authorized redirect URI：`https://<staging-url>/api/auth/callback/google`
+- [ ] staging client 設定 Authorized JavaScript origin：`https://<staging-url>`
 
 ## 部署步驟
 
@@ -117,6 +126,7 @@ npx wrangler deploy
 - [ ] 點擊 Google 登入，確認 OAuth 流程
 - [ ] 以 allowlist 中的 email 登入，確認顯示「管理員」
 - [ ] 訪問 `/api/health`（如有），確認 200 回應
+- [ ] 若 GitHub Actions smoke test 只出現 runner 端 `403` warning，額外從人工網路環境做一次 canary
 
 ## 人工驗收命令（6.2 Manual Acceptance）
 

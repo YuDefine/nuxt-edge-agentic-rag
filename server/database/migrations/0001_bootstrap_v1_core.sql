@@ -1,5 +1,54 @@
 PRAGMA foreign_keys = ON;
 
+-- better-auth base tables.
+--
+-- Fresh databases (for example a brand-new staging D1) must start with the
+-- historical auth tables in place so later migrations can ALTER / rebuild
+-- them. Production originally created these via runtime bootstrap before the
+-- SQL migration stack existed; a fresh empty DB does not have that history.
+--
+-- Keep the pre-0007 affinity drift here on purpose:
+--   - user/account timestamps are TEXT via CURRENT_TIMESTAMP
+--   - no admin() plugin columns yet (migration 0002 adds them)
+--   - account_userId_idx is intentionally absent (migration 0007 documents
+--     and repairs that drift during the table rebuild)
+CREATE TABLE IF NOT EXISTS "user" (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  email TEXT NOT NULL UNIQUE,
+  emailVerified INTEGER NOT NULL DEFAULT 0,
+  image TEXT,
+  createdAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updatedAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS "account" (
+  id TEXT PRIMARY KEY,
+  userId TEXT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+  accountId TEXT NOT NULL,
+  providerId TEXT NOT NULL,
+  accessToken TEXT,
+  refreshToken TEXT,
+  accessTokenExpiresAt TEXT,
+  refreshTokenExpiresAt TEXT,
+  scope TEXT,
+  password TEXT,
+  idToken TEXT,
+  createdAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updatedAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS "session" (
+  id TEXT PRIMARY KEY,
+  userId TEXT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+  token TEXT NOT NULL UNIQUE,
+  expiresAt TEXT NOT NULL,
+  ipAddress TEXT,
+  userAgent TEXT,
+  createdAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updatedAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS user_profiles (
   id TEXT PRIMARY KEY,
   email_normalized TEXT NOT NULL UNIQUE,
@@ -9,6 +58,20 @@ CREATE TABLE IF NOT EXISTS user_profiles (
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS conversations (
+  id TEXT PRIMARY KEY,
+  user_profile_id TEXT,
+  access_level TEXT NOT NULL DEFAULT 'internal' CHECK (access_level IN ('internal', 'restricted')),
+  title TEXT NOT NULL DEFAULT 'New conversation',
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  deleted_at TEXT,
+  FOREIGN KEY (user_profile_id) REFERENCES user_profiles(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_conversations_user_created
+  ON conversations(user_profile_id, created_at);
 
 CREATE TABLE IF NOT EXISTS documents (
   id TEXT PRIMARY KEY,

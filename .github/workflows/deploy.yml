@@ -212,76 +212,12 @@ jobs:
       BROWSER_USER_AGENT: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36
       CUSTOM_DOMAIN_URL: ${{ secrets.PROD_SITE_URL }}
       DEPLOYMENT_URL: ${{ needs.deploy-production.outputs.deployment_url }}
+      HEALTH_CHECK_ATTEMPTS: 6
+      HEALTH_CHECK_DELAY_MS: 10000
+      HEALTH_CHECK_MAX_TIME_MS: 15000
     steps:
       - name: Health check
-        run: |
-          normalize_url() {
-            local raw="$1"
-            local normalized
-
-            normalized=$(printf '%s' "$raw" | sed -E 's/[[:space:]]+\([^)]*\)$//; s/^[[:space:]]+//; s/[[:space:]]+$//')
-            if [ -z "$normalized" ]; then
-              echo ""
-              return 0
-            fi
-
-            if [[ "$normalized" != http://* && "$normalized" != https://* ]]; then
-              normalized="https://$normalized"
-            fi
-
-            echo "$normalized"
-          }
-
-          check_url() {
-            local label="$1"
-            local raw_url="$2"
-            local attempts="$3"
-            local url
-
-            url=$(normalize_url "$raw_url")
-
-            if [ -z "$url" ]; then
-              echo "::warning::$label URL is empty; skip health check target"
-              return 2
-            fi
-
-            for attempt in $(seq 1 "$attempts"); do
-              STATUS=$(curl -sS -L -A "$BROWSER_USER_AGENT" -o /dev/null -w '%{http_code}' "$url" --max-time 15 || true)
-              if [ "$STATUS" = "200" ]; then
-                echo "$label healthy (HTTP $STATUS) on attempt $attempt"
-                return 0
-              fi
-
-              echo "$label attempt $attempt: HTTP ${STATUS:-000}"
-
-              if [ "$STATUS" = "403" ]; then
-                echo "::warning::$label returned 403 from GitHub runner; likely blocked by Cloudflare WAF/Bot protection"
-                return 3
-              fi
-
-              sleep 10
-            done
-
-            return 1
-          }
-
-          if check_url "Custom domain" "$CUSTOM_DOMAIN_URL" 6; then
-            exit 0
-          else
-            CUSTOM_DOMAIN_RESULT=$?
-          fi
-
-          if [ "$CUSTOM_DOMAIN_RESULT" = "3" ] && [ -n "$DEPLOYMENT_URL" ] && [ "$DEPLOYMENT_URL" != "$CUSTOM_DOMAIN_URL" ]; then
-            echo "Fallback to deployment URL: $DEPLOYMENT_URL"
-            if check_url "Deployment URL" "$DEPLOYMENT_URL" 6; then
-              exit 0
-            else
-              DEPLOYMENT_RESULT=$?
-            fi
-          fi
-
-          echo "::error::Health check failed (custom domain result=$CUSTOM_DOMAIN_RESULT, deployment url=${DEPLOYMENT_URL:-<empty>})"
-          exit 1
+        run: node scripts/check-deploy-health.mjs
 
   smoke-test-staging:
     needs: [deploy-staging]
@@ -292,76 +228,12 @@ jobs:
       BROWSER_USER_AGENT: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36
       CUSTOM_DOMAIN_URL: ${{ secrets.STAGING_SITE_URL }}
       DEPLOYMENT_URL: ${{ needs.deploy-staging.outputs.deployment_url }}
+      HEALTH_CHECK_ATTEMPTS: 6
+      HEALTH_CHECK_DELAY_MS: 10000
+      HEALTH_CHECK_MAX_TIME_MS: 15000
     steps:
       - name: Health check
-        run: |
-          normalize_url() {
-            local raw="$1"
-            local normalized
-
-            normalized=$(printf '%s' "$raw" | sed -E 's/[[:space:]]+\([^)]*\)$//; s/^[[:space:]]+//; s/[[:space:]]+$//')
-            if [ -z "$normalized" ]; then
-              echo ""
-              return 0
-            fi
-
-            if [[ "$normalized" != http://* && "$normalized" != https://* ]]; then
-              normalized="https://$normalized"
-            fi
-
-            echo "$normalized"
-          }
-
-          check_url() {
-            local label="$1"
-            local raw_url="$2"
-            local attempts="$3"
-            local url
-
-            url=$(normalize_url "$raw_url")
-
-            if [ -z "$url" ]; then
-              echo "::warning::$label URL is empty; skip health check target"
-              return 2
-            fi
-
-            for attempt in $(seq 1 "$attempts"); do
-              STATUS=$(curl -sS -L -A "$BROWSER_USER_AGENT" -o /dev/null -w '%{http_code}' "$url" --max-time 15 || true)
-              if [ "$STATUS" = "200" ]; then
-                echo "$label healthy (HTTP $STATUS) on attempt $attempt"
-                return 0
-              fi
-
-              echo "$label attempt $attempt: HTTP ${STATUS:-000}"
-
-              if [ "$STATUS" = "403" ]; then
-                echo "::warning::$label returned 403 from GitHub runner; likely blocked by Cloudflare WAF/Bot protection"
-                return 3
-              fi
-
-              sleep 10
-            done
-
-            return 1
-          }
-
-          if check_url "Custom domain" "$CUSTOM_DOMAIN_URL" 6; then
-            exit 0
-          else
-            CUSTOM_DOMAIN_RESULT=$?
-          fi
-
-          if [ "$CUSTOM_DOMAIN_RESULT" = "3" ] && [ -n "$DEPLOYMENT_URL" ] && [ "$DEPLOYMENT_URL" != "$CUSTOM_DOMAIN_URL" ]; then
-            echo "Fallback to deployment URL: $DEPLOYMENT_URL"
-            if check_url "Deployment URL" "$DEPLOYMENT_URL" 6; then
-              exit 0
-            else
-              DEPLOYMENT_RESULT=$?
-            fi
-          fi
-
-          echo "::error::Health check failed (custom domain result=$CUSTOM_DOMAIN_RESULT, deployment url=${DEPLOYMENT_URL:-<empty>})"
-          exit 1
+        run: node scripts/check-deploy-health.mjs
 
   # ---------------------------------------------------------------------------
   # Notify — Discord webhook（失敗時通知 stakeholders）
