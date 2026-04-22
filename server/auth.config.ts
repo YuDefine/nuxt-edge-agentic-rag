@@ -199,6 +199,18 @@ export default defineServerAuth(({ db, runtimeConfig }) => {
     database: db,
     emailAndPassword: { enabled: enableEmailAndPassword },
     logger: createBetterAuthSafeLogger(),
+    session: {
+      /**
+       * Cloudflare Worker live runtime returns adapter rows that may not
+       * survive Better Auth's cookie-cache `structuredClone()` path.
+       * Disable session cookie cache so passkey verify-authentication
+       * only mints the signed session token cookie, avoiding the
+       * `a14.ownKeys...` proxy-trap crash in production reauth.
+       */
+      cookieCache: {
+        enabled: false,
+      },
+    },
     /**
      * passkey-authentication: Declare `displayName` as a required custom
      * field on the better-auth `user` model so the plugin and drizzle
