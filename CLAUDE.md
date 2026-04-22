@@ -43,12 +43,13 @@ database_path = "/Users/charles/.codex/memories/rtk/history.db"
 
 ## Project Report
 
-**Current Version**: `main-v0.0.48.md`
+**Current Version**: `reports/latest.md`
 
 專題報告作為本專案的 Single Source of Truth，包含：討論紀錄、提案內容、實作成果、結論總結。
 
 ### 維護原則
 
 1. **實作與文件同步**：程式碼變更若影響報告內容，須同步更新報告
-2. **版本遞增**：修訂報告時複製新版本並遞增版號（如 `main-v0.0.37.md`）
-3. **禁止覆寫**：不得直接修改既有版本檔案
+2. **版本封存**：需要保留歷史快照時，複製版本檔到 `reports/archive/main-vX.Y.Z.md`
+3. **更新 current report**：進行中的最新內容直接維護 `reports/latest.md`
+4. **禁止覆寫**：不得直接修改既有版本檔案

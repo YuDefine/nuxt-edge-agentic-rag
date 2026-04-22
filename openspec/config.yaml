@@ -1,7 +1,7 @@
 schema: spec-driven
 
 context: |
-  Product baseline source: ../../workspace/report/versions/main-v0.0.36.md
+  Product baseline source: ../../reports/archive/main-v0.0.36.md
 
   Product goal:
   - Build a v1.0.0 edge-native Agentic RAG system for SME knowledge-base Q&A.

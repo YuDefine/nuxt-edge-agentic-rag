@@ -4,7 +4,7 @@
 
 ## Current State
 
-> 狀態（2026-04-21 更新）：目前 branch `main`，local 版本仍是 `v0.25.0`（tag `v0.25.0` 已建立但 repo 無 `origin` remote，需手動 push）。報告 current draft 已切到 `main-v0.0.48.md`（`AGENTS.md` / `CLAUDE.md` 已指向 v48；目前可見的是 working tree 草稿，尚未看到對應 commit）。Open tech debt：TD-009 mid / TD-010 mid / TD-011 high / TD-012 high / TD-014 mid。
+> 狀態（2026-04-21 更新）：目前 branch `main`，local 版本仍是 `v0.25.0`（tag `v0.25.0` 已建立但 repo 無 `origin` remote，需手動 push）。報告 current draft 現以 `reports/latest.md` 作為單一本體；`reports/archive/` 保存版本化快照，`AGENTS.md` / `CLAUDE.md` 應指向同一路徑。Open tech debt：TD-009 mid / TD-010 mid / TD-011 high / TD-012 high / TD-014 mid。
 >
 > **最新進度**（2026-04-21 晚）：
 >
@@ -18,7 +18,7 @@
 >
 > **2026-04-21 早**：
 >
-> - **專題報告 current draft 切到 `main-v0.0.48.md`**（working tree 草稿）— `AGENTS.md` / `CLAUDE.md` 的 Current Version 已指向 v48；ROADMAP 先前仍停在 v47，這次一併校正 current state。
+> - **專題報告 current draft 收斂到 `reports/latest.md`**，目前報告本體不再放在 repo root；`reports/archive/` 保存版本化快照，`AGENTS.md` / `CLAUDE.md` 應直接指向 `reports/latest.md`。
 > - **專題報告升版至 `main-v0.0.47.md`**（commit `0368556` + deploy `1ab5262` / tag `v0.24.4`，patch bump）— 補齊 v46 thinking 檢視發現之結構空洞：§3.3.2.3 驗收延後項收束契約（表 3-10）、§2.4.5 部署成本與容量規劃（表 2-29 / 2-30）、附錄 E 實模型選型參考（表 E-1）、§4.1.2 特色分級敘述、§3.2.3 響應式職責切分敘述、圖表目錄總數校正（62 張）、參考文獻 accessed date 格式。1/2/5/7（封面日期、目錄頁碼、組員心得、圖 3-2/3-7 補拍）與架構圖留待 frozen-final / 定稿排版階段。
 > - **專題報告升版至 `main-v0.0.46.md`**（commit `b660c08` → deploy `f264132` / tag `v0.24.3`，patch bump）— 把 2026-04-21 跑通之驗收自動化（Unit 6 / MCP 51 / Integration 260 / TC 42 全綠）、§3.2.3 七張實機截圖（`screenshots/local/report-v46/`）、EV runbook 指向、表 4-1 三級狀態分級、附錄 D-1 AI Gateway env var 寫進第三、四章。`frozen-final` 正式驗收跑報仍留待實模型接入後。
 > - **conversation-create test 補 member role**（commit `87bd6ce` → deploy `f3962fa` / tag `v0.24.2`，patch bump）— 消除 `getGuestPolicy` 的 `hub:db` dynamic import warn log 4 次；test 數不變（260 passed / 1 skipped）。
@@ -33,8 +33,11 @@
 >   - `mcp_tokens.created_by_user_id` 收緊為 NOT NULL（migration 0008）— prod 先 DELETE 4 筆 local/staging test seed（無 query_logs 引用）+ UPDATE 2 筆 prod test token 到 charles user id（保留 audit trail），剩 3 筆全 non-NULL 後才 ALTER；同步清掉 `mcp-role-gate.ts` 的「null as system seed」legacy bypass 與 `McpTokenRecord.createdByUserId` 的 `| null`。
 >   - `chat.post.ts` 雙重 session 讀取 follow-up — 全 repo 審視後確認所有 `server/api/**` endpoint 已收斂為單次 session helper（`requireRole` / `requireUserSession` / `requireRuntimeAdminSession`），無其他 handler 殘留此 pattern。
 >
-> **待辦**（handoff 中）：
+> **專題報告補件現況**（2026-04-22）：
 >
+> - 目前 demo 資料足以支撐「最小答辯閉環」，但還不足以支撐更完整的評審驗收展示。
+> - 若要補進 `reports/latest.md`，優先集中三包資料缺口：30–50 筆正式驗收案例、可重現的 demo seed bundle、治理／失敗路徑 EV 證據包。
+> - 已盤點可回填素材：文件／版本／current-version 狀態資料、使用者／角色／guest policy 資料、MCP token 與其治理狀態、acceptance seed cases、query logs / conversations / citation records 等操作累積資料。
 > - `frozen-final` 驗收跑報：實模型接入後跑 30–50 筆正式測試集，回填 v47 §3.3.2 表 3-7 / 表 3-8 的延遲 / P50 / P95 / Judge 觸發率統計
 > - `/chat` 實機截圖重拍「有回答 + 引用卡片」版本（需完整 R2 + AI Search 閉環或 staging 環境）
 > - `/admin/usage` 接上真實 `CLOUDFLARE_API_TOKEN_ANALYTICS` 後重拍 loaded 版本
@@ -53,6 +56,11 @@
 - [mid] `drizzle-refactor-credentials-admin-members`：local `/admin/members` happy path 人工確認（task 7.2）
 - [mid] `drizzle-refactor-credentials-admin-members`：production `/account/settings` + `/admin/members` regression check 與 §16 responsive pipeline 收尾（tasks 7.3 / 7.4）
 - [mid] `drizzle-refactor-credentials-admin-members`：`docs/tech-debt.md` 將 TD-010 狀態由 `open` 回填為 `done`（task 7.5）
+
+### 專題報告 current report 回填
+
+- [mid] 重新讀 `reports/latest.md`，將目前 demo 資料現況判定與三包資料缺口正式寫回報告正文
+- [mid] 回填 `reports/latest.md` 時，優先利用已盤點素材：文件／版本／current-version、使用者／角色／guest policy、MCP token 治理狀態、acceptance seed cases、query logs / conversations / citation records
 
 ### 下一個實作切入點：`multi-format-document-ingestion`
 

@@ -1,6 +1,6 @@
 ## Why
 
-`../../workspace/report/versions/main-v0.0.36.md` 已經定義 `v1.0.0` 的系統邊界、驗收閉環與治理原則，但目前 repo 只有 Spectra 骨架與 Nuxt 初始頁面，還沒有可直接拿來規劃與實作的 change artifacts。若不先把報告整理成 proposal、design、specs 與 tasks，後續開發很容易在資料真相來源、權限規則與核心範圍上各自解讀。
+`../../reports/archive/main-v0.0.36.md` 已經定義 `v1.0.0` 的系統邊界、驗收閉環與治理原則，但目前 repo 只有 Spectra 骨架與 Nuxt 初始頁面，還沒有可直接拿來規劃與實作的 change artifacts。若不先把報告整理成 proposal、design、specs 與 tasks，後續開發很容易在資料真相來源、權限規則與核心範圍上各自解讀。
 
 ## What Changes
 

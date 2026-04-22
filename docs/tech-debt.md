@@ -483,7 +483,7 @@ TD-001 修復後（commit 1f6a4d1，mcp-token-store 遷移 Drizzle）兩類 fail
 **Progress update (2026-04-21)**:
 
 - `server/database/migrations/0010_fk_cascade_repair.sql` 已套用到 production D1 `agentic-rag-db`（database_id `3036df7f-d54b-4d36-a33d-ecbb551fc278`）。
-- Pre-apply backup 已下載：`backup-pre-0010-20260421.sql`。
+- Pre-apply backup 已下載：`backups/backup-pre-0010-20260421.sql`。
 - Production baseline / post-apply row count 一致：`member_role_changes=2`, `mcp_tokens=3`, `query_logs=72`, `citation_records=37`, `messages=81`, `"user"=2`。
 - Post-apply PRAGMA 驗證通過：`foreign_key_check` empty；`member_role_changes` 無 FK；`mcp_tokens.created_by_user_id` 為 `ON DELETE CASCADE`；`query_logs.mcp_token_id` 為 `ON DELETE SET NULL`。
 - Local WebAuthn 自刪驗證通過：Playwright virtual authenticator 建立 passkey-first user `td011-mo8ftwv1`，插入 local `mcp_tokens` row 後完成 `/account/settings` 刪除流程；`POST /api/auth/account/delete` 回 200、導回 `/`、`member_role_changes.reason = 'self-deletion'` tombstone 保留、該 user 的 token count 回 0；截圖 `screenshots/local/td011-self-delete-local.png`。
