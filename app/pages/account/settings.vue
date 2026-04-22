@@ -171,7 +171,7 @@
   }
 
   async function handleAccountDeleted(): Promise<void> {
-    await navigateTo('/')
+    await navigateTo('/', { replace: true })
   }
 
   function formatDate(dateString: string | null | undefined): string {
