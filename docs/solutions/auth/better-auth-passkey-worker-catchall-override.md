@@ -42,6 +42,7 @@ production `POST /api/auth/passkey/verify-authentication` 持續回 `500`，Work
 - 把 top-level `response` 用 `Object.fromEntries(Object.entries(response))` materialize 成 plain object，再交給 Better Auth
 - route 本身要補 runtime gate，只有 passkey feature flag 與 RP config 都齊時才開放；避免 feature 關閉時被 exact route 意外改成非 `404`
 - 不要把 helper 的輸入綁死在 `AuthInstance` 型別上；若型別沒暴露 `verifyPasskeyAuthentication`，改用 runtime guard 檢查 direct endpoint 是否存在，缺失時明確回 `503`
+- 如果這條 helper 會被 Node Vitest project 直接 import，避免在 util 內放 `h3` 之類只在 Nuxt/Nitro runtime 慣常存在的 bare runtime import；錯誤包裝留在 route handler 做即可
 
 這樣做的目的不是宣稱 root cause 已完全確診，而是：
 
@@ -53,6 +54,7 @@ production `POST /api/auth/passkey/verify-authentication` 持續回 `500`，Work
 
 - `pnpm test test/unit/passkey-verify-authentication.test.ts` 通過
 - `pnpm check` 通過
+- `pnpm test:unit` 通過
 - `pnpm build` 通過
 - local preview 對空 payload `POST /api/auth/passkey/verify-authentication` 會回自訂 `400 Passkey authentication payload invalid`
 
@@ -63,5 +65,6 @@ production `POST /api/auth/passkey/verify-authentication` 持續回 `500`，Work
 - 遇到 vendor module 提供 catch-all route 時，不要假設所有子路徑都只能靠 upstream 修；先確認 framework 是否允許 exact route 覆蓋
 - 如果 exact route 是拿來覆蓋 feature-gated vendor route，務必同時保留原本的 feature gate 行為，不然很容易把既有 `404` 契約破壞掉
 - Worker / Edge 上看到 `ownKeys`、`has` 之類 proxy trap 錯誤時，優先懷疑 adapter boundary、proxy 物件與 serialization，而不只是業務邏輯
+- 只在本地跑單一 spec 容易漏掉 CI 專案分層差異；這類 util 被 Node project 直接匯入時，要額外跑一次 `pnpm test:unit`
 - local preview 若沿用 production build artifact，先確認 build-time `siteUrl` / origin / RP config 是否已固化，避免被假錯誤帶偏
 - 對精準 override route 至少補一個「空 payload 會回自訂 4xx」的 smoke test，用來確認 routing precedence 真正生效
