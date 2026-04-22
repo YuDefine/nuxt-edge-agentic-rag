@@ -4,13 +4,13 @@
       {
         "hooks": [
           {
-            "command": "jq -r '.tool_input.command' | grep -q '^git commit' && code-review-graph update 2>/dev/null || true",
+            "command": "HOOK_EVENT='PostToolUse' ORIGINAL_HOOK_COMMAND='jq -r '\"'\"'.tool_input.command'\"'\"' | grep -q '\"'\"'^git commit'\"'\"' && code-review-graph update 2>/dev/null || true' \"$(git rev-parse --show-toplevel)/.codex/hooks/_codex_hook_wrapper.sh\"",
             "statusMessage": "Updating code knowledge graph...",
             "timeout": 30,
             "type": "command"
           },
           {
-            "command": "$(git rev-parse --show-toplevel)/.codex/hooks/post-bash-error-debug.sh",
+            "command": "HOOK_EVENT='PostToolUse' ORIGINAL_HOOK_COMMAND='$(git rev-parse --show-toplevel)/.codex/hooks/post-bash-error-debug.sh' \"$(git rev-parse --show-toplevel)/.codex/hooks/_codex_hook_wrapper.sh\"",
             "timeout": 5,
             "type": "command"
           }
@@ -22,7 +22,7 @@
       {
         "hooks": [
           {
-            "command": "$(git rev-parse --show-toplevel)/.codex/hooks/pre-commit-review.sh",
+            "command": "HOOK_EVENT='PreToolUse' ORIGINAL_HOOK_COMMAND='$(git rev-parse --show-toplevel)/.codex/hooks/pre-commit-review.sh' \"$(git rev-parse --show-toplevel)/.codex/hooks/_codex_hook_wrapper.sh\"",
             "statusMessage": "Checking commit authorization...",
             "timeout": 10,
             "type": "command"
@@ -35,13 +35,13 @@
       {
         "hooks": [
           {
-            "command": "$(git rev-parse --show-toplevel)/.codex/hooks/init-code-graph.sh",
+            "command": "HOOK_EVENT='SessionStart' ORIGINAL_HOOK_COMMAND='$(git rev-parse --show-toplevel)/.codex/hooks/init-code-graph.sh' \"$(git rev-parse --show-toplevel)/.codex/hooks/_codex_hook_wrapper.sh\"",
             "statusMessage": "Initializing code knowledge graph...",
             "timeout": 120,
             "type": "command"
           },
           {
-            "command": "$(git rev-parse --show-toplevel)/.codex/hooks/session-start-roadmap-sync.sh",
+            "command": "HOOK_EVENT='SessionStart' ORIGINAL_HOOK_COMMAND='$(git rev-parse --show-toplevel)/.codex/hooks/session-start-roadmap-sync.sh' \"$(git rev-parse --show-toplevel)/.codex/hooks/_codex_hook_wrapper.sh\"",
             "statusMessage": "Syncing Spectra roadmap...",
             "timeout": 10,
             "type": "command"
@@ -53,7 +53,7 @@
       {
         "hooks": [
           {
-            "command": "$(git rev-parse --show-toplevel)/.codex/hooks/stop-accumulate.sh",
+            "command": "HOOK_EVENT='Stop' ORIGINAL_HOOK_COMMAND='$(git rev-parse --show-toplevel)/.codex/hooks/stop-accumulate.sh' \"$(git rev-parse --show-toplevel)/.codex/hooks/_codex_hook_wrapper.sh\"",
             "timeout": 5,
             "type": "command"
           }
