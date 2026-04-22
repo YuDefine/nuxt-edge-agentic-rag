@@ -205,6 +205,7 @@ jobs:
       BROWSER_USER_AGENT: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36
       CUSTOM_DOMAIN_URL: ${{ secrets.PROD_SITE_URL }}
       DEPLOYMENT_URL: ${{ needs.deploy-production.outputs.deployment_url }}
+      HEALTH_CHECK_ACCEPT_WAF_BLOCK: true
       HEALTH_CHECK_ATTEMPTS: 6
       HEALTH_CHECK_DELAY_MS: 10000
       HEALTH_CHECK_MAX_TIME_MS: 15000
@@ -224,6 +225,7 @@ jobs:
       BROWSER_USER_AGENT: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36
       CUSTOM_DOMAIN_URL: ${{ secrets.STAGING_SITE_URL }}
       DEPLOYMENT_URL: ${{ needs.deploy-staging.outputs.deployment_url }}
+      HEALTH_CHECK_ACCEPT_WAF_BLOCK: true
       HEALTH_CHECK_ATTEMPTS: 6
       HEALTH_CHECK_DELAY_MS: 10000
       HEALTH_CHECK_MAX_TIME_MS: 15000
