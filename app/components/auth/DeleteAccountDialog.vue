@@ -14,10 +14,9 @@
    *      - Google path (Phase 11 Google-linked users): same flow via
    *        `signIn.social({ provider: 'google' })`.
    *   3. After reauth succeeds, the confirm button unlocks.
-   *   4. Confirm → `POST /api/auth/account/delete` → sign out via the
-   *      same `onSuccess` redirect path used by the global layouts so the
-   *      stale auth atom cannot leave `/account/settings` mounted after
-   *      the session is gone.
+   *   4. Confirm → `POST /api/auth/account/delete` → sign out, then force
+   *      a hard redirect to `/` so stale SPA auth state cannot leave
+   *      `/account/settings` mounted after the session is gone.
    */
 
   const props = defineProps<{
@@ -28,7 +27,6 @@
 
   const emit = defineEmits<{
     'update:open': [value: boolean]
-    deleted: []
   }>()
 
   const { $csrfFetch } = useNuxtApp() as unknown as {
@@ -93,6 +91,14 @@
     }
   }
 
+  async function redirectToSignedOutHome(): Promise<void> {
+    if (import.meta.client) {
+      window.location.replace('/')
+      return
+    }
+    await navigateTo('/', { replace: true })
+  }
+
   async function handleConfirmDelete(): Promise<void> {
     if (!reauthComplete.value) return
     deleteLoading.value = true
@@ -105,17 +111,16 @@
         color: 'neutral',
         icon: 'i-lucide-check',
       })
+      isOpen.value = false
       try {
         await signOut({
           onSuccess: async () => {
-            await navigateTo('/', { replace: true })
+            await redirectToSignedOutHome()
           },
         })
       } catch {
-        await navigateTo('/', { replace: true })
+        await redirectToSignedOutHome()
       }
-      emit('deleted')
-      isOpen.value = false
     } catch (error) {
       errorMessage.value = getErrorMessage(error, '刪除失敗，請稍後再試')
     } finally {
