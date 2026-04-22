@@ -16,11 +16,20 @@ interface BetterAuthLogSink {
 
 const workerConsole = globalThis.console
 
+function emitConsoleLine(
+  method: 'debug' | 'info' | 'warn' | 'error' | 'log',
+  prefix: string,
+  args: unknown[],
+): void {
+  const payload = [prefix, ...args.map((arg) => serializeBetterAuthLogArg(arg))].join(' ')
+  workerConsole[method](payload)
+}
+
 const DEFAULT_SINK: BetterAuthLogSink = {
-  debug: (...args) => workerConsole.debug('[better-auth:debug]', ...args),
-  info: (...args) => workerConsole.info('[better-auth:info]', ...args),
-  warn: (...args) => workerConsole.warn('[better-auth:warn]', ...args),
-  error: (...args) => workerConsole.error('[better-auth:error]', ...args),
+  debug: (...args) => emitConsoleLine('debug', '[better-auth:debug]', args),
+  info: (...args) => emitConsoleLine('info', '[better-auth:info]', args),
+  warn: (...args) => emitConsoleLine('warn', '[better-auth:warn]', args),
+  error: (...args) => emitConsoleLine('error', '[better-auth:error]', args),
 }
 
 function formatError(error: Error): string {
@@ -135,7 +144,13 @@ export function createBetterAuthSafeLogger(
     disableColors: true,
     level: 'warn',
     log(level: BetterAuthLogLevel, message: string, ...args: unknown[]) {
-      const renderedArgs = args.map(serializeBetterAuthLogArg)
+      let renderedArgs: string[]
+
+      try {
+        renderedArgs = args.map(serializeBetterAuthLogArg)
+      } catch (error) {
+        renderedArgs = [`[logger arg serialization failed] ${serializeBetterAuthLogArg(error)}`]
+      }
 
       try {
         getSinkMethod(sink, level).call(sink, message, ...renderedArgs)
