@@ -382,7 +382,7 @@ TD-001 修復後（commit 1f6a4d1，mcp-token-store 遷移 Drizzle）兩類 fail
 
 ## TD-009 — user_profiles.email_normalized 全面改 nullable
 
-**Status**: open
+**Status**: done
 **Priority**: mid
 **Discovered**: 2026-04-21 — `passkey-authentication` change migration planning
 **Location**: `server/db/schema.ts` (`userProfiles.emailNormalized`), `server/database/migrations/0009_passkey_and_display_name.sql` (deferred from migration)
@@ -488,7 +488,9 @@ TD-001 修復後（commit 1f6a4d1，mcp-token-store 遷移 Drizzle）兩類 fail
 - Post-apply PRAGMA 驗證通過：`foreign_key_check` empty；`member_role_changes` 無 FK；`mcp_tokens.created_by_user_id` 為 `ON DELETE CASCADE`；`query_logs.mcp_token_id` 為 `ON DELETE SET NULL`。
 - Local WebAuthn 自刪驗證通過：Playwright virtual authenticator 建立 passkey-first user `td011-mo8ftwv1`，插入 local `mcp_tokens` row 後完成 `/account/settings` 刪除流程；`POST /api/auth/account/delete` 回 200、導回 `/`、`member_role_changes.reason = 'self-deletion'` tombstone 保留、該 user 的 token count 回 0；截圖 `screenshots/local/td011-self-delete-local.png`。
 - Local `.data/db/sqlite.db` compatibility DB 也已修正 query_logs / citation_records / messages FK rebind，`query_logs.mcp_token_id` 指向 canonical `mcp_tokens(id) ON DELETE SET NULL`。
-- Status 保持 `open`，直到 §17.8 local / production passkey-only 自刪人工驗收與 TD entry 收尾完成。
+- 2026-04-23 production closeout 已完成：`v0.28.12` 重新實測 passkey-only test user 自刪，`generate-authenticate-options` / `verify-authentication` / `/api/auth/account/delete` / `/api/auth/sign-out` 全部回 `200`；最終 hard redirect 回 `/`，`/api/auth/get-session` 回 `null`，首頁恢復登入文案。
+- 同輪 production D1 驗證：`member_role_changes` latest row `reason = 'self-deletion'`；`"user"` / `passkey` / `mcp_tokens` 對該 test user 的 count 全為 `0`。
+- TD-011 已完成收尾，Status 改為 `done`，保留條目供後續追溯。
 
 ### Problem
 

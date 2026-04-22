@@ -70,6 +70,6 @@
 - [x] 8.2 Local D1 檢視：`SELECT user_id, reason FROM member_role_changes WHERE user_id = 'Vwp8ovTJBjy174coh73nnPUs3qBY8ii1' ORDER BY created_at DESC LIMIT 1` 回傳 `reason = 'self-deletion'`（Audit tombstone survives user deletion）
 - [x] 8.3 Local D1 檢視：刪除前為 user `Vwp8ovTJBjy174coh73nnPUs3qBY8ii1` 插入 local `mcp_tokens` row `td011-token-mo8fu0s6`；刪除後 `SELECT count(*) FROM mcp_tokens WHERE created_by_user_id = 'Vwp8ovTJBjy174coh73nnPUs3qBY8ii1'` 回 0（MCP tokens cascade on user deletion）。同輪也修正 `.data/db/sqlite.db` local compatibility DB 的 query_logs/citation_records/messages FK rebind，使 `query_logs.mcp_token_id` 指向 canonical `mcp_tokens(id) ON DELETE SET NULL`。
 - [x] 8.4 Local 逾時 reauth 測試：使用者人工確認 2026-04-21 流程「完成 Passkey 重新驗證 → 等超過 5 分鐘 → 按確認刪除」如預期回 HTTP 403；帳號未刪除，對應 Deletion without reauth is refused。
-- [ ] 8.5 Production 以同一流程實測 passkey-only test user 自刪（§17.8 人工檢查 production 分支）
-- [ ] 8.6 Production D1 檢視 tombstone 保留 + token cascade（同 8.2 / 8.3）
-- [ ] 8.7 TD-011 entry 狀態更新：`docs/tech-debt.md` Status 由 `open` → `done`；保留條目作歷史
+- [x] 8.5 Production 以同一流程實測 passkey-only test user 自刪（§17.8 人工檢查 production 分支）
+- [x] 8.6 Production D1 檢視 tombstone 保留 + token cascade（同 8.2 / 8.3）
+- [x] 8.7 TD-011 entry 狀態更新：`docs/tech-debt.md` Status 由 `open` → `done`；保留條目作歷史
