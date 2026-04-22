@@ -1,33 +1,59 @@
 #!/usr/bin/env bash
 # Stop hook: Compound Janitor — 評估 session 是否產出值得累積的知識
 
-cat <<'PROMPT'
-## 結束前檢查（Stop Hook — Compound Janitor）
+set -euo pipefail
 
-快速評估以下三點，**只做適用的**，都不適用就直接結束：
+INPUT=$(cat)
+STOP_HOOK_ACTIVE=$(printf '%s' "$INPUT" | jq -r '.stop_hook_active // false' 2>/dev/null || printf 'false')
 
-### 1. 知識萃取（docs/solutions/ — 最重要）
-回顧本次 session，是否符合以下**任一**條件？
-- Debug 過程嘗試了 3+ 種方法才找到 root cause
-- 發現框架/平台/套件的隱性限制或 undocumented behavior
-- Root cause 非 typo，解法非直覺
-- 解法涉及 workaround
+# Stop hook 只應續跑一次；第二次 stop 時直接放行，避免無限 continuation loop。
+if [ "$STOP_HOOK_ACTIVE" = "true" ]; then
+  exit 0
+fi
 
-**如果符合**：寫入 `docs/solutions/<category>/` 結構化文檔（見 README.md schema）
-**先搜索**是否已有相似記錄 → 有則更新，無則新建
+ACTIVE_CHANGES=$(
+  find openspec/changes -mindepth 1 -maxdepth 1 -type d 2>/dev/null \
+    | sed 's#/$##' \
+    | xargs -n1 basename 2>/dev/null \
+    | grep -v '^archive$' \
+    | wc -l \
+    | tr -d ' '
+)
 
-**不需萃取**：修 typo、調 CSS、跑 migration、更新依賴、直覺修復
+ACTIVE_CHANGE_LIST=$(
+  find openspec/changes -mindepth 1 -maxdepth 1 -type d 2>/dev/null \
+    | sed 's#/$##' \
+    | xargs -n1 basename 2>/dev/null \
+    | grep -v '^archive$' \
+    | awk 'BEGIN { first = 1 } { if (!first) printf(", "); printf("%s", $0); first = 0 } END { if (!first) printf("\n") }' \
+    || true
+)
 
-### 2. Skill 累積
-- 本次是否有值得記錄到 skill 的流程或注意事項？
-- 如適用：通用 → `~/.agents/skills/`；專案專用 → `.agents/skills/`
+if [ -z "$ACTIVE_CHANGE_LIST" ]; then
+  ACTIVE_CHANGE_LIST="(none)"
+fi
 
-### 3. HANDOFF.md 交接檢查
-檢查是否有未完成的工作需要交接：
-- `openspec/changes/` 中有非 archive 的 active change？
-- `git status --porcelain` 有未 commit 的變更？
+if git status --porcelain >/dev/null 2>&1 && [ -n "$(git status --porcelain)" ]; then
+  DIRTY_WORKTREE=true
+else
+  DIRTY_WORKTREE=false
+fi
 
-**如果有**：建立或更新 `HANDOFF.md`（格式見 `.github/instructions/handoff.md`）
-**如果沒有**：跳過（也清理舊的 HANDOFF.md，如果存在的話）
+MESSAGE=$(cat <<'PROMPT'
+執行結束前 janitor，只做適用項，完成後直接結束：
 
+1. 若本輪解了非 trivial 問題（3+ 嘗試、隱性限制、非直覺 root cause、workaround），搜尋並更新 `docs/solutions/`；schema 見 `docs/solutions/README.md`
+2. 若本輪累積了可重用流程，再評估是否更新 skill
+3. 交接檢查：
+   - active_changes: __ACTIVE_CHANGES__
+   - active_change_list: __ACTIVE_CHANGE_LIST__
+   - dirty_worktree: __DIRTY_WORKTREE__
+   - 若 active change 或 dirty worktree 存在，更新 `template/HANDOFF.md`；否則清理舊 handoff
 PROMPT
+)
+
+MESSAGE=${MESSAGE/__ACTIVE_CHANGES__/$ACTIVE_CHANGES}
+MESSAGE=${MESSAGE/__ACTIVE_CHANGE_LIST__/$ACTIVE_CHANGE_LIST}
+MESSAGE=${MESSAGE/__DIRTY_WORKTREE__/$DIRTY_WORKTREE}
+
+jq -n --arg reason "$MESSAGE" '{ decision: "block", reason: $reason }'

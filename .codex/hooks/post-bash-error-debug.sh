@@ -2,9 +2,23 @@
 # PostToolUse hook: Bash 指令失敗時建議使用 spectra-debug
 # 過濾掉 git/pnpm check 等預期可能失敗的指令
 
+set -euo pipefail
+
 INPUT=$(cat)
-CMD=$(echo "$INPUT" | jq -r '.tool_input.command // ""' 2>/dev/null)
-EXIT_CODE=$(echo "$INPUT" | jq -r '.tool_response.exit_code // 0' 2>/dev/null)
+
+# 某些 PostToolUse 執行情境可能拿到非 JSON stdin；提醒 hook 不應因此失敗。
+CMD=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // ""' 2>/dev/null || printf '')
+EXIT_CODE=$(
+  printf '%s' "$INPUT" | jq -r '
+    .tool_response
+    | if type == "string" then
+        (fromjson? // {})
+      else
+        (. // {})
+      end
+    | .exit_code // .exitCode // 0
+  ' 2>/dev/null || printf '0'
+)
 
 # 只在非零 exit code 時觸發
 if [ "$EXIT_CODE" = "0" ] || [ "$EXIT_CODE" = "null" ]; then
@@ -28,7 +42,8 @@ if [ -f "$MARKER" ]; then
 fi
 touch "$MARKER"
 
-echo "[Auto-Harness] 指令執行失敗（exit code: $EXIT_CODE）。"
-echo "如果這不是預期的失敗，使用 /spectra-debug 進行系統性排查（四階段：觀察 → 假設 → 驗證 → 修復）。"
+MESSAGE="[Auto-Harness] 指令執行失敗
+exit code: $EXIT_CODE
+如果這不是預期的失敗，使用 /spectra-debug 進行系統性排查（四階段：觀察 → 假設 → 驗證 → 修復）。"
 
-exit 0
+jq -n --arg systemMessage "$MESSAGE" '{ systemMessage: $systemMessage, suppressOutput: true }'
