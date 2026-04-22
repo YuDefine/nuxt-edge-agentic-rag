@@ -18,6 +18,7 @@ interface AccessTokenRecord {
   clientId: string
   expiresAt: string
   scopes: string[]
+  tokenId: string
   userId: string
 }
 
@@ -117,11 +118,13 @@ export function createMcpOauthGrantStore(input: {
       })
 
       const accessToken = createOpaqueToken()
+      const tokenId = createOpaqueToken()
       const expiresAt = new Date(currentTime + input.accessTokenTtlSeconds * 1000).toISOString()
       const accessRecord: AccessTokenRecord = {
         clientId: grant.clientId,
         expiresAt,
         scopes: grant.scopes,
+        tokenId,
         userId: grant.userId,
       }
 
@@ -140,21 +143,33 @@ export function createMcpOauthGrantStore(input: {
     },
 
     async getAccessTokenRecord(accessToken: string): Promise<AccessTokenRecord | null> {
-      const rawRecord = await input.kv.get(accessTokenKey(accessToken))
-
-      if (!rawRecord) {
-        return null
-      }
-
-      const record = JSON.parse(rawRecord) as AccessTokenRecord
-
-      if (Date.parse(record.expiresAt) <= now()) {
-        return null
-      }
-
-      return record
+      return getMcpOauthAccessTokenRecord({
+        accessToken,
+        kv: input.kv,
+        now,
+      })
     },
   }
+}
+
+export async function getMcpOauthAccessTokenRecord(input: {
+  accessToken: string
+  kv: KvLike
+  now?: () => number
+}): Promise<AccessTokenRecord | null> {
+  const rawRecord = await input.kv.get(accessTokenKey(input.accessToken))
+
+  if (!rawRecord) {
+    return null
+  }
+
+  const record = JSON.parse(rawRecord) as AccessTokenRecord
+
+  if (Date.parse(record.expiresAt) <= (input.now ?? Date.now)()) {
+    return null
+  }
+
+  return record
 }
 
 function createOpaqueToken(): string {

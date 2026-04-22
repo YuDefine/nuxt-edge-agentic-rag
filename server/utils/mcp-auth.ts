@@ -17,6 +17,17 @@ export function hashMcpToken(token: string): string {
   return createHash('sha256').update(token).digest('hex')
 }
 
+export function extractBearerToken(headers: Record<string, string | undefined>): string {
+  const header = headers.authorization ?? headers.Authorization
+  const token = header?.match(/^Bearer\s+(.+)$/i)?.[1]?.trim()
+
+  if (!token) {
+    throw new McpAuthError('A valid Bearer token is required', 401)
+  }
+
+  return token
+}
+
 export async function requireMcpBearerToken(
   event: {
     headers: Record<string, string | undefined>
@@ -33,12 +44,7 @@ export async function requireMcpBearerToken(
   token: McpTokenRecord
   tokenId: string
 }> {
-  const header = event.headers.authorization ?? event.headers.Authorization
-  const token = header?.match(/^Bearer\s+(.+)$/i)?.[1]?.trim()
-
-  if (!token) {
-    throw new McpAuthError('A valid Bearer token is required', 401)
-  }
+  const token = extractBearerToken(event.headers)
 
   const tokenRecord = await options.store.findUsableTokenByHash(
     hashMcpToken(token),

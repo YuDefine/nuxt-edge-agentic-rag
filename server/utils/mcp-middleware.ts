@@ -1,7 +1,13 @@
 import type { H3Event } from 'h3'
 
 import { getRequiredKvBinding } from '#server/utils/cloudflare-bindings'
-import { McpAuthError, requireMcpBearerToken } from '#server/utils/mcp-auth'
+import { getMcpOauthAccessTokenRecord } from '#server/utils/mcp-oauth-grants'
+import {
+  extractBearerToken,
+  hashMcpToken,
+  McpAuthError,
+  requireMcpBearerToken,
+} from '#server/utils/mcp-auth'
 import {
   consumeMcpToolRateLimit,
   createKvRateLimitStore,
@@ -22,8 +28,12 @@ export interface McpTokenStoreLike {
 }
 
 export interface McpAuthContext {
+  principal: {
+    authSource: 'legacy_token' | 'oauth_access_token'
+    userId: string
+  }
   scopes: string[]
-  token: McpTokenRecord
+  token?: McpTokenRecord
   tokenId: string
 }
 
@@ -86,12 +96,39 @@ export async function runMcpMiddleware(
   event: McpEventLike,
   deps: RunMcpMiddlewareDeps,
 ): Promise<void> {
+  const kv = getRequiredKvBinding(event, deps.kvBindingName)
   let auth: McpAuthContext
   try {
-    auth = await requireMcpBearerToken(
-      { headers: getHeadersRecord(event) },
-      { environment: deps.environment, store: deps.tokenStore },
-    )
+    const bearerToken = extractBearerToken(getHeadersRecord(event))
+    const oauthRecord = await getMcpOauthAccessTokenRecord({
+      accessToken: bearerToken,
+      kv,
+    })
+
+    if (oauthRecord) {
+      auth = {
+        principal: {
+          authSource: 'oauth_access_token',
+          userId: oauthRecord.userId,
+        },
+        scopes: oauthRecord.scopes,
+        tokenId: oauthRecord.tokenId || `oauth:${hashMcpToken(bearerToken)}`,
+      }
+    } else {
+      const legacyAuth = await requireMcpBearerToken(
+        { headers: getHeadersRecord(event) },
+        { environment: deps.environment, store: deps.tokenStore },
+      )
+      auth = {
+        principal: {
+          authSource: 'legacy_token',
+          userId: legacyAuth.token.createdByUserId ?? '',
+        },
+        scopes: legacyAuth.scopes,
+        token: legacyAuth.token,
+        tokenId: legacyAuth.tokenId,
+      }
+    }
   } catch (error) {
     if (error instanceof McpAuthError) {
       throw createError({
@@ -108,7 +145,6 @@ export async function runMcpMiddleware(
 
   const toolNames = await deps.extractToolNames(event as unknown as H3Event)
   const preset = resolveRateLimitPreset(toolNames[0])
-  const kv = getRequiredKvBinding(event, deps.kvBindingName)
 
   try {
     await consumeMcpToolRateLimit({
