@@ -42,9 +42,7 @@ class McpStatelessTransport {
       return
     }
 
-    await writer.write(
-      this.encoder.encode(`event: message\ndata: ${JSON.stringify(message)}\n\n`),
-    )
+    await writer.write(this.encoder.encode(`event: message\ndata: ${JSON.stringify(message)}\n\n`))
 
     if (typeof message.id === 'string' || typeof message.id === 'number') {
       this.pendingResponseIds.delete(message.id)
