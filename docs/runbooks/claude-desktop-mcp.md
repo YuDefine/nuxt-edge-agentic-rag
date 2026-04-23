@@ -55,7 +55,7 @@ Claude remote connector
     ],
     "environments": ["production"],
     "name": "Claude Remote",
-    "redirectUris": ["https://claude.example/callback"]
+    "redirectUris": ["https://claude.ai/api/mcp/auth_callback"]
   }
 ]
 ```
@@ -65,6 +65,7 @@ Claude remote connector
 - 這是 **allowlist config**，不是 secret；可用 `wrangler secret put` 或 `vars` 管理，但 production 仍建議走受控流程更新
 - 若值缺失、JSON 格式錯誤、或不是陣列，Nuxt 啟動會直接失敗，避免 silent misconfig
 - 若 registry 為空，remote connector 授權流程會在 `/api/auth/mcp/authorize` 直接拒絕 unknown client
+- Anthropic 官方目前的 Claude OAuth callback URL 是 `https://claude.ai/api/mcp/auth_callback`；若之後官方變更，`redirectUris` 也必須跟著更新
 
 ### 2. 本地帳號前提
 
@@ -97,6 +98,61 @@ Claude remote connector
 4. 使用者按「允許並繼續」後，系統發 authorization code 回 connector
 5. connector 用 code 打 `/api/auth/mcp/token`
 6. 之後以 `Bearer <oauth access token>` 呼叫 `/mcp`
+
+### Claude Desktop 實際操作步驟
+
+以下步驟是站在「你已經把本站部署到公開網址，且 runtime config 已設好」的前提。
+
+1. 打開 Claude Desktop。
+2. 進入 `Settings > Connectors`。
+3. 點 `Add connector` 或 `Add custom connector`。
+4. `Connector name` 輸入任意名稱，例如 `Yuntech RAG`。
+5. `Connector URL` 輸入你的遠端 MCP endpoint，例如 `https://agentic.yudefine.com.tw/mcp`。
+6. 若 UI 有 `Advanced settings`：
+   - `OAuth Client ID` 填 `claude-remote`
+   - `OAuth Client Secret` 留空
+7. 按 `Add`。
+8. 在 connector 列表找到剛新增的項目，按 `Connect`。
+9. Claude 會開啟本專案的 `/auth/mcp/authorize` 授權頁。
+10. 用本系統既有帳號登入。
+11. 在 consent 頁確認 scope 與帳號資訊後，按「允許並繼續」。
+12. 回到 Claude Desktop，開新對話。
+13. 在對話左下 `+` 的 `Connectors` 裡把這個 connector 打開。
+14. 先測一個 browse-safe 問題，例如「列出知識庫分類」或「搜尋某個主題」。
+
+### Operator 最短清單
+
+如果你是要幫使用者先把 server 端準備好，最少要完成這四件事：
+
+1. 在部署環境設定：
+
+```bash
+NUXT_KNOWLEDGE_MCP_ACCESS_TOKEN_TTL_SECONDS=600
+NUXT_KNOWLEDGE_MCP_AUTHORIZATION_CODE_TTL_SECONDS=120
+NUXT_KNOWLEDGE_MCP_CONNECTOR_CLIENTS_JSON='[
+  {
+    "clientId": "claude-remote",
+    "enabled": true,
+    "allowedScopes": [
+      "knowledge.ask",
+      "knowledge.search",
+      "knowledge.category.list",
+      "knowledge.citation.read"
+    ],
+    "environments": ["production"],
+    "name": "Claude Remote",
+    "redirectUris": ["https://claude.ai/api/mcp/auth_callback"]
+  }
+]'
+```
+
+2. 重新部署。
+3. 確認外網可連到 `/mcp`、`/api/auth/mcp/authorize`、`/api/auth/mcp/token`。
+4. 先手動打開以下 URL，確認授權頁能正常顯示：
+
+```text
+https://<your-domain>/auth/mcp/authorize?client_id=claude-remote&redirect_uri=https://claude.ai/api/mcp/auth_callback&scope=knowledge.ask%20knowledge.search%20knowledge.category.list
+```
 
 ### Smoke checklist
 

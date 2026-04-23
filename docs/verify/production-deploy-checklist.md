@@ -137,6 +137,8 @@ npx wrangler deploy
 - [ ] 訪問 `/api/health`（如有），確認 200 回應
 - [ ] 若 GitHub Actions smoke test 只出現 runner 端 `403` warning，額外從人工網路環境做一次 canary
 
+> 2026-04-24 人工 canary 補充：由 repo 外部網路直接檢查四個 custom domain，`https://agentic.yudefine.com.tw`、`https://agentic-staging.yudefine.com.tw`、`https://agentic-docs.yudefine.com.tw`、`https://agentic-docs-staging.yudefine.com.tw` 皆回 `HTTP 200`。可據此判定 2026-04-23 GitHub Actions smoke test 的 `403` 屬 runner 被 Cloudflare WAF / Bot protection 擋下，而非 custom domain / deployment 不健康。
+
 ## 人工驗收命令（6.2 Manual Acceptance）
 
 > 以下命令用於驗收 #1-#5 人工檢查項目
@@ -234,7 +236,7 @@ curl -s -X POST "$BASE_URL/mcp" \
 echo "$NUXT_KNOWLEDGE_MCP_CONNECTOR_CLIENTS_JSON"
 
 # 2. 已登入本地帳號後，在瀏覽器開啟：
-# $BASE_URL/auth/mcp/authorize?client_id=claude-remote&redirect_uri=<connector-callback>&scope=knowledge.ask%20knowledge.search%20knowledge.category.list
+# $BASE_URL/auth/mcp/authorize?client_id=claude-remote&redirect_uri=https://claude.ai/api/mcp/auth_callback&scope=knowledge.ask%20knowledge.search%20knowledge.category.list
 
 # 3. 同意授權後，connector 以 code 打 token endpoint
 curl -s -X POST "$BASE_URL/api/auth/mcp/token" \
@@ -243,7 +245,7 @@ curl -s -X POST "$BASE_URL/api/auth/mcp/token" \
     "grant_type": "authorization_code",
     "code": "<authorization-code>",
     "client_id": "claude-remote",
-    "redirect_uri": "<connector-callback>"
+    "redirect_uri": "https://claude.ai/api/mcp/auth_callback"
   }' | jq .
 
 # 預期：回 access_token / token_type=Bearer / expires_in / scope
