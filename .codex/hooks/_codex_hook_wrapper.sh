@@ -49,6 +49,11 @@ if [ "$status" -eq 0 ]; then
 ' "$message"
       exit 0
       ;;
+    PostToolUse)
+      # Codex expects JSON for PostToolUse. Suppress plain-text stdout here so a
+      # reminder-style Claude hook does not become an invalid post-tool-use JSON error.
+      exit 0
+      ;;
     Stop)
       jq -n --arg reason "$message" '{ decision: "block", reason: $reason }'
       exit 0
