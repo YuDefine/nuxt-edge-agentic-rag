@@ -88,8 +88,10 @@ export async function chatWithKnowledge(
     answer: (input: {
       evidence: VerifiedKnowledgeEvidence[]
       modelRole: string
+      onTextDelta?: (delta: string) => Promise<void> | void
       query: string
       retrievalScore: number
+      signal?: AbortSignal
     }) => Promise<string>
     auditStore?: {
       createMessage(input: {
@@ -170,6 +172,10 @@ export async function chatWithKnowledge(
       evidence: VerifiedKnowledgeEvidence[]
       normalizedQuery: string
     }>
+    stream?: {
+      onTextDelta?: (delta: string) => Promise<void> | void
+      signal?: AbortSignal
+    }
   },
 ): Promise<{
   answer: string | null
@@ -306,13 +312,8 @@ export async function chatWithKnowledge(
     })
   }
 
-  // observability-and-debug §1.2: measure completion latency for the
-  // accepted path so the debug surface can show end-to-end time without
-  // replaying the pipeline. `firstTokenLatencyMs` stays null until SSE
-  // streaming is instrumented (not in this phase). When an audit store with
-  // `updateQueryLog` is supplied, the derived fields are back-filled on the
-  // query_log row after the pipeline returns (happy + refusal + error).
   const pipelineStartMs = Date.now()
+  let firstTokenLatencyMs: number | null = null
   let telemetry: KnowledgeAnsweringTelemetry | null = null
 
   let result: Awaited<ReturnType<typeof answerKnowledgeQuery>>
@@ -323,7 +324,19 @@ export async function chatWithKnowledge(
         query: input.query,
       },
       {
-        answer: options.answer,
+        answer: (answerInput) =>
+          options.answer({
+            ...answerInput,
+            onTextDelta: options.stream?.onTextDelta
+              ? async (delta) => {
+                  if (firstTokenLatencyMs === null) {
+                    firstTokenLatencyMs = Date.now() - pipelineStartMs
+                  }
+                  await options.stream?.onTextDelta?.(delta)
+                }
+              : undefined,
+            signal: options.stream?.signal,
+          }),
         governance: {
           models: input.governance.models,
           thresholds: input.governance.thresholds,
@@ -360,22 +373,36 @@ export async function chatWithKnowledge(
           return options.persistCitations(payload)
         },
         retrieve: options.retrieve,
+        stream: options.stream,
       },
     )
   } catch (error) {
     if (options.auditStore?.updateQueryLog && queryLogId) {
-      // observability-and-debug §1.2: pipeline threw → record the failure
-      // path. Latency stays null because we cannot trust partial timing
-      // after a thrown error.
-      await options.auditStore.updateQueryLog({
-        queryLogId,
-        firstTokenLatencyMs: null,
-        completionLatencyMs: null,
-        retrievalScore: null,
-        judgeScore: null,
-        decisionPath: 'pipeline_error',
-        refusalReason: 'pipeline_error',
-      })
+      if (isAbortError(error)) {
+        const abortSnapshot = telemetry as KnowledgeAnsweringTelemetry | null
+        await options.auditStore.updateQueryLog({
+          queryLogId,
+          firstTokenLatencyMs,
+          completionLatencyMs: null,
+          retrievalScore: abortSnapshot?.retrievalScore ?? null,
+          judgeScore: abortSnapshot?.judgeScore ?? null,
+          decisionPath: abortSnapshot?.decisionPath ?? null,
+          refusalReason: abortSnapshot?.refusalReason ?? null,
+        })
+      } else {
+        // observability-and-debug §1.2: pipeline threw → record the failure
+        // path. Latency stays null because we cannot trust partial timing
+        // after a thrown error.
+        await options.auditStore.updateQueryLog({
+          queryLogId,
+          firstTokenLatencyMs: null,
+          completionLatencyMs: null,
+          retrievalScore: null,
+          judgeScore: null,
+          decisionPath: 'pipeline_error',
+          refusalReason: 'pipeline_error',
+        })
+      }
     }
     throw error
   }
@@ -393,7 +420,7 @@ export async function chatWithKnowledge(
     }
     await options.auditStore.updateQueryLog({
       queryLogId,
-      firstTokenLatencyMs: null,
+      firstTokenLatencyMs,
       completionLatencyMs,
       retrievalScore: snapshot.retrievalScore,
       judgeScore: snapshot.judgeScore,
@@ -436,4 +463,17 @@ export async function chatWithKnowledge(
   }
 
   return result
+}
+
+function isAbortError(error: unknown): boolean {
+  if (error instanceof DOMException && error.name === 'AbortError') {
+    return true
+  }
+
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'name' in error &&
+    (error as { name?: unknown }).name === 'AbortError'
+  )
 }

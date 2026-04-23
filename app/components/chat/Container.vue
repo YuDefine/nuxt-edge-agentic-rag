@@ -1,23 +1,20 @@
 <script setup lang="ts">
-  import type { ChatMessage, ChatCitation } from '~/types/chat'
+  import type { ChatMessage } from '~/types/chat'
+  import {
+    ChatStreamError,
+    createAssistantMessageFromTerminalEvent,
+    readChatStream,
+  } from '~/utils/chat-stream'
   import { buildChatRequestBody } from '~/utils/chat-conversation-state'
 
   /**
    * Main chat container integrating:
    * - Message history display
    * - Message input with submit
-   * - Streaming response (simulated for MVP)
+   * - SSE-driven streaming response
    * - Citation replay modal
    * - Error handling
    */
-
-  interface ChatResponse {
-    answer: string | null
-    citations: ChatCitation[]
-    conversationCreated: boolean
-    conversationId: string
-    refused: boolean
-  }
 
   interface Props {
     /**
@@ -69,7 +66,6 @@
   const messageInputRef = ref<{ focusAndClear: () => void } | null>(null)
 
   let activeController: AbortController | null = null
-  let streamingCancelled = false
   const toast = useToast()
   const isConversationBusy = computed(() => isSubmitting.value || isStreaming.value)
 
@@ -166,7 +162,6 @@
 
   function handleStop() {
     if (!activeController) return
-    streamingCancelled = true
     activeController.abort()
   }
 
@@ -175,7 +170,6 @@
       return
     }
 
-    streamingCancelled = true
     activeController.abort()
   }
 
@@ -205,43 +199,53 @@
     isStreaming.value = true
     streamingContent.value = ''
     streamingError.value = null
-    streamingCancelled = false
 
     const controller = new AbortController()
     activeController = controller
 
-    const { $csrfFetch } = useNuxtApp()
+    const { $csrfFetch } = useNuxtApp() as unknown as {
+      $csrfFetch: typeof $fetch & {
+        native: typeof globalThis.fetch
+      }
+    }
 
     try {
-      const response = await $csrfFetch<{ data: ChatResponse }>('/api/chat', {
+      const response = await $csrfFetch.native('/api/chat', {
         method: 'POST',
-        body: buildChatRequestBody(query, props.activeConversationId),
+        body: JSON.stringify(buildChatRequestBody(query, props.activeConversationId)),
+        headers: {
+          accept: 'text/event-stream',
+          'content-type': 'application/json',
+        },
         signal: controller.signal,
       })
 
-      const fullContent = response.data.answer ?? ''
-      if (fullContent) {
-        await simulateStreaming(fullContent)
+      if (!response.ok) {
+        throw await createHttpError(response)
       }
 
-      const assistantMessage: ChatMessage = {
+      const terminalEvent = await readChatStream(response, {
+        onTextDelta: (delta) => {
+          streamingContent.value += delta
+        },
+        signal: controller.signal,
+      })
+
+      const assistantMessage = createAssistantMessageFromTerminalEvent(terminalEvent, {
         id: generateMessageId(),
-        role: 'assistant',
-        content: response.data.answer ?? '抱歉，我無法回答這個問題。',
-        refused: response.data.refused,
-        citations: response.data.refused ? undefined : response.data.citations,
         createdAt: new Date().toISOString(),
-      }
+      })
       messages.value.push(assistantMessage)
       emit('conversation-persisted', {
-        conversationId: response.data.conversationId,
-        conversationCreated: response.data.conversationCreated,
+        conversationId: terminalEvent.data.conversationId,
+        conversationCreated: terminalEvent.data.conversationCreated,
         messages: cloneChatMessages(messages.value),
       })
     } catch (error) {
       const kind = classifyError(error)
       const retryAfter = kind === 'rate_limit' ? extractRetryAfterSeconds(error) : 0
-      const errorMessage = describeError(kind, retryAfter)
+      const errorMessage =
+        error instanceof ChatStreamError ? error.message : describeError(kind, retryAfter)
 
       if (kind === 'rate_limit') {
         startRateLimitCountdown(retryAfter)
@@ -274,19 +278,7 @@
       isStreaming.value = false
       streamingContent.value = ''
       activeController = null
-      streamingCancelled = false
       scrollToBottom()
-    }
-  }
-
-  async function simulateStreaming(content: string) {
-    const chunks = content.match(/.{1,10}/g) ?? [content]
-    for (const chunk of chunks) {
-      if (streamingCancelled) {
-        throw new DOMException('aborted', 'AbortError')
-      }
-      streamingContent.value += chunk
-      await new Promise((resolve) => setTimeout(resolve, 30))
     }
   }
 
@@ -336,6 +328,30 @@
   )
 
   watch(isConversationBusy, (nextValue) => emit('busy-change', nextValue), { immediate: true })
+
+  async function createHttpError(response: Response): Promise<{
+    data?: unknown
+    message: string
+    response: { headers: Headers }
+    status: number
+    statusCode: number
+  }> {
+    let payload: { data?: unknown; message?: string } | null = null
+
+    try {
+      payload = (await response.clone().json()) as { data?: unknown; message?: string }
+    } catch {
+      payload = null
+    }
+
+    return {
+      ...(payload?.data !== undefined ? { data: payload.data } : {}),
+      message: payload?.message ?? response.statusText ?? 'Request failed',
+      response: { headers: response.headers },
+      status: response.status,
+      statusCode: response.status,
+    }
+  }
 </script>
 
 <template>
