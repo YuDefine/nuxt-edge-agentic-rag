@@ -1,8 +1,7 @@
 import { z } from 'zod'
 
 import { getCurrentMcpEvent } from '#server/utils/current-mcp-event'
-import { getRequiredKvBinding } from '#server/utils/cloudflare-bindings'
-import { getD1Database } from '#server/utils/database'
+import { getRequiredD1Binding, getRequiredKvBinding } from '#server/utils/cloudflare-bindings'
 import { getAllowedAccessLevels, getKnowledgeRuntimeConfig } from '#server/utils/knowledge-runtime'
 import { requireMcpScope } from '#server/utils/mcp-auth'
 import { createMcpCategoryStore, listCategories } from '#server/utils/mcp-categories'
@@ -30,7 +29,7 @@ export default defineMcpTool({
     requireMcpScope(auth, 'knowledge.category.list')
 
     const runtimeConfig = getKnowledgeRuntimeConfig()
-    const database = await getD1Database()
+    const database = getRequiredD1Binding(event, runtimeConfig.bindings.d1Database)
 
     // Touch KV binding to mirror the legacy handler's binding-health signal.
     getRequiredKvBinding(event, runtimeConfig.bindings.rateLimitKv)

@@ -5,8 +5,11 @@ import {
   createCloudflareAiSearchClient,
   type CloudflareAiBindingLike,
 } from '#server/utils/ai-search'
-import { getCloudflareEnv, getRequiredKvBinding } from '#server/utils/cloudflare-bindings'
-import { getD1Database } from '#server/utils/database'
+import {
+  getCloudflareEnv,
+  getRequiredD1Binding,
+  getRequiredKvBinding,
+} from '#server/utils/cloudflare-bindings'
 import { createKnowledgeEvidenceStore } from '#server/utils/knowledge-evidence-store'
 import { retrieveVerifiedEvidence } from '#server/utils/knowledge-retrieval'
 import { getAllowedAccessLevels, getKnowledgeRuntimeConfig } from '#server/utils/knowledge-runtime'
@@ -36,7 +39,7 @@ export default defineMcpTool({
     requireMcpScope(auth, 'knowledge.search')
 
     const runtimeConfig = getKnowledgeRuntimeConfig()
-    const database = await getD1Database()
+    const database = getRequiredD1Binding(event, runtimeConfig.bindings.d1Database)
 
     // Touch KV binding to mirror the legacy handler's binding-health signal;
     // rate limiting itself runs in the middleware.

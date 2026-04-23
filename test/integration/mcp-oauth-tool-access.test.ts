@@ -39,6 +39,18 @@ vi.mock('../../server/utils/cloudflare-bindings', () => ({
   getCloudflareEnv: (
     event: { context?: { cloudflare?: { env?: Record<string, unknown> } } } | undefined,
   ) => event?.context?.cloudflare?.env ?? {},
+  getRequiredD1Binding: (
+    event: { context?: { cloudflare?: { env?: Record<string, unknown> } } },
+    bindingName: string,
+  ) => {
+    const binding = event.context?.cloudflare?.env?.[bindingName]
+
+    if (!binding) {
+      throw new Error(`Missing binding: ${bindingName}`)
+    }
+
+    return binding
+  },
   getRequiredKvBinding: (
     event: { context?: { cloudflare?: { env?: Record<string, unknown> } } },
     bindingName: string,
@@ -256,6 +268,7 @@ function createOauthEnv(kv: ReturnType<typeof createOauthKv>) {
       autorag: vi.fn(),
       run: vi.fn().mockResolvedValue({ response: 'ok' }),
     },
+    DB: {},
     KV: kv,
   }
 }
