@@ -127,7 +127,7 @@
           設定你的暱稱後，瀏覽器會引導你用裝置（指紋 / Face ID / 硬體金鑰）建立 passkey。
         </p>
 
-        <AuthNicknameInput
+        <LazyAuthNicknameInput
           v-model="nickname"
           :disabled="isSubmitting"
           @update:status="(s: NicknameStatus) => (nicknameStatus = s)"
@@ -154,7 +154,7 @@
 
     <template #footer>
       <div class="flex w-full flex-col-reverse gap-2 md:flex-row md:justify-end">
-        <UButton
+        <LazyUButton
           color="neutral"
           variant="outline"
           size="md"
@@ -164,8 +164,8 @@
           @click="handleCancel"
         >
           取消
-        </UButton>
-        <UButton
+        </LazyUButton>
+        <LazyUButton
           color="neutral"
           variant="solid"
           size="md"
@@ -177,7 +177,7 @@
           @click="handleConfirm"
         >
           建立 Passkey
-        </UButton>
+        </LazyUButton>
       </div>
     </template>
   </UModal>

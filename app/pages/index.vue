@@ -241,7 +241,7 @@
 
   <!-- Signed-in: Chat -->
   <NuxtLayout v-else name="chat">
-    <ChatGuestAccessGate>
+    <LazyChatGuestAccessGate>
       <template #default="{ canAsk }">
         <!-- responsive-and-a11y-foundation §5.5 — two-column on lg, stacked on < lg.
              `< lg` conversation history is reachable via the chat-layout drawer
@@ -254,7 +254,7 @@
             :aria-label="sidebarCollapsed ? '對話記錄（已收合）' : '對話記錄'"
           >
             <div v-if="sidebarCollapsed" class="flex justify-center pt-3">
-              <UTooltip text="展開對話記錄">
+              <LazyUTooltip text="展開對話記錄">
                 <UButton
                   data-testid="chat-history-expand-toggle"
                   variant="ghost"
@@ -264,7 +264,7 @@
                   aria-label="展開對話記錄"
                   @click="expandHistorySidebar"
                 />
-              </UTooltip>
+              </LazyUTooltip>
             </div>
 
             <LazyChatConversationHistory
@@ -316,7 +316,7 @@
         </div>
 
         <!-- < lg chat-history drawer -->
-        <USlideover
+        <LazyUSlideover
           v-model:open="historyDrawer.isOpen.value"
           side="left"
           title="對話記錄"
@@ -338,8 +338,8 @@
               />
             </div>
           </template>
-        </USlideover>
+        </LazyUSlideover>
       </template>
-    </ChatGuestAccessGate>
+    </LazyChatGuestAccessGate>
   </NuxtLayout>
 </template>
