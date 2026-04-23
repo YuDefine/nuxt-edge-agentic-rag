@@ -123,3 +123,10 @@
 - XLSX / PPTX 的 canonical snapshot 必然比原始視覺版面更扁平；這是可接受的，只要引用與回放仍可追溯
 - image-only / scanned PDF 仍會失敗；這不是 bug，而是第一波明確排除的格式邊界
 - `.doc` / `.xls` / `.ppt` 與音影片的需求仍存在；本 change 只是把第一條可交付的擴充路徑釘牢，不代表最終終點
+
+### Validated Trade-offs
+
+- PDF 若抽不出任何可引用文字（例如 scanned / image-only source），會以 non-replayable 4xx 失敗；不在這一波補 OCR
+- DOCX 表格目前以 row-wise 純文字行展開（例如 `欄位A | 欄位B`），保留內容順序但不保留原始表格視覺版面
+- XLSX canonical snapshot 以 worksheet 順序與列資料 flatten 為單行文字；欄寬、格式、公式呈現不是驗收條件
+- PPTX canonical snapshot 只保留 slide 順序與文字內容；版面、座標與視覺層次流失屬已知 trade-off
