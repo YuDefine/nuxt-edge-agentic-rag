@@ -1,0 +1,43 @@
+import type { H3Event } from 'h3'
+import { readBody } from 'h3'
+
+interface WebRequestEventShape {
+  web?: {
+    request?: Request
+  }
+}
+
+/**
+ * After `@nuxtjs/mcp-toolkit`'s `tagEvlogContext` and our middleware's
+ * `extractToolNames` have read the JSON-RPC body, the Worker-native
+ * `event.web.request` body stream is disturbed. Replace it with a fresh
+ * `Request` whose body stream has not been consumed so the downstream MCP
+ * transport (`toWebRequest(event)` → `transport.handleRequest(request)`) can
+ * parse the JSON-RPC payload again.
+ *
+ * Uses `readBody(event)` which hits the H3 body cache populated by the
+ * earlier reads — it does NOT re-drain the original stream.
+ */
+export async function rehydrateMcpRequestBody(event: H3Event): Promise<void> {
+  const web = (event as unknown as WebRequestEventShape).web
+  const original = web?.request
+  if (!original) return
+  if (original.method === 'GET' || original.method === 'HEAD') return
+
+  const parsed = await readBody(event)
+  const bodyText =
+    parsed === undefined || parsed === null
+      ? ''
+      : typeof parsed === 'string'
+        ? parsed
+        : JSON.stringify(parsed)
+
+  const replay = new Request(original.url, {
+    method: original.method,
+    headers: original.headers,
+    body: bodyText,
+    duplex: 'half',
+  } as RequestInit)
+
+  ;(event as unknown as { web: { request: Request } }).web.request = replay
+}
