@@ -271,4 +271,44 @@ describe('knowledge audit', () => {
       'restricted_scope',
     )
   })
+
+  it('updates workers_ai_runs_json when query-log telemetry is back-filled', async () => {
+    const run = vi.fn().mockResolvedValue(undefined)
+    const database = {
+      prepare: vi.fn().mockReturnValue({
+        bind: vi.fn().mockReturnValue({
+          run,
+        }),
+      }),
+    }
+    const auditStore = createKnowledgeAuditStore(database)
+    const workersAiRunsJson =
+      '[{"modelRole":"defaultAnswer","model":"@cf/meta/llama-4-scout-17b-16e-instruct","latencyMs":210,"usage":{"promptTokens":120,"completionTokens":18,"totalTokens":138,"cachedPromptTokens":32}}]'
+
+    await auditStore.updateQueryLog({
+      queryLogId: 'query-log-1',
+      completionLatencyMs: 1_240,
+      decisionPath: 'direct_answer',
+      firstTokenLatencyMs: null,
+      judgeScore: null,
+      refusalReason: null,
+      retrievalScore: 0.91,
+      workersAiRunsJson,
+    })
+
+    const prepareCall = vi.mocked(database.prepare).mock.calls[0]?.[0] ?? ''
+    const bind = vi.mocked(database.prepare).mock.results[0]?.value.bind as ReturnType<typeof vi.fn>
+
+    expect(prepareCall).toContain('workers_ai_runs_json = ?')
+    expect(bind).toHaveBeenCalledWith(
+      null,
+      1_240,
+      0.91,
+      null,
+      'direct_answer',
+      null,
+      workersAiRunsJson,
+      'query-log-1',
+    )
+  })
 })

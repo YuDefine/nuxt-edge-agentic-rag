@@ -14,6 +14,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 describe('mcp ask tool definition', () => {
   const askKnowledgeMock = vi.fn()
+  const createKnowledgeAuditStoreMock = vi.fn().mockReturnValue({})
+  const createMcpQueryLogStoreMock = vi.fn().mockReturnValue({})
   const workersAiRunMock = vi.fn().mockResolvedValue({
     response: {
       shouldAnswer: false,
@@ -24,6 +26,10 @@ describe('mcp ask tool definition', () => {
   beforeEach(() => {
     vi.resetModules()
     askKnowledgeMock.mockReset()
+    createKnowledgeAuditStoreMock.mockReset()
+    createKnowledgeAuditStoreMock.mockReturnValue({})
+    createMcpQueryLogStoreMock.mockReset()
+    createMcpQueryLogStoreMock.mockReturnValue({})
     workersAiRunMock.mockReset()
     workersAiRunMock.mockResolvedValue({
       response: {
@@ -42,7 +48,7 @@ describe('mcp ask tool definition', () => {
     }))
     vi.doMock('#server/utils/mcp-ask', () => ({
       askKnowledge: askKnowledgeMock,
-      createMcpQueryLogStore: vi.fn().mockReturnValue({}),
+      createMcpQueryLogStore: createMcpQueryLogStoreMock,
     }))
     vi.doMock('#server/utils/ai-search', () => ({
       createCloudflareAiSearchClient: vi.fn().mockReturnValue({ search: vi.fn() }),
@@ -64,7 +70,7 @@ describe('mcp ask tool definition', () => {
     }))
     vi.doMock('#server/utils/knowledge-audit', () => ({
       auditKnowledgeText: vi.fn().mockReturnValue({ redactedText: '', shouldBlock: false }),
-      createKnowledgeAuditStore: vi.fn().mockReturnValue({}),
+      createKnowledgeAuditStore: createKnowledgeAuditStoreMock,
     }))
     vi.doMock('#server/utils/knowledge-evidence-store', () => ({
       createKnowledgeEvidenceStore: vi.fn().mockReturnValue({}),
@@ -228,5 +234,98 @@ describe('mcp ask tool definition', () => {
         }),
       }),
     )
+  })
+
+  it('wraps audit-store query-log updates with serialized workers-ai telemetry', async () => {
+    const auditStore = {
+      createMessage: vi.fn(),
+      createQueryLog: vi.fn(),
+      updateQueryLog: vi.fn().mockResolvedValue(undefined),
+    }
+    const queryLogStore = {
+      updateQueryLog: vi.fn().mockResolvedValue(undefined),
+    }
+
+    createKnowledgeAuditStoreMock.mockReturnValueOnce(auditStore)
+    createMcpQueryLogStoreMock.mockReturnValueOnce(queryLogStore)
+    askKnowledgeMock.mockImplementationOnce(async (_input, options) => {
+      await options.answer({
+        evidence: [
+          {
+            chunkText: '採購流程需要先建立請購單，再建立採購單。',
+            documentTitle: '採購流程',
+          },
+        ],
+        modelRole: 'defaultAnswer',
+        query: '採購流程是什麼？',
+        retrievalScore: 0.9,
+      })
+      await options.auditStore?.updateQueryLog?.({
+        completionLatencyMs: 310,
+        decisionPath: 'direct_answer',
+        firstTokenLatencyMs: null,
+        judgeScore: null,
+        queryLogId: 'query-log-1',
+        refusalReason: null,
+        retrievalScore: 0.9,
+      })
+
+      return {
+        answer: 'Workers AI answer',
+        citations: [],
+        refused: false,
+      }
+    })
+    workersAiRunMock.mockResolvedValueOnce({
+      response: 'Workers AI answer',
+      usage: {
+        completion_tokens: 18,
+        prompt_tokens: 120,
+        prompt_tokens_details: {
+          cached_tokens: 24,
+        },
+        total_tokens: 138,
+      },
+    })
+
+    const mod = await import('#server/mcp/tools/ask')
+    const tool = mod.default
+
+    useEventMock.mockReturnValue({
+      context: {
+        cloudflare: { env: {} },
+        mcpAuth: {
+          scopes: ['knowledge.ask'],
+          token: {},
+          tokenId: 'token-1',
+        },
+      },
+    })
+
+    await tool.handler({ query: 'What changed?' }, {} as never)
+
+    expect(auditStore.updateQueryLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        queryLogId: 'query-log-1',
+        workersAiRunsJson: expect.any(String),
+      }),
+    )
+
+    const workersAiRunsJson =
+      vi.mocked(auditStore.updateQueryLog).mock.calls[0]?.[0]?.workersAiRunsJson ?? '[]'
+
+    expect(JSON.parse(workersAiRunsJson)).toEqual([
+      {
+        latencyMs: expect.any(Number),
+        model: '@cf/meta/llama-4-scout-17b-16e-instruct',
+        modelRole: 'defaultAnswer',
+        usage: {
+          cachedPromptTokens: 24,
+          completionTokens: 18,
+          promptTokens: 120,
+          totalTokens: 138,
+        },
+      },
+    ])
   })
 })
