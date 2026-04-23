@@ -13,13 +13,17 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 describe('runMcpMiddleware (§1.3 red)', () => {
   let stubCreateError: ReturnType<typeof vi.fn>
+  let stubSetResponseHeader: ReturnType<typeof vi.fn>
 
   beforeEach(() => {
     vi.resetModules()
     stubCreateError = vi.fn((input: { statusCode: number; message: string }) =>
       Object.assign(new Error(input.message), input),
     )
+    stubSetResponseHeader = vi.fn()
     vi.stubGlobal('createError', stubCreateError)
+    vi.stubGlobal('setResponseHeader', stubSetResponseHeader)
+    vi.stubGlobal('getRequestURL', () => new URL('https://agentic.example/mcp'))
   })
 
   function createEvent(
@@ -67,6 +71,32 @@ describe('runMcpMiddleware (§1.3 red)', () => {
     ).rejects.toMatchObject({
       statusCode: 401,
     })
+  })
+
+  it('advertises protected resource metadata when authorization is missing', async () => {
+    const { runMcpMiddleware } = await import('#server/utils/mcp-middleware')
+
+    const event = createEvent()
+
+    await expect(
+      runMcpMiddleware(event, {
+        environment: 'local',
+        kvBindingName: 'KV',
+        extractToolNames: async () => ['askKnowledge'],
+        tokenStore: {
+          findUsableTokenByHash: vi.fn().mockResolvedValue(null),
+          touchLastUsedAt: vi.fn(),
+        },
+      }),
+    ).rejects.toMatchObject({
+      statusCode: 401,
+    })
+
+    expect(stubSetResponseHeader).toHaveBeenCalledWith(
+      event,
+      'WWW-Authenticate',
+      'Bearer resource_metadata="https://agentic.example/.well-known/oauth-protected-resource", scope="knowledge.ask knowledge.search knowledge.category.list knowledge.citation.read"',
+    )
   })
 
   it('throws 401 when the Bearer token is not found in the store', async () => {

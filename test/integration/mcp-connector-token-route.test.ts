@@ -87,6 +87,61 @@ describe('POST /api/auth/mcp/token', () => {
     })
   })
 
+  it('accepts OAuth 2.1 resource and PKCE fields sent by remote MCP clients', async () => {
+    const kv = createKvStub()
+    const grants = createMcpOauthGrantStore({
+      accessTokenTtlSeconds: 600,
+      authorizationCodeTtlSeconds: 120,
+      kv,
+    })
+    const code = await grants.issueAuthorizationCode({
+      clientId: 'claude-remote',
+      redirectUri: 'https://claude.example/callback',
+      scopes: ['knowledge.ask'],
+      userId: 'user-1',
+    })
+
+    mocks.readBody.mockResolvedValue({
+      client_id: 'claude-remote',
+      code,
+      code_verifier: 'opaque-code-verifier',
+      grant_type: 'authorization_code',
+      redirect_uri: 'https://claude.example/callback',
+      resource: 'https://agentic.example/mcp',
+    })
+    mocks.useRuntimeConfig.mockReturnValue({
+      knowledge: {
+        bindings: {
+          rateLimitKv: 'KV',
+        },
+        mcpConnectors: {
+          oauth: {
+            accessTokenTtlSeconds: 600,
+            authorizationCodeTtlSeconds: 120,
+          },
+        },
+      },
+    })
+
+    const { default: handler } = await import('../../server/api/auth/mcp/token.post')
+    const result = await handler(
+      createRouteEvent({
+        context: {
+          cloudflare: {
+            env: {
+              KV: kv,
+            },
+          },
+        },
+      }),
+    )
+
+    expect(result).toMatchObject({
+      access_token: expect.any(String),
+      token_type: 'Bearer',
+    })
+  })
+
   it('rejects reusing an authorization code after it has already been exchanged', async () => {
     const kv = createKvStub()
     const grants = createMcpOauthGrantStore({
