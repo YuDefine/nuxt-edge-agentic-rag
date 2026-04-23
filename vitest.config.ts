@@ -66,7 +66,7 @@ function collectMatchingFiles(
 
 function requiresNuxtRuntime(filePath: string): boolean {
   const source = readFileSync(filePath, 'utf8')
-  return /@nuxt\/test-utils\/runtime|mountSuspended|mockComponent/u.test(source)
+  return /@nuxt\/test-utils\/runtime|mountSuspended|mockComponent|from ['"]vue['"]/u.test(source)
 }
 
 function getNuxtUnitFiles(): string[] {
