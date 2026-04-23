@@ -2,8 +2,7 @@ import { useLogger } from 'evlog'
 import { z } from 'zod'
 
 import { getCurrentMcpEvent } from '#server/utils/current-mcp-event'
-import { getRequiredKvBinding } from '#server/utils/cloudflare-bindings'
-import { getD1Database } from '#server/utils/database'
+import { getRequiredD1Binding, getRequiredKvBinding } from '#server/utils/cloudflare-bindings'
 import { auditKnowledgeText } from '#server/utils/knowledge-audit'
 import { getAllowedAccessLevels, getKnowledgeRuntimeConfig } from '#server/utils/knowledge-runtime'
 import { createMcpQueryLogStore } from '#server/utils/mcp-ask'
@@ -29,7 +28,7 @@ export default defineMcpTool({
     requireMcpScope(auth, 'knowledge.citation.read')
 
     const runtimeConfig = getKnowledgeRuntimeConfig()
-    const database = await getD1Database()
+    const database = getRequiredD1Binding(event, runtimeConfig.bindings.d1Database)
 
     // Touch KV binding to mirror the legacy handler's binding-health signal.
     getRequiredKvBinding(event, runtimeConfig.bindings.rateLimitKv)
