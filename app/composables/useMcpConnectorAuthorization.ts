@@ -13,8 +13,11 @@ interface McpAuthorizationResponse {
 }
 
 interface AuthorizationRequestParams {
+  codeChallenge: string | null
+  codeChallengeMethod: string | null
   clientId: string
   redirectUri: string
+  resource: string | null
   scope: string
   state: string | null
 }
@@ -42,7 +45,10 @@ export function useMcpConnectorAuthorization() {
 
   const request = computed<AuthorizationRequestParams | null>(() => {
     const clientId = readQueryValue(route.query.client_id)
+    const codeChallenge = readQueryValue(route.query.code_challenge)
+    const codeChallengeMethod = readQueryValue(route.query.code_challenge_method)
     const redirectUri = readQueryValue(route.query.redirect_uri)
+    const resource = readQueryValue(route.query.resource)
     const scope = readQueryValue(route.query.scope)
     const state = readQueryValue(route.query.state)
 
@@ -51,8 +57,11 @@ export function useMcpConnectorAuthorization() {
     }
 
     return {
+      codeChallenge,
+      codeChallengeMethod,
       clientId,
       redirectUri,
+      resource,
       scope,
       state,
     }
@@ -79,6 +88,7 @@ export function useMcpConnectorAuthorization() {
           client_id: request.value.clientId,
           redirect_uri: request.value.redirectUri,
           scope: request.value.scope,
+          ...(request.value.resource ? { resource: request.value.resource } : {}),
           ...(request.value.state ? { state: request.value.state } : {}),
         },
       })
@@ -111,8 +121,13 @@ export function useMcpConnectorAuthorization() {
         method: 'POST',
         body: {
           approved: true,
+          ...(request.value.codeChallenge ? { codeChallenge: request.value.codeChallenge } : {}),
+          ...(request.value.codeChallengeMethod
+            ? { codeChallengeMethod: request.value.codeChallengeMethod }
+            : {}),
           clientId: authorization.value.clientId,
           redirectUri: authorization.value.redirectUri,
+          ...(request.value.resource ? { resource: request.value.resource } : {}),
           scope: authorization.value.grantedScopes.join(' '),
           state: authorization.value.state,
         },
