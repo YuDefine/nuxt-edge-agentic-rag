@@ -5,12 +5,9 @@ import {
   createCloudflareAiSearchClient,
   type CloudflareAiBindingLike,
 } from '#server/utils/ai-search'
+import { requireAiBinding } from '#server/utils/ai-binding'
 import { createCitationStore } from '#server/utils/citation-store'
-import {
-  getCloudflareEnv,
-  getRequiredD1Binding,
-  getRequiredKvBinding,
-} from '#server/utils/cloudflare-bindings'
+import { getRequiredD1Binding, getRequiredKvBinding } from '#server/utils/cloudflare-bindings'
 import { createKnowledgeAuditStore } from '#server/utils/knowledge-audit'
 import { createKnowledgeEvidenceStore } from '#server/utils/knowledge-evidence-store'
 import { retrieveVerifiedEvidence } from '#server/utils/knowledge-retrieval'
@@ -126,33 +123,19 @@ function requireMcpAuth(event: {
 function getRequiredAiSearchBinding(event: {
   context: Record<string, unknown> & { cloudflare?: { env?: Record<string, unknown> } }
 }): CloudflareAiBindingLike {
-  const binding = getCloudflareEnv(event).AI
-
-  if (!binding || typeof (binding as { autorag?: unknown }).autorag !== 'function') {
-    throw createError({
-      statusCode: 503,
-      statusMessage: 'Service Unavailable',
-      message: 'Cloudflare AI binding "AI" is not available',
-    })
-  }
-
-  return binding as CloudflareAiBindingLike
+  return requireAiBinding<CloudflareAiBindingLike>(event, {
+    method: 'autorag',
+    message: 'Cloudflare AI binding "AI" is not available',
+  })
 }
 
 function getRequiredWorkersAiBinding(event: {
   context: Record<string, unknown> & { cloudflare?: { env?: Record<string, unknown> } }
 }): WorkersAiBindingLike {
-  const binding = getCloudflareEnv(event).AI
-
-  if (!binding || typeof (binding as { run?: unknown }).run !== 'function') {
-    throw createError({
-      statusCode: 503,
-      statusMessage: 'Service Unavailable',
-      message: 'Cloudflare Workers AI binding "AI" is not available',
-    })
-  }
-
-  return binding as WorkersAiBindingLike
+  return requireAiBinding<WorkersAiBindingLike>(event, {
+    method: 'run',
+    message: 'Cloudflare Workers AI binding "AI" is not available',
+  })
 }
 
 function getRequiredAiSearchIndex(indexName: string): string {
