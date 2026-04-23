@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { createWorkersAiAnswerAdapter, createWorkersAiJudgeAdapter } from '#server/utils/workers-ai'
+import {
+  createWorkersAiAnswerAdapter,
+  createWorkersAiJudgeAdapter,
+  createWorkersAiRunRecorder,
+} from '#server/utils/workers-ai'
 
 function evidenceAt(score: number) {
   return [
@@ -128,6 +132,38 @@ describe('workers ai adapters', () => {
           totalTokens: 102,
         },
       }),
+    )
+  })
+
+  it('serializes recorded runs for query-log persistence', () => {
+    const recorder = createWorkersAiRunRecorder()
+
+    recorder.record({
+      latencyMs: 187,
+      model: '@cf/meta/llama-4-scout-17b-16e-instruct',
+      modelRole: 'defaultAnswer',
+      usage: {
+        cachedPromptTokens: 32,
+        completionTokens: 21,
+        promptTokens: 140,
+        totalTokens: 161,
+      },
+    })
+
+    expect(recorder.serialize()).toBe(
+      JSON.stringify([
+        {
+          latencyMs: 187,
+          model: '@cf/meta/llama-4-scout-17b-16e-instruct',
+          modelRole: 'defaultAnswer',
+          usage: {
+            cachedPromptTokens: 32,
+            completionTokens: 21,
+            promptTokens: 140,
+            totalTokens: 161,
+          },
+        },
+      ]),
     )
   })
 })
