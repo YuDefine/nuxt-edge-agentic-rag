@@ -3,6 +3,7 @@ import { z } from 'zod'
 
 import { AutoRagCooldownError, triggerAutoRagSync } from '#server/utils/autorag-sync'
 import { getD1Database } from '#server/utils/database'
+import { DocumentSourceExtractionError } from '#server/utils/document-source-extractor'
 import { createDocumentSyncStore } from '#server/utils/document-store'
 import { syncDocumentVersionSnapshot } from '#server/utils/document-sync'
 
@@ -45,6 +46,19 @@ export default defineEventHandler(async (event) => {
         uploadId: body.uploadId,
       },
       {
+        loadSourceBytes: async (objectKey) => {
+          const bytes = await bucket.getBytes(objectKey)
+
+          if (bytes === null) {
+            throw createError({
+              statusCode: 404,
+              statusMessage: 'Not Found',
+              message: 'Uploaded source file was not found',
+            })
+          }
+
+          return bytes
+        },
         loadSourceText: async (objectKey) => {
           const text = await bucket.getText(objectKey)
 
@@ -74,6 +88,22 @@ export default defineEventHandler(async (event) => {
       },
     )
   } catch (error) {
+    if (error instanceof DocumentSourceExtractionError) {
+      if (error.clientMessage) {
+        throw createError({
+          statusCode: error.statusCode,
+          statusMessage: error.code,
+          message: error.clientMessage,
+        })
+      }
+
+      log.error(error, { code: error.code, step: 'sync-document-snapshot-extraction' })
+      throw createError({
+        statusCode: 500,
+        statusMessage: 'Internal Server Error',
+        message: '文件同步失敗，請稍後再試',
+      })
+    }
     if (isHttpError(error)) {
       throw error
     }

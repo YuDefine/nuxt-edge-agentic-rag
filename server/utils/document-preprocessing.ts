@@ -1,5 +1,7 @@
 import { createHash } from 'node:crypto'
 
+import { classifyDocumentSourceFormat } from '#shared/utils/document-source-format'
+
 export interface PrepareDocumentVersionAssetsInput {
   accessLevel: string
   categorySlug: string
@@ -63,9 +65,13 @@ interface NormalizedLine {
 export async function prepareDocumentVersionAssets(
   input: PrepareDocumentVersionAssetsInput,
 ): Promise<PreparedDocumentVersionAssets> {
-  assertSupportedSourceMimeType(input.sourceMimeType)
+  const sourceFormat = getSupportedSourceFormat({
+    sourceMimeType: input.sourceMimeType,
+    sourceObjectKey: input.sourceObjectKey,
+  })
+  const normalizedSourceMimeType = sourceFormat.format?.mimeTypes[0] ?? input.sourceMimeType
 
-  const normalizedLines = normalizeSourceLines(input.sourceText, input.sourceMimeType)
+  const normalizedLines = normalizeSourceLines(input.sourceText, normalizedSourceMimeType)
   const normalizedText = normalizedLines.map((line) => line.text).join('\n')
   const smokeTestQueries = buildSmokeTestQueries(normalizedLines, input.title)
   const sourceChunks = buildSourceChunks(normalizedLines, {
@@ -158,10 +164,19 @@ function buildChunkObjects(
   }))
 }
 
-function assertSupportedSourceMimeType(sourceMimeType: string): void {
-  if (sourceMimeType !== 'text/plain' && sourceMimeType !== 'text/markdown') {
-    throw new TypeError('Only text/plain and text/markdown uploads are supported')
+function getSupportedSourceFormat(input: { sourceMimeType: string; sourceObjectKey: string }) {
+  const sourceFormat = classifyDocumentSourceFormat({
+    filename: input.sourceObjectKey,
+    mimeType: input.sourceMimeType,
+  })
+
+  if (!sourceFormat.isSupportedUpload) {
+    throw new TypeError(
+      'Only text/plain, text/markdown, application/pdf, DOCX, XLSX, and PPTX uploads are supported',
+    )
   }
+
+  return sourceFormat
 }
 
 function normalizeSourceLines(sourceText: string, sourceMimeType: string): NormalizedLine[] {
