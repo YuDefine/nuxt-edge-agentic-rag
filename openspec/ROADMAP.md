@@ -4,7 +4,7 @@
 
 ## Current State
 
-> 狀態（2026-04-23 更新）：目前 branch `main`，最新 release 已到 `v0.28.12`。`reports/latest.md` 仍是 current report single source of truth，`reports/archive/` 保存版本化快照。Open tech debt 現況：TD-010 mid / TD-012 high / TD-014 mid。
+> 狀態（2026-04-23 更新）：目前 branch `main`，最新 release 已到 `v0.28.13`。`reports/latest.md` 仍是 current report single source of truth，`reports/archive/` 保存版本化快照。Open tech debt 現況：TD-010 mid / TD-012 high / TD-014 mid。
 >
 > **最新進度**（2026-04-23）：
 >
@@ -16,6 +16,7 @@
 > - **deploy 現況**：`v0.28.11` 與 `v0.28.12` app deploy 均成功；workflow 仍會因 docs custom domain sync 的 Cloudflare API `403 Authentication error` 顯示失敗，另外 GitHub runner 執行 smoke-test 時也會被 Cloudflare WAF/Bot protection 回 `403`，需以人工 canary 補判，但不影響 app production 站點實際上線。
 > - **staging 環境真相已同步回 repo**：新增 `docs/decisions/2026-04-23-recognize-staging-as-active-environment.md` 作為新 decision，正式以 `local` / `staging` / `production` 三環境描述目前系統；`wrangler.staging.jsonc` 的 `NUXT_KNOWLEDGE_AI_GATEWAY_ID` 已修正為 `agentic-rag-staging`，deploy workflow 註解也不再把 staging 寫成 illustrative。
 > - **verify / runbook 已完成 staging 對齊**：`ACCEPTANCE_RUNBOOK`、`CONVERSATION_LIFECYCLE_VERIFICATION`、`CONFIG_SNAPSHOT_VERIFICATION`、`RETENTION_*`、`rollout-checklist` 等文件現已以 `BASE_URL` / `DB_NAME` / `WRANGLER_CONFIG` 參數化，可直接切換 staging / production；debug surface / smoke / deploy checklists 也已承認 staging 為現有環境。
+> - **`v0.28.13` 已發布**：deploy workflow 目前會強制檢查 `PROD_ADMIN_EMAIL_ALLOWLIST` / `STAGING_ADMIN_EMAIL_ALLOWLIST`，並讓 `server/auth.config.ts` / runtime config 以 Worker secret `ADMIN_EMAIL_ALLOWLIST` 優先於 stale compiled allowlist，避免登入時錯誤降權。
 > - **既有 active changes** 目前共有 3 條：`drizzle-refactor-credentials-admin-members` 待收尾；`multi-format-document-ingestion` 與 `passkey-first-link-google-custom-endpoint` 在 `spectra list --json` 皆顯示為 `in-progress`，但因 tasks 仍為 `0/N`，`roadmap-sync` 的 auto stage 目前仍將兩者歸類為 `draft`。
 > - **下一條主線候選** 目前有兩條：`passkey-first-link-google-custom-endpoint` 對應 high-priority `TD-012`、屬真實功能缺口；`multi-format-document-ingestion` 則是 demo / 文件 ingestion story 的下一條實作線。
 

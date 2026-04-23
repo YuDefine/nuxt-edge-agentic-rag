@@ -8,6 +8,7 @@
 
 ## Completed This Round
 
+- 已完成 commit / release：`54f0104`（移除 Stop hook 並保留相容 shim）、`aa8f933`（修正 admin allowlist build-time / runtime 漂移）、`7a8de37`（同步 staging 環境與驗證文件）、`a2a3f74`（deploy `v0.28.13`），tag `v0.28.13` 已推送
 - 已修正 staging 真設定錯配：`wrangler.staging.jsonc` 的 `NUXT_KNOWLEDGE_AI_GATEWAY_ID` 改為 `agentic-rag-staging`，與 `.github/workflows/deploy.yml` 的 `Build (staging)` env 對齊
 - 已新增 `test/unit/deploy-workflow-config.test.ts`，鎖住 staging deploy path 與 staging AI gateway / environment 設定，並驗證 production / staging build env 都有 `ADMIN_EMAIL_ALLOWLIST`
 - 已同步 `docs/verify/` 主流程文件：`ACCEPTANCE_RUNBOOK`、`CONVERSATION_LIFECYCLE_VERIFICATION`、`CONFIG_SNAPSHOT_VERIFICATION`、`RETENTION_*`、`rollout-checklist`、`KNOWLEDGE_SMOKE`、`DEBUG_SURFACE_VERIFICATION`、`DEPLOYMENT_RUNBOOK`、`production-deploy-checklist` 現已承認 staging 為現有環境，且多數通用命令已改成 `BASE_URL` / `DB_NAME` / `WRANGLER_CONFIG` 參數化
