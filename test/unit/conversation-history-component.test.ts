@@ -25,6 +25,7 @@ const historyMock = {
 }
 
 vi.mock('~/composables/useChatConversationHistory', () => ({
+  ChatConversationHistoryInjectionKey: Symbol('ChatConversationHistory'),
   useChatConversationHistory: vi.fn(() => historyMock),
 }))
 
@@ -91,7 +92,6 @@ describe('ConversationHistory', () => {
   }
 
   it('renders a collapsed interactive rail without conversation rows', async () => {
-    const onExpandRequest = vi.fn()
     historyMock.conversations.value = [
       createConversation('今日對話', new Date(2026, 3, 24, 10).toISOString()),
       createConversation('稍早對話', new Date(2026, 3, 20, 10).toISOString()),
@@ -99,7 +99,6 @@ describe('ConversationHistory', () => {
 
     const wrapper = await mountConversationHistory({
       collapsed: true,
-      onExpandRequest,
     })
 
     expect(wrapper.find('[data-testid="conversation-history-rail"]').exists()).toBe(true)
@@ -108,7 +107,8 @@ describe('ConversationHistory', () => {
 
     await wrapper.find('[data-testid="conversation-history-rail"]').trigger('click')
 
-    expect(onExpandRequest).toHaveBeenCalledTimes(1)
+    expect(wrapper.emitted('expand-request')).toBeDefined()
+    expect(wrapper.emitted('expand-request')).toHaveLength(1)
   })
 
   it('groups conversations by recency with recent buckets open by default', async () => {
