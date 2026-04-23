@@ -60,7 +60,7 @@ code:
   - shared/utils/mcp-connector-client-registry.ts
   - shared/utils/mcp-connector-redirect.ts
   - server/api/auth/mcp/authorize.get.ts
-  - docs/runbooks/claude-desktop-mcp.md
+  - docs/runbooks/remote-mcp-connectors.md
   - app/components/admin/tokens/TokenCreateModal.vue
   - docs/verify/DISASTER_RECOVERY_RUNBOOK.md
   - docs/verify/production-deploy-checklist.md

@@ -48,6 +48,10 @@ export const FIXED_WINDOW_RATE_LIMIT_PRESETS = {
     limit: 120,
     windowMs: FIVE_MINUTES_MS,
   },
+  mcpPublicDcr: {
+    limit: 20,
+    windowMs: FIVE_MINUTES_MS,
+  },
   searchKnowledge: {
     limit: 60,
     windowMs: FIVE_MINUTES_MS,

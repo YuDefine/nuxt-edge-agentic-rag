@@ -39,6 +39,7 @@ export function createMcpAuthorizationServerMetadata(event: H3Event) {
     grant_types_supported: ['authorization_code'],
     issuer: origin,
     response_types_supported: ['code'],
+    registration_endpoint: `${origin}/api/auth/mcp/register`,
     scopes_supported: [...MCP_OAUTH_SCOPES],
     token_endpoint: `${origin}/api/auth/mcp/token`,
     token_endpoint_auth_methods_supported: ['none'],
