@@ -30,9 +30,9 @@
 
 ## Active Changes
 
-_last synced: 2026-04-23T22:51:16.106Z_
+_last synced: 2026-04-23T23:23:45.218Z_
 
-2 active changes (0 ready · 2 in progress · 0 draft · 0 blocked)
+2 active changes (0 ready · 1 in progress · 1 draft · 0 blocked)
 
 ### Ready to apply
 
@@ -42,12 +42,11 @@ _(none)_
 
 - **code-quality-review-followups** — 37/43 tasks (86%)
   - Specs: `oauth-remote-mcp-auth`, `web-chat-ui`
-- **fix-mcp-transport-body-consumed** — 10/22 tasks (45%)
-  - Specs: `mcp-knowledge-tools`
 
 ### Draft
 
-_(none)_
+- **fix-mcp-streamable-http-session** — 0/23 tasks (0%)
+  - Specs: `mcp-knowledge-tools`
 
 ### Blocked
 
@@ -62,20 +61,17 @@ _(none)_
 > 即時 ownership 由 `.spectra/claims/*.json` 提供。
 > 接手 handoff / 開始做 change 時，先 claim，再移除 `HANDOFF.md` 對應項目。
 
-2 claims (1 active · 1 stale)
+1 claim (1 active · 0 stale)
 
 ### Live Ownership
 
-- **fix-mcp-transport-body-consumed** — unknown:charles@charlesdeMac-mini.local (unknown)
+- **code-quality-review-followups** — unknown:charles@charlesdeMac-mini.local (unknown)
   - Accepted from: manual
-  - Last heartbeat: 2026-04-23T22:44:19.805Z
+  - Last heartbeat: 2026-04-23T23:08:39.091Z
 
 ### Stale Claims
 
-- **code-quality-review-followups** — unknown:charles@charlesdeMac-mini.local (unknown)
-  - Accepted from: manual
-  - Last heartbeat: 2026-04-23T21:43:28.249Z
-  - Status: stale (last heartbeat 2026-04-23T21:43:28.249Z)
+_(none)_
 
 <!-- SPECTRA-UX:ROADMAP-AUTO:/claims -->
 
@@ -88,7 +84,7 @@ _(none)_
 ### Independent (can run in parallel)
 
 - `code-quality-review-followups`
-- `fix-mcp-transport-body-consumed`
+- `fix-mcp-streamable-http-session`
 
 ### Mutex (same spec touched)
 
