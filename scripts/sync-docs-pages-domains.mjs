@@ -183,8 +183,10 @@ async function main() {
     `/accounts/${encodeURIComponent(accountId)}/pages/projects/${encodeURIComponent(projectName)}/domains`,
   )
 
+  const initialStatuses = new Map()
   for (const { host } of configuredTargets) {
-    await ensurePagesDomain(host, existingDomains)
+    const domain = await ensurePagesDomain(host, existingDomains)
+    initialStatuses.set(host, domain?.status)
   }
 
   const zones = await cfRequest('GET', `/zones?name=${encodeURIComponent(zoneName)}`)
@@ -201,7 +203,13 @@ async function main() {
 
   for (const { key, host } of configuredTargets) {
     await ensureDnsRecord(zoneId, host, dnsTargets[key])
-    await retryDomainValidation(host)
+    // Avoid toggling already-active domains into a transient error state.
+    // Only request re-validation for domains that were not yet active.
+    if (initialStatuses.get(host) !== 'active') {
+      await retryDomainValidation(host)
+    } else {
+      console.log(`Validation skipped: ${host} already active`)
+    }
   }
 
   const finalDomains = await cfRequest(
@@ -223,11 +231,38 @@ async function main() {
       `Domain status: ${host} pages=${domain.status} validation=${validationStatus} verification=${verificationStatus}`,
     )
 
-    if (domain.status !== 'active') {
-      throw new Error(
-        `Pages domain ${host} is not ready yet (pages=${domain.status}, validation=${validationStatus}, verification=${verificationStatus})`,
-      )
+    if (domain.status === 'active') {
+      continue
     }
+
+    // Pages API 綁域名流程中，pages/verification 可能短暫卡 error，
+    // 但只要 validation=active 且外部實測能 HTTP 2xx/3xx，就視為可用——
+    // 後續的 smoke-test job 仍會對實際 URL 做嚴格檢查。
+    if (validationStatus === 'active') {
+      const probeUrl = `https://${host}/`
+      try {
+        const probe = await fetch(probeUrl, {
+          method: 'HEAD',
+          redirect: 'follow',
+          signal: AbortSignal.timeout(5000),
+        })
+        if (probe.status >= 200 && probe.status < 400) {
+          console.log(
+            `Pages domain ${host} not yet 'active' (pages=${domain.status}) but ${probeUrl} returned ${probe.status}; treating as ready.`,
+          )
+          continue
+        }
+        console.log(`Probe ${probeUrl} returned ${probe.status}`)
+      } catch (probeError) {
+        console.log(
+          `Probe ${probeUrl} failed: ${probeError instanceof Error ? probeError.message : String(probeError)}`,
+        )
+      }
+    }
+
+    throw new Error(
+      `Pages domain ${host} is not ready yet (pages=${domain.status}, validation=${validationStatus}, verification=${verificationStatus})`,
+    )
   }
 }
 
