@@ -6,8 +6,11 @@ import {
   type CloudflareAiBindingLike,
 } from '#server/utils/ai-search'
 import { createCitationStore } from '#server/utils/citation-store'
-import { getCloudflareEnv, getRequiredKvBinding } from '#server/utils/cloudflare-bindings'
-import { getD1Database } from '#server/utils/database'
+import {
+  getCloudflareEnv,
+  getRequiredD1Binding,
+  getRequiredKvBinding,
+} from '#server/utils/cloudflare-bindings'
 import { createKnowledgeAuditStore } from '#server/utils/knowledge-audit'
 import { createKnowledgeEvidenceStore } from '#server/utils/knowledge-evidence-store'
 import { retrieveVerifiedEvidence } from '#server/utils/knowledge-retrieval'
@@ -40,7 +43,7 @@ export default defineMcpTool({
     requireMcpScope(auth, 'knowledge.ask')
 
     const runtimeConfig = getKnowledgeRuntimeConfig()
-    const database = await getD1Database()
+    const database = getRequiredD1Binding(event, runtimeConfig.bindings.d1Database)
     const aiSearchClient = createCloudflareAiSearchClient({
       aiBinding: getRequiredAiSearchBinding(event),
       indexName: getRequiredAiSearchIndex(runtimeConfig.bindings.aiSearchIndex),
