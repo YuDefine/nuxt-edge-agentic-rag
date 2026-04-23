@@ -37,9 +37,9 @@
     "test:coverage": "vp test run --config ./vitest.config.ts --coverage",
     "test:e2e": "playwright test",
     "test:integration": "vp test run --config ./vitest.config.ts --project integration",
-    "test:workers-ai-accepted-path": "vp test run --config ./vitest.config.ts test/integration/acceptance-tc-01.test.ts test/integration/acceptance-tc-06.test.ts",
     "test:unit": "vp test run --config ./vitest.config.ts test/unit",
     "test:watch": "vp test watch --config ./vitest.config.ts",
+    "test:workers-ai-accepted-path": "vp test run --config ./vitest.config.ts test/integration/acceptance-tc-01.test.ts test/integration/acceptance-tc-06.test.ts",
     "typecheck": "nuxt typecheck",
     "verify:acceptance": "pnpm test:acceptance && pnpm test:contracts"
   },

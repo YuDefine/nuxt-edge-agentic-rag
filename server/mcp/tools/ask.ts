@@ -15,6 +15,7 @@ import { getKnowledgeRuntimeConfig } from '#server/utils/knowledge-runtime'
 import { askKnowledge, createMcpQueryLogStore } from '#server/utils/mcp-ask'
 import { requireMcpScope } from '#server/utils/mcp-auth'
 import {
+  createWorkersAiRunRecorder,
   createWorkersAiAnswerAdapter,
   createWorkersAiJudgeAdapter,
   type WorkersAiBindingLike,
@@ -46,7 +47,10 @@ export default defineMcpTool({
       gatewayConfig: runtimeConfig.aiGateway,
     })
     const workersAiBinding = getRequiredWorkersAiBinding(event)
+    const workersAiRuns = createWorkersAiRunRecorder()
     const evidenceStore = createKnowledgeEvidenceStore(database)
+    const auditStore = createKnowledgeAuditStore(database)
+    const queryLogStore = createMcpQueryLogStore(database)
 
     // Touch KV binding to ensure it's wired; rate limiting itself is handled
     // by the middleware. Leaving the lookup here keeps parity with the legacy
@@ -63,13 +67,33 @@ export default defineMcpTool({
       {
         answer: createWorkersAiAnswerAdapter({
           binding: workersAiBinding,
+          onUsage: workersAiRuns.record,
         }),
-        auditStore: createKnowledgeAuditStore(database),
+        auditStore: {
+          ...auditStore,
+          updateQueryLog: auditStore.updateQueryLog
+            ? (input) =>
+                auditStore.updateQueryLog({
+                  ...input,
+                  workersAiRunsJson: workersAiRuns.serialize(),
+                })
+            : undefined,
+        },
         citationStore: createCitationStore(database),
         judge: createWorkersAiJudgeAdapter({
           binding: workersAiBinding,
+          onUsage: workersAiRuns.record,
         }),
-        queryLogStore: createMcpQueryLogStore(database),
+        queryLogStore: {
+          ...queryLogStore,
+          updateQueryLog: queryLogStore.updateQueryLog
+            ? (input) =>
+                queryLogStore.updateQueryLog({
+                  ...input,
+                  workersAiRunsJson: workersAiRuns.serialize(),
+                })
+            : undefined,
+        },
         retrieve: (input) =>
           retrieveVerifiedEvidence(input, {
             governance: runtimeConfig.governance,

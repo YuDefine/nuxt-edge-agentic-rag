@@ -16,6 +16,7 @@ import { retrieveVerifiedEvidence } from '#server/utils/knowledge-retrieval'
 import { getKnowledgeRuntimeConfig } from '#server/utils/knowledge-runtime'
 import { requireRole } from '#server/utils/require-role'
 import {
+  createWorkersAiRunRecorder,
   createWorkersAiAnswerAdapter,
   createWorkersAiJudgeAdapter,
   type WorkersAiBindingLike,
@@ -109,6 +110,8 @@ export default defineEventHandler(async function chatHandler(event) {
       gatewayConfig: runtimeConfig.aiGateway,
     })
     const workersAiBinding = getRequiredWorkersAiBinding(event)
+    const workersAiRuns = createWorkersAiRunRecorder()
+    const auditStore = createKnowledgeAuditStore(database)
     const staleResolver = createConversationStaleResolver(database)
     const result = await chatWithKnowledge(
       {
@@ -129,11 +132,22 @@ export default defineEventHandler(async function chatHandler(event) {
       {
         answer: createWorkersAiAnswerAdapter({
           binding: workersAiBinding,
+          onUsage: workersAiRuns.record,
         }),
         persistCitations: createCitationStore(database).persistCitations,
-        auditStore: createKnowledgeAuditStore(database),
+        auditStore: {
+          ...auditStore,
+          updateQueryLog: auditStore.updateQueryLog
+            ? (input) =>
+                auditStore.updateQueryLog({
+                  ...input,
+                  workersAiRunsJson: workersAiRuns.serialize(),
+                })
+            : undefined,
+        },
         judge: createWorkersAiJudgeAdapter({
           binding: workersAiBinding,
+          onUsage: workersAiRuns.record,
         }),
         rateLimitStore: createChatKvRateLimitStore(
           getRequiredKvBinding(event, runtimeConfig.bindings.rateLimitKv),

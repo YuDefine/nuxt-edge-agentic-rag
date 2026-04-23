@@ -397,6 +397,82 @@ describe('/api/chat route', () => {
     )
   })
 
+  it('attaches workers-ai telemetry when the wrapped audit store updates query logs', async () => {
+    const auditStore = {
+      createMessage: vi.fn(),
+      createQueryLog: vi.fn(),
+      updateQueryLog: vi.fn().mockResolvedValue(undefined),
+    }
+
+    chatRouteMocks.createKnowledgeAuditStore.mockReturnValueOnce(auditStore)
+    chatRouteMocks.workersAiRun.mockResolvedValueOnce({
+      response: 'Workers AI answer',
+      usage: {
+        completion_tokens: 18,
+        prompt_tokens: 120,
+        prompt_tokens_details: {
+          cached_tokens: 24,
+        },
+        total_tokens: 138,
+      },
+    })
+    chatRouteMocks.chatWithKnowledge.mockImplementationOnce(async (_input, options) => {
+      await options.answer({
+        evidence: [
+          {
+            chunkText: '採購流程需要先建立請購單，再建立採購單。',
+            documentTitle: '採購流程',
+          },
+        ],
+        modelRole: 'defaultAnswer',
+        query: '採購流程是什麼？',
+        retrievalScore: 0.9,
+      })
+      await options.auditStore?.updateQueryLog?.({
+        completionLatencyMs: 320,
+        decisionPath: 'direct_answer',
+        firstTokenLatencyMs: null,
+        judgeScore: null,
+        queryLogId: 'query-log-1',
+        refusalReason: null,
+        retrievalScore: 0.9,
+      })
+
+      return {
+        answer: 'Workers AI answer',
+        citations: [],
+        refused: false,
+      }
+    })
+
+    const { default: handler } = await import('../../server/api/chat.post')
+    await handler(createRouteEvent())
+
+    expect(auditStore.updateQueryLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        queryLogId: 'query-log-1',
+        workersAiRunsJson: expect.any(String),
+      }),
+    )
+
+    const workersAiRunsJson =
+      vi.mocked(auditStore.updateQueryLog).mock.calls[0]?.[0]?.workersAiRunsJson ?? '[]'
+
+    expect(JSON.parse(workersAiRunsJson)).toEqual([
+      {
+        latencyMs: expect.any(Number),
+        model: '@cf/meta/llama-4-scout-17b-16e-instruct',
+        modelRole: 'defaultAnswer',
+        usage: {
+          cachedPromptTokens: 24,
+          completionTokens: 18,
+          promptTokens: 120,
+          totalTokens: 138,
+        },
+      },
+    ])
+  })
+
   it('surfaces gateway 5xx to client as 500 without silently retrying', async () => {
     // Simulate Workers AI / Gateway returning a 5xx: the binding call
     // propagates the error to `chatWithKnowledge`, which re-throws.

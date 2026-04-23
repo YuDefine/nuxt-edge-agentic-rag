@@ -18,6 +18,30 @@ export interface WorkersAiRunTelemetry {
   usage: WorkersAiUsageSnapshot | null
 }
 
+export function createWorkersAiRunRecorder() {
+  const runs: WorkersAiRunTelemetry[] = []
+
+  return {
+    record(telemetry: WorkersAiRunTelemetry) {
+      runs.push(telemetry)
+    },
+    serialize(): string {
+      return serializeWorkersAiRunTelemetry(runs)
+    },
+  }
+}
+
+export function serializeWorkersAiRunTelemetry(runs: WorkersAiRunTelemetry[]): string {
+  return JSON.stringify(
+    runs.map((run) => ({
+      latencyMs: run.latencyMs,
+      model: run.model,
+      modelRole: run.modelRole,
+      usage: run.usage,
+    })),
+  )
+}
+
 const DEFAULT_MODEL_BY_ROLE = Object.freeze({
   agentJudge: '@cf/moonshotai/kimi-k2.5',
   defaultAnswer: '@cf/meta/llama-4-scout-17b-16e-instruct',
