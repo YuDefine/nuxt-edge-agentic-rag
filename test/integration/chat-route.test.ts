@@ -44,6 +44,8 @@ const chatRouteMocks = vi.hoisted(() => {
     getRequiredD1Binding: vi.fn().mockReturnValue({}),
     getRequiredKvBinding: vi.fn().mockReturnValue({ get: vi.fn(), put: vi.fn() }),
     getRuntimeAdminAccess: vi.fn().mockReturnValue(false),
+    logError: vi.fn(),
+    logSet: vi.fn(),
     readValidatedBody: vi.fn(),
     requireRole: vi.fn(),
     requireUserSession: vi.fn(),
@@ -53,8 +55,8 @@ const chatRouteMocks = vi.hoisted(() => {
 
 vi.mock('evlog', () => ({
   useLogger: () => ({
-    error: vi.fn(),
-    set: vi.fn(),
+    error: chatRouteMocks.logError,
+    set: chatRouteMocks.logSet,
   }),
 }))
 
@@ -117,6 +119,28 @@ vi.mock('../../server/utils/web-chat', () => ({
 
 installNuxtRouteTestGlobals()
 
+function parseSseTranscript(transcript: string): Array<{ event: string; data: unknown }> {
+  return transcript
+    .trim()
+    .split('\n\n')
+    .flatMap((block) => {
+      const lines = block.split('\n')
+      const event = lines.find((line) => line.startsWith('event: '))?.slice(7)
+      const dataLine = lines.find((line) => line.startsWith('data: '))?.slice(6)
+
+      if (!event || !dataLine) {
+        return []
+      }
+
+      return [
+        {
+          event,
+          data: JSON.parse(dataLine),
+        },
+      ]
+    })
+}
+
 describe('/api/chat route', () => {
   beforeEach(() => {
     vi.stubGlobal('readValidatedBody', chatRouteMocks.readValidatedBody)
@@ -138,6 +162,8 @@ describe('/api/chat route', () => {
     chatRouteMocks.createKnowledgeEvidenceStore.mockClear()
     chatRouteMocks.getKnowledgeRuntimeConfig.mockReset()
     chatRouteMocks.getRequiredKvBinding.mockReset()
+    chatRouteMocks.logError.mockReset()
+    chatRouteMocks.logSet.mockReset()
     chatRouteMocks.requireRole.mockReset()
     chatRouteMocks.requireUserSession.mockReset()
     chatRouteMocks.workersAiRun.mockReset()
@@ -233,6 +259,140 @@ describe('/api/chat route', () => {
     ] as const) {
       expect(serialized).not.toContain(`"${field}"`)
     }
+  })
+
+  it('returns SSE events for streaming clients on the existing /api/chat path', async () => {
+    const encoder = new TextEncoder()
+    chatRouteMocks.workersAiRun.mockResolvedValueOnce(
+      new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(
+            encoder.encode('data: {"choices":[{"delta":{"content":"Launch moved "}}]}\n\n'),
+          )
+          controller.enqueue(
+            encoder.encode('data: {"choices":[{"delta":{"content":"to Tuesday."}}]}\n\n'),
+          )
+          controller.enqueue(encoder.encode('data: [DONE]\n\n'))
+          controller.close()
+        },
+      }),
+    )
+    chatRouteMocks.chatWithKnowledge.mockImplementationOnce(async (_input, options) => {
+      const answer = await options.answer({
+        evidence: [
+          {
+            accessLevel: 'internal',
+            categorySlug: 'launch',
+            citationLocator: 'lines 1-3',
+            chunkText: 'Launch moved to Tuesday.',
+            documentId: 'doc-1',
+            documentTitle: 'Launch Plan',
+            documentVersionId: 'ver-1',
+            excerpt: 'Launch moved to Tuesday.',
+            score: 0.92,
+            sourceChunkId: 'chunk-1',
+            title: 'Launch Plan',
+          },
+        ],
+        modelRole: 'defaultAnswer',
+        onTextDelta: options.stream?.onTextDelta,
+        query: 'What changed?',
+        retrievalScore: 0.92,
+        signal: options.stream?.signal,
+      })
+
+      return {
+        answer,
+        citations: [{ citationId: 'citation-1', sourceChunkId: 'chunk-1' }],
+        refused: false,
+        retrievalScore: 0.92,
+      }
+    })
+
+    const { default: handler } = await import('../../server/api/chat.post')
+    const result = await handler(
+      createRouteEvent({
+        headers: {
+          accept: 'text/event-stream',
+        },
+      }),
+    )
+
+    expect(result).toBeInstanceOf(Response)
+    expect(result.headers.get('content-type')).toContain('text/event-stream')
+
+    const events = parseSseTranscript(await result.text())
+
+    expect(chatRouteMocks.logError).not.toHaveBeenCalled()
+    expect(events).toEqual([
+      {
+        event: 'ready',
+        data: {
+          conversationCreated: true,
+          conversationId: 'conv-auto',
+        },
+      },
+      {
+        event: 'delta',
+        data: {
+          content: 'Launch moved ',
+        },
+      },
+      {
+        event: 'delta',
+        data: {
+          content: 'to Tuesday.',
+        },
+      },
+      {
+        event: 'complete',
+        data: {
+          answer: 'Launch moved to Tuesday.',
+          citations: [{ citationId: 'citation-1', sourceChunkId: 'chunk-1' }],
+          conversationCreated: true,
+          conversationId: 'conv-auto',
+          refused: false,
+        },
+      },
+    ])
+  })
+
+  it('propagates stream cancellation through the active chat run', async () => {
+    let resolveAbort: (() => void) | null = null
+    const abortObserved = new Promise<void>((resolve) => {
+      resolveAbort = resolve
+    })
+
+    chatRouteMocks.chatWithKnowledge.mockImplementationOnce(async (_input, options) => {
+      await new Promise<never>((_, reject) => {
+        options.stream?.signal?.addEventListener(
+          'abort',
+          () => {
+            resolveAbort?.()
+            reject(new DOMException('aborted', 'AbortError'))
+          },
+          { once: true },
+        )
+      })
+    })
+
+    const { default: handler } = await import('../../server/api/chat.post')
+    const result = await handler(
+      createRouteEvent({
+        headers: {
+          accept: 'text/event-stream',
+        },
+      }),
+    )
+
+    expect(result).toBeInstanceOf(Response)
+
+    const reader = result.body?.getReader()
+    expect(reader).toBeDefined()
+
+    await reader?.read()
+    await reader?.cancel()
+    await abortObserved
   })
 
   it('maps chat rate limits to 429', async () => {

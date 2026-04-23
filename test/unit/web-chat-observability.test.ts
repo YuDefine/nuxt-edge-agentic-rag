@@ -275,4 +275,55 @@ describe('chatWithKnowledge — §1.2 debug-safe derived fields', () => {
     expect(result.refused).toBe(false)
     // Must not crash when updateQueryLog is absent — happy path still completes.
   })
+
+  it('streamed accepted path → records first_token_latency_ms on the first visible answer-content event', async () => {
+    const governance = createKnowledgeRuntimeConfig({ environment: 'local' }).governance
+    const auditStore = {
+      createMessage: vi.fn().mockResolvedValue('msg-stream'),
+      createQueryLog: vi.fn().mockResolvedValue('query-log-stream'),
+      updateQueryLog: vi.fn().mockResolvedValue(undefined),
+    }
+    vi.useFakeTimers()
+    vi.setSystemTime(1_000)
+
+    const result = await chatWithKnowledge(
+      {
+        auth: { isAdmin: false, userId: 'user-stream' },
+        governance,
+        environment: 'local',
+        query: '請說明請購流程',
+      },
+      {
+        answer: vi.fn(async (input: { onTextDelta?: (delta: string) => Promise<void> | void }) => {
+          vi.setSystemTime(1_042)
+          await input.onTextDelta?.('請先建立請購單。')
+          vi.setSystemTime(1_120)
+          return '請先建立請購單。'
+        }),
+        auditStore,
+        judge: vi.fn(),
+        rateLimitStore: kvStore(),
+        retrieve: vi.fn().mockResolvedValue({
+          evidence: evidenceAt(0.91),
+          normalizedQuery: '請說明請購流程',
+        }),
+        stream: {
+          onTextDelta: vi.fn(),
+        },
+      },
+    )
+
+    expect(result.refused).toBe(false)
+    expect(auditStore.updateQueryLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        queryLogId: 'query-log-stream',
+        firstTokenLatencyMs: 42,
+        completionLatencyMs: 120,
+        decisionPath: 'direct_answer',
+        refusalReason: null,
+      }),
+    )
+
+    vi.useRealTimers()
+  })
 })
