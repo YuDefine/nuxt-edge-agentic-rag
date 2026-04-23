@@ -1,3 +1,5 @@
+import { fileURLToPath } from 'node:url'
+
 import { createNitroRollupConfig } from './build/nitro/rollup'
 import { createKnowledgeRuntimeConfig } from './shared/schemas/knowledge-runtime'
 import { parseMcpConnectorClientsEnv } from './shared/utils/mcp-connector-client-registry'
@@ -5,6 +7,15 @@ import { parseMcpConnectorClientsEnv } from './shared/utils/mcp-connector-client
 const isVitest = process.env.VITEST === 'true'
 const disableNuxtHints =
   process.env.NUXT_DISABLE_HINTS === 'true' || process.env.PLAYWRIGHT === 'true'
+const mcpToolkitProviderPath = (provider: 'cloudflare' | 'node') =>
+  fileURLToPath(
+    new URL(
+      `./node_modules/@nuxtjs/mcp-toolkit/dist/runtime/server/mcp/providers/${provider}.js`,
+      import.meta.url,
+    ),
+  )
+const mcpToolkitCloudflareProvider = mcpToolkitProviderPath('cloudflare')
+const mcpToolkitNodeProvider = mcpToolkitProviderPath('node')
 
 // https://nuxt.com/docs/api/configuration/nuxt-config
 const knowledgeRuntimeConfig = createKnowledgeRuntimeConfig({
@@ -283,6 +294,9 @@ export default defineNuxtConfig({
 
   nitro: {
     preset: 'cloudflare_module',
+    alias: {
+      [mcpToolkitCloudflareProvider]: mcpToolkitNodeProvider,
+    },
     cloudflare: {
       deployConfig: true,
       nodeCompat: true,
