@@ -2,11 +2,11 @@
 
 ## Purpose
 
-在 local 或 production 環境驗證 bootstrap-v1-core-from-report 的最小閉環，覆蓋 allowlist、publish、web answering、MCP ask/replay/search/categories 與治理規則。本專案 `v1.0.0` 採 local + production 雙環境，不獨立部署 staging / preview；smoke 流程在兩個環境皆適用，差異僅在 backdated / shortened TTL 驗證僅限 local 執行。
+在 local、staging 或 production 環境驗證 bootstrap-v1-core-from-report 的最小閉環，覆蓋 allowlist、publish、web answering、MCP ask/replay/search/categories 與治理規則。staging 可作為 production 前的預發佈 smoke；差異僅在 backdated / shortened TTL 驗證仍限 local 執行。
 
 ## Preconditions
 
-- local 與 production 各自使用獨立的 D1、R2、KV、AI Search bindings
+- local、staging、production 各自使用對應的 D1、R2、KV、AI Search bindings
 - 已準備一組 allowlisted admin 帳號、一組一般 web user、一組 restricted MCP token、一組 non-restricted MCP token
 - 已有可上傳的 md 或 txt 測試文件
 

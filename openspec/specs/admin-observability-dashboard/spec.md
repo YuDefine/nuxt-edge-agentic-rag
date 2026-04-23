@@ -82,7 +82,7 @@ code:
   - test/acceptance/evidence/a02-ai-search-orchestration.ts
   - test/acceptance/evidence/a01-deploy-smoke.ts
   - test/acceptance/evidence/ev03-publish-cutover.ts
-  - docs/decisions/2026-04-19-collapse-environments-to-local-and-production.md
+  - docs/decisions/2026-04-23-recognize-staging-as-active-environment.md
   - app/components/admin/tokens/TokenCreateModal.vue
   - server/api/admin/debug/latency/summary.get.ts
   - server/utils/query-log-debug-store.ts
@@ -207,7 +207,7 @@ code:
   - test/acceptance/evidence/a02-ai-search-orchestration.ts
   - test/acceptance/evidence/a01-deploy-smoke.ts
   - test/acceptance/evidence/ev03-publish-cutover.ts
-  - docs/decisions/2026-04-19-collapse-environments-to-local-and-production.md
+  - docs/decisions/2026-04-23-recognize-staging-as-active-environment.md
   - app/components/admin/tokens/TokenCreateModal.vue
   - server/api/admin/debug/latency/summary.get.ts
   - server/utils/query-log-debug-store.ts

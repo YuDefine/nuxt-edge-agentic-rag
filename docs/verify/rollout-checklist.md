@@ -1,6 +1,6 @@
 # Rollout Checklist — Governance & Retention
 
-> 部署 production 前的逐項確認（local 開發時也可比照走一遍），避免 cleanup schedule、retention threshold、purge policy 與 config snapshot 配置漂移。本專案 `v1.0.0` 採 local + production 雙環境，不獨立部署 staging。
+> 部署 production 前的逐項確認（staging 演練也可比照走一遍），避免 cleanup schedule、retention threshold、purge policy 與 config snapshot 配置漂移。本專案目前有 `local` / `staging` / `production` 三條環境路徑；此文件以 production 為主，套用到 staging 時請改讀 `wrangler.staging.jsonc` 與 `agentic-rag-db-staging`。
 >
 > **適用範圍**：`governance-refinements` 產物（conversation lifecycle、retention cleanup、config snapshot governance）。
 >
@@ -12,29 +12,32 @@
 >
 > **規則**：此文件中的 checkbox 只能由執行人在驗證通過後勾選。若任一項不通過，**不得**繼續下一階段。
 
+> **命令約定**：以下 remote D1 指令預設使用 production `DB_NAME=agentic-rag-db`。若套用到 staging，先設 `DB_NAME=agentic-rag-db-staging` 與對應 `BASE_URL`。
+
 ---
 
 ## 0. 前置準備
 
 ### 0.1 環境識別
 
-- [ ] 0.1.1 確認目前部署目標（local vs production）並記錄於 commit message / PR：
+- [ ] 0.1.1 確認目前部署目標（local vs staging vs production）並記錄於 commit message / PR：
   - **local**：`NUXT_KNOWLEDGE_ENVIRONMENT=local`，允許較短 retention、backdated 資料測試
+  - **staging**：`NUXT_KNOWLEDGE_ENVIRONMENT=staging`，預發佈驗證，應使用 staging 專用 D1 / R2 / KV / AI Search
   - **production**：`NUXT_KNOWLEDGE_ENVIRONMENT=production`，僅允許配置檢視、禁止 backdated 資料
-- [ ] 0.1.2 確認 `wrangler.jsonc` 的 `vars.NUXT_KNOWLEDGE_ENVIRONMENT` 與部署目標一致
+- [ ] 0.1.2 確認對應的 wrangler 設定（production 用 `wrangler.jsonc`；staging 用 `wrangler.staging.jsonc`）之 `vars.NUXT_KNOWLEDGE_ENVIRONMENT` 與部署目標一致
 
 驗證指令：
 
 ```bash
-# 查看目前 wrangler.jsonc 中的環境變數
-grep -A 6 '"vars"' wrangler.jsonc
+# 查看目前 wrangler 設定中的環境變數
+grep -A 8 '"vars"' "${WRANGLER_CONFIG:-wrangler.jsonc}"
 
 # 部署後查驗 runtime
 curl -s "$BASE_URL/api/chat" \
   -H "Cookie: $SESSION_COOKIE" \
   -H "Content-Type: application/json" \
   -d '{"message":"ping"}' | jq '.governance.environment'
-# 預期：與 wrangler.jsonc 宣告一致（local / production）
+# 預期：與 wrangler 設定宣告一致（local / staging / production）
 ```
 
 ### 0.2 執行權限
@@ -46,7 +49,7 @@ curl -s "$BASE_URL/api/chat" \
 
 ```bash
 # 確認 wrangler 已登入並能讀取目標 D1
-wrangler d1 execute agentic-rag-db --remote --command "SELECT 1 AS ok;"
+wrangler d1 execute "${DB_NAME:-agentic-rag-db}" --remote --command "SELECT 1 AS ok;"
 # 預期：回傳 {"results":[{"ok":1}]}
 ```
 
@@ -166,11 +169,11 @@ CONVERSATION_ID="..."
 curl -s -X DELETE "$BASE_URL/api/conversations/$CONVERSATION_ID" \
   -H "Cookie: $SESSION_COOKIE"
 
-wrangler d1 execute agentic-rag-db --remote --command \
+wrangler d1 execute "${DB_NAME:-agentic-rag-db}" --remote --command \
   "SELECT id, title, deleted_at FROM conversations WHERE id='$CONVERSATION_ID';"
 # 預期：title 為 NULL 或 '[redacted]'，deleted_at 有值
 
-wrangler d1 execute agentic-rag-db --remote --command \
+wrangler d1 execute "${DB_NAME:-agentic-rag-db}" --remote --command \
   "SELECT id, role, content_text, content_redacted FROM messages \
    WHERE conversation_id='$CONVERSATION_ID' LIMIT 5;"
 # 預期：content_text 為 NULL 或 '[redacted]'，content_redacted 保留
@@ -198,7 +201,7 @@ wrangler d1 execute agentic-rag-db --remote --command \
 
 ```bash
 # 查詢最近 query_logs 是否有未遮罩敏感字串（手動抽樣 5 筆檢查）
-wrangler d1 execute agentic-rag-db --remote --command \
+wrangler d1 execute "${DB_NAME:-agentic-rag-db}" --remote --command \
   "SELECT id, channel, query_redacted_text, risk_flags_json, \
           redaction_applied, status \
    FROM query_logs ORDER BY created_at DESC LIMIT 5;"
@@ -218,7 +221,7 @@ wrangler d1 execute agentic-rag-db --remote --command \
 
 ```bash
 # 依 CONFIG_SNAPSHOT_VERIFICATION.md §2.1 步驟執行
-wrangler d1 execute agentic-rag-db --remote --command \
+wrangler d1 execute "${DB_NAME:-agentic-rag-db}" --remote --command \
   "SELECT id, channel, config_snapshot_version, created_at \
    FROM query_logs ORDER BY created_at DESC LIMIT 5;"
 
@@ -240,7 +243,7 @@ curl -s -X POST "$BASE_URL/api/chat" \
 
 ```bash
 # 比對舊版 vs 新版 log 的分布
-wrangler d1 execute agentic-rag-db --remote --command \
+wrangler d1 execute "${DB_NAME:-agentic-rag-db}" --remote --command \
   "SELECT config_snapshot_version, COUNT(*) AS count \
    FROM query_logs \
    WHERE created_at >= datetime('now', '-1 hours') \
@@ -269,7 +272,7 @@ wrangler d1 execute agentic-rag-db --remote --command \
 
 ```bash
 # 檢查 cleanup 執行後 D1 狀態
-wrangler d1 execute agentic-rag-db --remote --command \
+wrangler d1 execute "${DB_NAME:-agentic-rag-db}" --remote --command \
   "SELECT \
      (SELECT COUNT(*) FROM query_logs WHERE created_at <= datetime('now','-180 days')) AS expired_logs, \
      (SELECT COUNT(*) FROM messages WHERE created_at <= datetime('now','-180 days')) AS expired_msgs, \

@@ -4,14 +4,16 @@
 >
 > **前提**：
 >
-> - 已依 `production-deploy-checklist.md` 部署完成（或具備 local 開發環境）
-> - D1 `agentic-rag-db` 可透過 `wrangler d1 execute ... --remote` 操作
+> - 已依 `production-deploy-checklist.md` / `DEPLOYMENT_RUNBOOK.md` 完成 staging 或 production 部署（或具備 local 開發環境）
+> - 目標 D1 可透過 `wrangler d1 execute ... --remote` 操作（production 預設 `agentic-rag-db`；staging 可設 `DB_NAME=agentic-rag-db-staging`）
 > - Admin Web token 可呼叫 `/api/admin/retention/prune`（或等價 endpoint）
 > - 具備可用的 MCP token（non-restricted），用於 `getDocumentChunk` replay
 >
 > **規則**：人工檢查項目由使用者走完後回報 OK / 問題 / skip，Claude 才能代勾。
 >
 > **重要**：驗證不得污染 production。Backdated 測試**只在 local** 執行。
+>
+> **命令約定**：通用示例一律使用 `${BASE_URL:-https://agentic.yudefine.com.tw}` 與 `${DB_NAME:-agentic-rag-db}`；只有明確標示「production 專用」的段落才保留硬編 production 目標。
 
 ## 1. 情境總覽
 
@@ -56,11 +58,11 @@
 
 ### 3.1 前置
 
-1. 確認環境（local 或 production）有一篇可問答的 internal 文件（可重用 `ACCEPTANCE_RUNBOOK.md` Doc A）。
+1. 確認環境（local、staging 或 production）有一篇可問答的 internal 文件（可重用 `ACCEPTANCE_RUNBOOK.md` Doc A）。
 2. 以 Web 提問，取得引用 `[1]` 並記錄：
 
    ```bash
-   wrangler d1 execute agentic-rag-db --remote --command \
+   wrangler d1 execute "${DB_NAME:-agentic-rag-db}" --remote --command \
      "SELECT id, query_log_id, document_version_id, source_chunk_id, citation_locator, \
             created_at, expires_at \
       FROM citation_records \
@@ -77,7 +79,7 @@
 2. 同時（或立即）觸發一次 retention prune：
 
    ```bash
-   curl -X POST https://agentic.yudefine.com.tw/api/admin/retention/prune \
+   curl -X POST "${BASE_URL:-https://agentic.yudefine.com.tw}/api/admin/retention/prune" \
      -H "Cookie: <admin session cookie>"
    ```
 
@@ -93,13 +95,13 @@
 **驗證 D1**：
 
 ```bash
-wrangler d1 execute agentic-rag-db --remote --command \
+wrangler d1 execute "${DB_NAME:-agentic-rag-db}" --remote --command \
   "SELECT id, created_at, expires_at FROM citation_records WHERE id = '<citation_id>';"
 
-wrangler d1 execute agentic-rag-db --remote --command \
+wrangler d1 execute "${DB_NAME:-agentic-rag-db}" --remote --command \
   "SELECT id, channel, created_at FROM query_logs WHERE id = '<query_log_id>';"
 
-wrangler d1 execute agentic-rag-db --remote --command \
+wrangler d1 execute "${DB_NAME:-agentic-rag-db}" --remote --command \
   "SELECT id, LENGTH(chunk_text) AS text_len FROM source_chunks WHERE id = '<chunk_id>';"
 ```
 
@@ -126,14 +128,14 @@ wrangler d1 execute agentic-rag-db --remote --command \
 OLD_TS="$(date -u -v-200d +"%Y-%m-%dT%H:%M:%SZ")"
 OLD_EXPIRY="$(date -u -v-20d +"%Y-%m-%dT%H:%M:%SZ")"
 
-wrangler d1 execute agentic-rag-db --remote --command \
+wrangler d1 execute "${DB_NAME:-agentic-rag-db}" --remote --command \
   "INSERT INTO query_logs (id, channel, environment, query_redacted_text, \
      config_snapshot_version, status, created_at) \
    VALUES ('backdated-ql-$(date +%s)', 'web', 'local', '[backdated test]', \
      'kgov-backdated', 'accepted', '${OLD_TS}');"
 
 # 以最新的 document_version_id 與 source_chunk_id 連接
-wrangler d1 execute agentic-rag-db --remote --command \
+wrangler d1 execute "${DB_NAME:-agentic-rag-db}" --remote --command \
   "INSERT INTO citation_records (id, query_log_id, document_version_id, source_chunk_id, \
      citation_locator, chunk_text_snapshot, created_at, expires_at) \
    VALUES ('backdated-cr-$(date +%s)', 'backdated-ql-<timestamp>', '<version_id>', '<chunk_id>', \
@@ -203,13 +205,13 @@ npx tsx scripts/retention-prune.ts \
   --cookie "$ADMIN_SESSION_COOKIE" \
   --retention-days 1
 
-wrangler d1 execute agentic-rag-db --remote --command \
+wrangler d1 execute "${DB_NAME:-agentic-rag-db}" --remote --command \
   "SELECT COUNT(*) AS remaining FROM citation_records WHERE id LIKE 'backdated-cr-%';"
 
-wrangler d1 execute agentic-rag-db --remote --command \
+wrangler d1 execute "${DB_NAME:-agentic-rag-db}" --remote --command \
   "SELECT COUNT(*) AS remaining FROM query_logs WHERE id LIKE 'backdated-ql-%';"
 
-wrangler d1 execute agentic-rag-db --remote --command \
+wrangler d1 execute "${DB_NAME:-agentic-rag-db}" --remote --command \
   "SELECT COUNT(*) AS remaining FROM messages \
    WHERE query_log_id LIKE 'backdated-ql-%';"
 ```
@@ -243,7 +245,7 @@ wrangler d1 execute agentic-rag-db --remote --command \
 2. 對一筆**仍在 retention 內但 `chunk_text_snapshot` 手動清空**的 citation 呼叫（模擬未來可能的 snapshot scrub policy）：
 
    ```bash
-   wrangler d1 execute agentic-rag-db --remote --command \
+   wrangler d1 execute "${DB_NAME:-agentic-rag-db}" --remote --command \
      "UPDATE citation_records SET chunk_text_snapshot = '' WHERE id = '<retained_citation_id>';"
 
    curl -i -H "Authorization: Bearer $MCP_TOKEN" \
@@ -275,7 +277,7 @@ wrangler d1 execute agentic-rag-db --remote --command \
    # 一筆在 5 天前整（落在 cutoff 上，<=）
    RIGHT_ON="$(date -u -v-5d +"%Y-%m-%dT%H:%M:%SZ")"
 
-   wrangler d1 execute agentic-rag-db --remote --command \
+   wrangler d1 execute "${DB_NAME:-agentic-rag-db}" --remote --command \
      "INSERT INTO query_logs (id, channel, environment, query_redacted_text, \
         config_snapshot_version, status, created_at) \
       VALUES ('boundary-inside-$(date +%s)', 'web', 'local', '[boundary inside]', \
@@ -296,7 +298,7 @@ wrangler d1 execute agentic-rag-db --remote --command \
 3. 驗證結果：
 
    ```bash
-   wrangler d1 execute agentic-rag-db --remote --command \
+   wrangler d1 execute "${DB_NAME:-agentic-rag-db}" --remote --command \
      "SELECT id, created_at FROM query_logs WHERE id LIKE 'boundary-%';"
    ```
 
@@ -320,7 +322,7 @@ wrangler d1 execute agentic-rag-db --remote --command \
 2. 在 D1 把它手動改為 200 天前 revoked：
 
    ```bash
-   wrangler d1 execute agentic-rag-db --remote --command \
+   wrangler d1 execute "${DB_NAME:-agentic-rag-db}" --remote --command \
      "UPDATE mcp_tokens SET status = 'revoked', \
         revoked_at = datetime('now', '-200 days'), \
         revoked_reason = 'retention test' \
@@ -330,10 +332,10 @@ wrangler d1 execute agentic-rag-db --remote --command \
 ### 5.2 觸發 prune 並驗證
 
 ```bash
-curl -X POST https://agentic.yudefine.com.tw/api/admin/retention/prune \
+curl -X POST "${BASE_URL:-https://agentic.yudefine.com.tw}/api/admin/retention/prune" \
   -H "Cookie: <admin session cookie>"
 
-wrangler d1 execute agentic-rag-db --remote --command \
+wrangler d1 execute "${DB_NAME:-agentic-rag-db}" --remote --command \
   "SELECT id, name, token_hash, scopes_json, revoked_reason \
    FROM mcp_tokens WHERE id = '<token_id>';"
 ```

@@ -2,11 +2,13 @@
 
 > Operator-facing 日常作業手冊。涵蓋 scheduled job 觸發、手動觸發、執行結果查詢、錯誤排除與 rollback。對齊 `governance-refinements` §2.2 / §2.5，搭配 `RETENTION_CLEANUP_VERIFICATION.md`（local 完整驗證）與 `RETENTION_REPLAY_CONTRACT.md`（replay 契約）。
 
+> **目標切換**：production 預設使用 `BASE_URL=https://agentic.yudefine.com.tw`、`DB_NAME=agentic-rag-db`、`WRANGLER_CONFIG=wrangler.jsonc`。若要對 staging 執行同型檢查，改設 `BASE_URL=https://agentic-staging.yudefine.com.tw`、`DB_NAME=agentic-rag-db-staging`、`WRANGLER_CONFIG=wrangler.staging.jsonc`。
+
 ## 1. 何時跑 cleanup
 
 Cleanup 由以下兩條路徑觸發：
 
-1. **自動排程（primary）**：Cloudflare Workers cron trigger。設定於 `wrangler.jsonc`：
+1. **自動排程（primary）**：Cloudflare Workers cron trigger。設定於對應 wrangler 設定檔（production 預設 `wrangler.jsonc`，staging 則看 `wrangler.staging.jsonc`）：
 
    ```jsonc
    "triggers": { "crons": ["0 3 * * *"] }
@@ -55,17 +57,17 @@ Cleanup 由以下兩條路徑觸發：
 ### 4.1 檢查 Wrangler triggers 有註冊
 
 ```bash
-pnpm exec wrangler triggers list
+pnpm exec wrangler triggers list --config "${WRANGLER_CONFIG:-wrangler.jsonc}"
 ```
 
-PASS：輸出包含 `0 3 * * *` 的 cron trigger，指向 `nuxt-edge-agentic-rag` worker。
+PASS：輸出包含 `0 3 * * *` 的 cron trigger，且指向目前檢查的 target worker。
 
 ### 4.2 檢查上次執行結構化 log
 
 Cloudflare Workers tail：
 
 ```bash
-pnpm exec wrangler tail --format=pretty
+pnpm exec wrangler tail --format=pretty --config "${WRANGLER_CONFIG:-wrangler.jsonc}"
 ```
 
 觀察每日 03:00 UTC 的 entry，應看到：
@@ -84,10 +86,10 @@ pnpm exec wrangler tail --format=pretty
 ### 4.3 檢查 D1 狀態（sanity check）
 
 ```bash
-wrangler d1 execute agentic-rag-db --remote --command \
+wrangler d1 execute "${DB_NAME:-agentic-rag-db}" --remote --command \
   "SELECT MIN(created_at) AS oldest, MAX(created_at) AS newest FROM query_logs;"
 
-wrangler d1 execute agentic-rag-db --remote --command \
+wrangler d1 execute "${DB_NAME:-agentic-rag-db}" --remote --command \
   "SELECT MIN(expires_at) AS earliest_expiry FROM citation_records;"
 ```
 
@@ -105,8 +107,8 @@ PASS：
 curl -X POST http://localhost:3010/api/admin/retention/prune \
   -H "Cookie: $ADMIN_SESSION_COOKIE"
 
-# Production（僅限授權的 ops；正常情況不需手動）
-curl -X POST https://agentic.yudefine.com.tw/api/admin/retention/prune \
+# Remote（預設 production；若要驗 staging，先改 BASE_URL）
+curl -X POST "${BASE_URL:-https://agentic.yudefine.com.tw}/api/admin/retention/prune" \
   -H "Cookie: $ADMIN_SESSION_COOKIE"
 ```
 

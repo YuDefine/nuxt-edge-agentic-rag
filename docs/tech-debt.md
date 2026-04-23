@@ -20,7 +20,7 @@
 | TD-008 | acceptance-tc-0x MCP 整合測試在 TD-001 修後破損           | mid      | done   | 2026-04-20 add-ai-gateway         | —     |
 | TD-009 | user_profiles.email_normalized 全面改 nullable            | mid      | open   | 2026-04-21 passkey-authentication | —     |
 | TD-010 | credentials / admin-members endpoint libsql 不相容        | mid      | open   | 2026-04-21 passkey §16 DR         | —     |
-| TD-011 | migration 0009 FK cascade 設計不符 self-delete / audit    | high     | open   | 2026-04-21 passkey §17.8          | —     |
+| TD-011 | migration 0009 FK cascade 設計不符 self-delete / audit    | high     | done   | 2026-04-21 passkey §17.8          | —     |
 | TD-012 | passkey-first → link Google 被 better-auth email 檢驗擋住 | high     | open   | 2026-04-21 passkey §17.3          | —     |
 | TD-013 | /account/settings 新增 passkey 缺 naming dialog           | low      | done   | 2026-04-21 passkey §17.2          | —     |
 | TD-014 | error-sanitizer 後 12 test 抛 evlog Logger not init       | mid      | open   | 2026-04-21 drizzle-refactor apply | —     |
@@ -470,7 +470,8 @@ TD-001 修復後（commit 1f6a4d1，mcp-token-store 遷移 Drizzle）兩類 fail
 
 ## TD-011 — migration 0009 FK cascade 設計不符 self-delete / audit 語意
 
-**Status**: open
+**Status**: done
+**Resolved**: 2026-04-23 — migration `0010_fk_cascade_repair.sql` 已套用至 production D1，並以 `v0.28.12` 完成 passkey-only self-delete production closeout
 **Priority**: high
 **Discovered**: 2026-04-21 — `passkey-authentication` §17.8 passkey-only 自刪實測，`/api/auth/account/delete` 回 500 Failed query，sqlite FK 阻擋 user row 刪除
 **Location**: `server/database/migrations/0009_passkey_and_display_name.sql`

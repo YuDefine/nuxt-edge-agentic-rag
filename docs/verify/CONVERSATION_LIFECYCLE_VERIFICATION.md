@@ -1,11 +1,11 @@
 # Conversation Lifecycle Verification
 
-> 驗證 `conversation-lifecycle-governance` spec 在 local / production 的真實行為。涵蓋 stale conversation resolver（governance 1.1-1.2）與 conversation delete purge（governance 1.3-1.5）兩條主線。
+> 驗證 `conversation-lifecycle-governance` spec 在 local / staging / production 的真實行為。涵蓋 stale conversation resolver（governance 1.1-1.2）與 conversation delete purge（governance 1.3-1.5）兩條主線。
 >
 > **前提**：
 >
-> - 已依 `production-deploy-checklist.md` 部署完成（或具備 local 開發環境）
-> - D1 `agentic-rag-db` 可以 `wrangler d1 execute ... --remote` 查詢
+> - 已依 `production-deploy-checklist.md` / `DEPLOYMENT_RUNBOOK.md` 完成目標環境部署（或具備 local 開發環境）
+> - 目標 D1 可以 `wrangler d1 execute "${DB_NAME:-agentic-rag-db}" --remote ...` 查詢；staging 請先設 `DB_NAME=agentic-rag-db-staging`
 > - Web Admin 帳號可登入且具備上傳、切版、刪除對話權限
 > - 至少有一份 `access_level=internal` 文件可問答（對應 `ACCEPTANCE_RUNBOOK.md` 的 Doc A / Doc A'）
 >
@@ -29,7 +29,7 @@
 2. 確認 Doc A 目前只有 1 個 current version：
 
    ```bash
-   wrangler d1 execute agentic-rag-db --remote --command \
+   wrangler d1 execute "${DB_NAME:-agentic-rag-db}" --remote --command \
      "SELECT id, document_id, version_number, is_current \
       FROM document_versions \
       WHERE document_id = '<Doc A id>' \
@@ -54,7 +54,7 @@
 - D1 `query_logs` 對 Q1、Q2 兩筆可查到並列（同 conversation，快路徑命中）
 
   ```bash
-  wrangler d1 execute agentic-rag-db --remote --command \
+  wrangler d1 execute "${DB_NAME:-agentic-rag-db}" --remote --command \
     "SELECT id, channel, status, created_at \
      FROM query_logs \
      WHERE channel = 'web' \
@@ -76,7 +76,7 @@
 2. 確認切版完成：
 
    ```bash
-   wrangler d1 execute agentic-rag-db --remote --command \
+   wrangler d1 execute "${DB_NAME:-agentic-rag-db}" --remote --command \
      "SELECT version_number, is_current, published_at \
       FROM document_versions \
       WHERE document_id = '<Doc A id>' \
@@ -96,7 +96,7 @@
 - 舊 assistant message 的 `citations_json` **不被回寫**（audit-safe，不得倒刪）
 
   ```bash
-  wrangler d1 execute agentic-rag-db --remote --command \
+  wrangler d1 execute "${DB_NAME:-agentic-rag-db}" --remote --command \
     "SELECT id, role, LENGTH(content_redacted) AS content_len \
      FROM messages \
      WHERE query_log_id IN ( \
@@ -128,7 +128,7 @@
 3. 對話結束後，在 D1 確認該對話存在：
 
    ```bash
-   wrangler d1 execute agentic-rag-db --remote --command \
+   wrangler d1 execute "${DB_NAME:-agentic-rag-db}" --remote --command \
      "SELECT id, title, deleted_at \
       FROM conversations \
       ORDER BY created_at DESC LIMIT 5;"
@@ -153,7 +153,7 @@
 **D1 驗證**：
 
 ```bash
-wrangler d1 execute agentic-rag-db --remote --command \
+wrangler d1 execute "${DB_NAME:-agentic-rag-db}" --remote --command \
   "SELECT id, title, deleted_at \
    FROM conversations \
    WHERE id = '<C_DEL id>';"
@@ -168,11 +168,11 @@ wrangler d1 execute agentic-rag-db --remote --command \
 刪除後 30 秒內（同一 cleanup 週期內或觸發 purge 後），執行：
 
 ```bash
-wrangler d1 execute agentic-rag-db --remote --command \
+wrangler d1 execute "${DB_NAME:-agentic-rag-db}" --remote --command \
   "SELECT id, title, deleted_at \
    FROM conversations WHERE id = '<C_DEL id>';"
 
-wrangler d1 execute agentic-rag-db --remote --command \
+wrangler d1 execute "${DB_NAME:-agentic-rag-db}" --remote --command \
   "SELECT id, role, content_redacted, LENGTH(content_redacted) AS content_len, risk_flags_json \
    FROM messages \
    WHERE query_log_id IN ( \
@@ -189,7 +189,7 @@ wrangler d1 execute agentic-rag-db --remote --command \
 - 全庫 grep 亦不可還原：
 
   ```bash
-  wrangler d1 execute agentic-rag-db --remote --command \
+  wrangler d1 execute "${DB_NAME:-agentic-rag-db}" --remote --command \
     "SELECT COUNT(*) AS hits FROM messages WHERE content_redacted LIKE '%PURGE-CANARY-%';"
   ```
 

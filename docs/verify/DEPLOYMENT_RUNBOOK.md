@@ -50,13 +50,15 @@ Cloudflare 相關 token 目前分成三類，不可混用：
 
 ### 1.3 Build-time（GitHub Secrets，注入 `pnpm build` 階段）
 
-| 變數                     | 用途                  | 範例                              | Sensitivity |
-| ------------------------ | --------------------- | --------------------------------- | ----------- |
-| `NUXT_PUBLIC_SITE_URL`   | 前端 canonical URL    | `https://agentic.yudefine.com.tw` | low         |
-| `NUXT_PUBLIC_SENTRY_DSN` | Sentry 前端錯誤上報   | `https://xxx@sentry.io/123`       | low         |
-| `SENTRY_AUTH_TOKEN`      | Sentry release upload | `sntrys_...`                      | **high**    |
-| `SENTRY_ORG`             | Sentry org slug       | `yuntech-project`                 | low         |
-| `SENTRY_PROJECT`         | Sentry project slug   | `nuxt-edge-agentic-rag`           | low         |
+| 變數                            | 用途                               | 範例                                    | Sensitivity |
+| ------------------------------- | ---------------------------------- | --------------------------------------- | ----------- |
+| `PROD_ADMIN_EMAIL_ALLOWLIST`    | production build-time admin mirror | `charles@example.com,admin@example.com` | medium      |
+| `STAGING_ADMIN_EMAIL_ALLOWLIST` | staging build-time admin mirror    | `charles@example.com,admin@example.com` | medium      |
+| `NUXT_PUBLIC_SITE_URL`          | 前端 canonical URL                 | `https://agentic.yudefine.com.tw`       | low         |
+| `NUXT_PUBLIC_SENTRY_DSN`        | Sentry 前端錯誤上報                | `https://xxx@sentry.io/123`             | low         |
+| `SENTRY_AUTH_TOKEN`             | Sentry release upload              | `sntrys_...`                            | **high**    |
+| `SENTRY_ORG`                    | Sentry org slug                    | `yuntech-project`                       | low         |
+| `SENTRY_PROJECT`                | Sentry project slug                | `nuxt-edge-agentic-rag`                 | low         |
 
 ### 1.4 Runtime secrets（以 `wrangler secret put` 預先管理）
 
@@ -75,6 +77,8 @@ Cloudflare 相關 token 目前分成三類，不可混用：
 | `NUXT_KNOWLEDGE_UPLOADS_SECRET_ACCESS_KEY`  | R2 API secret key                 | **high**    |
 
 現行 [deploy workflow](../../.github/workflows/deploy.yml) 已改為「runtime secrets 預先存在 Worker secret store，GitHub Actions 只負責 build + deploy」。因此上述 secrets 不建議再透過 `wrangler-action` 每次部署時覆寫。
+
+`ADMIN_EMAIL_ALLOWLIST` 另外需要一份 build-time 鏡像。`server/auth.config.ts` 會在建置階段載入 Better Auth 設定；若 build env 漏掉 allowlist，artifact 可能編進空名單。production / staging 調整 admin 名單時，對應的 GitHub Actions secret 與 Worker secret store 必須一起同步。
 
 ### 1.5 Feature flags（依環境顯式設定；deploy build env 與 runtime vars 皆需對齊）
 
@@ -134,7 +138,7 @@ OAuth-first remote MCP rollout 另需確認以下值：
 - Cloudflare account（Workers paid plan，需存取 AutoRAG）
 - `wrangler` CLI 已登入：`pnpm exec wrangler login`
 - `pnpm exec wrangler whoami` 顯示正確 account
-- 若走 GitHub Actions，repo secrets 需至少包含：`CLOUDFLARE_API_TOKEN`、`CLOUDFLARE_ACCOUNT_ID`、`PROD_SITE_URL`，staging 另需 `STAGING_SITE_URL`
+- 若走 GitHub Actions，repo secrets 需至少包含：`CLOUDFLARE_API_TOKEN`、`CLOUDFLARE_ACCOUNT_ID`、`PROD_SITE_URL`、`PROD_ADMIN_EMAIL_ALLOWLIST`，staging 另需 `STAGING_SITE_URL` 與 `STAGING_ADMIN_EMAIL_ALLOWLIST`
 - 若要啟用 VitePress 文件站部署，另需設定 repository variable `DOCS_CF_PAGES_PROJECT_NAME`、`DOCS_CF_ZONE_NAME`、`DOCS_PRODUCTION_URL`、`DOCS_STAGING_URL`；可選設定 `DOCS_CF_PAGES_PRODUCTION_BRANCH` 與 `DOCS_CF_PAGES_STAGING_BRANCH` 覆寫預設的 `main` / `staging`
 - Google Cloud OAuth client 已建立（見 §2.5）
 - `node >= 22` + `pnpm >= 10.33`（對齊 `package.json` `packageManager`）
@@ -256,19 +260,17 @@ pnpm exec wrangler secret list
 
 ⚠️ Staging / 多環境時每個 domain 都要有自己的 redirect URI；**NEVER** 共用同一組 OAuth credentials 跨環境。
 
-### 2.6 Staging 環境（optional，建議有）
+### 2.6 Staging 環境（已建立）
 
-若要建立 staging：
+目前 staging 已建立完成；後續重點是維持設定一致：
 
-1. 複製一份 `wrangler.jsonc` → `wrangler.staging.jsonc`
-2. 改 `name` 為 `nuxt-edge-agentic-rag-staging`
-3. 改 `routes[0].pattern` 為 staging domain（如 `agentic-staging.yudefine.com.tw`）
-4. 重跑 §2.2 / §2.3 建立 staging 專用 D1 / R2 / KV（資源名稱加 `-staging` 後綴）
-5. 改 `d1_databases[0].database_id` 與 `kv_namespaces[0].id` 為 staging 資源 ID
-6. staging Worker 的 runtime secrets 直接寫入 staging worker secret store；GitHub Actions 不使用 `STAGING_NUXT_SESSION_PASSWORD` 這類 prefix secrets 覆寫 runtime secrets
-7. GitHub Actions 需具備 `STAGING_SITE_URL` 才能執行 `smoke-test-staging`
+1. `wrangler.staging.jsonc` 必須持續對齊 staging Worker 名稱、route、D1、KV、R2 與 AI gateway / search index
+2. staging Worker 的 runtime secrets 直接寫入 staging worker secret store；GitHub Actions 不使用 `STAGING_NUXT_SESSION_PASSWORD` 這類 prefix secrets 覆寫 runtime secrets
+3. GitHub Actions 需具備 `STAGING_SITE_URL`、`STAGING_ADMIN_EMAIL_ALLOWLIST` 與其他 `STAGING_*` build-time secrets / vars，避免 build env 與 runtime vars 漂移
+4. staging deploy 走 [deploy workflow](../../.github/workflows/deploy.yml) 的 `workflow_dispatch(target=staging)`，會先 apply staging D1 migrations，再 render `.output/server/wrangler.staging.json` 後 deploy
+5. `smoke-test-staging` 依賴 `STAGING_SITE_URL`；若 smoke 失敗，優先核對 `wrangler.staging.jsonc`、GitHub Actions secrets / vars 與 staging Worker secret store 是否同步
 
-CI workflow 的 staging job 已存在於 [deploy workflow](../../.github/workflows/deploy.yml) 的 `deploy-staging` 區塊。2026-04-21 已實際建立 staging D1/KV/R2、staging Worker 與 custom domain，並驗證 `https://agentic-staging.yudefine.com.tw` 回 HTTP 200。
+2026-04-21 已實際建立 staging D1/KV/R2、staging Worker 與 custom domain，並驗證 `https://agentic-staging.yudefine.com.tw` 回 HTTP 200。
 
 ### 2.7 首次部署與煙霧測試
 

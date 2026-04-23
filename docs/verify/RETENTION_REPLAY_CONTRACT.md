@@ -65,13 +65,13 @@ pnpm exec vp test run test/integration/get-document-chunk-replay.test.ts
 
 PASS：上述 12 個 case 全綠（含 5 個任務指定情境與 1 個 MCP session state 例外）。
 
-### 6.2 實機驗證（local 或 production）
+### 6.2 實機驗證（local、staging 或 production）
 
 1. 選一個 retention 窗內有效的 `citationId`，以 MCP token 呼叫：
 
    ```bash
    curl -i -H "Authorization: Bearer $MCP_TOKEN" \
-     https://agentic.yudefine.com.tw/api/mcp/chunks/$CITATION_ID
+     "${BASE_URL:-https://agentic.yudefine.com.tw}/api/mcp/chunks/$CITATION_ID"
    ```
 
    PASS：`HTTP/1.1 200 OK`、body 含 `chunkText`、**無** `x-replay-reason` header。
@@ -80,7 +80,7 @@ PASS：上述 12 個 case 全綠（含 5 個任務指定情境與 1 個 MCP sess
 
    ```bash
    curl -i -H "Authorization: Bearer $MCP_TOKEN" \
-     https://agentic.yudefine.com.tw/api/mcp/chunks/citation-does-not-exist-xxxxxxxx
+     "${BASE_URL:-https://agentic.yudefine.com.tw}/api/mcp/chunks/citation-does-not-exist-xxxxxxxx"
    ```
 
    PASS：`HTTP/1.1 404`、header 含 `x-replay-reason: chunk_not_found`。
@@ -88,11 +88,11 @@ PASS：上述 12 個 case 全綠（含 5 個任務指定情境與 1 個 MCP sess
 3. 若需驗證 retention-expired scrubbed 情境（§4.6 local 專用）：對一筆 backdated citation，將 `chunk_text_snapshot` 手動 UPDATE 成空字串後重試：
 
    ```bash
-   wrangler d1 execute agentic-rag-db --remote --command \
+   wrangler d1 execute "${DB_NAME:-agentic-rag-db}" --remote --command \
      "UPDATE citation_records SET chunk_text_snapshot = '' WHERE id = '<citationId>';"
 
    curl -i -H "Authorization: Bearer $MCP_TOKEN" \
-     https://agentic.yudefine.com.tw/api/mcp/chunks/<citationId>
+     "${BASE_URL:-https://agentic.yudefine.com.tw}/api/mcp/chunks/<citationId>"
    ```
 
    PASS：`HTTP/1.1 404`、header 含 `x-replay-reason: chunk_retention_expired`、body message 與 case 2 完全相同（存在感不洩漏）。
