@@ -123,13 +123,9 @@ jobs:
           NUXT_KNOWLEDGE_FEATURE_PASSKEY: 'true'
           NUXT_KNOWLEDGE_RATE_LIMIT_KV: KV
           NUXT_SESSION_PASSWORD: ${{ secrets.PROD_NUXT_SESSION_PASSWORD || 'build-only-prod-session-password-32chars' }}
-          NUXT_PUBLIC_SENTRY_DSN: ${{ secrets.NUXT_PUBLIC_SENTRY_DSN }}
           NUXT_PUBLIC_SITE_URL: ${{ secrets.PROD_SITE_URL }}
           NUXT_PASSKEY_RP_ID: yudefine.com.tw
           NUXT_PASSKEY_RP_NAME: 知識問答系統
-          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
-          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
-          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
 
       - name: Deploy to Cloudflare Workers (production)
         id: deploy_production
@@ -221,13 +217,9 @@ jobs:
           NUXT_KNOWLEDGE_FEATURE_PASSKEY: 'true'
           NUXT_KNOWLEDGE_RATE_LIMIT_KV: KV
           NUXT_SESSION_PASSWORD: ${{ secrets.STAGING_NUXT_SESSION_PASSWORD || 'build-only-staging-session-password-32chars' }}
-          NUXT_PUBLIC_SENTRY_DSN: ${{ secrets.NUXT_PUBLIC_SENTRY_DSN }}
           NUXT_PUBLIC_SITE_URL: ${{ secrets.STAGING_SITE_URL }}
           NUXT_PASSKEY_RP_ID: yudefine.com.tw
           NUXT_PASSKEY_RP_NAME: 知識問答系統
-          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
-          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
-          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
 
       - name: Render staging wrangler config
         run: node scripts/render-staging-wrangler.mjs
