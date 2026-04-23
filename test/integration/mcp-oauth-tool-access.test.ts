@@ -254,6 +254,7 @@ function createOauthEnv(kv: ReturnType<typeof createOauthKv>) {
   return {
     AI: {
       autorag: vi.fn(),
+      run: vi.fn().mockResolvedValue({ response: 'ok' }),
     },
     KV: kv,
   }

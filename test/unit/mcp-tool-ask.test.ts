@@ -14,11 +14,22 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 describe('mcp ask tool definition', () => {
   const askKnowledgeMock = vi.fn()
+  const workersAiRunMock = vi.fn().mockResolvedValue({
+    response: {
+      shouldAnswer: false,
+    },
+  })
   const useEventMock = vi.fn()
 
   beforeEach(() => {
     vi.resetModules()
     askKnowledgeMock.mockReset()
+    workersAiRunMock.mockReset()
+    workersAiRunMock.mockResolvedValue({
+      response: {
+        shouldAnswer: false,
+      },
+    })
     useEventMock.mockReset()
 
     vi.stubGlobal('defineMcpTool', <T>(definition: T) => definition)
@@ -43,6 +54,7 @@ describe('mcp ask tool definition', () => {
       getCloudflareEnv: () => ({
         AI: {
           autorag: vi.fn().mockReturnValue({ search: vi.fn() }),
+          run: workersAiRunMock,
         },
       }),
       getRequiredKvBinding: vi.fn().mockReturnValue({}),
@@ -70,8 +82,15 @@ describe('mcp ask tool definition', () => {
         environment: 'local',
         governance: {
           configSnapshotVersion: 'v1',
-          models: {},
-          thresholds: { answerMin: 0.5 },
+          models: {
+            agentJudge: 'agentJudge',
+            defaultAnswer: 'defaultAnswer',
+          },
+          thresholds: {
+            answerMin: 0.51,
+            directAnswerMin: 0.71,
+            judgeMin: 0.46,
+          },
         },
       }),
     }))
@@ -140,5 +159,74 @@ describe('mcp ask tool definition', () => {
       citations: [{ citationId: 'citation-1', sourceChunkId: 'chunk-1' }],
       refused: false,
     })
+  })
+
+  it('injects workers-ai backed answer and judge adapters into askKnowledge', async () => {
+    askKnowledgeMock.mockImplementationOnce(async (_input, options) => {
+      const answer = await options.answer({
+        evidence: [
+          {
+            chunkText: '採購流程需要先建立請購單，再建立採購單。',
+            documentTitle: '採購流程',
+          },
+        ],
+        modelRole: 'defaultAnswer',
+        query: '採購流程是什麼？',
+        retrievalScore: 0.9,
+      })
+
+      await options.judge({
+        evidence: [{ chunkText: '採購流程需要先建立請購單，再建立採購單。' }],
+        query: '請比較採購與請購差異',
+        retrievalScore: 0.56,
+      })
+
+      return {
+        answer,
+        citations: [],
+        refused: false,
+      }
+    })
+    workersAiRunMock
+      .mockResolvedValueOnce({ response: 'Workers AI answer' })
+      .mockResolvedValueOnce({ response: { shouldAnswer: true } })
+
+    const mod = await import('#server/mcp/tools/ask')
+    const tool = mod.default
+
+    useEventMock.mockReturnValue({
+      context: {
+        cloudflare: { env: {} },
+        mcpAuth: {
+          scopes: ['knowledge.ask'],
+          token: {},
+          tokenId: 'token-1',
+        },
+      },
+    })
+
+    const result = await tool.handler({ query: 'What changed?' }, {} as never)
+
+    expect(result).toEqual({
+      answer: 'Workers AI answer',
+      citations: [],
+      refused: false,
+    })
+    expect(workersAiRunMock).toHaveBeenNthCalledWith(
+      1,
+      '@cf/meta/llama-4-scout-17b-16e-instruct',
+      expect.objectContaining({
+        messages: expect.any(Array),
+      }),
+    )
+    expect(workersAiRunMock).toHaveBeenNthCalledWith(
+      2,
+      '@cf/moonshotai/kimi-k2.5',
+      expect.objectContaining({
+        response_format: expect.objectContaining({
+          type: 'json_schema',
+        }),
+      }),
+    )
   })
 })
