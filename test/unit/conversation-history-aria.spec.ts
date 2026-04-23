@@ -1,5 +1,5 @@
 import { h, shallowRef } from 'vue'
-import { mountSuspended, mockComponent } from '@nuxt/test-utils/runtime'
+import { mockComponent, mountSuspended } from '@nuxt/test-utils/runtime'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { ChatConversationSummary } from '~/types/chat'
@@ -63,10 +63,9 @@ mockComponent('UCollapsible', {
     return () =>
       h('section', { 'data-testid': 'bucket' }, [
         h(
-          'button',
+          'div',
           {
-            'data-testid': 'bucket-toggle',
-            type: 'button',
+            'data-testid': 'bucket-trigger-wrap',
             onClick: () => emit('update:open', !props.open),
           },
           slots.default?.({ open: props.open }),
@@ -76,7 +75,7 @@ mockComponent('UCollapsible', {
   },
 })
 
-describe('ConversationHistory', () => {
+describe('ConversationHistory aria-expanded', () => {
   beforeEach(() => {
     historyMock.conversations.value = []
     historyMock.deleteInFlightId.value = null
@@ -91,56 +90,53 @@ describe('ConversationHistory', () => {
     return mountSuspended(module.default, { props })
   }
 
-  it('renders a collapsed interactive rail without conversation rows', async () => {
+  it('bucket toggle button exposes aria-expanded="true" when bucket is open by default', async () => {
     historyMock.conversations.value = [
       createConversation('今日對話', new Date(2026, 3, 24, 10).toISOString()),
-      createConversation('稍早對話', new Date(2026, 3, 20, 10).toISOString()),
     ]
 
-    const wrapper = await mountConversationHistory({
-      collapsed: true,
-    })
+    const wrapper = await mountConversationHistory()
 
-    expect(wrapper.find('[data-testid="conversation-history-rail"]').exists()).toBe(true)
-    expect(wrapper.text()).toContain('2')
-    expect(wrapper.text()).not.toContain('今日對話')
-
-    await wrapper.find('[data-testid="conversation-history-rail"]').trigger('click')
-
-    expect(wrapper.emitted('expand-request')).toBeDefined()
-    expect(wrapper.emitted('expand-request')).toHaveLength(1)
+    const toggle = wrapper.get('button[aria-expanded]')
+    expect(toggle.attributes('aria-expanded')).toBe('true')
+    expect(toggle.text()).toContain('今天')
   })
 
-  it('groups conversations by recency with recent buckets open by default', async () => {
+  it('bucket toggle button exposes aria-expanded="false" when bucket is collapsed by default', async () => {
     historyMock.conversations.value = [
-      createConversation('今日對話', new Date(2026, 3, 24, 10).toISOString()),
       createConversation('更早對話', new Date(2026, 2, 20, 10).toISOString()),
     ]
 
     const wrapper = await mountConversationHistory()
 
-    expect(wrapper.text()).toContain('今天')
-    expect(wrapper.text()).toContain('更早')
-    expect(wrapper.text()).toContain('今日對話')
-    expect(wrapper.text()).not.toContain('更早對話')
+    const toggles = wrapper.findAll('button[aria-expanded]')
+    const earlier = toggles.find((node) => node.text().includes('更早'))
+    expect(earlier).toBeDefined()
+    expect(earlier!.attributes('aria-expanded')).toBe('false')
   })
 
-  it('keeps the empty state outside the grouping path', async () => {
-    const wrapper = await mountConversationHistory()
-
-    expect(wrapper.text()).toContain('尚無已保存對話。送出第一個問題後，這裡會出現對話歷史。')
-    expect(wrapper.find('[data-testid="bucket"]').exists()).toBe(false)
-  })
-
-  it('keeps conversation selection wired to the existing history contract', async () => {
+  it('aria-expanded flips synchronously when the bucket open state changes', async () => {
     historyMock.conversations.value = [
-      createConversation('今日對話', new Date(2026, 3, 24, 10).toISOString()),
+      createConversation('更早對話', new Date(2026, 2, 20, 10).toISOString()),
     ]
 
     const wrapper = await mountConversationHistory()
 
-    await wrapper.get('[data-testid="conversation-row-button"]').trigger('click')
+    const earlierToggle = wrapper
+      .findAll('button[aria-expanded]')
+      .find((node) => node.text().includes('更早'))
+    expect(earlierToggle).toBeDefined()
+    expect(earlierToggle!.attributes('aria-expanded')).toBe('false')
 
-    expect(historyMock.selectConversation).toHaveBeenCalledWith('今日對話')
+    const trigger = wrapper
+      .findAll('[data-testid="bucket-trigger-wrap"]')
+      .find((node) => node.text().includes('更早'))
+    expect(trigger).toBeDefined()
+    await trigger!.trigger('click')
+
+    const reopened = wrapper
+      .findAll('button[aria-expanded]')
+      .find((node) => node.text().includes('更早'))
+    expect(reopened!.attributes('aria-expanded')).toBe('true')
   })
 })

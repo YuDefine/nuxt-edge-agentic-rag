@@ -38,8 +38,8 @@
   })
 
   const isDesktop = useMediaQuery('(min-width: 768px)')
-  const UModal = resolveComponent('UModal')
-  const UDrawer = resolveComponent('UDrawer')
+  const UModal = resolveComponent('LazyUModal')
+  const UDrawer = resolveComponent('LazyUDrawer')
   const overlayComponent = computed(() => (isDesktop.value ? UModal : UDrawer))
 
   type FetchStatus = 'idle' | 'pending' | 'success' | 'error'
@@ -109,6 +109,10 @@
 
     return result
   }
+
+  const parsedLocator = computed(() =>
+    citationData.value ? parseLocator(citationData.value.citationLocator) : {},
+  )
 </script>
 
 <template>
@@ -158,15 +162,12 @@
             <LazyUIcon name="i-lucide-file-text" class="size-4 text-muted" />
             <div class="min-w-0 flex-1">
               <p class="truncate text-sm font-medium text-default">
-                {{ citationData.documentTitle || parseLocator(citationData.citationLocator).title }}
+                {{ citationData.documentTitle || parsedLocator.title }}
               </p>
               <p class="text-xs text-muted">
                 <span>版本 v{{ citationData.versionNumber }}</span>
-                <span
-                  v-if="parseLocator(citationData.citationLocator).page"
-                  class="ml-2 border-l border-default pl-2"
-                >
-                  頁面 {{ parseLocator(citationData.citationLocator).page }}
+                <span v-if="parsedLocator.page" class="ml-2 border-l border-default pl-2">
+                  頁面 {{ parsedLocator.page }}
                 </span>
               </p>
             </div>
