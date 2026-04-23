@@ -306,6 +306,33 @@ export function parseAdminEmailAllowlist(input?: string | string[]): string[] {
   return [...new Set(values.map((value) => normalizeEmailAddress(value)))]
 }
 
+export function resolveAdminEmailAllowlist(input: {
+  configuredAllowlist?: string | string[]
+  runtimeAllowlist?: string | string[]
+}): string[] {
+  const runtimeAllowlist = parseAdminEmailAllowlist(input.runtimeAllowlist)
+  if (runtimeAllowlist.length > 0) {
+    return runtimeAllowlist
+  }
+
+  return parseAdminEmailAllowlist(input.configuredAllowlist)
+}
+
+export function resolveKnowledgeRuntimeConfig(
+  knowledge: KnowledgeRuntimeConfigInput | undefined,
+  runtimeAllowlist = process.env.ADMIN_EMAIL_ALLOWLIST,
+) {
+  const configuredKnowledge = knowledge ?? {}
+
+  return createKnowledgeRuntimeConfig({
+    ...configuredKnowledge,
+    adminEmailAllowlist: resolveAdminEmailAllowlist({
+      configuredAllowlist: configuredKnowledge.adminEmailAllowlist,
+      runtimeAllowlist,
+    }),
+  })
+}
+
 export function createKnowledgeFeatureFlags(
   overrides?: KnowledgeRuntimeConfigInput['features'],
 ): KnowledgeFeatureFlags {

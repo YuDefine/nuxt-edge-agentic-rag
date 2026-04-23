@@ -8,9 +8,9 @@ import { consola } from 'consola'
 import { eq, sql } from 'drizzle-orm'
 // nuxt-better-auth 透過 jiti 載入本檔，jiti 不解析 `#shared` 虛擬 alias，只能用相對路徑
 import {
-  createKnowledgeRuntimeConfig,
   isAdminEmailAllowlisted,
   normalizeEmailAddress,
+  resolveKnowledgeRuntimeConfig,
 } from '../shared/schemas/knowledge-runtime'
 import { nicknameSchema } from '../shared/schemas/nickname'
 import { createBetterAuthSafeLogger } from './utils/better-auth-safe-logger'
@@ -33,7 +33,7 @@ const authLog = consola.withTag('auth')
 type ThreeTierRole = 'admin' | 'member' | 'guest'
 
 export default defineServerAuth(({ db, runtimeConfig }) => {
-  const knowledge = createKnowledgeRuntimeConfig(runtimeConfig.knowledge)
+  const knowledge = resolveKnowledgeRuntimeConfig(runtimeConfig.knowledge)
   const allowlist = knowledge.adminEmailAllowlist
 
   // v1.0.0 spec: Google OAuth is the only interactive login path.
