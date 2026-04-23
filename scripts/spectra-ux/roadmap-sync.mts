@@ -18,9 +18,9 @@
  *     fall off the roadmap until explicitly unparked or archived.
  *
  * What stays manual:
- *   - "Next Moves" — future intent captured during /spectra-discuss and
- *     /spectra-propose. This is where AI agents persist "we'll do X next"
- *     decisions between sessions.
+ *   - "Next Moves" — future intent captured during the spectra-discuss /
+ *     spectra-propose workflow. This is where AI agents persist
+ *     "we'll do X next" decisions between sessions.
  *
  * Configuration: reads `spectra-ux.config.json` at the project root.
  *   - `paths.openspec` (default `openspec`)
@@ -54,12 +54,15 @@ import { execFileSync } from 'node:child_process'
 import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { collectClaims, type ClaimView } from './claims-lib.mts'
 
 // ---------------- constants ----------------
 
 const MARKERS = {
   activeStart: '<!-- SPECTRA-UX:ROADMAP-AUTO:active -->',
   activeEnd: '<!-- SPECTRA-UX:ROADMAP-AUTO:/active -->',
+  claimsStart: '<!-- SPECTRA-UX:ROADMAP-AUTO:claims -->',
+  claimsEnd: '<!-- SPECTRA-UX:ROADMAP-AUTO:/claims -->',
   parallelismStart: '<!-- SPECTRA-UX:ROADMAP-AUTO:parallelism -->',
   parallelismEnd: '<!-- SPECTRA-UX:ROADMAP-AUTO:/parallelism -->',
   parkedStart: '<!-- SPECTRA-UX:ROADMAP-AUTO:parked -->',
@@ -72,6 +75,7 @@ const MARKERS = {
 // drift scanning. MANUAL is everything outside these ranges.
 const AUTO_MARKER_PAIRS: ReadonlyArray<[string, string]> = [
   [MARKERS.activeStart, MARKERS.activeEnd],
+  [MARKERS.claimsStart, MARKERS.claimsEnd],
   [MARKERS.parallelismStart, MARKERS.parallelismEnd],
   [MARKERS.parkedStart, MARKERS.parkedEnd],
 ]
@@ -96,6 +100,9 @@ interface Config {
   openspecDir: string
   roadmapPath: string
   enabled: boolean
+  claimsEnabled: boolean
+  claimsDir: string
+  claimsStaleSeconds: number
 }
 
 interface ChangeInfo {
@@ -135,6 +142,7 @@ interface ManualDrift {
 
 interface SyncReport {
   changes: ChangeInfo[]
+  claims: ClaimView[]
   parallelism: ParallelismReport
   parked: ParkedChange[]
   parkedSource: 'cli' | 'unavailable'
@@ -160,7 +168,7 @@ function parseArgs(argv: string[]): CliOptions {
       console.log(
         'Usage: roadmap-sync.mts [--check] [--json]\n' +
           '  --check   Validate only; do not write. Exit 1 if roadmap is stale.\n' +
-          '  --json    Emit report as JSON instead of the normal summary.',
+          '  --json    Emit report as JSON instead of the normal summary.'
       )
       process.exit(0)
     } else {
@@ -206,17 +214,35 @@ function loadConfig(): Config {
     openspecDir: 'openspec',
     roadmapPath: 'openspec/ROADMAP.md',
     enabled: true,
+    claimsEnabled: true,
+    claimsDir: '.spectra/claims',
+    claimsStaleSeconds: 60 * 60,
   }
   if (!existsSync(configPath)) return defaults
   try {
     const raw = JSON.parse(readFileSync(configPath, 'utf-8')) as {
       paths?: { openspec?: string }
       roadmap?: { enabled?: boolean; path?: string }
+      claims?: { enabled?: boolean; path?: string; staleSeconds?: number }
     }
     const openspecDir = raw.paths?.openspec ?? defaults.openspecDir
-    const roadmapPath = raw.roadmap?.path ?? `${openspecDir.replace(/\/$/, '')}/ROADMAP.md`
+    const roadmapPath =
+      raw.roadmap?.path ?? `${openspecDir.replace(/\/$/, '')}/ROADMAP.md`
     const enabled = raw.roadmap?.enabled ?? true
-    return { openspecDir, roadmapPath, enabled }
+    const claimsEnabled = raw.claims?.enabled ?? defaults.claimsEnabled
+    const claimsDir = raw.claims?.path ?? defaults.claimsDir
+    const claimsStaleSeconds =
+      typeof raw.claims?.staleSeconds === 'number' && Number.isFinite(raw.claims.staleSeconds)
+        ? Math.max(60, Math.floor(raw.claims.staleSeconds))
+        : defaults.claimsStaleSeconds
+    return {
+      openspecDir,
+      roadmapPath,
+      enabled,
+      claimsEnabled,
+      claimsDir,
+      claimsStaleSeconds,
+    }
   } catch (err) {
     console.error(`roadmap-sync: failed to read spectra-ux.config.json: ${err}`)
     return defaults
@@ -363,7 +389,7 @@ function extractBlockedReason(content: string): string | null {
 function classifyStage(
   tasks: { done: number; total: number },
   hasTasksFile: boolean,
-  blockedReason: string | null,
+  blockedReason: string | null
 ): Stage {
   if (blockedReason) return 'blocked'
   if (!hasTasksFile || tasks.total === 0) return 'draft'
@@ -506,7 +532,7 @@ function collectParkedChanges(): {
     return { parked, source: 'cli' }
   } catch (err) {
     console.warn(
-      `roadmap-sync: spectra CLI unavailable, parked block will render empty (${(err as Error).message})`,
+      `roadmap-sync: spectra CLI unavailable, parked block will render empty (${(err as Error).message})`
     )
     return { parked: [], source: 'unavailable' }
   }
@@ -616,7 +642,8 @@ function detectManualDrift(content: string, openspecDir: string): ManualDrift[] 
     if (endIdx === -1) continue
     autoRanges.push([startIdx, endIdx])
   }
-  const inAutoRegion = (idx: number): boolean => autoRanges.some(([s, e]) => idx >= s && idx <= e)
+  const inAutoRegion = (idx: number): boolean =>
+    autoRanges.some(([s, e]) => idx >= s && idx <= e)
 
   const drifts: ManualDrift[] = []
   const seen = new Set<string>()
@@ -745,6 +772,62 @@ function renderActiveBlock(changes: ChangeInfo[], now: Date): string {
     .trimEnd()
 }
 
+function fmtClaimLine(claim: ClaimView): string {
+  const task = claim.record.task ? `\n  - Task: ${claim.record.task}` : ''
+  const note = claim.record.note ? `\n  - Note: ${claim.record.note}` : ''
+  const session = claim.record.sessionId ? `\n  - Session: ${claim.record.sessionId}` : ''
+  const paths =
+    claim.record.paths.length > 0
+      ? `\n  - Paths: ${claim.record.paths.map((path) => `\`${path}\``).join(', ')}`
+      : ''
+  const takeover =
+    claim.stale ? `\n  - Status: stale (last heartbeat ${claim.record.updatedAt})` : ''
+  return `- **${claim.record.change}** — ${claim.record.owner} (${claim.record.runtime})\n  - Accepted from: ${claim.record.acceptedFrom}\n  - Last heartbeat: ${claim.record.updatedAt}${task}${note}${session}${paths}${takeover}`
+}
+
+function renderClaimsBlock(claims: ClaimView[], enabled: boolean): string {
+  const intro = [
+    '## Active Claims',
+    '',
+    '> 即時 ownership 由 `.spectra/claims/*.json` 提供。',
+    '> 接手 handoff / 開始做 change 時，先 claim，再移除 `HANDOFF.md` 對應項目。',
+    '',
+  ]
+
+  if (!enabled) {
+    return [...intro, '_Claims disabled in `spectra-ux.config.json`._'].join('\n').trimEnd()
+  }
+
+  if (claims.length === 0) {
+    return [
+      ...intro,
+      '_No active claims._',
+      '',
+      '> 若你要開始做上面的 active change，先跑 `spectra:claim -- <change>`。',
+    ]
+      .join('\n')
+      .trimEnd()
+  }
+
+  const active = claims.filter((claim) => !claim.stale)
+  const stale = claims.filter((claim) => claim.stale)
+
+  const section = (title: string, items: ClaimView[], empty: string): string => {
+    if (items.length === 0) return `### ${title}\n\n${empty}\n`
+    return `### ${title}\n\n${items.map(fmtClaimLine).join('\n')}\n`
+  }
+
+  return [
+    ...intro,
+    `${claims.length} claim${claims.length === 1 ? '' : 's'} (${active.length} active · ${stale.length} stale)`,
+    '',
+    section('Live Ownership', active, '_(none)_'),
+    section('Stale Claims', stale, '_(none)_'),
+  ]
+    .join('\n')
+    .trimEnd()
+}
+
 function renderParallelismBlock(report: ParallelismReport): string {
   const section = (title: string, body: string): string => {
     return `### ${title}\n\n${body || '_(none)_'}\n`
@@ -758,14 +841,17 @@ function renderParallelismBlock(report: ParallelismReport): string {
     ? report.mutex
         .map(
           (m) =>
-            `- **${m.spec}** — conflict between: ${m.changes.map((c) => `\`${c}\``).join(', ')}`,
+            `- **${m.spec}** — conflict between: ${m.changes.map((c) => `\`${c}\``).join(', ')}`
         )
         .join('\n')
     : ''
 
   const blockedBody = report.blocked.length
     ? report.blocked
-        .map((b) => `- \`${b.change}\` waits for: ${b.waitsFor.map((w) => `\`${w}\``).join(', ')}`)
+        .map(
+          (b) =>
+            `- \`${b.change}\` waits for: ${b.waitsFor.map((w) => `\`${w}\``).join(', ')}`
+        )
         .join('\n')
     : ''
 
@@ -782,7 +868,10 @@ function renderParallelismBlock(report: ParallelismReport): string {
     .trimEnd()
 }
 
-function renderParkedBlock(parked: ParkedChange[], source: 'cli' | 'unavailable'): string {
+function renderParkedBlock(
+  parked: ParkedChange[],
+  source: 'cli' | 'unavailable'
+): string {
   const intro = [
     '## Parked Changes',
     '',
@@ -832,7 +921,7 @@ function replaceBetween(
   startMarker: string,
   endMarker: string,
   body: string,
-  insertBefore?: string,
+  insertBefore?: string
 ): string {
   const startIdx = content.indexOf(startMarker)
   const endIdx = content.indexOf(endMarker)
@@ -863,10 +952,13 @@ function scaffoldRoadmap(): string {
     '# OpenSpec Roadmap',
     '',
     '> Maintained by spectra-ux. AUTO blocks are regenerated by `spectra:roadmap`;',
-    '> the MANUAL backlog is curated by you and your AI agent during /spectra-discuss.',
+    '> the MANUAL backlog is curated by you and your AI agent during the spectra-discuss / spectra-propose workflow.',
     '',
     MARKERS.activeStart,
     MARKERS.activeEnd,
+    '',
+    MARKERS.claimsStart,
+    MARKERS.claimsEnd,
     '',
     MARKERS.parallelismStart,
     MARKERS.parallelismEnd,
@@ -878,7 +970,7 @@ function scaffoldRoadmap(): string {
     '',
     '## Next Moves',
     '',
-    '> 由你與 AI agent 在 `/spectra-discuss` / `/spectra-propose` 結束時維護。',
+    '> 由你與 AI agent 在 `spectra-discuss` / `spectra-propose` workflow 結束時維護。',
     '> 格式：`- [priority] 描述 — 依賴：xxx / 獨立 / 互斥：yyy`',
     '> priority: `high` / `mid` / `low`',
     '',
@@ -917,11 +1009,19 @@ function syncRoadmap(): SyncReport {
   const roadmapPath = resolve(repoRoot, config.roadmapPath)
 
   const changes = scanChanges(config.openspecDir)
+  const claims = collectClaims({
+    repoRoot,
+    openspecDir: config.openspecDir,
+    claimsDir: config.claimsDir,
+    staleSeconds: config.claimsStaleSeconds,
+    enabled: config.claimsEnabled,
+  })
   const parallelism = analyzeParallelism(changes)
   const { parked, source: parkedSource } = collectParkedChanges()
 
   const report: SyncReport = {
     changes,
+    claims,
     parallelism,
     parked,
     parkedSource,
@@ -938,6 +1038,7 @@ function syncRoadmap(): SyncReport {
 
   const now = new Date()
   const activeBody = renderActiveBlock(changes, now)
+  const claimsBody = renderClaimsBlock(claims, config.claimsEnabled)
   const parallelismBody = renderParallelismBlock(parallelism)
   const parkedBody = renderParkedBlock(parked, parkedSource)
 
@@ -945,9 +1046,16 @@ function syncRoadmap(): SyncReport {
   content = replaceBetween(content, MARKERS.activeStart, MARKERS.activeEnd, activeBody)
   content = replaceBetween(
     content,
+    MARKERS.claimsStart,
+    MARKERS.claimsEnd,
+    claimsBody,
+    MARKERS.parallelismStart
+  )
+  content = replaceBetween(
+    content,
     MARKERS.parallelismStart,
     MARKERS.parallelismEnd,
-    parallelismBody,
+    parallelismBody
   )
   // First-time installs land the parked block right above the MANUAL backlog
   // so the rendering order is: active → parallelism → parked → backlog.
@@ -956,7 +1064,7 @@ function syncRoadmap(): SyncReport {
     MARKERS.parkedStart,
     MARKERS.parkedEnd,
     parkedBody,
-    MARKERS.backlogStart,
+    MARKERS.backlogStart
   )
 
   // Ensure the manual block exists so users/agents have somewhere to write.
@@ -1014,6 +1122,11 @@ function emitJson(report: SyncReport): void {
           dependsOn: c.dependsOn,
           blockedReason: c.blockedReason,
         })),
+        claims: report.claims.map((claim) => ({
+          ...claim.record,
+          ageSeconds: claim.ageSeconds,
+          stale: claim.stale,
+        })),
         parallelism: report.parallelism,
         parked: {
           source: report.parkedSource,
@@ -1022,8 +1135,8 @@ function emitJson(report: SyncReport): void {
         manualDrift: report.manualDrift,
       },
       null,
-      2,
-    ),
+      2
+    )
   )
 }
 
@@ -1040,7 +1153,7 @@ function emitManualDrift(drifts: ManualDrift[]): void {
     return 'version-mismatch'
   }
   console.error(
-    `⚠ roadmap-sync: MANUAL block drift detected (${drifts.length} item${drifts.length === 1 ? '' : 's'})`,
+    `⚠ roadmap-sync: MANUAL block drift detected (${drifts.length} item${drifts.length === 1 ? '' : 's'})`
   )
   for (const drift of drifts) {
     console.error(`  [line ${drift.lineNumber}] [${label(drift.type)}]`)
@@ -1063,6 +1176,8 @@ function emitText(report: SyncReport): void {
   }
 
   const active = report.changes.length
+  const activeClaims = report.claims.filter((claim) => !claim.stale).length
+  const staleClaims = report.claims.filter((claim) => claim.stale).length
   const ready = report.changes.filter((c) => c.stage === 'ready').length
   const wip = report.changes.filter((c) => c.stage === 'wip').length
   const draft = report.changes.filter((c) => c.stage === 'draft').length
@@ -1077,11 +1192,18 @@ function emitText(report: SyncReport): void {
       : report.parkedSource === 'unavailable'
         ? ' · parked unavailable'
         : ''
+  const claimsSegment =
+    activeClaims > 0 || staleClaims > 0
+      ? ` · ${activeClaims} claimed${staleClaims > 0 ? ` · ${staleClaims} stale claim${staleClaims === 1 ? '' : 's'}` : ''}`
+      : ''
   console.log(
-    `✓ roadmap-sync: ${verb} (${active} change${active === 1 ? '' : 's'}: ${ready} ready · ${wip} wip · ${draft} draft · ${blocked} blocked${parkedSegment})`,
+    `✓ roadmap-sync: ${verb} (${active} change${active === 1 ? '' : 's'}: ${ready} ready · ${wip} wip · ${draft} draft · ${blocked} blocked${claimsSegment}${parkedSegment})`
   )
   if (mutex > 0) {
     console.log(`  ⚠ ${mutex} spec collision${mutex === 1 ? '' : 's'} — check Parallel Tracks`)
+  }
+  if (staleClaims > 0) {
+    console.log(`  ⚠ ${staleClaims} stale claim${staleClaims === 1 ? '' : 's'} — review Active Claims before takeover`)
   }
   emitManualDrift(report.manualDrift)
 }

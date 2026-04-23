@@ -131,7 +131,7 @@ Tag：v1.8.0 已建立並推送
 
 ## Step 6: 更新 HANDOFF.md 與 ROADMAP
 
-遵守 `.github/instructions/handoff.md`：commit 完成後**必須**更新 `template/HANDOFF.md`，把**所有可延續的後續工作**寫入 —— 不限於 spectra change。同時同步 Spectra ROADMAP。
+遵守 `.github/instructions/handoff.md`：commit 完成後**必須**更新 `HANDOFF.md`，把**所有可延續且尚未被接手的後續工作**寫入 —— 不限於 spectra change。同時同步 Spectra ROADMAP。
 
 ### 6-A. 判斷是否需要 handoff
 
@@ -145,7 +145,7 @@ Tag：v1.8.0 已建立並推送
 - 使用者曾提過但還沒做的事（在本 session 或前 session 出現過的 backlog）
 - 使用者明確表達接下來要交接 / 暫停
 
-全部不成立（真正什麼都沒得做了）→ 跳到 6-D：若 `template/HANDOFF.md` 存在且內容已過時，清空或刪除。
+全部不成立（真正什麼都沒得做了）→ 跳到 6-D：若 `HANDOFF.md` 存在且內容已過時，清空或刪除。
 
 ### 6-B. 收集下一步資訊
 
@@ -160,7 +160,7 @@ Tag：v1.8.0 已建立並推送
   - 跨 session backlog：使用者提過的待辦、roadmap 的 near-term 項目
   - 注意事項 / 陷阱：下一人接手前需要知道的隱性脈絡
 
-### 6-C. 寫入 `template/HANDOFF.md`
+### 6-C. 寫入 `HANDOFF.md`
 
 若 `template/` 目錄不存在 → `mkdir -p template`。
 
@@ -196,7 +196,7 @@ Tag：v1.8.0 已建立並推送
 pnpm spectra:roadmap
 ```
 
-重算 `openspec/ROADMAP.md` 的 AUTO 區塊（Active Changes / Parallel Tracks / Parked Changes）。
+重算 `openspec/ROADMAP.md` 的 AUTO 區塊（Active Changes / Active Claims / Parallel Tracks / Parked Changes）。
 
 若 6-B 收集到的 **Next Steps** 中包含跨 session backlog（不只是「commit 後立刻要做」的驗證動作），依 `.github/instructions/proactive-skills.md` 的「Spectra Roadmap Maintenance」**手動**更新 MANUAL 區塊的 `## Next Moves`，格式：
 

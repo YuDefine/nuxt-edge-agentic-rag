@@ -13,7 +13,7 @@ Commit files related to a specific Spectra change.
 
 This is a **utility skill** (not a workflow step). It reads source file tracking data and artifact changes to stage and commit only the files belonging to one change — useful when multiple changes are in progress simultaneously.
 
-**Input**: Optionally specify a change name after `/spectra-commit` (e.g., `/spectra-commit add-auth`). If omitted, check if it can be inferred from conversation context. If vague or ambiguous you MUST prompt for available changes.
+**Input**: Optionally specify a change name after `$spectra-commit` (e.g., `$spectra-commit add-auth`). If omitted, check if it can be inferred from conversation context. If vague or ambiguous you MUST prompt for available changes.
 
 **Prerequisites**: This skill requires `git`. Run `git --version`. If git is not available (command not found or similar error), inform the user to install git and STOP.
 
@@ -24,7 +24,7 @@ This is a **utility skill** (not a workflow step). It reads source file tracking
    If a name is provided, use it. Otherwise:
    - Infer from conversation context if the user mentioned a change
    - Auto-select if only one active change exists
-   - If ambiguous, run `spectra list --json` to get available changes. Use the **request_user_input 工具** to let the user select
+   - If ambiguous, run `spectra list --json` to get available changes. Use the **AskUserQuestion tool** to let the user select
 
    Always announce: "Committing for change: <name>"
 
@@ -93,7 +93,7 @@ This is a **utility skill** (not a workflow step). It reads source file tracking
 
 6. **User confirmation**
 
-   Use the **request_user_input 工具** to ask the user how to proceed.
+   Use the **AskUserQuestion tool** to ask the user how to proceed.
 
    Options:
    - **Commit as shown**: Proceed with the displayed artifact + source files
@@ -120,11 +120,11 @@ This is a **utility skill** (not a workflow step). It reads source file tracking
     - If **all tasks are complete**: skip to 6a-ii.
     - If **incomplete tasks exist**:
       - Display the list of incomplete tasks
-      - Use the **request_user_input 工具** to ask: "These tasks are still incomplete. Mark all as complete before archiving?"
+      - Use the **AskUserQuestion tool** to ask: "These tasks are still incomplete. Mark all as complete before archiving?"
         - **Yes**: set a flag to pass `--mark-tasks-complete` to `spectra archive`
         - **No**: proceed without the flag (archive will continue with a warning)
 
-      If **request_user_input 工具** is not available, ask the same question as plain text and wait for the user's response.
+      If **AskUserQuestion tool** is not available, ask the same question as plain text and wait for the user's response.
 
     **6a-ii. Delta spec sync check**
 
@@ -132,11 +132,11 @@ This is a **utility skill** (not a workflow step). It reads source file tracking
 
     - If **no delta specs exist** (directory is empty or absent): skip to 6a-iii.
     - If **delta specs exist**:
-      - Use the **request_user_input 工具** to ask: "Delta specs found. Sync to main specs before archiving?"
+      - Use the **AskUserQuestion tool** to ask: "Delta specs found. Sync to main specs before archiving?"
         - **Yes**: run `spectra sync <name>` before proceeding
         - **No**: proceed without syncing
 
-      If **request_user_input 工具** is not available, ask the same question as plain text and wait for the user's response.
+      If **AskUserQuestion tool** is not available, ask the same question as plain text and wait for the user's response.
 
     **6a-iii. Archive execution and file collection**
 
@@ -256,4 +256,4 @@ No dirty files found for this change (no modified artifacts, no tracked source f
 - **Always show the full file list before committing** — no silent staging
 - If the tracking file is missing, warn but don't block — artifact-only commits are valid
 - The "Unrelated Changes" section is informational only — these files are excluded by default
-- If **request_user_input 工具** is not available, ask the same questions as plain text and wait for the user's response
+- If **AskUserQuestion tool** is not available, ask the same questions as plain text and wait for the user's response

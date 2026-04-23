@@ -11,46 +11,46 @@ metadata:
 
 Update an existing Spectra change — from a plan file or conversation context.
 
-**Plan file support** is available when the tool has a plan directory (`~/.claude/plans/`). Otherwise, use conversation context to update artifacts.
+This tool uses conversation context to update artifacts (no plan file directory). Otherwise, use conversation context to update artifacts.
 
 **Prerequisites**: This skill requires the `spectra` CLI. If any `spectra` command fails with "command not found" or similar, report the error and STOP.
 
 **Input**: Optionally specify a plan file path or name.
 
-- `/spectra-ingest ~/.claude/plans/agile-discovering-rocket.md`
-- `/spectra-ingest agile-discovering-rocket`
-- `/spectra-ingest` (use conversation context or auto-detect plan file)
+- `$spectra-ingest agile-discovering-rocket.md`
+- `$spectra-ingest agile-discovering-rocket`
+- `$spectra-ingest` (use conversation context or auto-detect plan file)
 
 **Steps**
 
 1. **Locate the requirement source**
 
-   a. **Argument provided** → treat as plan file reference (prepend `~/.claude/plans/` and append `.md` if needed)
+   a. **Argument provided** → treat as plan file reference (prepend `` and append `.md` if needed)
    - If the file exists → use it as the plan file source, proceed to Step 2
    - If the file does NOT exist → report the error and **stop**
 
    b. **No argument, plan file detectable**:
-   - Check conversation context for plan file path (plan mode system messages include the path like `~/.claude/plans/<name>.md`)
-   - If found and the file exists → use the **request_user_input 工具** to ask:
+   - Check conversation context for plan file path (plan mode system messages include the path like `<name>.md`)
+   - If found and the file exists → use the **AskUserQuestion tool** to ask:
      - Option 1: Use the plan file
      - Option 2: Use conversation context
    - If the user picks plan file → proceed to Step 2
    - If the user picks conversation context → skip Step 2, go to Step 3
 
    c. **No argument, no plan file detectable**:
-   - Check `~/.claude/plans/` for recent files
-   - If recent files exist → list 5 most recent with the **request_user_input 工具**, include "Use conversation context" as an additional option
+   - Check `` for recent files
+   - If recent files exist → list 5 most recent with the **AskUserQuestion tool**, include "Use conversation context" as an additional option
    - If the user picks a file → proceed to Step 2
    - If the user picks conversation context → skip Step 2, go to Step 3
 
    d. **Conversation context fallback** (no plan files found at all):
    - Use conversation context to update artifacts
-   - If conversation context is insufficient, use the **request_user_input 工具** to get more details
+   - If conversation context is insufficient, use the **AskUserQuestion tool** to get more details
    - Warn: "No plan file found. Using conversation context."
 
 2. **Parse the plan structure** (skip if using conversation context)
 
-   AI Agent plan files typically contain:
+   Claude Code plan files typically contain:
    - **Title** (`# ...`) — the high-level goal
    - **Context** section — background, motivation, current state
    - **Stages/Steps** — numbered implementation stages with goals and file lists
@@ -77,9 +77,9 @@ Update an existing Spectra change — from a plan file or conversation context.
    ```
 
    Parse both JSON outputs to get the full list of changes (active + parked). Parked changes should be annotated with "(parked)" in any selection list.
-   - If one change exists (active or parked) → use the **request_user_input 工具** to confirm updating it
-   - If multiple changes exist → use the **request_user_input 工具** to let user pick which one to update
-   - If no changes at all (neither active nor parked) → tell the user: "No active change found. Use `/spectra-propose` first to create one." and **stop**
+   - If one change exists (active or parked) → use the **AskUserQuestion tool** to confirm updating it
+   - If multiple changes exist → use the **AskUserQuestion tool** to let user pick which one to update
+   - If no changes at all (neither active nor parked) → tell the user: "No active change found. Use `$spectra-propose` first to create one." and **stop**
 
 4. **Select the change**
 
@@ -91,11 +91,11 @@ Update an existing Spectra change — from a plan file or conversation context.
 
    If the selected change appears in the `parked` array:
    - Inform the user that this change is currently parked（暫存）
-   - Use **request_user_input 工具** to ask: continue (unpark) or cancel
+   - Use **AskUserQuestion tool** to ask: continue (unpark) or cancel
    - If continue: run `spectra unpark "<name>"` then proceed
    - If cancel: stop the workflow
 
-   If there is no request_user_input 工具 available (non-Claude-Code environment):
+   If there is no AskUserQuestion tool available (non-Claude-Code environment):
    Inform the user that this change is currently parked（暫存）and ask via plain text whether to unpark and continue, or cancel.
    Wait for the user's response. If the user confirms, run `spectra unpark "<name>"` then proceed.
 
@@ -232,22 +232,22 @@ Update an existing Spectra change — from a plan file or conversation context.
    - Artifacts created/updated
    - Validation result
 
-   Use **request_user_input 工具** to confirm the workflow is complete. This ensures the workflow stops even when auto-accept is enabled. Provide exactly these options:
-   - **First option (will be auto-selected)**: "Done" — End the ingest workflow. Inform the user they can run `/spectra-apply <change-name>` when ready.
-   - **Second option**: "Apply" — Invoke `/spectra-apply <change-name>` to start implementation.
+   Use **AskUserQuestion tool** to confirm the workflow is complete. This ensures the workflow stops even when auto-accept is enabled. Provide exactly these options:
+   - **First option (will be auto-selected)**: "Done" — End the ingest workflow. Inform the user they can run `$spectra-apply <change-name>` when ready.
+   - **Second option**: "Apply" — Invoke `$spectra-apply <change-name>` to start implementation.
 
-   If **request_user_input 工具** is not available, display the summary and inform the user to run `/spectra-apply <change-name>` when ready. Then STOP — do not continue.
+   If **AskUserQuestion tool** is not available, display the summary and inform the user to run `$spectra-apply <change-name>` when ready. Then STOP — do not continue.
 
-   **After the user responds**, if they chose "Done", the workflow is OVER. If they chose "Apply", invoke `/spectra-apply <change-name>` to begin implementation.
+   **After the user responds**, if they chose "Done", the workflow is OVER. If they chose "Apply", invoke `$spectra-apply <change-name>` to begin implementation.
 
 **Guardrails**
 
-- **NEVER** modify the original plan file in `~/.claude/plans/`
+- **NEVER** modify the original plan file in ``
 - **NEVER** write application code — this skill only creates/updates Spectra artifacts
-- **NEVER** create new changes — ingest only updates existing changes. If no active change exists, direct user to `/spectra-propose`
+- **NEVER** create new changes — ingest only updates existing changes. If no active change exists, direct user to `$spectra-propose`
 - When updating existing changes, **preserve all completed tasks** (`[x]`) — never revert progress
-- If the source content is too brief to fill all artifact sections, use the **request_user_input 工具** to get more details rather than inventing content
+- If the source content is too brief to fill all artifact sections, use the **AskUserQuestion tool** to get more details rather than inventing content
 - If `spectra` CLI is not available, report the error and stop
 - Verify each artifact file exists after writing before proceeding to next
 - **NEVER** skip the artifact workflow to write code directly
-- If **request_user_input 工具** is not available, ask the same questions as plain text and wait for the user's response
+- If **AskUserQuestion tool** is not available, ask the same questions as plain text and wait for the user's response

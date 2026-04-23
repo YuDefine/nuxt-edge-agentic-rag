@@ -17,12 +17,16 @@
 # `collect-followups.mts --session-summary`. Silent when nothing to
 # report. Always exits 0 — surfacing, not gating.
 #
-# All business logic lives in scripts/spectra-ux/{roadmap-sync,collect-followups}.mts.
+# v1.10+: also surfaces work claims so a new session immediately sees
+# who currently owns each active change before it decides what to pick up.
+#
+# All business logic lives in scripts/spectra-ux/{roadmap-sync,claims-status,collect-followups}.mts.
 
 set -euo pipefail
 
 ROOT="${SPECTRA_UX_PROJECT_DIR:-${CLAUDE_PROJECT_DIR:-$(pwd)}}"
 ROADMAP_SCRIPT="$ROOT/scripts/spectra-ux/roadmap-sync.mts"
+CLAIMS_SCRIPT="$ROOT/scripts/spectra-ux/claims-status.mts"
 FOLLOWUPS_SCRIPT="$ROOT/scripts/spectra-ux/collect-followups.mts"
 
 if ! command -v node >/dev/null 2>&1; then
@@ -35,6 +39,12 @@ cd "$ROOT" || exit 0
 # passes through so MANUAL drift warnings reach the agent.
 if [ -f "$ROADMAP_SCRIPT" ]; then
   node "$ROADMAP_SCRIPT" >/dev/null || true
+fi
+
+# Claims surfacing: condensed summary to stderr so the agent sees current
+# ownership / stale claims at session start. Silent if there are no claims.
+if [ -f "$CLAIMS_SCRIPT" ]; then
+  node "$CLAIMS_SCRIPT" --session-summary 1>&2 || true
 fi
 
 # Follow-up surfacing: condensed summary to stderr so the agent sees
