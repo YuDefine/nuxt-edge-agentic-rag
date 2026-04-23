@@ -13,6 +13,7 @@ import {
   createKvRateLimitStore,
   McpRateLimitExceededError,
 } from '#server/utils/mcp-rate-limit'
+import { setMcpAuthorizationChallenge } from '#server/utils/mcp-oauth-metadata'
 import {
   createDefaultUserRoleLookup,
   gateMcpToolAccess,
@@ -131,6 +132,10 @@ export async function runMcpMiddleware(
     }
   } catch (error) {
     if (error instanceof McpAuthError) {
+      if (error.statusCode === 401) {
+        setMcpAuthorizationChallenge(event as unknown as H3Event)
+      }
+
       throw createError({
         statusCode: error.statusCode,
         statusMessage: error.statusCode === 401 ? 'Unauthorized' : 'Forbidden',
