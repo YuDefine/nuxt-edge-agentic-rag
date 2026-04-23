@@ -1553,13 +1553,12 @@ Scale envelope 的語意：
 | pnpm               | 10.33.0          | 套件管理                  |
 | Wrangler           | 4.84.1           | Cloudflare 部署與本機操作 |
 | Python             | 3.13.12          | 報告處理與輔助腳本        |
-| GitHub Copilot CLI | 依工作區安裝版本 | AI 輔助開發               |
 | spectra            | 依專案安裝版本   | 規格驅動開發流程          |
 | Nuxt MCP Server    | 官方服務         | Nuxt 文件查詢             |
 | Nuxt UI MCP Server | 官方服務         | Nuxt UI 文件查詢          |
 | VS Code / Cursor   | 依實際工作站版本 | 程式編輯器                |
 
-補充說明：GitHub Copilot CLI 與 spectra 僅作為開發輔助工具與規格管理流程，不列入本專題成果的效能或品質貢獻評估；相關工具說明參考 [18][19][23]。
+補充說明：開發輔助工具與 spectra 僅作為開發輔助與規格管理流程，不列入本專題成果的效能或品質貢獻評估；相關工具說明參考 [18][19]。
 
 ## 第二節 功能與介面說明
 
@@ -2096,8 +2095,6 @@ Admin 先取得一次性 signed URL 與 `uploadId` → 原始檔直傳 R2 staged
 [21] IETF, "The Transport Layer Security (TLS) Protocol Version 1.3," RFC 8446, Internet Engineering Task Force (2018).
 
 [22] W3C, "Web Authentication: An API for accessing Public Key Credentials Level 3," https://www.w3.org/TR/webauthn-3/, accessed 2026-04-21.
-
-[23] GitHub, "GitHub Copilot Documentation," https://docs.github.com/en/copilot, accessed 2026-04-21.
 
 [24] Cloudflare, "Metadata - Cloudflare AI Search Documentation," https://developers.cloudflare.com/ai-search/configuration/metadata/, accessed 2026-04-21.
 

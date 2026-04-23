@@ -144,7 +144,7 @@ code:
   - reports/archive/main-v0.0.49.md
   - reports/archive/main-v0.0.11.md
   - reports/archive/main-v0.0.50.md
-  - template/HANDOFF.md
+  - HANDOFF.md
   - templates/海報樣板.pptx
   - .agents/skills/spectra-ask/SKILL.md
   - tooling/scripts/docx_apply.py
@@ -270,7 +270,7 @@ code:
   - reports/archive/main-v0.0.49.md
   - reports/archive/main-v0.0.11.md
   - reports/archive/main-v0.0.50.md
-  - template/HANDOFF.md
+  - HANDOFF.md
   - templates/海報樣板.pptx
   - .agents/skills/spectra-ask/SKILL.md
   - tooling/scripts/docx_apply.py
