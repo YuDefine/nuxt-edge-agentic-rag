@@ -41,41 +41,35 @@
 
 ---
 
-### `fix-mcp-transport-body-consumed`（本 session 進行中，pending commit + deploy）
+### 待接手：`fix-mcp-streamable-http-session`（新 change，draft 狀態）
 
-**Root cause**：`@nuxtjs/mcp-toolkit` `createMcpHandler` 的 `tagEvlogContext` + middleware 的 `extractToolNames` 在 middleware 前後都 `readBody(event)` 消耗 Cloudflare Worker `Request` body stream；後續 `toWebRequest(event)` 返回同一個 disturbed Request；MCP SDK `handleRequest` parse JSON-RPC 失敗回 **HTTP 400** → Claude.ai 顯示 generic "Error occurred during tool execution"。
+**背景**：前置 change `fix-mcp-transport-body-consumed` 已 archive 到 `v0.34.5`（commit `bf6a07e`），`POST /mcp initialize` 從 400 → 200，tools/list 200 — body consumption 的 transport 問題已修好。但 Claude.ai 端 tool/call 仍失敗。
 
-**Solution**：middleware 結尾掛 `rehydrateMcpRequestBody(event)`，用 H3 cache 的 parsed body 重建新 Request 塞回 `event.web.request`，transport 讀到 pristine stream。
+**真正 root cause**（tail 觀察收斂）：MCP Streamable HTTP 協議需要 SSE long-lived session，但 server 走 stateless 模式：
 
-**已完成（tasks 1–3 全勾）**：
+1. Claude.ai 首次 initialize 成功後發 `GET /mcp` 開 SSE channel
+2. Stateless transport 不快速回 405，hold 30 秒 → Worker runtime `"code had hung"` cancel
+3. Claude retry `POST initialize`（body 不完整）→ 400
+4. 死循環 → UI 顯示 "Error occurred during tool execution" / "Authorization failed"
 
-- `server/utils/mcp-rehydrate-request-body.ts`（新 util）
-- `server/mcp/index.ts`（middleware 結尾掛 rehydrate）
-- `test/unit/mcp-rehydrate-request-body.test.ts`（7 cases 綠）
-- `docs/solutions/mcp-body-stream-consumption.md`
-- `openspec/changes/fix-mcp-transport-body-consumed/**`（proposal / tasks / spec / yaml）
-- `pnpm test:contracts` 80/80、`pnpm typecheck` ✓、`pnpm exec spectra analyze` ✓ No issues
+**提案的三個方向（待 discuss 收斂）**：
 
-**待做（待使用者主線確認）**：
+- A. 啟 Streamable HTTP session 模式（優先）— `Mcp-Session-Id` header、真 SSE stream、跨 request session reuse；session state 存 KV / Durable Objects / memory cache
+- B. GET /mcp 快速回 405（fallback）— 讓 Claude fallback 到 POST-only
+- C. Protocol version downgrade 到 2024-11-05
 
-1. `/commit` 或 `/spectra-commit fix-mcp-transport-body-consumed` — commit 本 change 9 個檔，排除別人 WIP
-2. `pnpm tag` 推 v0.34.5 → GitHub Actions production deploy
-3. `pnpm exec wrangler tail nuxt-edge-agentic-rag --format pretty` 觀察 `POST /mcp` 由 400 → 200
-4. Claude.ai 實測 AskKnowledge / ListCategories 回真實結果
-5. `/spectra-archive fix-mcp-transport-body-consumed`
+**建議走法**：`/spectra-discuss fix-mcp-streamable-http-session` 先釐清方向、Cloudflare Workers SSE 可行性、session store 選擇
 
-**Commit 分組（本 change 獨立）**：
+**⚠ 執行前必看**：
 
-```
-M  server/mcp/index.ts
-A  server/utils/mcp-rehydrate-request-body.ts
-A  test/unit/mcp-rehydrate-request-body.test.ts
-A  docs/solutions/mcp-body-stream-consumption.md
-A  openspec/changes/fix-mcp-transport-body-consumed/**
-M  openspec/ROADMAP.md  （AUTO sync 的本 change active 紀錄）
-```
+- 本 change 是 Tier 2-3（動 MCP protocol + auth path），要 Design Review（雖無 UI，但 API contract 變動）
+- 動 `server/mcp/index.ts` 要保留 `fix-mcp-transport-body-consumed` 留下的 `rehydrateMcpRequestBody` call，或明確評估為 no-op 後移除（unit test 要一起移）
+- Cloudflare Workers 30 秒 CPU 限制對 SSE 的影響
 
-**不 commit**：所有 chat UI / conversation-history / index.vue / tech-debt / staging-gate 相關 — 都是別人 WIP。
+**現況**：
+
+- `openspec/changes/fix-mcp-streamable-http-session/` 已建立 proposal + tasks + draft spec
+- `pnpm exec spectra analyze` ✓ No issues
 
 ---
 
@@ -116,7 +110,7 @@ Active change: `code-quality-review-followups`（in-progress，10/43 tasks）
 ## Next Steps
 
 0. **auth-redirect-refactor（最優先，使用者立刻接手）**：見 In Progress 區塊第一項，`/spectra-discuss` 起步，留意與 `code-quality-review-followups` 批 2/3 在 `index.vue` 的 file ownership 衝突。
-   0-b. **MCP transport fix commit + deploy**：本 session 繼續，等使用者確認分組後走 `/commit` → `pnpm tag` → production tail 驗收。
+   0-b. **fix-mcp-streamable-http-session**（另開新 change，上個 session 發現）：MCP transport body fix 已 deploy（v0.34.5），但 Claude tool/call 仍因 SSE session 問題失敗。走 `/spectra-discuss fix-mcp-streamable-http-session` 收斂方向 A/B/C。詳見 In Progress 第二項。
 1. **批 2（TD-021 / 022 / 023 + Design Review）**：最優先，新 session 接手；需要瀏覽器
    端驗證跨午夜重分組、aria-expanded 切換。
 2. **批 3（TD-024 + tech-debt docs + 人工檢查）**：在批 2 完成後做；人工檢查必須使用者
