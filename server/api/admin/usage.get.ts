@@ -2,6 +2,7 @@ import { useLogger } from 'evlog'
 import { z } from 'zod'
 
 import { requireRuntimeAdminSession } from '#server/utils/admin-session'
+import { getCloudflareEnv } from '#server/utils/cloudflare-bindings'
 import { getKnowledgeRuntimeConfig } from '#server/utils/knowledge-runtime'
 import { aggregateUsage, fetchAnalyticsLogs } from '#server/utils/usage-analytics'
 import { USAGE_RANGE_VALUES, type UsageResponse } from '#shared/types/usage'
@@ -23,14 +24,24 @@ export default defineEventHandler(async function adminUsageHandler(event): Promi
     user: { id: session.user.id ?? null },
   })
 
+  // Workers runtime env (wrangler vars + secrets) only reaches useRuntimeConfig
+  // when the env var is `NUXT_`-prefixed AND maps to a flat runtimeConfig key.
+  // Our secrets (`CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN_ANALYTICS`) and
+  // the nested `knowledge.aiGateway.id` don't satisfy either, so read from the
+  // raw Cloudflare env with runtimeConfig as a local-dev fallback.
+  const cfEnv = getCloudflareEnv(event) as Record<string, string | undefined>
   const runtimeConfig = useRuntimeConfig(event)
   const cloudflare = runtimeConfig.cloudflare as
     | { accountId?: string; analyticsApiToken?: string }
     | undefined
   const knowledge = getKnowledgeRuntimeConfig()
-  const gatewayId = knowledge.aiGateway.id
 
-  if (!gatewayId || !cloudflare?.accountId || !cloudflare.analyticsApiToken) {
+  const accountId = cfEnv.CLOUDFLARE_ACCOUNT_ID || cloudflare?.accountId || ''
+  const analyticsApiToken =
+    cfEnv.CLOUDFLARE_API_TOKEN_ANALYTICS || cloudflare?.analyticsApiToken || ''
+  const gatewayId = cfEnv.NUXT_KNOWLEDGE_AI_GATEWAY_ID || knowledge.aiGateway.id || ''
+
+  if (!gatewayId || !accountId || !analyticsApiToken) {
     // Gateway not yet provisioned in this environment, or the Analytics
     // secret was never set. Return 503 so the admin UI can surface a
     // clear "not configured" message rather than leaking env state.
@@ -43,8 +54,8 @@ export default defineEventHandler(async function adminUsageHandler(event): Promi
 
   try {
     const logs = await fetchAnalyticsLogs({
-      accountId: cloudflare.accountId,
-      apiToken: cloudflare.analyticsApiToken,
+      accountId,
+      apiToken: analyticsApiToken,
       gatewayId,
       range,
     })
