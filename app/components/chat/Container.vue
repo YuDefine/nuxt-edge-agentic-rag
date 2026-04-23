@@ -6,6 +6,7 @@
     readChatStream,
   } from '~/utils/chat-stream'
   import { buildChatRequestBody } from '~/utils/chat-conversation-state'
+  import { classifyChatError, type ChatErrorKind } from '~/utils/chat-error-classification'
 
   /**
    * Main chat container integrating:
@@ -47,8 +48,6 @@
     ]
   }>()
 
-  type ChatErrorKind = 'abort' | 'rate_limit' | 'network' | 'timeout' | 'unauthorized' | 'unknown'
-
   const messages = ref<ChatMessage[]>([])
   const isSubmitting = ref(false)
   const streamingContent = ref('')
@@ -78,25 +77,6 @@
 
   function generateMessageId(): string {
     return `msg_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`
-  }
-
-  function classifyError(error: unknown): ChatErrorKind {
-    if (error instanceof DOMException && error.name === 'AbortError') return 'abort'
-    if (error && typeof error === 'object') {
-      if ('name' in error && (error as { name?: string }).name === 'AbortError') return 'abort'
-      const statusCode =
-        'statusCode' in error
-          ? (error as { statusCode?: number }).statusCode
-          : 'status' in error
-            ? (error as { status?: number }).status
-            : undefined
-      if (statusCode === 429) return 'rate_limit'
-      if (statusCode === 401) return 'unauthorized'
-      if (statusCode === 504) return 'timeout'
-      if (statusCode && statusCode >= 500 && statusCode < 600) return 'network'
-    }
-    if (error instanceof TypeError) return 'network'
-    return 'unknown'
   }
 
   function extractRetryAfterSeconds(error: unknown): number {
@@ -242,7 +222,7 @@
         messages: cloneChatMessages(messages.value),
       })
     } catch (error) {
-      const kind = classifyError(error)
+      const kind = classifyChatError(error)
       const retryAfter = kind === 'rate_limit' ? extractRetryAfterSeconds(error) : 0
       const errorMessage =
         error instanceof ChatStreamError ? error.message : describeError(kind, retryAfter)
