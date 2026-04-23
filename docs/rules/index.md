@@ -5,7 +5,7 @@
 ## 規則來源
 
 - `.claude/rules/`：Claude 工作流與專案規範的主要來源。
-- `.github/instructions/`：Copilot / VS Code 讀取的對應指引。
+- `AGENTS.md`、`CLAUDE.md`：由規則同步後可直接到達的 project-wide instruction surface。
 
 ## 常用規則類型
 

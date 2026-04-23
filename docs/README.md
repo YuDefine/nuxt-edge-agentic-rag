@@ -80,7 +80,7 @@ pnpm docs:preview
 ## Source of Truth 邊界
 
 - `docs/` 提供可閱讀、可渲染的正式文件內容。
-- `.claude/rules/` 與 `.github/instructions/` 才是規則原始來源；`docs/rules/` 只負責入口導覽。
+- `.claude/rules/` 是共享規則原始來源；`docs/rules/` 只負責入口導覽。
 - `openspec/specs/` 與 `openspec/changes/` 才是 Spectra 規格原始來源；`docs/specs/` 只負責入口導覽。
 - VitePress 文件站的部署流程位於 [deploy workflow](../.github/workflows/deploy.yml) 內的 docs jobs，靜態輸出會發布到 Cloudflare Pages。
 

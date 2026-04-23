@@ -8,7 +8,7 @@ description: 依功能分類變更並逐步完成 commit，遵循 commitlint 規
 $ARGUMENTS
 ```
 
-政策、禁止事項、commit 類型表見 `.github/instructions/commit.md`。本檔只定義執行流程。
+政策、禁止事項、commit 類型表見 `.claude/rules/commit.md`。本檔只定義執行流程。
 
 ## Step 0: 品質檢查
 
@@ -131,7 +131,7 @@ Tag：v1.8.0 已建立並推送
 
 ## Step 6: 更新 HANDOFF.md 與 ROADMAP
 
-遵守 `.github/instructions/handoff.md`：commit 完成後**必須**更新 `HANDOFF.md`，把**所有可延續且尚未被接手的後續工作**寫入 —— 不限於 spectra change。同時同步 Spectra ROADMAP。
+遵守 `.claude/rules/handoff.md`：commit 完成後**必須**更新 `HANDOFF.md`，把**所有可延續且尚未被接手的後續工作**寫入 —— 不限於 spectra change。同時同步 Spectra ROADMAP。
 
 ### 6-A. 判斷是否需要 handoff
 
@@ -162,9 +162,7 @@ Tag：v1.8.0 已建立並推送
 
 ### 6-C. 寫入 `HANDOFF.md`
 
-若 `template/` 目錄不存在 → `mkdir -p template`。
-
-依 `.github/instructions/handoff.md` 格式覆寫：
+依 `.claude/rules/handoff.md` 格式覆寫：
 
 ```markdown
 # Handoff
@@ -198,7 +196,7 @@ pnpm spectra:roadmap
 
 重算 `openspec/ROADMAP.md` 的 AUTO 區塊（Active Changes / Active Claims / Parallel Tracks / Parked Changes）。
 
-若 6-B 收集到的 **Next Steps** 中包含跨 session backlog（不只是「commit 後立刻要做」的驗證動作），依 `.github/instructions/proactive-skills.md` 的「Spectra Roadmap Maintenance」**手動**更新 MANUAL 區塊的 `## Next Moves`，格式：
+若 6-B 收集到的 **Next Steps** 中包含跨 session backlog（不只是「commit 後立刻要做」的驗證動作），依 `.claude/rules/proactive-skills.md` 的「Spectra Roadmap Maintenance」**手動**更新 MANUAL 區塊的 `## Next Moves`，格式：
 
 ```text
 - [priority] 描述 — 依賴：xxx / 獨立 / 互斥：yyy

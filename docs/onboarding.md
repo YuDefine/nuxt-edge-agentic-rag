@@ -37,7 +37,7 @@ pnpm docs:build
 
 ## Source of Truth
 
-- 規則原始來源位於 `.claude/rules/` 與 `.github/instructions/`。
+- 規則原始來源位於 `.claude/rules/`；project-wide instruction 會同步反映在 `AGENTS.md` 與 `CLAUDE.md`。
 - Spectra 規格原始來源位於 `openspec/specs/`、`openspec/changes/` 與 `openspec/ROADMAP.md`。
 - `docs/` 提供可閱讀的入口、導覽與正式操作文件，但不取代上述原始來源。
 

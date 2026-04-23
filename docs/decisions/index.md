@@ -8,6 +8,7 @@
 - [2026-04-18 Sync Endpoint Staging Verification](./2026-04-18-sync-endpoint-staging-verification.md)
 - [2026-04-19 Collapse Environments To Local And Production](./2026-04-19-collapse-environments-to-local-and-production.md)
 - [2026-04-23 Recognize Staging As An Active Environment](./2026-04-23-recognize-staging-as-active-environment.md)
+- [2026-04-23 Claude Source Of Truth Across Offline Repos](./2026-04-23-claude-source-of-truth-across-offline-repos.md)
 - [2026-04-22 Canonical Test Roots And Repo Archives](./2026-04-22-canonical-test-roots-and-repo-archives.md)
 - [2026-04-22 Stable Current Report Entry](./2026-04-22-stable-current-report-entry.md)
 

@@ -60,7 +60,7 @@ features:
 ## 文件邊界與來源
 
 - `docs/` 是 VitePress 的內容來源，也是 repo 內可直接瀏覽的文件入口。
-- `rules/` 與 `specs/` 在文件站中提供導覽；實際原始來源分別位於 `.claude/rules/`、`.github/instructions/`、`openspec/specs/` 與 `openspec/changes/`。
+- `rules/` 與 `specs/` 在文件站中提供導覽；實際原始來源分別位於 `.claude/rules/`、`openspec/specs/` 與 `openspec/changes/`。其中 project-wide instruction 會同步反映到 `AGENTS.md` 與 `CLAUDE.md`。
 - `verify/`、`runbooks/`、`decisions/` 與根目錄治理文件屬於開發者可直接閱讀與維護的正式文件。
 
 ## 維護原則

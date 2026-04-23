@@ -15,7 +15,7 @@ developer_instructions = """
 
 ## 工具選擇
 
-完整決策規則見 `.github/instructions/screenshot-strategy.md`。
+完整決策規則見 `.claude/rules/screenshot-strategy.md`。
 
 速記：**預設 `browser-use` CLI**（含探索式互動 / console debug），下列情境切 Playwright CLI：
 

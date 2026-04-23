@@ -9,26 +9,26 @@
 1. 產品程式碼：`app/`、`server/`、`shared/`
 2. 驗證與測試：`test/`、`e2e/`、`docs/verify/`
 3. 規格與治理：`openspec/`、`docs/`、根目錄治理文件
-4. Agent 與工具鏈：`.claude/`、`.github/instructions/`、`.agents/`、`.agent/`、`scripts/`
+4. Agent 與工具鏈：`.claude/`、`.agents/`、`.agent/`、`scripts/`
 
 ## Canonical Roots
 
-| 路徑                    | 角色              | 說明                                              |
-| ----------------------- | ----------------- | ------------------------------------------------- |
-| `app/`                  | 前端應用          | Nuxt 頁面、元件、composables、UI 專用型別與工具   |
-| `server/`               | 後端應用          | Nitro API、資料存取、伺服器工具、背景任務相關邏輯 |
-| `shared/`               | 共用契約          | 前後端共用 schema、型別與純工具                   |
-| `docs/`                 | 文件站內容        | VitePress 入口、操作文件、導覽頁與治理文件        |
-| `openspec/`             | 規格系統          | 穩定規格、進行中 changes、roadmap                 |
-| `test/`                 | Vitest 測試       | unit、integration、acceptance 與 fixture          |
-| `e2e/`                  | Playwright 測試   | UI 與 journey 驗證規格                            |
-| `scripts/`              | 工具腳本          | 建置、檢查、修補、部署與維運腳本                  |
-| `template/`             | 交接與模板        | 目前主要保留 handoff 類文件模板                   |
-| `.claude/`              | Claude 工作流來源 | rules、skills、hooks、commands、agents            |
-| `.github/instructions/` | Copilot 指引來源  | 與 `.claude/rules/` 對應的指引投影                |
-| `.agents/`              | Agent 資產鏡像    | 以 skill 為主的鏡像內容                           |
-| `.agent/`               | Agent 工作流      | 較小型的 workflow 定義區                          |
-| `build/`                | 建置程式碼        | 目前是 hand-written build logic，不是輸出產物     |
+| 路徑         | 角色              | 說明                                                                                 |
+| ------------ | ----------------- | ------------------------------------------------------------------------------------ |
+| `app/`       | 前端應用          | Nuxt 頁面、元件、composables、UI 專用型別與工具                                      |
+| `server/`    | 後端應用          | Nitro API、資料存取、伺服器工具、背景任務相關邏輯                                    |
+| `shared/`    | 共用契約          | 前後端共用 schema、型別與純工具                                                      |
+| `docs/`      | 文件站內容        | VitePress 入口、操作文件、導覽頁與治理文件                                           |
+| `openspec/`  | 規格系統          | 穩定規格、進行中 changes、roadmap                                                    |
+| `test/`      | Vitest 測試       | unit、integration、acceptance 與 fixture                                             |
+| `e2e/`       | Playwright 測試   | UI 與 journey 驗證規格                                                               |
+| `scripts/`   | 工具腳本          | 建置、檢查、修補、部署與維運腳本                                                     |
+| `HANDOFF.md` | session 交接      | repo root 的 canonical handoff artifact，只保留尚未接手的 WIP / blocker / next steps |
+| `template/`  | 模板資產          | 保留樣板或範本用途，不再承擔 live handoff artifact                                   |
+| `.claude/`   | Claude 工作流來源 | rules、skills、hooks、commands、agents                                               |
+| `.agents/`   | Agent 資產鏡像    | 以 skill 為主的鏡像內容                                                              |
+| `.agent/`    | Agent 工作流      | 較小型的 workflow 定義區                                                             |
+| `build/`     | 建置程式碼        | 目前是 hand-written build logic，不是輸出產物                                        |
 
 ## 產品程式碼
 
@@ -85,10 +85,9 @@
 目前需要明確區分三種層次：
 
 - `.claude/rules/`：主要規則來源
-- `.github/instructions/`：給 Copilot / VS Code 使用的對應指引
 - `.agents/`、`.agent/`：agent 資產與 workflow 鏡像
 
-若要查「規則原文」，先看 `.claude/rules/` 與 `.github/instructions/`。若要查「規格原文」，先看 `openspec/`。`docs/rules/` 與 `docs/specs/` 只做導覽。
+若要查「規則原文」，先看 `.claude/rules/`。若要查「規格原文」，先看 `openspec/`。`docs/rules/` 與 `docs/specs/` 只做導覽。
 
 ## 測試與驗證
 
@@ -144,10 +143,9 @@
 - `docs/`：可閱讀入口與正式操作文件
 - `openspec/`：規格原文與 change lifecycle
 
-### `.claude/` vs `.github/instructions/` vs `.agents/` vs `.agent/`
+### `.claude/` vs `.agents/` vs `.agent/`
 
 - `.claude/`：Claude workflow 原始資產
-- `.github/instructions/`：Copilot 讀取用指引
 - `.agents/`：skill 為主的鏡像
 - `.agent/`：較小型 workflow 區
 
