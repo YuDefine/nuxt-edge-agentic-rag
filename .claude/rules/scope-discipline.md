@@ -27,13 +27,13 @@ globs: ['openspec/**', 'docs/tech-debt.md', 'docs/decisions/**', 'HANDOFF.md']
 
 發現範圍外問題時，**MUST** 選一條路徑登記：
 
-| 發現類型                         | 登記位置                               | 做法                                                                 |
-| -------------------------------- | -------------------------------------- | -------------------------------------------------------------------- |
-| 技術債 / bug / 邊界情況          | `docs/tech-debt.md`                    | 建 `TD-NNN` entry，並在當前 change `tasks.md` 加 `@followup[TD-NNN]` |
-| session 尚未完成的 WIP / blocker | `HANDOFF.md`                           | 留下目前狀態、阻擋原因、下一步                                       |
-| 未來要做但尚未 propose 的工作    | `openspec/ROADMAP.md` `## Next Moves`  | 以 `high/mid/low` + 依賴關係記錄                                     |
-| 當前 change 本身的 scope 漏項    | `spectra-ingest`                       | 更新 proposal / tasks / design artifact                              |
-| 架構層級決策                     | `docs/decisions/YYYY-MM-DD-<topic>.md` | 用 ADR 格式記錄                                                      |
+| 發現類型                         | 登記位置                               | 做法                                                                                                        |
+| -------------------------------- | -------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| 技術債 / bug / 邊界情況          | `docs/tech-debt.md`                    | 建 `TD-NNN` entry，並在當前 change `tasks.md` 加 `@followup[TD-NNN]`                                        |
+| session 尚未完成的 WIP / blocker | `HANDOFF.md`                           | 留下目前狀態、阻擋原因、下一步                                                                              |
+| 未來要做但尚未 propose 的工作    | `openspec/ROADMAP.md` `## Next Moves`  | 以 `high/mid/low` + 依賴關係記錄                                                                            |
+| 當前 change 本身的 scope 漏項    | `spectra-ingest`                       | **主動觸發**（見 `proactive-skills-section.md` → Ingest Triggers），更新 proposal / tasks / design artifact |
+| 架構層級決策                     | `docs/decisions/YYYY-MM-DD-<topic>.md` | 用 ADR 格式記錄                                                                                             |
 
 **登記後才能回到當前 task。**
 

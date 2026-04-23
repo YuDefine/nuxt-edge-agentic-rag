@@ -37,20 +37,6 @@ HAS_UI=false
 if sux_tasks_has_ui_scope "$TASKS_FILE"; then
   HAS_UI=true
 fi
-if [ "$HAS_UI" = false ]; then
-  TOUCHED=$(sux_change_touched_files "$CHANGE_DIR")
-  if [ -n "$TOUCHED" ]; then
-    while IFS= read -r path; do
-      [ -n "$path" ] || continue
-      if sux_path_is_ui_related "$path"; then
-        HAS_UI=true
-        break
-      fi
-    done <<EOF
-$TOUCHED
-EOF
-  fi
-fi
 
 if [ "$HAS_UI" = true ]; then
   MANUAL_SECTION=$(sed -n '/^## .*人工檢查/,/^## /p' "$TASKS_FILE" 2>/dev/null | sed '$d')

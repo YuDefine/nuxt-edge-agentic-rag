@@ -210,6 +210,7 @@ export function detectRuntime(): string {
   const env = process.env
   if (env.CLAUDE_PROJECT_DIR || env.CLAUDE_SESSION_ID || env.CLAUDE_CONVERSATION_ID) return 'claude'
   if (env.CODEX_SESSION_ID || env.CODEX_AGENT_NAME || env.CODEX_HOME) return 'codex'
+  if (env.COPILOT_AGENT_ID || env.GITHUB_COPILOT_CHAT) return 'copilot'
   if (env.CURSOR_SESSION_ID || env.CURSOR_TRACE_ID) return 'cursor'
   return 'unknown'
 }
@@ -221,6 +222,7 @@ function resolveEnvSessionId(): string | null {
     'CLAUDE_CONVERSATION_ID',
     'CODEX_SESSION_ID',
     'CODEX_CONVERSATION_ID',
+    'COPILOT_AGENT_ID',
     'CURSOR_SESSION_ID',
   ]) {
     const value = env[key]?.trim()
