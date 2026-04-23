@@ -63,6 +63,7 @@ describe('mcp ask tool definition', () => {
           run: workersAiRunMock,
         },
       }),
+      getRequiredD1Binding: vi.fn().mockReturnValue({}),
       getRequiredKvBinding: vi.fn().mockReturnValue({}),
     }))
     vi.doMock('#server/utils/database', () => ({
@@ -144,7 +145,7 @@ describe('mcp ask tool definition', () => {
 
     useEventMock.mockReturnValue({
       context: {
-        cloudflare: { env: {} },
+        cloudflare: { env: { DB: {} } },
         mcpAuth: {
           scopes: ['knowledge.ask'],
           token: {},
@@ -202,7 +203,7 @@ describe('mcp ask tool definition', () => {
 
     useEventMock.mockReturnValue({
       context: {
-        cloudflare: { env: {} },
+        cloudflare: { env: { DB: {} } },
         mcpAuth: {
           scopes: ['knowledge.ask'],
           token: {},
@@ -293,7 +294,7 @@ describe('mcp ask tool definition', () => {
 
     useEventMock.mockReturnValue({
       context: {
-        cloudflare: { env: {} },
+        cloudflare: { env: { DB: {} } },
         mcpAuth: {
           scopes: ['knowledge.ask'],
           token: {},

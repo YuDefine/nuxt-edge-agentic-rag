@@ -32,6 +32,7 @@ describe('mcp categories tool definition', () => {
       listCategories: listCategoriesMock,
     }))
     vi.doMock('#server/utils/cloudflare-bindings', () => ({
+      getRequiredD1Binding: vi.fn().mockReturnValue({}),
       getRequiredKvBinding: vi.fn().mockReturnValue({}),
     }))
     vi.doMock('#server/utils/database', () => ({
@@ -99,7 +100,7 @@ describe('mcp categories tool definition', () => {
 
     useEventMock.mockReturnValue({
       context: {
-        cloudflare: { env: {} },
+        cloudflare: { env: { DB: {} } },
         mcpAuth: {
           scopes: ['knowledge.category.list'],
           token: {},
