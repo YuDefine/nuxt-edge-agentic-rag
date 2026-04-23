@@ -79,7 +79,7 @@ code:
   - shared/schemas/nickname.ts
   - server/api/admin/debug/latency/summary.get.ts
   - server/api/admin/documents/[id].delete.ts
-  - template/HANDOFF.md
+  - HANDOFF.md
   - server/utils/display-name-guard.ts
   - server/api/admin/settings/guest-policy.get.ts
   - server/plugins/error-sanitizer.ts
@@ -179,7 +179,7 @@ code:
   - shared/schemas/nickname.ts
   - server/api/admin/debug/latency/summary.get.ts
   - server/api/admin/documents/[id].delete.ts
-  - template/HANDOFF.md
+  - HANDOFF.md
   - server/utils/display-name-guard.ts
   - server/api/admin/settings/guest-policy.get.ts
   - server/plugins/error-sanitizer.ts
@@ -276,7 +276,7 @@ code:
   - shared/schemas/nickname.ts
   - server/api/admin/debug/latency/summary.get.ts
   - server/api/admin/documents/[id].delete.ts
-  - template/HANDOFF.md
+  - HANDOFF.md
   - server/utils/display-name-guard.ts
   - server/api/admin/settings/guest-policy.get.ts
   - server/plugins/error-sanitizer.ts
@@ -309,7 +309,7 @@ tests:
 
 ### Requirement: Bidirectional Credential Binding Under Authenticated Session
 
-The system SHALL allow any authenticated user to add a second credential type to their existing `user.id`: a Google-first user SHALL be able to register a passkey, and a passkey-first user SHALL be able to link a Google account. The system SHALL NOT auto-merge accounts across different `user.id` values.
+The system SHALL allow any authenticated user to add a second credential type to their existing `user.id`: a Google-first user SHALL be able to register a passkey via the better-auth `passkey` plugin, and a passkey-first user SHALL be able to link a Google account via the custom endpoint pair `GET /api/auth/account/link-google-for-passkey-first` and `GET /api/auth/account/link-google-for-passkey-first/callback`. The system SHALL NOT auto-merge accounts across different `user.id` values. The system SHALL NOT route passkey-first Google linking through the better-auth `linkSocial` endpoint because better-auth's `parseGenericState` requires `link.email` to be a non-null string and rejects passkey-first users whose `user.email IS NULL`.
 
 #### Scenario: Google-first user adds a passkey
 
@@ -317,97 +317,359 @@ The system SHALL allow any authenticated user to add a second credential type to
 - **THEN** the system inserts a `passkey` row bound to the current `user.id`
 - **AND** the user's subsequent logins SHALL succeed via either Google OAuth or passkey
 
-#### Scenario: Passkey-first user binds Google and email gets populated
+#### Scenario: Passkey-first user binds Google via custom endpoint and email gets populated
 
-- **WHEN** an authenticated user whose `user.email = NULL` completes a Google OAuth link flow at the account settings page AND the returned Google email is not already present in any other `user` row
-- **THEN** the system updates the current `user` row with `email = <google email>`
+- **WHEN** an authenticated user whose `user.email = NULL` clicks the "Link Google account" button at `/account/settings`
+- **THEN** the client SHALL redirect to `GET /api/auth/account/link-google-for-passkey-first`
+- **AND** that endpoint SHALL issue a one-time OAuth state token, persist it in KV under `oauth-link-state:<token>` with a TTL of 600 seconds and a payload containing the current `session.user.id`, set a `__Host-oauth-link-state` HttpOnly cookie with the same token, and redirect the user agent to the Google authorization URL
+- **AND** after the user authorizes Google, the callback `GET /api/auth/account/link-google-for-passkey-first/callback` SHALL verify the cookie matches the `state` query parameter, verify the KV entry exists and its `userId` matches the current `session.user.id`, delete the KV entry, exchange the authorization code for an id_token against `https://oauth2.googleapis.com/token`, verify the id_token signature against Google JWKS plus `iss` / `aud` / `exp`, read `email`, `email_verified`, and `picture` from the verified payload, confirm no other `user` row holds the returned email, confirm no other `account` row already holds the same Google `sub`, and atomically UPDATE the current `user` row with `email` and `image` and INSERT a corresponding `account` row with `providerId='google'`, `accountId` equal to the id_token `sub`, and `accessToken` / `refreshToken` / `idToken` / `scope` stored as `NULL` via a Drizzle transaction that respects `timestamp_ms` column mapping
 - **AND** on the next session refresh the `session.create.before` reconciliation SHALL evaluate `ADMIN_EMAIL_ALLOWLIST` against the newly populated email
 - **AND** if the email is in the allowlist the user SHALL be promoted to `admin` and the transition SHALL be audited with `reason = 'allowlist-seed'`
+- **AND** the callback SHALL redirect the user agent to `/account/settings?linked=google`
 
-#### Scenario: Google link is blocked when the Google email belongs to another user
+#### Scenario: Google link is blocked via custom endpoint when the Google identity already belongs to another user
 
-- **WHEN** an authenticated passkey-first user attempts to link a Google account whose email already exists as `user.email` on a different `user.id`
-- **THEN** the server SHALL respond with HTTP 409 and the email SHALL NOT be written to the current `user` row
-- **AND** the error body SHALL instruct the caller to sign out and log in to the existing Google account, then add a passkey there
+- **WHEN** an authenticated passkey-first user completes Google authorization and either the id_token email already exists as `user.email` on a different `user.id` OR the Google `sub` already exists on a different `account.userId`
+- **THEN** the callback SHALL delete the KV state entry, SHALL NOT write any row to `user` or `account`, and SHALL redirect the user agent to `/account/settings?linkError=EMAIL_ALREADY_LINKED`
+- **AND** the settings page SHALL render an inline error feedback alert instructing the user to sign out and log in to the existing Google account before adding a passkey there
+
+#### Scenario: Custom endpoint rejects unauthenticated or already-linked callers
+
+- **WHEN** an unauthenticated caller requests `GET /api/auth/account/link-google-for-passkey-first`
+- **THEN** the endpoint SHALL respond with HTTP 401 and SHALL NOT initiate any OAuth flow
+
+- **WHEN** an authenticated caller whose `session.user.email` is non-NULL requests `GET /api/auth/account/link-google-for-passkey-first`
+- **THEN** the endpoint SHALL respond with HTTP 400 with `statusMessage = 'INVALID_ENTRY_STATE'` and SHALL NOT initiate any OAuth flow
+
+#### Scenario: Custom endpoint rejects state mismatch or replay
+
+- **WHEN** the callback `GET /api/auth/account/link-google-for-passkey-first/callback` receives a request where the cookie `__Host-oauth-link-state` is absent or does not equal the `state` query parameter
+- **THEN** the callback SHALL respond with HTTP 401 with `statusMessage = 'STATE_MISMATCH'` and SHALL NOT exchange any authorization code
+
+- **WHEN** the callback receives a request whose `state` token has no corresponding KV entry (expired or already consumed)
+- **THEN** the callback SHALL respond with HTTP 401 with `statusMessage = 'STATE_EXPIRED'` and SHALL NOT exchange any authorization code
+
+- **WHEN** the callback receives a request whose KV entry `userId` does not match the current `session.user.id`
+- **THEN** the callback SHALL respond with HTTP 401 with `statusMessage = 'SESSION_MISMATCH'` and SHALL NOT exchange any authorization code
+
+#### Scenario: Custom endpoint rejects unverified Google email
+
+- **WHEN** the callback successfully exchanges the authorization code and the id_token payload has `email_verified !== true`
+- **THEN** the callback SHALL respond with HTTP 400 with `statusMessage = 'EMAIL_NOT_VERIFIED'` and SHALL NOT write any row to `user` or `account`
 
 <!-- @trace
-source: passkey-authentication
-updated: 2026-04-21
+source: passkey-first-link-google-custom-endpoint
+updated: 2026-04-23
 code:
-  - app/layouts/default.vue
-  - server/api/admin/documents/[id]/unarchive.post.ts
-  - docs/tech-debt.md
-  - server/api/admin/mcp-tokens/index.get.ts
-  - server/api/documents/sync.post.ts
-  - shared/types/admin-members.ts
-  - app/components/auth/PasskeyRegisterDialog.vue
-  - server/api/admin/mcp-tokens/index.post.ts
-  - app/pages/index.vue
-  - server/api/auth/account/delete.post.ts
-  - app/pages/account/settings.vue
-  - shared/types/nickname.ts
-  - server/api/auth/nickname/check.get.ts
-  - server/api/_dev/login.post.ts
-  - server/api/documents/[documentId]/versions/[versionId]/publish.post.ts
-  - .env.example
-  - app/pages/admin/members/index.vue
-  - server/api/admin/settings/guest-policy.patch.ts
-  - server/api/uploads/presign.post.ts
-  - server/api/uploads/finalize.post.ts
-  - main-v0.0.48.md
-  - app/utils/passkey-error.ts
-  - server/auth.config.ts
-  - server/api/admin/dashboard/summary.get.ts
-  - package.json
-  - server/api/admin/documents/[id]/archive.post.ts
-  - server/api/admin/documents/[id].get.ts
-  - nuxt.config.ts
-  - server/api/admin/documents/[id]/versions/[versionId]/retry-sync.post.ts
-  - server/api/guest-policy/effective.get.ts
-  - server/api/admin/debug/query-logs/[id].get.ts
-  - app/auth.config.ts
-  - app/components/admin/members/ConfirmRoleChangeDialog.vue
-  - app/components/auth/NicknameInput.vue
+  - references/yuntech/專題報告編排規範1141216.pdf
+  - .agents/skills/spectra-archive/SKILL.md
+  - local/tooling/scripts/clone_section.py
+  - scripts/spectra-ux/pre-propose-scan.sh
+  - .codex/skills/.system/imagegen/SKILL.md
+  - docs/verify/index.md
+  - .codex/skills/.system/skill-creator/scripts/generate_openai_yaml.py
+  - .codex/config.toml
+  - server/utils/link-google-for-passkey-first.ts
+  - docs/solutions/auth/better-auth-passkey-worker-catchall-override.md
+  - AGENTS.md
+  - docs/verify/KNOWLEDGE_SMOKE.md
+  - docs/solutions/tooling/posttooluse-hook-non-json-stdin.md
+  - docs/verify/RETENTION_REPLAY_CONTRACT.md
+  - local/tooling/scripts/office/__init__.py
+  - README.md
+  - local/tooling/scripts/legacy/transform_v36.py
+  - tooling/scripts/docx_rebuild_content.py
+  - .codex/skills/.system/plugin-creator/references/plugin-json-spec.md
+  - .codex/skills/.system/skill-creator/scripts/quick_validate.py
   - CLAUDE.md
+  - tooling/__init__.py
+  - local/reports/archive/main-v0.0.21.md
+  - reports/archive/main-v0.0.37.docx
+  - scripts/spectra-ux/design-gate.sh
+  - local/reports/archive/main-v0.0.16.md
+  - reports/archive/main-v0.0.26.md
+  - .codex/skills/.system/skill-installer/scripts/github_utils.py
+  - reports/archive/main-v0.0.12.md
+  - .agents/skills/spectra-propose/SKILL.md
+  - docs/verify/production-deploy-checklist.md
+  - .codex/skills/.system/imagegen/references/prompting.md
+  - server/api/auth/mcp/authorize.post.ts
+  - .agents/skills/spectra-ask/SKILL.md
+  - .codex/skills/.system/plugin-creator/scripts/create_basic_plugin.py
+  - .claude/rules/truth-layers.md
+  - app/pages/account/settings.vue
+  - local/海報樣板.pptx
+  - .claude/skills/
+  - .claude/rules/follow-up-register.md
+  - reports/archive/main-v0.0.29.md
+  - scripts/spectra-ux/claim-work.mts
+  - docs/verify/DEBUG_SURFACE_VERIFICATION.md
+  - .codex/skills/.system/imagegen/references/codex-network.md
+  - .codex/skills/.system/openai-docs/references/upgrading-to-gpt-5p4.md
+  - .codex/skills/.system/skill-creator/SKILL.md
+  - local/reports/archive/main-v0.0.36.md
+  - local/tooling/scripts/docx_sections.py
+  - tooling/scripts/docx_sections.py
+  - .codex/hooks/post-bash-error-debug.sh
+  - app/pages/auth/callback.vue
+  - local/reports/archive/main-v0.0.30.md
+  - app/components/chat/Container.vue
+  - local/reports/archive/main-v0.0.35.md
+  - docs/verify/evidence/web-chat-persistence.json
+  - local/reports/archive/main-v0.0.24.md
   - app/components/auth/DeleteAccountDialog.vue
-  - app/layouts/chat.vue
-  - server/api/admin/members/[userId].patch.ts
-  - server/api/admin/members/index.get.ts
-  - server/api/auth/me/credentials.get.ts
-  - server/api/documents/[documentId]/versions/[versionId]/index-status.get.ts
-  - server/database/migrations/0009_passkey_and_display_name.sql
-  - server/api/admin/mcp-tokens/[id].delete.ts
-  - server/api/admin/query-logs/[id].get.ts
-  - shared/schemas/nickname.ts
-  - server/api/admin/debug/latency/summary.get.ts
-  - server/api/admin/documents/[id].delete.ts
-  - template/HANDOFF.md
-  - server/utils/display-name-guard.ts
-  - server/api/admin/settings/guest-policy.get.ts
-  - server/plugins/error-sanitizer.ts
-  - server/db/schema.ts
-  - server/api/admin/query-logs/index.get.ts
-  - server/api/admin/documents/index.get.ts
-  - server/api/admin/documents/check-slug.get.ts
-  - server/api/setup/create-admin.post.ts
+  - scripts/spectra-ux/design-inject.sh
+  - tooling/scripts/__init__.py
+  - .codex/skills/.system/plugin-creator/agents/openai.yaml
+  - local/reports/archive/main-v0.0.11.docx
+  - reports/archive/main-v0.0.33.md
+  - app/components/auth/McpConnectorLoginCard.vue
+  - reports/archive/main-v0.0.14.md
+  - scripts/spectra-ux/ui-qa-reminder.sh
+  - .agents/skills/review-screenshot/SKILL.md
+  - local/tooling/requirements.txt
+  - .codex/skills/.system/imagegen/assets/imagegen-small.svg
+  - .codex/skills/.system/openai-docs/references/gpt-5p4-prompting-guide.md
+  - .codex/skills/.system/imagegen/references/image-api.md
+  - .codex/skills/.system/openai-docs/assets/openai-small.svg
+  - .codex/skills/.system/plugin-creator/SKILL.md
+  - .codex/skills/.system/skill-creator/assets/skill-creator.png
+  - local/reports/archive/main-v0.0.1.docx
+  - local/tooling/scripts/office/unpack.py
+  - docs/solutions/README.md
+  - tooling/scripts/clone_section.py
+  - .codex/skills/.system/skill-creator/assets/skill-creator-small.svg
+  - app/pages/admin/tokens/index.vue
+  - app/utils/chat-conversation-state.ts
+  - reports/archive/main-v0.0.13.md
+  - server/api/auth/account/link-google-for-passkey-first/callback.get.ts
+  - .codex/skills/.system/imagegen/references/sample-prompts.md
+  - .codex/skills/.system/skill-installer/LICENSE.txt
+  - .agents/skills/spectra-apply/SKILL.md
+  - app/components/admin/tokens/TokenCreateModal.vue
+  - reports/archive/main-v0.0.23.md
+  - reports/archive/main-v0.0.19.md
+  - tooling/scripts/sync_docx_content.py
+  - docs/verify/CONVERSATION_LIFECYCLE_VERIFICATION.md
+  - .codex/hooks/post-edit-ui-qa.sh
+  - tooling/scripts/extract_docx_to_md.py
+  - .agents/skills/commit/SKILL.md
+  - .codex/agents/code-review.toml
+  - local/reports/archive/main-v0.0.25.md
+  - app/components/auth/McpConnectorConsentCard.vue
+  - local/reports/archive/main-v0.0.18.md
+  - .codex/skills/.system/imagegen/LICENSE.txt
+  - .codex/skills/.system/skill-installer/assets/skill-installer-small.svg
+  - app/pages/index.vue
+  - reports/archive/main-v0.0.20.md
+  - AGENTS.md
+  - shared/utils/mcp-connector-client-registry.ts
+  - app/components/chat/ConversationHistory.vue
+  - app/composables/useChatConversationHistory.ts
+  - docs/decisions/index.md
+  - local/tooling/__init__.py
+  - .codex/skills/.system/.codex-system-skills.marker
+  - local/deliverables/defense/國立雲林科技大學人工智慧技優專班114學年實務專題審查.pdf
+  - local/reports/latest.md
+  - app/layouts/default.vue
+  - local/reports/archive/main-v0.0.13.md
+  - reports/archive/main-v0.0.21.md
+  - reports/archive/main-v0.0.34.md
+  - deliverables/defense/國立雲林科技大學人工智慧技優專班114學年實務專題審查.pdf
+  - reports/archive/main-v0.0.10.md
+  - .claude/rules/proactive-skills.md
+  - server/utils/debug-surface-guard.ts
+  - wrangler.staging.jsonc
+  - server/api/auth/mcp/authorize.get.ts
+  - local/reports/archive/main-v0.0.19.md
+  - local/reports/archive/main-v0.0.27.md
+  - local/reports/archive/main-v0.0.37.docx
+  - .agents/skills/spectra-debug/SKILL.md
+  - local/reports/archive/main-v0.0.34.md
+  - tooling/scripts/legacy/transform_v36.py
+  - local/reports/notes/diagram.md
+  - .claude/rules/scope-discipline.md
+  - local/reports/archive/main-v0.0.11.md
+  - local/references/yuntech/人工智慧實務專題書面成果報告內容規範1141216.pdf
+  - .codex/skills/.system/plugin-creator/assets/plugin-creator-small.svg
+  - .claude/rules/review-tiers.md
+  - .codex/skills/.system/skill-installer/assets/skill-installer.png
+  - local/reports/archive/main-v0.0.48.md
+  - local/tooling/scripts/office/pack.py
+  - tooling/scripts/clone_insert_docx.py
+  - .codex/hooks/session-start-roadmap-sync.sh
+  - scripts/spectra-ux/claims-lib.mts
+  - scripts/spectra-ux/post-propose-check.sh
+  - server/utils/better-auth-safe-logger.ts
+  - reports/archive/main-v0.0.11_assets/image1.jpeg
+  - .codex/skills/.system/plugin-creator/assets/plugin-creator.png
+  - .agents/skills/spectra-discuss/SKILL.md
+  - playwright.config.ts
+  - .codex/hooks/pre-archive-followup-gate.sh
+  - reports/latest.md
+  - .agents/skills/spectra-commit/SKILL.md
+  - local/tooling/scripts/docx_diff.py
+  - local/reports/archive/main-v0.0.10.md
+  - local/tooling/scripts/docx_rebuild_content.py
+  - tooling/scripts/docx_apply.py
+  - .codex/hooks/_codex_hook_wrapper.sh
+  - .agents/skills/spectra-audit/SKILL.md
+  - docs/verify/rollout-checklist.md
+  - docs/verify/DISASTER_RECOVERY_RUNBOOK.md
+  - reports/archive/main-v0.0.24.md
+  - reports/archive/main-v0.0.36.docx
+  - local/reports/archive/main-v0.0.33.md
+  - local/reports/archive/main-v0.0.14.md
+  - .codex/agents/screenshot-review.toml
+  - .codex/hooks/stop-accumulate.sh
+  - local/tooling/scripts/sync_docx_content.py
+  - reports/archive/main-v0.0.18.md
+  - local/references/yuntech/專題報告編排規範1141216.pdf
+  - app/composables/useChatConversationSession.ts
+  - app/pages/auth/mcp/authorize.vue
+  - reports/archive/main-v0.0.32.md
+  - reports/archive/main-v0.0.36.md
+  - scripts/spectra-ux/roadmap-sync.mts
+  - server/utils/passkey-verify-authentication.ts
+  - templates/海報樣板.pptx
+  - tooling/scripts/office/__init__.py
+  - tooling/scripts/office/pack.py
+  - .codex/skills/.system/imagegen/scripts/image_gen.py
+  - .codex/skills/.system/skill-creator/references/openai_yaml.md
+  - reports/archive/main-v0.0.15.md
+  - .codex/skills/.system/openai-docs/references/latest-model.md
+  - .codex/skills/.system/skill-installer/SKILL.md
+  - scripts/audit-ux-drift.mts
+  - tooling/scripts/docx_diff.py
+  - .claude/rules/ux-completeness.md
+  - local/reports/archive/main-v0.0.17.md
+  - server/api/auth/passkey/verify-authentication.post.ts
+  - local/tooling/scripts/docx_apply.py
+  - .codex/skills/.system/skill-creator/scripts/init_skill.py
+  - .codex/skills/.system/openai-docs/SKILL.md
+  - scripts/spectra-ux/pre-apply-brief.sh
+  - docs/solutions/auth/admin-allowlist-session-reconciliation.md
+  - shared/utils/mcp-connector-redirect.ts
+  - .agents/skills/spectra-ingest/SKILL.md
+  - local/reports/archive/main-v0.0.29.md
+  - docs/design-review-findings.md
+  - .codex/skills/.system/openai-docs/LICENSE.txt
+  - .codex/skills/.system/skill-creator/license.txt
+  - tooling/requirements.txt
+  - .codex/hooks.json
+  - local/reports/archive/main-v0.0.37.md
+  - local/reports/archive/main-v0.0.26.md
+  - scripts/spectra-ux/release-work.mts
+  - scripts/sync-docs-pages-domains.mjs
+  - server/api/auth/account/link-google-for-passkey-first/index.get.ts
+  - app/types/chat.ts
+  - reports/archive/main-v0.0.11.md
+  - .codex/skills/.system/imagegen/references/cli.md
+  - .claude/rules/knowledge-and-decisions.md
+  - docs/tech-debt.md
+  - docs/verify/ACCEPTANCE_RUNBOOK.md
+  - .codex/skills/.system/openai-docs/agents/openai.yaml
+  - scripts/spectra-ux/claims-status.mts
+  - references/yuntech/人工智慧實務專題書面成果報告內容規範1141216.pdf
+  - local/reports/archive/main-v0.0.11_assets/image1.jpeg
+  - local/tooling/scripts/extract_docx_to_md.py
+  - reports/archive/main-v0.0.25.md
+  - pnpm-workspace.yaml
+  - reports/archive/main-v0.0.28.md
+  - local/reports/archive/main-v0.0.12.md
+  - reports/archive/main-v0.0.48.md
+  - docs/runbooks/claude-desktop-mcp.md
+  - local/reports/archive/main-v0.0.31.md
+  - shared/schemas/knowledge-runtime.ts
+  - local/reports/archive/main-v0.0.36.docx
+  - .codex/skills/.system/skill-creator/agents/openai.yaml
+  - .claude/rules/handoff.md
+  - .codex/agents/check-runner.toml
+  - spectra-ux.config.json
+  - local/deliverables/defense/答辯準備_口試Q&A.md
+  - reports/archive/main-v0.0.30.md
+  - reports/archive/main-v0.0.27.md
+  - local/reports/archive/main-v0.0.50.md
+  - .codex/skills/.system/skill-installer/agents/openai.yaml
+  - server/utils/knowledge-runtime.ts
+  - .codex/skills/.system/openai-docs/assets/openai.png
+  - local/reports/archive/main-v0.0.23.md
+  - .codex/skills/.system/skill-installer/scripts/install-skill-from-github.py
+  - docs/verify/RETENTION_CLEANUP_RUNBOOK.md
+  - .codex/skills/.system/skill-installer/scripts/list-skills.py
+  - app/utils/mcp-connector-return-to.ts
+  - reports/archive/main-v0.0.37.md
+  - docs/verify/CONFIG_SNAPSHOT_VERIFICATION.md
+  - app/composables/useMcpConnectorAuthorization.ts
+  - docs/verify/WEB_CHAT_PERSISTENCE_VERIFICATION.md
+  - docs/decisions/2026-04-23-recognize-staging-as-active-environment.md
+  - .codex/skills/.system/imagegen/agents/openai.yaml
+  - reports/archive/main-v0.0.1.docx
+  - tooling/scripts/office/unpack.py
+  - local/reports/archive/main-v0.0.49.md
+  - .claude/rules/screenshot-strategy.md
+  - .claude/rules/work-claims.md
+  - reports/archive/main-v0.0.11.docx
+  - .github/workflows/deploy.yml
+  - reports/archive/main-v0.0.49.md
+  - local/reports/archive/main-v0.0.22.md
+  - reports/archive/main-v0.0.50.md
+  - local/tooling/scripts/clone_insert_docx.py
+  - reports/archive/main-v0.0.35.md
+  - .codex/hooks/pre-archive-design-gate.sh
+  - reports/archive/main-v0.0.17.md
+  - reports/archive/main-v0.0.31.md
+  - .codex/hooks/post-propose-design-inject.sh
+  - docs/solutions/auth/passkey-self-delete-hard-redirect.md
+  - local/reports/archive/main-v0.0.15.md
+  - reports/notes/diagram.md
+  - server/auth.config.ts
+  - app/utils/chat-conversation-loader.ts
+  - server/utils/database.ts
+  - .codex/hooks/post-edit-roadmap-sync.sh
+  - package.json
+  - shared/utils/link-google-for-passkey-first.ts
+  - HANDOFF.md
+  - .codex/skills/.system/imagegen/assets/imagegen.png
+  - docs/verify/DEPLOYMENT_RUNBOOK.md
+  - GEMINI.md
+  - reports/archive/main-v0.0.22.md
+  - deliverables/defense/答辯準備_口試Q&A.md
+  - local/tooling/scripts/__init__.py
+  - reports/archive/main-v0.0.16.md
+  - local/reports/archive/main-v0.0.28.md
+  - .claude/rules/manual-review.md
+  - docs/verify/RETENTION_CLEANUP_VERIFICATION.md
+  - local/reports/archive/main-v0.0.20.md
+  - nuxt.config.ts
+  - local/reports/archive/main-v0.0.32.md
 tests:
-  - e2e/passkey-login-ui.spec.ts
-  - test/integration/nickname-check.spec.ts
-  - test/integration/admin-members-passkey-columns.spec.ts
-  - e2e/passkey-signin-flow.spec.ts
-  - test/integration/passkey-first-registration.spec.ts
-  - test/integration/three-tier-role-enum.spec.ts
-  - e2e/account-self-delete.spec.ts
-  - test/unit/passkey-session-reconciliation.test.ts
-  - test/unit/admin-members-row-render.test.ts
-  - e2e/passkey-auth-review.spec.ts
-  - test/integration/account-self-delete.spec.ts
-  - test/integration/passkey-authentication-flow.spec.ts
-  - test/integration/credential-binding.spec.ts
-  - test/integration/admin-members-list.spec.ts
-  - test/integration/admin-member-promotion.spec.ts
-  - test/unit/nickname-input.test.ts
-  - e2e/account-settings.spec.ts
+  - test/unit/chat-conversation-history.test.ts
+  - tooling/tests/test_extract_docx_to_md.py
+  - test/unit/oauth-callback.spec.ts
+  - test/integration/mcp-connector-authorize-route.test.ts
+  - test/unit/better-auth-passkey-hotfix-version.test.ts
+  - test/unit/link-google-for-passkey-first-initiator.test.ts
+  - test/integration/mcp-connector-authorize-post-account-guard.test.ts
+  - test/unit/knowledge-runtime-config.test.ts
+  - test/unit/mcp-connector-client-registry.test.ts
+  - test/unit/mcp-connector-redirect.test.ts
+  - test/unit/better-auth-safe-logger.test.ts
+  - test/integration/passkey-first-link-google.spec.ts
+  - test/unit/passkey-verify-authentication.test.ts
+  - test/unit/better-auth-worker-cookie-cache-hotfix.test.ts
+  - e2e/mcp-connector-authorize.spec.ts
+  - test/unit/database.test.ts
+  - test/integration/mcp-oauth-tool-access.test.ts
+  - local/tooling/tests/test_extract_docx_to_md.py
+  - test/integration/passkey-verify-authentication-hotfix.spec.ts
+  - local/tooling/tests/test_office_pack_unpack.py
+  - test/unit/chat-conversation-session.test.ts
+  - test/unit/chat-conversation-state.test.ts
+  - test/unit/deploy-workflow-config.test.ts
+  - e2e/chat-persistence.spec.ts
+  - tooling/tests/test_office_pack_unpack.py
+  - test/unit/deploy-workflow-passkey-env.test.ts
 -->
 
 ---
@@ -490,8 +752,8 @@ code:
   - docs/runbooks/claude-desktop-mcp.md
   - app/components/auth/DeleteAccountDialog.vue
   - .codex/hooks/pre-archive-followup-gate.sh
-  - template/HANDOFF.md
-  - .github/instructions/skills.instructions.md
+  - HANDOFF.md
+  - .claude/skills/
   - server/utils/better-auth-safe-logger.ts
   - docs/verify/DEPLOYMENT_RUNBOOK.md
   - server/api/auth/mcp/authorize.get.ts
@@ -503,7 +765,7 @@ code:
   - shared/utils/mcp-connector-redirect.ts
   - .agents/skills/spectra-apply/SKILL.md
   - deliverables/defense/答辯準備_口試Q&A.md
-  - .github/instructions/follow_up_register.instructions.md
+  - .claude/rules/follow-up-register.md
   - app/pages/admin/tokens/index.vue
   - server/api/auth/mcp/authorize.post.ts
   - app/components/admin/tokens/TokenCreateModal.vue
@@ -515,15 +777,15 @@ code:
   - docs/solutions/tooling/posttooluse-hook-non-json-stdin.md
   - docs/tech-debt.md
   - CLAUDE.md
-  - .github/instructions/proactive_skills.instructions.md
+  - .claude/rules/proactive-skills.md
   - package.json
   - .agents/skills/spectra-commit/SKILL.md
   - .codex/hooks.json
-  - .github/copilot-instructions.md
+  - AGENTS.md
   - app/composables/useMcpConnectorAuthorization.ts
   - .agents/skills/spectra-ingest/SKILL.md
   - pnpm-workspace.yaml
-  - .github/instructions/scope_discipline.instructions.md
+  - .claude/rules/scope-discipline.md
   - .github/workflows/deploy.yml
 tests:
   - test/unit/better-auth-passkey-hotfix-version.test.ts
@@ -608,7 +870,7 @@ code:
   - shared/schemas/nickname.ts
   - server/api/admin/debug/latency/summary.get.ts
   - server/api/admin/documents/[id].delete.ts
-  - template/HANDOFF.md
+  - HANDOFF.md
   - server/utils/display-name-guard.ts
   - server/api/admin/settings/guest-policy.get.ts
   - server/plugins/error-sanitizer.ts

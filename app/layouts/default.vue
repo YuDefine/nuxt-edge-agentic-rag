@@ -130,11 +130,5 @@
         <slot />
       </UContainer>
     </main>
-
-    <footer class="border-t border-default py-4">
-      <UContainer>
-        <p class="text-center text-xs text-muted">© 2026 知識問答系統</p>
-      </UContainer>
-    </footer>
   </div>
 </template>

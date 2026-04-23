@@ -218,8 +218,6 @@
             使用 Passkey 註冊新帳號
           </UButton>
         </template>
-
-        <p class="text-center text-xs text-muted">首次登入後，系統會根據帳號設定自動指派角色。</p>
       </div>
     </UCard>
 

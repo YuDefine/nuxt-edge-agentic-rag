@@ -149,7 +149,7 @@ code:
   - shared/schemas/nickname.ts
   - server/api/admin/debug/latency/summary.get.ts
   - server/api/admin/documents/[id].delete.ts
-  - template/HANDOFF.md
+  - HANDOFF.md
   - server/utils/display-name-guard.ts
   - server/api/admin/settings/guest-policy.get.ts
   - server/plugins/error-sanitizer.ts
@@ -255,7 +255,7 @@ code:
   - shared/schemas/nickname.ts
   - server/api/admin/debug/latency/summary.get.ts
   - server/api/admin/documents/[id].delete.ts
-  - template/HANDOFF.md
+  - HANDOFF.md
   - server/utils/display-name-guard.ts
   - server/api/admin/settings/guest-policy.get.ts
   - server/plugins/error-sanitizer.ts
@@ -359,7 +359,7 @@ code:
   - shared/schemas/nickname.ts
   - server/api/admin/debug/latency/summary.get.ts
   - server/api/admin/documents/[id].delete.ts
-  - template/HANDOFF.md
+  - HANDOFF.md
   - server/utils/display-name-guard.ts
   - server/api/admin/settings/guest-policy.get.ts
   - server/plugins/error-sanitizer.ts
@@ -459,8 +459,8 @@ code:
   - docs/runbooks/claude-desktop-mcp.md
   - app/components/auth/DeleteAccountDialog.vue
   - .codex/hooks/pre-archive-followup-gate.sh
-  - template/HANDOFF.md
-  - .github/instructions/skills.instructions.md
+  - HANDOFF.md
+  - .claude/skills/
   - server/utils/better-auth-safe-logger.ts
   - docs/verify/DEPLOYMENT_RUNBOOK.md
   - server/api/auth/mcp/authorize.get.ts
@@ -472,7 +472,7 @@ code:
   - shared/utils/mcp-connector-redirect.ts
   - .agents/skills/spectra-apply/SKILL.md
   - deliverables/defense/答辯準備_口試Q&A.md
-  - .github/instructions/follow_up_register.instructions.md
+  - .claude/rules/follow-up-register.md
   - app/pages/admin/tokens/index.vue
   - server/api/auth/mcp/authorize.post.ts
   - app/components/admin/tokens/TokenCreateModal.vue
@@ -484,15 +484,15 @@ code:
   - docs/solutions/tooling/posttooluse-hook-non-json-stdin.md
   - docs/tech-debt.md
   - CLAUDE.md
-  - .github/instructions/proactive_skills.instructions.md
+  - .claude/rules/proactive-skills.md
   - package.json
   - .agents/skills/spectra-commit/SKILL.md
   - .codex/hooks.json
-  - .github/copilot-instructions.md
+  - AGENTS.md
   - app/composables/useMcpConnectorAuthorization.ts
   - .agents/skills/spectra-ingest/SKILL.md
   - pnpm-workspace.yaml
-  - .github/instructions/scope_discipline.instructions.md
+  - .claude/rules/scope-discipline.md
   - .github/workflows/deploy.yml
 tests:
   - test/unit/better-auth-passkey-hotfix-version.test.ts
@@ -572,8 +572,8 @@ code:
   - docs/runbooks/claude-desktop-mcp.md
   - app/components/auth/DeleteAccountDialog.vue
   - .codex/hooks/pre-archive-followup-gate.sh
-  - template/HANDOFF.md
-  - .github/instructions/skills.instructions.md
+  - HANDOFF.md
+  - .claude/skills/
   - server/utils/better-auth-safe-logger.ts
   - docs/verify/DEPLOYMENT_RUNBOOK.md
   - server/api/auth/mcp/authorize.get.ts
@@ -585,7 +585,7 @@ code:
   - shared/utils/mcp-connector-redirect.ts
   - .agents/skills/spectra-apply/SKILL.md
   - deliverables/defense/答辯準備_口試Q&A.md
-  - .github/instructions/follow_up_register.instructions.md
+  - .claude/rules/follow-up-register.md
   - app/pages/admin/tokens/index.vue
   - server/api/auth/mcp/authorize.post.ts
   - app/components/admin/tokens/TokenCreateModal.vue
@@ -597,15 +597,15 @@ code:
   - docs/solutions/tooling/posttooluse-hook-non-json-stdin.md
   - docs/tech-debt.md
   - CLAUDE.md
-  - .github/instructions/proactive_skills.instructions.md
+  - .claude/rules/proactive-skills.md
   - package.json
   - .agents/skills/spectra-commit/SKILL.md
   - .codex/hooks.json
-  - .github/copilot-instructions.md
+  - AGENTS.md
   - app/composables/useMcpConnectorAuthorization.ts
   - .agents/skills/spectra-ingest/SKILL.md
   - pnpm-workspace.yaml
-  - .github/instructions/scope_discipline.instructions.md
+  - .claude/rules/scope-discipline.md
   - .github/workflows/deploy.yml
 tests:
   - test/unit/better-auth-passkey-hotfix-version.test.ts
@@ -621,4 +621,676 @@ tests:
   - test/unit/passkey-verify-authentication.test.ts
   - test/unit/deploy-workflow-passkey-env.test.ts
   - test/unit/mcp-connector-redirect.test.ts
+-->
+
+---
+
+### Requirement: Custom Google Link Endpoint Writes Match Drizzle Timestamp Affinity
+
+The custom OAuth link endpoint `GET /api/auth/account/link-google-for-passkey-first/callback` SHALL write `user.updatedAt`, `account.createdAt`, and `account.updatedAt` as integer millisecond epochs so that the stored D1 values retain `INTEGER` affinity consistent with the drizzle `timestamp_ms` declaration and with the existing Better-auth Tables Storage Type Matches Drizzle Declaration requirement.
+
+#### Scenario: New account row inserted by custom endpoint stores integer timestamps
+
+- **WHEN** a passkey-first user successfully completes the custom Google link flow
+- **THEN** `SELECT typeof(createdAt), typeof(updatedAt) FROM account WHERE userId = <session.user.id> AND providerId = 'google'` SHALL return `'integer'` for both columns
+- **AND** `SELECT typeof(updatedAt) FROM user WHERE id = <session.user.id>` SHALL return `'integer'`
+
+#### Scenario: Atomic transactional write preserves FK integrity
+
+- **WHEN** the custom endpoint executes the Drizzle transaction that updates `user` and inserts `account`
+- **THEN** either both statements SHALL commit or both SHALL roll back
+- **AND** after a successful commit `PRAGMA foreign_key_check` SHALL return zero rows
+- **AND** after a failed transaction the `user` row SHALL retain its pre-flow `email` value (NULL) and no `account` row with `providerId = 'google'` for that `userId` SHALL exist
+
+<!-- @trace
+source: passkey-first-link-google-custom-endpoint
+updated: 2026-04-23
+code:
+  - references/yuntech/專題報告編排規範1141216.pdf
+  - .agents/skills/spectra-archive/SKILL.md
+  - local/tooling/scripts/clone_section.py
+  - scripts/spectra-ux/pre-propose-scan.sh
+  - .codex/skills/.system/imagegen/SKILL.md
+  - docs/verify/index.md
+  - .codex/skills/.system/skill-creator/scripts/generate_openai_yaml.py
+  - .codex/config.toml
+  - server/utils/link-google-for-passkey-first.ts
+  - docs/solutions/auth/better-auth-passkey-worker-catchall-override.md
+  - AGENTS.md
+  - docs/verify/KNOWLEDGE_SMOKE.md
+  - docs/solutions/tooling/posttooluse-hook-non-json-stdin.md
+  - docs/verify/RETENTION_REPLAY_CONTRACT.md
+  - local/tooling/scripts/office/__init__.py
+  - README.md
+  - local/tooling/scripts/legacy/transform_v36.py
+  - tooling/scripts/docx_rebuild_content.py
+  - .codex/skills/.system/plugin-creator/references/plugin-json-spec.md
+  - .codex/skills/.system/skill-creator/scripts/quick_validate.py
+  - CLAUDE.md
+  - tooling/__init__.py
+  - local/reports/archive/main-v0.0.21.md
+  - reports/archive/main-v0.0.37.docx
+  - scripts/spectra-ux/design-gate.sh
+  - local/reports/archive/main-v0.0.16.md
+  - reports/archive/main-v0.0.26.md
+  - .codex/skills/.system/skill-installer/scripts/github_utils.py
+  - reports/archive/main-v0.0.12.md
+  - .agents/skills/spectra-propose/SKILL.md
+  - docs/verify/production-deploy-checklist.md
+  - .codex/skills/.system/imagegen/references/prompting.md
+  - server/api/auth/mcp/authorize.post.ts
+  - .agents/skills/spectra-ask/SKILL.md
+  - .codex/skills/.system/plugin-creator/scripts/create_basic_plugin.py
+  - .claude/rules/truth-layers.md
+  - app/pages/account/settings.vue
+  - local/海報樣板.pptx
+  - .claude/skills/
+  - .claude/rules/follow-up-register.md
+  - reports/archive/main-v0.0.29.md
+  - scripts/spectra-ux/claim-work.mts
+  - docs/verify/DEBUG_SURFACE_VERIFICATION.md
+  - .codex/skills/.system/imagegen/references/codex-network.md
+  - .codex/skills/.system/openai-docs/references/upgrading-to-gpt-5p4.md
+  - .codex/skills/.system/skill-creator/SKILL.md
+  - local/reports/archive/main-v0.0.36.md
+  - local/tooling/scripts/docx_sections.py
+  - tooling/scripts/docx_sections.py
+  - .codex/hooks/post-bash-error-debug.sh
+  - app/pages/auth/callback.vue
+  - local/reports/archive/main-v0.0.30.md
+  - app/components/chat/Container.vue
+  - local/reports/archive/main-v0.0.35.md
+  - docs/verify/evidence/web-chat-persistence.json
+  - local/reports/archive/main-v0.0.24.md
+  - app/components/auth/DeleteAccountDialog.vue
+  - scripts/spectra-ux/design-inject.sh
+  - tooling/scripts/__init__.py
+  - .codex/skills/.system/plugin-creator/agents/openai.yaml
+  - local/reports/archive/main-v0.0.11.docx
+  - reports/archive/main-v0.0.33.md
+  - app/components/auth/McpConnectorLoginCard.vue
+  - reports/archive/main-v0.0.14.md
+  - scripts/spectra-ux/ui-qa-reminder.sh
+  - .agents/skills/review-screenshot/SKILL.md
+  - local/tooling/requirements.txt
+  - .codex/skills/.system/imagegen/assets/imagegen-small.svg
+  - .codex/skills/.system/openai-docs/references/gpt-5p4-prompting-guide.md
+  - .codex/skills/.system/imagegen/references/image-api.md
+  - .codex/skills/.system/openai-docs/assets/openai-small.svg
+  - .codex/skills/.system/plugin-creator/SKILL.md
+  - .codex/skills/.system/skill-creator/assets/skill-creator.png
+  - local/reports/archive/main-v0.0.1.docx
+  - local/tooling/scripts/office/unpack.py
+  - docs/solutions/README.md
+  - tooling/scripts/clone_section.py
+  - .codex/skills/.system/skill-creator/assets/skill-creator-small.svg
+  - app/pages/admin/tokens/index.vue
+  - app/utils/chat-conversation-state.ts
+  - reports/archive/main-v0.0.13.md
+  - server/api/auth/account/link-google-for-passkey-first/callback.get.ts
+  - .codex/skills/.system/imagegen/references/sample-prompts.md
+  - .codex/skills/.system/skill-installer/LICENSE.txt
+  - .agents/skills/spectra-apply/SKILL.md
+  - app/components/admin/tokens/TokenCreateModal.vue
+  - reports/archive/main-v0.0.23.md
+  - reports/archive/main-v0.0.19.md
+  - tooling/scripts/sync_docx_content.py
+  - docs/verify/CONVERSATION_LIFECYCLE_VERIFICATION.md
+  - .codex/hooks/post-edit-ui-qa.sh
+  - tooling/scripts/extract_docx_to_md.py
+  - .agents/skills/commit/SKILL.md
+  - .codex/agents/code-review.toml
+  - local/reports/archive/main-v0.0.25.md
+  - app/components/auth/McpConnectorConsentCard.vue
+  - local/reports/archive/main-v0.0.18.md
+  - .codex/skills/.system/imagegen/LICENSE.txt
+  - .codex/skills/.system/skill-installer/assets/skill-installer-small.svg
+  - app/pages/index.vue
+  - reports/archive/main-v0.0.20.md
+  - AGENTS.md
+  - shared/utils/mcp-connector-client-registry.ts
+  - app/components/chat/ConversationHistory.vue
+  - app/composables/useChatConversationHistory.ts
+  - docs/decisions/index.md
+  - local/tooling/__init__.py
+  - .codex/skills/.system/.codex-system-skills.marker
+  - local/deliverables/defense/國立雲林科技大學人工智慧技優專班114學年實務專題審查.pdf
+  - local/reports/latest.md
+  - app/layouts/default.vue
+  - local/reports/archive/main-v0.0.13.md
+  - reports/archive/main-v0.0.21.md
+  - reports/archive/main-v0.0.34.md
+  - deliverables/defense/國立雲林科技大學人工智慧技優專班114學年實務專題審查.pdf
+  - reports/archive/main-v0.0.10.md
+  - .claude/rules/proactive-skills.md
+  - server/utils/debug-surface-guard.ts
+  - wrangler.staging.jsonc
+  - server/api/auth/mcp/authorize.get.ts
+  - local/reports/archive/main-v0.0.19.md
+  - local/reports/archive/main-v0.0.27.md
+  - local/reports/archive/main-v0.0.37.docx
+  - .agents/skills/spectra-debug/SKILL.md
+  - local/reports/archive/main-v0.0.34.md
+  - tooling/scripts/legacy/transform_v36.py
+  - local/reports/notes/diagram.md
+  - .claude/rules/scope-discipline.md
+  - local/reports/archive/main-v0.0.11.md
+  - local/references/yuntech/人工智慧實務專題書面成果報告內容規範1141216.pdf
+  - .codex/skills/.system/plugin-creator/assets/plugin-creator-small.svg
+  - .claude/rules/review-tiers.md
+  - .codex/skills/.system/skill-installer/assets/skill-installer.png
+  - local/reports/archive/main-v0.0.48.md
+  - local/tooling/scripts/office/pack.py
+  - tooling/scripts/clone_insert_docx.py
+  - .codex/hooks/session-start-roadmap-sync.sh
+  - scripts/spectra-ux/claims-lib.mts
+  - scripts/spectra-ux/post-propose-check.sh
+  - server/utils/better-auth-safe-logger.ts
+  - reports/archive/main-v0.0.11_assets/image1.jpeg
+  - .codex/skills/.system/plugin-creator/assets/plugin-creator.png
+  - .agents/skills/spectra-discuss/SKILL.md
+  - playwright.config.ts
+  - .codex/hooks/pre-archive-followup-gate.sh
+  - reports/latest.md
+  - .agents/skills/spectra-commit/SKILL.md
+  - local/tooling/scripts/docx_diff.py
+  - local/reports/archive/main-v0.0.10.md
+  - local/tooling/scripts/docx_rebuild_content.py
+  - tooling/scripts/docx_apply.py
+  - .codex/hooks/_codex_hook_wrapper.sh
+  - .agents/skills/spectra-audit/SKILL.md
+  - docs/verify/rollout-checklist.md
+  - docs/verify/DISASTER_RECOVERY_RUNBOOK.md
+  - reports/archive/main-v0.0.24.md
+  - reports/archive/main-v0.0.36.docx
+  - local/reports/archive/main-v0.0.33.md
+  - local/reports/archive/main-v0.0.14.md
+  - .codex/agents/screenshot-review.toml
+  - .codex/hooks/stop-accumulate.sh
+  - local/tooling/scripts/sync_docx_content.py
+  - reports/archive/main-v0.0.18.md
+  - local/references/yuntech/專題報告編排規範1141216.pdf
+  - app/composables/useChatConversationSession.ts
+  - app/pages/auth/mcp/authorize.vue
+  - reports/archive/main-v0.0.32.md
+  - reports/archive/main-v0.0.36.md
+  - scripts/spectra-ux/roadmap-sync.mts
+  - server/utils/passkey-verify-authentication.ts
+  - templates/海報樣板.pptx
+  - tooling/scripts/office/__init__.py
+  - tooling/scripts/office/pack.py
+  - .codex/skills/.system/imagegen/scripts/image_gen.py
+  - .codex/skills/.system/skill-creator/references/openai_yaml.md
+  - reports/archive/main-v0.0.15.md
+  - .codex/skills/.system/openai-docs/references/latest-model.md
+  - .codex/skills/.system/skill-installer/SKILL.md
+  - scripts/audit-ux-drift.mts
+  - tooling/scripts/docx_diff.py
+  - .claude/rules/ux-completeness.md
+  - local/reports/archive/main-v0.0.17.md
+  - server/api/auth/passkey/verify-authentication.post.ts
+  - local/tooling/scripts/docx_apply.py
+  - .codex/skills/.system/skill-creator/scripts/init_skill.py
+  - .codex/skills/.system/openai-docs/SKILL.md
+  - scripts/spectra-ux/pre-apply-brief.sh
+  - docs/solutions/auth/admin-allowlist-session-reconciliation.md
+  - shared/utils/mcp-connector-redirect.ts
+  - .agents/skills/spectra-ingest/SKILL.md
+  - local/reports/archive/main-v0.0.29.md
+  - docs/design-review-findings.md
+  - .codex/skills/.system/openai-docs/LICENSE.txt
+  - .codex/skills/.system/skill-creator/license.txt
+  - tooling/requirements.txt
+  - .codex/hooks.json
+  - local/reports/archive/main-v0.0.37.md
+  - local/reports/archive/main-v0.0.26.md
+  - scripts/spectra-ux/release-work.mts
+  - scripts/sync-docs-pages-domains.mjs
+  - server/api/auth/account/link-google-for-passkey-first/index.get.ts
+  - app/types/chat.ts
+  - reports/archive/main-v0.0.11.md
+  - .codex/skills/.system/imagegen/references/cli.md
+  - .claude/rules/knowledge-and-decisions.md
+  - docs/tech-debt.md
+  - docs/verify/ACCEPTANCE_RUNBOOK.md
+  - .codex/skills/.system/openai-docs/agents/openai.yaml
+  - scripts/spectra-ux/claims-status.mts
+  - references/yuntech/人工智慧實務專題書面成果報告內容規範1141216.pdf
+  - local/reports/archive/main-v0.0.11_assets/image1.jpeg
+  - local/tooling/scripts/extract_docx_to_md.py
+  - reports/archive/main-v0.0.25.md
+  - pnpm-workspace.yaml
+  - reports/archive/main-v0.0.28.md
+  - local/reports/archive/main-v0.0.12.md
+  - reports/archive/main-v0.0.48.md
+  - docs/runbooks/claude-desktop-mcp.md
+  - local/reports/archive/main-v0.0.31.md
+  - shared/schemas/knowledge-runtime.ts
+  - local/reports/archive/main-v0.0.36.docx
+  - .codex/skills/.system/skill-creator/agents/openai.yaml
+  - .claude/rules/handoff.md
+  - .codex/agents/check-runner.toml
+  - spectra-ux.config.json
+  - local/deliverables/defense/答辯準備_口試Q&A.md
+  - reports/archive/main-v0.0.30.md
+  - reports/archive/main-v0.0.27.md
+  - local/reports/archive/main-v0.0.50.md
+  - .codex/skills/.system/skill-installer/agents/openai.yaml
+  - server/utils/knowledge-runtime.ts
+  - .codex/skills/.system/openai-docs/assets/openai.png
+  - local/reports/archive/main-v0.0.23.md
+  - .codex/skills/.system/skill-installer/scripts/install-skill-from-github.py
+  - docs/verify/RETENTION_CLEANUP_RUNBOOK.md
+  - .codex/skills/.system/skill-installer/scripts/list-skills.py
+  - app/utils/mcp-connector-return-to.ts
+  - reports/archive/main-v0.0.37.md
+  - docs/verify/CONFIG_SNAPSHOT_VERIFICATION.md
+  - app/composables/useMcpConnectorAuthorization.ts
+  - docs/verify/WEB_CHAT_PERSISTENCE_VERIFICATION.md
+  - docs/decisions/2026-04-23-recognize-staging-as-active-environment.md
+  - .codex/skills/.system/imagegen/agents/openai.yaml
+  - reports/archive/main-v0.0.1.docx
+  - tooling/scripts/office/unpack.py
+  - local/reports/archive/main-v0.0.49.md
+  - .claude/rules/screenshot-strategy.md
+  - .claude/rules/work-claims.md
+  - reports/archive/main-v0.0.11.docx
+  - .github/workflows/deploy.yml
+  - reports/archive/main-v0.0.49.md
+  - local/reports/archive/main-v0.0.22.md
+  - reports/archive/main-v0.0.50.md
+  - local/tooling/scripts/clone_insert_docx.py
+  - reports/archive/main-v0.0.35.md
+  - .codex/hooks/pre-archive-design-gate.sh
+  - reports/archive/main-v0.0.17.md
+  - reports/archive/main-v0.0.31.md
+  - .codex/hooks/post-propose-design-inject.sh
+  - docs/solutions/auth/passkey-self-delete-hard-redirect.md
+  - local/reports/archive/main-v0.0.15.md
+  - reports/notes/diagram.md
+  - server/auth.config.ts
+  - app/utils/chat-conversation-loader.ts
+  - server/utils/database.ts
+  - .codex/hooks/post-edit-roadmap-sync.sh
+  - package.json
+  - shared/utils/link-google-for-passkey-first.ts
+  - HANDOFF.md
+  - .codex/skills/.system/imagegen/assets/imagegen.png
+  - docs/verify/DEPLOYMENT_RUNBOOK.md
+  - GEMINI.md
+  - reports/archive/main-v0.0.22.md
+  - deliverables/defense/答辯準備_口試Q&A.md
+  - local/tooling/scripts/__init__.py
+  - reports/archive/main-v0.0.16.md
+  - local/reports/archive/main-v0.0.28.md
+  - .claude/rules/manual-review.md
+  - docs/verify/RETENTION_CLEANUP_VERIFICATION.md
+  - local/reports/archive/main-v0.0.20.md
+  - nuxt.config.ts
+  - local/reports/archive/main-v0.0.32.md
+tests:
+  - test/unit/chat-conversation-history.test.ts
+  - tooling/tests/test_extract_docx_to_md.py
+  - test/unit/oauth-callback.spec.ts
+  - test/integration/mcp-connector-authorize-route.test.ts
+  - test/unit/better-auth-passkey-hotfix-version.test.ts
+  - test/unit/link-google-for-passkey-first-initiator.test.ts
+  - test/integration/mcp-connector-authorize-post-account-guard.test.ts
+  - test/unit/knowledge-runtime-config.test.ts
+  - test/unit/mcp-connector-client-registry.test.ts
+  - test/unit/mcp-connector-redirect.test.ts
+  - test/unit/better-auth-safe-logger.test.ts
+  - test/integration/passkey-first-link-google.spec.ts
+  - test/unit/passkey-verify-authentication.test.ts
+  - test/unit/better-auth-worker-cookie-cache-hotfix.test.ts
+  - e2e/mcp-connector-authorize.spec.ts
+  - test/unit/database.test.ts
+  - test/integration/mcp-oauth-tool-access.test.ts
+  - local/tooling/tests/test_extract_docx_to_md.py
+  - test/integration/passkey-verify-authentication-hotfix.spec.ts
+  - local/tooling/tests/test_office_pack_unpack.py
+  - test/unit/chat-conversation-session.test.ts
+  - test/unit/chat-conversation-state.test.ts
+  - test/unit/deploy-workflow-config.test.ts
+  - e2e/chat-persistence.spec.ts
+  - tooling/tests/test_office_pack_unpack.py
+  - test/unit/deploy-workflow-passkey-env.test.ts
+-->
+
+---
+
+### Requirement: Credentials And Member List Endpoints Use Portable ORM Layer
+
+The DB read paths for `GET /api/auth/me/credentials` and `GET /api/admin/members` SHALL use the drizzle query builder (`db.select(...).from(...).where(...)` and related chain methods) for every SQL operation. These endpoints SHALL NOT use the D1-dialect-specific `db.all(sql\`...\`)` tagged-template API, because that API is not supported by the local-dev libsql driver and causes every request to return HTTP 500 in local development.
+
+This requirement SHALL apply to every query the handler issues, including count queries, list queries, aggregation queries, and any per-page lookup queries. The handler SHALL be allowed to use `drizzle-orm` helpers such as `count()`, `eq()`, `and()`, `inArray()`, `max()`, `desc()`, `asc()`, and `groupBy()` because these build portable SQL through the same query builder.
+
+#### Scenario: Credentials endpoint works in local dev
+
+- **WHEN** a developer runs `pnpm dev` locally and an authenticated user requests `GET /api/auth/me/credentials`
+- **THEN** the endpoint SHALL respond with HTTP 200
+- **AND** the response body SHALL contain `{ data: { email, displayName, hasGoogle, passkeys } }` with values matching the user's better-auth records
+- **AND** the handler SHALL NOT throw `TypeError: db.all is not a function` or equivalent driver incompatibility errors
+
+#### Scenario: Admin member list works in local dev
+
+- **WHEN** a developer runs `pnpm dev` locally and an admin requests `GET /api/admin/members`
+- **THEN** the endpoint SHALL respond with HTTP 200
+- **AND** the response body SHALL contain `{ data: AdminMemberRow[], pagination: { page, pageSize, total } }` with paginated user rows
+- **AND** each row SHALL include `displayName`, `credentialTypes`, `registeredAt`, and `lastActivityAt` with the same shape as the production response
+- **AND** the handler SHALL NOT throw `TypeError: db.all is not a function` or equivalent driver incompatibility errors
+
+#### Scenario: Production D1 response shape unchanged
+
+- **WHEN** the same endpoints are called against production Cloudflare D1
+- **THEN** the response shape, field names, field types, status codes, and error messages SHALL be byte-for-byte identical to the pre-refactor behavior
+- **AND** existing integration tests `test/integration/admin-members-list.spec.ts` and `test/integration/admin-members-passkey-columns.spec.ts` (rewritten to mock the drizzle query builder chain) SHALL all pass
+
+#### Scenario: Handler returns 404 when user row missing
+
+- **WHEN** an authenticated session references a `userId` that no longer exists in the `user` table
+- **AND** the client requests `GET /api/auth/me/credentials`
+- **THEN** the endpoint SHALL respond with HTTP 404
+- **AND** the response SHALL NOT leak raw SQL, driver stack, or internal error details
+- **AND** the handler SHALL NOT call `log.error` (404 is an expected branch, not a system anomaly)
+
+#### Scenario: Handler returns 500 with friendly message on unexpected DB error
+
+- **WHEN** the drizzle query builder throws an unexpected error (connection failure, schema mismatch, etc.)
+- **THEN** the endpoint SHALL respond with HTTP 500
+- **AND** the response body SHALL contain a user-facing message such as `暫時無法載入帳號資訊，請稍後再試` (credentials endpoint) or `暫時無法載入會員清單，請稍後再試` (member list endpoint)
+- **AND** the handler SHALL call `log.error(error, { step })` exactly once per error path
+- **AND** the response SHALL NOT expose the raw SQL, stack trace, or provider-specific error details
+
+<!-- @trace
+source: drizzle-refactor-credentials-admin-members
+updated: 2026-04-23
+code:
+  - tooling/__init__.py
+  - reports/archive/main-v0.0.1.docx
+  - .codex/config.toml
+  - local/reports/notes/diagram.md
+  - .claude/rules/proactive-skills.md
+  - local/reports/archive/main-v0.0.11.docx
+  - .agents/skills/impeccable/SKILL.md
+  - .codex/hooks/_codex_hook_wrapper.sh
+  - local/references/yuntech/專題報告編排規範1141216.pdf
+  - reports/archive/main-v0.0.37.docx
+  - reports/archive/main-v0.0.21.md
+  - scripts/spectra-ux/claims-status.mts
+  - reports/latest.md
+  - server/api/auth/mcp/authorize.get.ts
+  - .claude/rules/api-patterns.md
+  - local/reports/archive/main-v0.0.29.md
+  - .codex/hooks/stop-accumulate.sh
+  - local/reports/archive/main-v0.0.16.md
+  - app/types/chat.ts
+  - reports/archive/main-v0.0.22.md
+  - templates/海報樣板.pptx
+  - deliverables/defense/國立雲林科技大學人工智慧技優專班114學年實務專題審查.pdf
+  - .agents/skills/spectra-audit/SKILL.md
+  - .github/workflows/deploy.yml
+  - docs/verify/RETENTION_CLEANUP_VERIFICATION.md
+  - local/reports/archive/main-v0.0.15.md
+  - local/reports/archive/main-v0.0.21.md
+  - reports/archive/main-v0.0.29.md
+  - CLAUDE.md
+  - reports/notes/diagram.md
+  - scripts/spectra-ux/claim-work.mts
+  - tooling/scripts/extract_docx_to_md.py
+  - HANDOFF.md
+  - local/reports/archive/main-v0.0.48.md
+  - .codex/agents/check-runner.toml
+  - local/reports/archive/main-v0.0.36.docx
+  - tooling/scripts/docx_sections.py
+  - .claude/rules/error-handling.md
+  - .claude/rules/unused-features.md
+  - local/tooling/scripts/docx_rebuild_content.py
+  - docs/decisions/2026-04-23-claude-source-of-truth-across-offline-repos.md
+  - .claude/rules/logging.md
+  - docs/index.md
+  - reports/archive/main-v0.0.24.md
+  - scripts/spectra-ux/roadmap-sync.mts
+  - app/layouts/default.vue
+  - docs/verify/DEBUG_SURFACE_VERIFICATION.md
+  - local/deliverables/defense/答辯準備_口試Q&A.md
+  - references/yuntech/專題報告編排規範1141216.pdf
+  - playwright.config.ts
+  - .claude/rules/follow-up-register.md
+  - local/reports/archive/main-v0.0.10.md
+  - local/reports/archive/main-v0.0.11_assets/image1.jpeg
+  - local/tooling/__init__.py
+  - reports/archive/main-v0.0.35.md
+  - server/utils/better-auth-safe-logger.ts
+  - docs/solutions/tooling/posttooluse-hook-non-json-stdin.md
+  - reports/archive/main-v0.0.13.md
+  - tooling/requirements.txt
+  - tooling/scripts/clone_insert_docx.py
+  - tooling/scripts/legacy/transform_v36.py
+  - reports/archive/main-v0.0.14.md
+  - .claude/rules/review-tiers.md
+  - app/components/chat/ConversationHistory.vue
+  - local/reports/archive/main-v0.0.22.md
+  - server/utils/debug-surface-guard.ts
+  - docs/solutions/README.md
+  - docs/verify/DEPLOYMENT_RUNBOOK.md
+  - server/utils/link-google-for-passkey-first.ts
+  - .claude/rules/ux-completeness.md
+  - local/references/yuntech/人工智慧實務專題書面成果報告內容規範1141216.pdf
+  - .codex/hooks/post-edit-roadmap-sync.sh
+  - docs/verify/rollout-checklist.md
+  - .codex/hooks/session-start-roadmap-sync.sh
+  - deliverables/defense/答辯準備_口試Q&A.md
+  - local/tooling/scripts/office/pack.py
+  - scripts/spectra-ux/design-gate.sh
+  - tooling/scripts/office/__init__.py
+  - scripts/spectra-ux/post-propose-check.sh
+  - reports/archive/main-v0.0.31.md
+  - docs/STRUCTURE.md
+  - scripts/spectra-ux/lib/common.sh
+  - reports/archive/main-v0.0.16.md
+  - local/reports/archive/main-v0.0.13.md
+  - reports/archive/main-v0.0.11.md
+  - reports/archive/main-v0.0.34.md
+  - server/api/auth/account/link-google-for-passkey-first/index.get.ts
+  - docs/onboarding.md
+  - docs/verify/production-deploy-checklist.md
+  - local/reports/archive/main-v0.0.20.md
+  - local/backups/sqlite.db.pre-rebuild-20260423-181800
+  - app/components/auth/McpConnectorLoginCard.vue
+  - .claude/rules/development.md
+  - local/reports/archive/main-v0.0.33.md
+  - README.md
+  - local/reports/archive/main-v0.0.23.md
+  - app/components/admin/tokens/TokenCreateModal.vue
+  - .claude/skills/
+  - app/composables/useChatConversationHistory.ts
+  - docs/verify/KNOWLEDGE_SMOKE.md
+  - reports/archive/main-v0.0.37.md
+  - reports/archive/main-v0.0.48.md
+  - scripts/audit-ux-drift.mts
+  - AGENTS.md
+  - app/pages/account/settings.vue
+  - .agents/skills/spectra-commit/SKILL.md
+  - local/reports/archive/main-v0.0.28.md
+  - local/reports/archive/main-v0.0.32.md
+  - docs/verify/RETENTION_REPLAY_CONTRACT.md
+  - .codex/hooks.json
+  - tooling/scripts/clone_section.py
+  - .agents/skills/review-screenshot/SKILL.md
+  - docs/verify/index.md
+  - app/utils/chat-conversation-state.ts
+  - docs/README.md
+  - app/pages/auth/mcp/authorize.vue
+  - reports/archive/main-v0.0.23.md
+  - .codex/hooks/post-edit-ui-qa.sh
+  - reports/archive/main-v0.0.20.md
+  - local/reports/archive/main-v0.0.34.md
+  - scripts/spectra-ux/pre-apply-brief.sh
+  - local/reports/latest.md
+  - local/reports/archive/main-v0.0.36.md
+  - local/reports/archive/main-v0.0.37.md
+  - reports/archive/main-v0.0.50.md
+  - local/reports/archive/main-v0.0.25.md
+  - tooling/scripts/office/pack.py
+  - .codex/hooks/post-propose-design-inject.sh
+  - reports/archive/main-v0.0.36.docx
+  - local/tooling/scripts/clone_section.py
+  - local/reports/archive/main-v0.0.37.docx
+  - docs/decisions/2026-04-23-recognize-staging-as-active-environment.md
+  - AGENTS.md
+  - shared/utils/link-google-for-passkey-first.ts
+  - server/utils/knowledge-runtime.ts
+  - docs/tech-debt.md
+  - .agents/skills/critique/reference/personas.md
+  - app/utils/chat-conversation-loader.ts
+  - docs/runbooks/claude-desktop-mcp.md
+  - .agents/skills/design-retro/SKILL.md
+  - app/components/chat/Container.vue
+  - local/tooling/scripts/docx_apply.py
+  - local/reports/archive/main-v0.0.31.md
+  - docs/rules/index.md
+  - reports/archive/main-v0.0.19.md
+  - local/reports/archive/main-v0.0.24.md
+  - shared/utils/mcp-connector-client-registry.ts
+  - local/reports/archive/main-v0.0.18.md
+  - reports/archive/main-v0.0.10.md
+  - local/tooling/scripts/extract_docx_to_md.py
+  - reports/archive/main-v0.0.11_assets/image1.jpeg
+  - .claude/rules/testing-anti-patterns.md
+  - app/utils/mcp-connector-return-to.ts
+  - local/tooling/requirements.txt
+  - reports/archive/main-v0.0.15.md
+  - server/utils/passkey-verify-authentication.ts
+  - docs/verify/DISASTER_RECOVERY_RUNBOOK.md
+  - reports/archive/main-v0.0.25.md
+  - spectra-ux.config.json
+  - .claude/rules/knowledge-and-decisions.md
+  - scripts/spectra-ux/design-inject.sh
+  - local/reports/archive/main-v0.0.27.md
+  - .claude/rules/commit.md
+  - vite.config.ts
+  - scripts/spectra-ux/release-work.mts
+  - tooling/scripts/docx_apply.py
+  - local/tooling/scripts/clone_insert_docx.py
+  - local/deliverables/defense/國立雲林科技大學人工智慧技優專班114學年實務專題審查.pdf
+  - local/reports/archive/main-v0.0.35.md
+  - docs/solutions/auth/better-auth-passkey-worker-catchall-override.md
+  - app/components/auth/McpConnectorConsentCard.vue
+  - .agents/skills/spectra-apply/SKILL.md
+  - .agents/skills/spectra-propose/SKILL.md
+  - local/reports/archive/main-v0.0.19.md
+  - .agents/skills/commit/SKILL.md
+  - reports/archive/main-v0.0.27.md
+  - references/yuntech/人工智慧實務專題書面成果報告內容規範1141216.pdf
+  - scripts/spectra-ux/ui-qa-reminder.sh
+  - local/reports/archive/main-v0.0.14.md
+  - docs/verify/ACCEPTANCE_RUNBOOK.md
+  - app/composables/useChatConversationSession.ts
+  - local/reports/archive/main-v0.0.30.md
+  - reports/archive/main-v0.0.17.md
+  - local/tooling/scripts/docx_sections.py
+  - tooling/scripts/docx_diff.py
+  - reports/archive/main-v0.0.36.md
+  - .agents/skills/critique/SKILL.md
+  - local/tooling/scripts/sync_docx_content.py
+  - tooling/scripts/docx_rebuild_content.py
+  - local/reports/archive/main-v0.0.1.docx
+  - local/海報樣板.pptx
+  - local/tooling/scripts/docx_diff.py
+  - package.json
+  - reports/archive/main-v0.0.11.docx
+  - server/api/auth/passkey/verify-authentication.post.ts
+  - docs/decisions/index.md
+  - app/pages/index.vue
+  - local/reports/archive/main-v0.0.12.md
+  - local/reports/archive/main-v0.0.17.md
+  - local/reports/archive/main-v0.0.49.md
+  - .agents/skills/spectra-archive/SKILL.md
+  - docs/verify/CONFIG_SNAPSHOT_VERIFICATION.md
+  - app/composables/useMcpConnectorAuthorization.ts
+  - .agents/skills/spectra-ingest/SKILL.md
+  - scripts/sync-docs-pages-domains.mjs
+  - template/HANDOFF.md
+  - docs/design-review-findings.md
+  - local/tooling/scripts/office/unpack.py
+  - docs/verify/RETENTION_CLEANUP_RUNBOOK.md
+  - pnpm-workspace.yaml
+  - reports/archive/main-v0.0.26.md
+  - reports/archive/main-v0.0.49.md
+  - scripts/spectra-ux/claims-lib.mts
+  - .claude/rules/scope-discipline.md
+  - scripts/spectra-ux/pre-propose-scan.sh
+  - reports/archive/main-v0.0.18.md
+  - .agents/skills/spectra-ask/SKILL.md
+  - shared/utils/mcp-connector-redirect.ts
+  - .agents/skills/spectra-debug/SKILL.md
+  - tooling/scripts/sync_docx_content.py
+  - docs/solutions/auth/passkey-self-delete-hard-redirect.md
+  - tooling/scripts/office/unpack.py
+  - wrangler.staging.jsonc
+  - local/reports/archive/main-v0.0.26.md
+  - docs/verify/CONVERSATION_LIFECYCLE_VERIFICATION.md
+  - app/pages/admin/tokens/index.vue
+  - local/reports/archive/main-v0.0.50.md
+  - .claude/rules/handoff.md
+  - .claude/rules/manual-review.md
+  - local/tooling/scripts/office/__init__.py
+  - local/tooling/scripts/__init__.py
+  - docs/verify/WEB_CHAT_PERSISTENCE_VERIFICATION.md
+  - .codex/agents/code-review.toml
+  - docs/verify/evidence/web-chat-persistence.json
+  - tooling/scripts/__init__.py
+  - .claude/rules/screenshot-strategy.md
+  - server/utils/database.ts
+  - GEMINI.md
+  - docs/decisions/2026-04-23-canonical-root-handoff-artifact.md
+  - .codex/hooks/pre-archive-followup-gate.sh
+  - reports/archive/main-v0.0.32.md
+  - shared/schemas/knowledge-runtime.ts
+  - server/api/auth/mcp/authorize.post.ts
+  - reports/archive/main-v0.0.33.md
+  - server/api/auth/account/link-google-for-passkey-first/callback.get.ts
+  - server/auth.config.ts
+  - app/components/auth/DeleteAccountDialog.vue
+  - app/pages/auth/callback.vue
+  - docs/solutions/auth/admin-allowlist-session-reconciliation.md
+  - local/tooling/scripts/legacy/transform_v36.py
+  - reports/archive/main-v0.0.12.md
+  - .agents/skills/spectra-discuss/SKILL.md
+  - .codex/hooks/pre-archive-design-gate.sh
+  - .claude/rules/mcp-remote.md
+  - reports/archive/main-v0.0.30.md
+  - nuxt.config.ts
+  - local/reports/archive/main-v0.0.11.md
+  - reports/archive/main-v0.0.28.md
+  - .codex/agents/screenshot-review.toml
+  - .codex/hooks/post-bash-error-debug.sh
+tests:
+  - local/tooling/tests/test_extract_docx_to_md.py
+  - test/unit/deploy-workflow-config.test.ts
+  - test/integration/mcp-connector-authorize-route.test.ts
+  - test/unit/better-auth-worker-cookie-cache-hotfix.test.ts
+  - local/tooling/tests/test_office_pack_unpack.py
+  - test/integration/passkey-first-link-google.spec.ts
+  - test/unit/oauth-callback.spec.ts
+  - test/integration/mcp-connector-authorize-post-account-guard.test.ts
+  - test/unit/chat-conversation-state.test.ts
+  - test/unit/passkey-verify-authentication.test.ts
+  - test/unit/knowledge-runtime-config.test.ts
+  - test/unit/chat-conversation-session.test.ts
+  - test/unit/link-google-for-passkey-first-initiator.test.ts
+  - e2e/chat-persistence.spec.ts
+  - tooling/tests/test_extract_docx_to_md.py
+  - test/unit/database.test.ts
+  - test/unit/better-auth-safe-logger.test.ts
+  - test/unit/chat-conversation-history.test.ts
+  - e2e/mcp-connector-authorize.spec.ts
+  - test/integration/passkey-verify-authentication-hotfix.spec.ts
+  - test/unit/mcp-connector-client-registry.test.ts
+  - test/unit/mcp-connector-redirect.test.ts
+  - test/integration/mcp-oauth-tool-access.test.ts
+  - tooling/tests/test_office_pack_unpack.py
+  - test/unit/deploy-workflow-passkey-env.test.ts
+  - test/unit/better-auth-passkey-hotfix-version.test.ts
 -->

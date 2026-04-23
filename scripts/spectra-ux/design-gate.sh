@@ -29,42 +29,49 @@ fi
 TASKS_FILE="$CHANGE_DIR/tasks.md"
 [ -f "$TASKS_FILE" ] || exit 0
 
-REPO_ROOT=$(sux_repo_root)
-sux_touched_files --refresh >/dev/null
-TOUCHED=$(sux_touched_files)
-
 BLOCKED=false
 MESSAGES=()
 CHANGE_NAME=$(basename "$CHANGE_DIR")
-
-MANUAL_SECTION=$(sed -n '/^## .*人工檢查/,/^## /p' "$TASKS_FILE" 2>/dev/null | sed '$d')
-if [ -z "$MANUAL_SECTION" ]; then
-  MANUAL_SECTION=$(sed -n '/^## .*Manual Review/,/^## /p' "$TASKS_FILE" 2>/dev/null | sed '$d')
-fi
-
-if [ -n "$MANUAL_SECTION" ]; then
-  UNCHECKED=$(printf '%s\n' "$MANUAL_SECTION" | grep -c '^\- \[ \]' || true)
-  UNCHECKED=${UNCHECKED:-0}
-  if [ "$UNCHECKED" -gt 0 ]; then
-    BLOCKED=true
-    MESSAGES+=("[Design Gate] 人工檢查尚未完成：${UNCHECKED} 個項目仍未確認。
-
-請先展示截圖或其他驗收證據，逐項取得使用者確認後再勾選。禁止由 agent 直接代勾 `## 人工檢查`。")
-  fi
-else
-  BLOCKED=true
-  MESSAGES+=("[Design Gate] tasks.md 缺少 `## 人工檢查` / `## Manual Review` 區塊。請先補齊人工檢查項目，再進行 archive。")
-fi
 
 HAS_UI=false
 if sux_tasks_has_ui_scope "$TASKS_FILE"; then
   HAS_UI=true
 fi
-if echo "$TOUCHED" | grep -qE "(${SUX_UI_EXT_RE})$" 2>/dev/null; then
-  HAS_UI=true
+if [ "$HAS_UI" = false ]; then
+  TOUCHED=$(sux_change_touched_files "$CHANGE_DIR")
+  if [ -n "$TOUCHED" ]; then
+    while IFS= read -r path; do
+      [ -n "$path" ] || continue
+      if sux_path_is_ui_related "$path"; then
+        HAS_UI=true
+        break
+      fi
+    done <<EOF
+$TOUCHED
+EOF
+  fi
 fi
 
 if [ "$HAS_UI" = true ]; then
+  MANUAL_SECTION=$(sed -n '/^## .*人工檢查/,/^## /p' "$TASKS_FILE" 2>/dev/null | sed '$d')
+  if [ -z "$MANUAL_SECTION" ]; then
+    MANUAL_SECTION=$(sed -n '/^## .*Manual Review/,/^## /p' "$TASKS_FILE" 2>/dev/null | sed '$d')
+  fi
+
+  if [ -n "$MANUAL_SECTION" ]; then
+    UNCHECKED=$(printf '%s\n' "$MANUAL_SECTION" | grep -c '^\- \[ \]' || true)
+    UNCHECKED=${UNCHECKED:-0}
+    if [ "$UNCHECKED" -gt 0 ]; then
+      BLOCKED=true
+      MESSAGES+=("[Design Gate] 人工檢查尚未完成：${UNCHECKED} 個項目仍未確認。
+
+請先展示截圖或其他驗收證據，逐項取得使用者確認後再勾選。禁止由 agent 直接代勾 ## 人工檢查。")
+    fi
+  else
+    BLOCKED=true
+    MESSAGES+=("[Design Gate] tasks.md 缺少 ## 人工檢查 / ## Manual Review 區塊。請先補齊人工檢查項目，再進行 archive。")
+  fi
+
   DESIGN_PASSED=false
   DESIGN_REVIEW_FILE="$CHANGE_DIR/design-review.md"
 
@@ -112,7 +119,7 @@ if [ "$HAS_UI" = true ]; then
       fi
     fi
     if [ -z "$DESIGN_SECTION" ]; then
-      FAIL_REASONS+=("  - tasks.md 缺少 `## Design Review` 區塊")
+      FAIL_REASONS+=("  - tasks.md 缺少 ## Design Review 區塊")
     fi
 
     MESSAGES+=("[Design Gate] UI 變更缺少足夠的設計審查證據。
@@ -120,8 +127,8 @@ if [ "$HAS_UI" = true ]; then
 $(printf '%s\n' "${FAIL_REASONS[@]}")
 
 需要至少滿足以下任一條件：
-  1. `design-review.md` 有實質內容（>=10 行 + 截圖證據 + Fidelity Report + 無未修復 DRIFT）
-  2. tasks.md 的 `## Design Review` 區塊全部完成，且人工檢查已取得使用者確認
+  1. design-review.md 有實質內容（>=10 行 + 截圖證據 + Fidelity Report + 無未修復 DRIFT）
+  2. tasks.md 的 ## Design Review 區塊全部完成，且人工檢查已取得使用者確認
 
 建議流程：
   - 執行 /design improve [affected pages/components]
