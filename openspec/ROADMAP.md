@@ -16,13 +16,13 @@
 > - **local auth storage drift** 已處理：`.data/db/sqlite.db` 與 local wrangler D1 已重建，`user_new` / `query_logs_new` 殘留 FK refs 已排除，`/_dev/login` 與 Google linking local flow 已恢復。
 > - **`TD-014` integration test logger 初始化缺口** 已收斂：2026-04-24 本地重跑 `pnpm test:integration` 為 `72 files passed / 364 tests passed / 1 skipped`，目前不再阻擋 roadmap 清空。
 > - **docs custom domain / app canary 人工判定缺口** 已補齊：2026-04-24 以外部網路直接檢查 `agentic.yudefine.com.tw`、`agentic-staging.yudefine.com.tw`、`agentic-docs.yudefine.com.tw`、`agentic-docs-staging.yudefine.com.tw`，四個 custom domain 皆回 `HTTP 200`，確認 GitHub runner 上的 `403` 屬 Cloudflare WAF / Bot protection 誤擋，而非站點異常。
-> - **Workers AI 回答層 / web chat 真串流 proposal** 已完成 discuss + propose：新增 parked changes `integrate-workers-ai-answer-and-judge` 與 `implement-web-chat-sse-streaming`，並已收斂成兩份獨立 proposal。兩條 change 可部分平行推進，但 `server/api/chat.post.ts`、`server/utils/web-chat.ts`、`server/utils/knowledge-audit.ts` 為共享交會點，需採「前段平行、交會點串行整合」策略。
+> - **Workers AI 回答層 / web chat 真串流** 已完成 archive：相關 tasks 皆已完成，active / parked changes 目前清空。
 
 ## Next Moves
 
-1. 先 `spectra unpark` / `spectra-apply` `integrate-workers-ai-answer-and-judge`，優先完成 Web / MCP accepted path、judge path、固定題組、smoke 與 Workers AI baseline 證據。
-2. `implement-web-chat-sse-streaming` 可同步推進前端串流狀態、SSE event contract 與驗收設計，但與 `integrate-workers-ai-answer-and-judge` 共用的 server orchestration 檔案須等回答層 contract 穩定後再整合。
-3. 真串流 apply 完成時，硬性驗收必須包含 `first_token_latency`、end-to-end cancellation，以及 citation / refusal / error 行為不退化。
+1. 目前沒有 active、parked 或 handoff 中的 Spectra change 需要繼續實作。
+2. 下一輪工作若涉及產品行為變更，先走 `spectra-propose` / `spectra-apply`，避免直接在已封存 change 上追加需求。
+3. 若準備發布目前工作樹，先完成對應測試、人工驗證與 commit 分組。
 
 <!-- SPECTRA-UX:ROADMAP-MANUAL:END -->
 
@@ -30,9 +30,9 @@
 
 ## Active Changes
 
-_last synced: 2026-04-23T18:00:37.719Z_
+_last synced: 2026-04-23T19:45:41.809Z_
 
-1 active change (0 ready · 1 in progress · 0 draft · 0 blocked)
+_No active changes._
 
 ### Ready to apply
 
@@ -40,7 +40,7 @@ _(none)_
 
 ### In progress
 
-- **integrate-workers-ai-answer-and-judge** — 2/8 tasks (25%)
+_(none)_
 
 ### Draft
 
@@ -73,7 +73,7 @@ _No active claims._
 
 ### Independent (can run in parallel)
 
-- `integrate-workers-ai-answer-and-judge`
+_(none)_
 
 ### Mutex (same spec touched)
 
@@ -94,8 +94,8 @@ _(none)_
 
 1 parked change
 
-- **implement-web-chat-sse-streaming** — 0/9 tasks (0%)
-  - Summary: 目前 Web chat 的串流體驗仍是先取得完整回答，再由前…
+- **collapsible-chat-history-sidebar** — 0/36 tasks (0%)
+  - Summary: 目前 chat 頁面（`/`）在 `lg` 以上永遠強制顯示…
 
 <!-- SPECTRA-UX:ROADMAP-AUTO:/parked -->
 
