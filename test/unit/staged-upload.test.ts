@@ -52,6 +52,57 @@ describe('staged upload', () => {
     })
   })
 
+  it('rejects legacy Office uploads before presign so operators get conversion guidance', async () => {
+    await expect(
+      createStagedUploadTarget(
+        {
+          accountId: 'account-123',
+          adminUserId: 'admin-1',
+          bucketName: 'knowledge-documents',
+          checksumSha256: 'c2hhMjU2LWRpZ2VzdA==',
+          environment: 'local',
+          expiresInSeconds: 600,
+          filename: 'Quarterly Report.doc',
+          mimeType: 'application/msword',
+          size: 128,
+        },
+        {
+          createUploadId: () => 'upload-123',
+          signUploadUrl: vi.fn(),
+        },
+      ),
+    ).rejects.toThrowError(
+      new StagedUploadValidationError('請先轉成 DOCX、PDF 或文字格式後再上傳', 400),
+    )
+  })
+
+  it('rejects media uploads before presign with transcript-pipeline guidance', async () => {
+    await expect(
+      createStagedUploadTarget(
+        {
+          accountId: 'account-123',
+          adminUserId: 'admin-1',
+          bucketName: 'knowledge-documents',
+          checksumSha256: 'c2hhMjU2LWRpZ2VzdA==',
+          environment: 'local',
+          expiresInSeconds: 600,
+          filename: 'Townhall Recording.mp4',
+          mimeType: 'video/mp4',
+          size: 128,
+        },
+        {
+          createUploadId: () => 'upload-123',
+          signUploadUrl: vi.fn(),
+        },
+      ),
+    ).rejects.toThrowError(
+      new StagedUploadValidationError(
+        '音訊與影片需等待後續 transcript pipeline，暫不支援直接上傳',
+        400,
+      ),
+    )
+  })
+
   describe('sanitize filename via createStagedUploadObjectKey', () => {
     function keyFor(filename: string, uploadId = 'upload-abcdef12') {
       return createStagedUploadObjectKey({
@@ -168,6 +219,30 @@ describe('staged upload', () => {
       size: 128,
       uploadId: 'upload-123',
     })
+  })
+
+  it('accepts finalize when sha256 is only available via customMetadata fallback', () => {
+    const result = validateStagedUploadMetadata({
+      expected: {
+        checksumSha256: 'c2hhMjU2LWRpZ2VzdA==',
+        mimeType: 'text/markdown',
+        objectKey: 'staged/local/admin-1/upload-123/quarterly-report.md',
+        size: 128,
+        uploadId: 'upload-123',
+      },
+      object: {
+        customMetadata: {
+          upload_checksum_sha256: 'c2hhMjU2LWRpZ2VzdA==',
+        },
+        httpMetadata: {
+          contentType: 'text/markdown',
+        },
+        key: 'staged/local/admin-1/upload-123/quarterly-report.md',
+        size: 128,
+      },
+    })
+
+    expect(result.uploadId).toBe('upload-123')
   })
 
   it('rejects finalize when the uploaded object is missing', () => {

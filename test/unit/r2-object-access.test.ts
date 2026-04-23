@@ -171,6 +171,9 @@ describe('createR2ObjectAccess', () => {
       const sha256 = Buffer.from('sha256-digest').buffer.slice(0)
       bucket.head.mockResolvedValueOnce({
         checksums: { sha256 },
+        customMetadata: {
+          upload_checksum_sha256: 'c2hhMjU2LWRpZ2VzdA==',
+        },
         httpMetadata: { contentType: 'text/markdown' },
         size: 128,
       })
@@ -181,6 +184,9 @@ describe('createR2ObjectAccess', () => {
       expect(bucket.head).toHaveBeenCalledWith('staged/some-key.md')
       expect(metadata).toEqual({
         checksums: { sha256 },
+        customMetadata: {
+          upload_checksum_sha256: 'c2hhMjU2LWRpZ2VzdA==',
+        },
         httpMetadata: { contentType: 'text/markdown' },
         key: 'staged/some-key.md',
         size: 128,
@@ -232,6 +238,31 @@ describe('createR2ObjectAccess', () => {
     })
   })
 
+  describe('getBytes', () => {
+    it('returns the object body bytes on success', async () => {
+      const bucket = makeBucket()
+      const bytes = Uint8Array.from([1, 2, 3]).buffer
+      bucket.get.mockResolvedValueOnce({
+        arrayBuffer: () => Promise.resolve(bytes),
+        text: () => Promise.resolve('ignored'),
+      })
+
+      const access = createR2ObjectAccess(makeEvent(bucket))
+      const result = await access.getBytes('key')
+
+      expect(result).toEqual(bytes)
+    })
+
+    it('returns null when the object is missing', async () => {
+      const bucket = makeBucket()
+      bucket.get.mockResolvedValueOnce(null)
+
+      const access = createR2ObjectAccess(makeEvent(bucket))
+
+      expect(await access.getBytes('missing')).toBeNull()
+    })
+  })
+
   describe('put', () => {
     it('stores the value with the supplied contentType', async () => {
       const bucket = makeBucket()
@@ -242,6 +273,24 @@ describe('createR2ObjectAccess', () => {
 
       expect(bucket.put).toHaveBeenCalledWith('some/key.txt', 'body-content', {
         httpMetadata: { contentType: 'text/plain; charset=utf-8' },
+      })
+    })
+
+    it('accepts binary bodies for local upload fallback', async () => {
+      const bucket = makeBucket()
+      const bytes = Uint8Array.from([1, 2, 3])
+      bucket.put.mockResolvedValueOnce(undefined)
+
+      const access = createR2ObjectAccess(makeEvent(bucket))
+      await access.put('some/key.bin', bytes, 'application/octet-stream', {
+        upload_checksum_sha256: 'abc123',
+      })
+
+      expect(bucket.put).toHaveBeenCalledWith('some/key.bin', bytes, {
+        customMetadata: {
+          upload_checksum_sha256: 'abc123',
+        },
+        httpMetadata: { contentType: 'application/octet-stream' },
       })
     })
 

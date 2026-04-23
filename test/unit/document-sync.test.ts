@@ -1,5 +1,12 @@
 import { describe, expect, it, vi } from 'vitest'
 
+import {
+  createDocxFixture,
+  createPdfFixture,
+  createPptxFixture,
+  createXlsxFixture,
+} from '../helpers/document-source-fixtures'
+
 import { syncDocumentVersionSnapshot } from '#server/utils/document-sync'
 
 describe('document sync', () => {
@@ -66,6 +73,7 @@ describe('document sync', () => {
       },
       {
         createId: () => 'ver-1',
+        loadSourceBytes: () => Promise.resolve(new ArrayBuffer(0)),
         loadSourceText,
         now: () => new Date('2026-04-16T00:00:00.000Z'),
         store,
@@ -178,6 +186,7 @@ describe('document sync', () => {
       },
       {
         createId: () => 'ver-2',
+        loadSourceBytes: () => Promise.resolve(new ArrayBuffer(0)),
         loadSourceText: () => Promise.resolve('Ops Playbook\nEscalate incidents quickly.'),
         store,
         writeChunkObjects: () => Promise.resolve(),
@@ -193,5 +202,209 @@ describe('document sync', () => {
         versionNumber: 3,
       }),
     )
+  })
+
+  it('creates replay assets for each supported rich format after loading bytes', async () => {
+    const cases = [
+      {
+        filename: 'quarterly-report.pdf',
+        fixture: createPdfFixture({
+          pages: [['Quarterly Report', 'Revenue grew 20%.']],
+        }),
+        mimeType: 'application/pdf',
+      },
+      {
+        filename: 'quarterly-report.docx',
+        fixture: createDocxFixture({
+          paragraphs: ['Quarterly Report', 'Revenue grew 20%.'],
+        }),
+        mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      },
+      {
+        filename: 'quarterly-report.xlsx',
+        fixture: createXlsxFixture({
+          rows: [
+            ['Quarter', 'Amount'],
+            ['Q1', '120'],
+          ],
+          sheetName: 'Revenue',
+        }),
+        mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      },
+      {
+        filename: 'quarterly-report.pptx',
+        fixture: createPptxFixture({
+          slideTexts: [['Quarterly Plan', 'Launch migration']],
+        }),
+        mimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      },
+    ] as const
+
+    for (const testCase of cases) {
+      const store = {
+        createDocument: vi.fn().mockResolvedValue({
+          accessLevel: 'restricted',
+          categorySlug: 'finance',
+          createdAt: '2026-04-16T00:00:00.000Z',
+          createdByUserId: 'admin-1',
+          currentVersionId: null,
+          id: 'doc-1',
+          slug: 'quarterly-report',
+          status: 'draft',
+          title: 'Quarterly Report',
+          updatedAt: '2026-04-16T00:00:00.000Z',
+        }),
+        createSourceChunks: vi.fn().mockResolvedValue(undefined),
+        createVersion: vi.fn().mockResolvedValue({
+          createdAt: '2026-04-16T00:00:00.000Z',
+          documentId: 'doc-1',
+          id: 'ver-1',
+          indexStatus: 'preprocessing',
+          isCurrent: false,
+          metadataJson: '{}',
+          normalizedTextR2Key: 'normalized-text/ver-1/',
+          publishedAt: null,
+          smokeTestQueriesJson: JSON.stringify(['Quarterly Report']),
+          sourceR2Key: `staged/local/admin-1/upload-1/${testCase.filename}`,
+          syncStatus: 'pending',
+          updatedAt: '2026-04-16T00:00:00.000Z',
+          versionNumber: 1,
+        }),
+        findDocumentBySlug: vi.fn().mockResolvedValue(null),
+        getNextVersionNumber: vi.fn().mockResolvedValue(1),
+      }
+      const loadSourceBytes = vi.fn().mockResolvedValue(testCase.fixture.buffer.slice(0))
+      const loadSourceText = vi.fn()
+      const writeChunkObjects = vi.fn().mockResolvedValue(undefined)
+
+      const result = await syncDocumentVersionSnapshot(
+        {
+          accessLevel: 'restricted',
+          adminUserId: 'admin-1',
+          categorySlug: 'finance',
+          checksumSha256: 'abc123',
+          environment: 'local',
+          mimeType: testCase.mimeType,
+          objectKey: `staged/local/admin-1/upload-1/${testCase.filename}`,
+          size: 128,
+          slug: 'quarterly-report',
+          title: 'Quarterly Report',
+          uploadId: 'upload-1',
+        },
+        {
+          createId: () => 'ver-1',
+          loadSourceBytes,
+          loadSourceText,
+          store,
+          writeChunkObjects,
+        },
+      )
+
+      expect(loadSourceBytes).toHaveBeenCalledWith(
+        `staged/local/admin-1/upload-1/${testCase.filename}`,
+      )
+      expect(loadSourceText).not.toHaveBeenCalled()
+      expect(writeChunkObjects).toHaveBeenCalled()
+      expect(result.version.normalizedTextR2Key).toBe('normalized-text/ver-1/')
+      expect(result.sourceChunkCount).toBeGreaterThan(0)
+      expect(
+        JSON.parse(store.createVersion.mock.calls[0]?.[0]?.smokeTestQueriesJson ?? '[]').length,
+      ).toBeGreaterThan(0)
+    }
+  })
+
+  it('rejects deferred legacy and media formats before document or version creation', async () => {
+    const cases = [
+      {
+        filename: 'legacy-plan.doc',
+        message: '請先轉成 DOCX、PDF 或文字格式後再同步',
+        mimeType: 'application/msword',
+      },
+      {
+        filename: 'townhall.mp4',
+        message: '媒體檔案需等待後續 transcript pipeline，暫不支援直接同步',
+        mimeType: 'video/mp4',
+      },
+    ] as const
+
+    for (const testCase of cases) {
+      const store = {
+        createDocument: vi.fn(),
+        createSourceChunks: vi.fn(),
+        createVersion: vi.fn(),
+        findDocumentBySlug: vi.fn().mockResolvedValue(null),
+        getNextVersionNumber: vi.fn(),
+      }
+
+      await expect(
+        syncDocumentVersionSnapshot(
+          {
+            accessLevel: 'restricted',
+            adminUserId: 'admin-1',
+            categorySlug: 'finance',
+            checksumSha256: 'abc123',
+            environment: 'local',
+            mimeType: testCase.mimeType,
+            objectKey: `staged/local/admin-1/upload-1/${testCase.filename}`,
+            size: 128,
+            slug: 'quarterly-report',
+            title: 'Quarterly Report',
+            uploadId: 'upload-1',
+          },
+          {
+            loadSourceBytes: vi.fn(),
+            loadSourceText: vi.fn(),
+            store,
+            writeChunkObjects: vi.fn(),
+          },
+        ),
+      ).rejects.toThrow(testCase.message)
+
+      expect(store.createDocument).not.toHaveBeenCalled()
+      expect(store.createVersion).not.toHaveBeenCalled()
+      expect(store.createSourceChunks).not.toHaveBeenCalled()
+    }
+  })
+
+  it('rejects textless rich sources before document or version creation', async () => {
+    const store = {
+      createDocument: vi.fn(),
+      createSourceChunks: vi.fn(),
+      createVersion: vi.fn(),
+      findDocumentBySlug: vi.fn().mockResolvedValue(null),
+      getNextVersionNumber: vi.fn(),
+    }
+
+    await expect(
+      syncDocumentVersionSnapshot(
+        {
+          accessLevel: 'restricted',
+          adminUserId: 'admin-1',
+          categorySlug: 'finance',
+          checksumSha256: 'abc123',
+          environment: 'local',
+          mimeType: 'application/pdf',
+          objectKey: 'staged/local/admin-1/upload-1/scanned.pdf',
+          size: 128,
+          slug: 'quarterly-report',
+          title: 'Quarterly Report',
+          uploadId: 'upload-1',
+        },
+        {
+          loadSourceBytes: vi
+            .fn()
+            .mockResolvedValue(createPdfFixture({ pages: [[]] }).buffer.slice(0)),
+          loadSourceText: vi.fn(),
+          store,
+          writeChunkObjects: vi.fn(),
+        },
+      ),
+    ).rejects.toThrow(
+      '檔案可上傳，但目前無法抽出可引用文字。請改提供可選取文字版本，或先整理成 Markdown 後再同步。',
+    )
+
+    expect(store.createDocument).not.toHaveBeenCalled()
+    expect(store.createVersion).not.toHaveBeenCalled()
+    expect(store.createSourceChunks).not.toHaveBeenCalled()
   })
 })

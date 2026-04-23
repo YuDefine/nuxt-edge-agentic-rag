@@ -1,6 +1,9 @@
 import type { DocumentRecord, DocumentVersionRecord } from '#shared/types/knowledge'
 
+import { classifyDocumentSourceFormat } from '#shared/utils/document-source-format'
+
 import { prepareDocumentVersionAssets, type PreparedChunkObject } from './document-preprocessing'
+import { extractDocumentSourceSnapshot } from './document-source-extractor'
 
 export interface SyncDocumentVersionSnapshotInput {
   accessLevel: string
@@ -53,6 +56,7 @@ export interface DocumentSyncStore {
 
 export interface SyncDocumentVersionSnapshotOptions {
   createId?: () => string
+  loadSourceBytes: (objectKey: string) => Promise<ArrayBuffer>
   loadSourceText: (objectKey: string) => Promise<string>
   now?: () => Date
   store: DocumentSyncStore
@@ -72,6 +76,27 @@ export async function syncDocumentVersionSnapshot(
   sourceChunkCount: number
   version: DocumentVersionRecord
 }> {
+  const sourceFormat = classifyDocumentSourceFormat({
+    filename: input.objectKey,
+    mimeType: input.mimeType,
+  })
+  const extractedSource =
+    sourceFormat.supportTier === 'direct-text'
+      ? await extractDocumentSourceSnapshot({
+          filename: input.objectKey,
+          mimeType: input.mimeType,
+          sourceText: await options.loadSourceText(input.objectKey),
+        })
+      : sourceFormat.supportTier === 'supported-rich'
+        ? await extractDocumentSourceSnapshot({
+            filename: input.objectKey,
+            mimeType: input.mimeType,
+            sourceBytes: await options.loadSourceBytes(input.objectKey),
+          })
+        : await extractDocumentSourceSnapshot({
+            filename: input.objectKey,
+            mimeType: input.mimeType,
+          })
   const existingDocument = await options.store.findDocumentBySlug(input.slug)
   const document =
     existingDocument ??
@@ -85,7 +110,6 @@ export async function syncDocumentVersionSnapshot(
     }))
   const versionId = (options.createId ?? defaultCreateId)()
   const versionNumber = await options.store.getNextVersionNumber(document.id)
-  const sourceText = await options.loadSourceText(input.objectKey)
   const assets = await prepareDocumentVersionAssets({
     accessLevel: input.accessLevel,
     categorySlug: input.categorySlug,
@@ -93,7 +117,7 @@ export async function syncDocumentVersionSnapshot(
     environment: input.environment,
     sourceMimeType: input.mimeType,
     sourceObjectKey: input.objectKey,
-    sourceText,
+    sourceText: extractedSource.canonicalText,
     title: input.title,
     versionId,
     versionNumber,

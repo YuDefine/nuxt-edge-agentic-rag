@@ -24,15 +24,16 @@ interface KvBindingLike {
 }
 
 export interface R2BucketLike {
-  get(key: string): Promise<{ text(): Promise<string> } | null>
+  get(key: string): Promise<{ arrayBuffer(): Promise<ArrayBuffer>; text(): Promise<string> } | null>
   head(key: string): Promise<{
     checksums?: { sha256?: ArrayBuffer | null }
+    customMetadata?: Record<string, string>
     httpMetadata?: { contentType?: string | null }
     size: number
   } | null>
   put(
     key: string,
-    value: string,
+    value: ArrayBuffer | ArrayBufferView | string,
     options?: {
       customMetadata?: Record<string, string>
       httpMetadata?: { contentType?: string }

@@ -1,3 +1,8 @@
+import {
+  classifyDocumentSourceFormat,
+  getDocumentSourceRejectionMessage,
+} from '#shared/utils/document-source-format'
+
 export interface StagedUploadSignerInput {
   accountId: string
   bucketName: string
@@ -43,6 +48,7 @@ export interface UploadedObjectMetadata {
   checksums?: {
     sha256?: ArrayBuffer | null
   }
+  customMetadata?: Record<string, string>
   httpMetadata?: {
     contentType?: string | null
   }
@@ -198,6 +204,20 @@ export async function createStagedUploadTarget(
   input: CreateStagedUploadTargetInput,
   options: CreateStagedUploadTargetOptions = {},
 ): Promise<StagedUploadTarget> {
+  if (!input.bucketName.trim()) {
+    throw new StagedUploadValidationError('文件儲存 bucket 尚未設定，無法建立上傳網址', 500)
+  }
+
+  const sourceFormat = classifyDocumentSourceFormat({
+    filename: input.filename,
+    mimeType: input.mimeType,
+  })
+  const rejectionMessage = getDocumentSourceRejectionMessage(sourceFormat, 'upload')
+
+  if (rejectionMessage) {
+    throw new StagedUploadValidationError(rejectionMessage, 400)
+  }
+
   const uploadId = (options.createUploadId ?? defaultCreateUploadId)()
   const objectKey = createStagedUploadObjectKey({
     adminUserId: input.adminUserId,
@@ -250,7 +270,7 @@ export function validateStagedUploadMetadata(input: {
 
   const uploadedChecksum = input.object.checksums?.sha256
     ? encodeBase64(input.object.checksums.sha256)
-    : null
+    : (input.object.customMetadata?.upload_checksum_sha256 ?? null)
 
   if (uploadedChecksum !== input.expected.checksumSha256) {
     throw new StagedUploadValidationError('Uploaded file checksum did not match', 400)
