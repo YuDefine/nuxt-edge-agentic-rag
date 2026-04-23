@@ -114,14 +114,14 @@
 <template>
   <component :is="overlayComponent" v-model:open="isOpen">
     <template #content>
-      <UCard :ui="{ root: isDesktop ? '' : 'rounded-t-lg rounded-b-none border-b-0' }">
+      <LazyUCard :ui="{ root: isDesktop ? '' : 'rounded-t-lg rounded-b-none border-b-0' }">
         <template #header>
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-2">
-              <UIcon name="i-lucide-quote" class="size-5 text-primary" aria-hidden="true" />
+              <LazyUIcon name="i-lucide-quote" class="size-5 text-primary" aria-hidden="true" />
               <h3 class="text-lg font-semibold text-default">引用內容</h3>
             </div>
-            <UButton
+            <LazyUButton
               color="neutral"
               variant="ghost"
               size="sm"
@@ -133,7 +133,7 @@
 
         <!-- Loading state -->
         <div v-if="isLoading" class="flex items-center justify-center py-8">
-          <UIcon
+          <LazyUIcon
             name="i-lucide-loader-2"
             class="size-6 animate-spin text-primary motion-reduce:animate-none"
             aria-hidden="true"
@@ -143,7 +143,7 @@
 
         <!-- Error state -->
         <div v-else-if="hasError" class="py-4">
-          <UAlert
+          <LazyUAlert
             color="error"
             variant="subtle"
             icon="i-lucide-alert-circle"
@@ -155,7 +155,7 @@
         <div v-else-if="citationData" class="flex max-h-[70vh] flex-col gap-4 overflow-y-auto">
           <!-- Source metadata -->
           <div class="flex items-center gap-2 rounded-lg bg-muted p-3">
-            <UIcon name="i-lucide-file-text" class="size-4 text-muted" />
+            <LazyUIcon name="i-lucide-file-text" class="size-4 text-muted" />
             <div class="min-w-0 flex-1">
               <p class="truncate text-sm font-medium text-default">
                 {{ citationData.documentTitle || parseLocator(citationData.citationLocator).title }}
@@ -170,7 +170,7 @@
                 </span>
               </p>
             </div>
-            <UBadge
+            <LazyUBadge
               v-if="citationData.isCurrentVersion"
               color="success"
               variant="subtle"
@@ -178,10 +178,10 @@
               icon="i-lucide-badge-check"
             >
               最新版
-            </UBadge>
-            <UBadge v-else color="warning" variant="subtle" size="sm" icon="i-lucide-history">
+            </LazyUBadge>
+            <LazyUBadge v-else color="warning" variant="subtle" size="sm" icon="i-lucide-history">
               已非最新版
-            </UBadge>
+            </LazyUBadge>
           </div>
 
           <!-- Chunk text -->
@@ -198,7 +198,7 @@
             data-testid="citation-admin-fields"
           >
             <p class="mb-2 flex items-center gap-1 text-xs font-medium text-default">
-              <UIcon name="i-lucide-shield-alert" class="size-3.5" />
+              <LazyUIcon name="i-lucide-shield-alert" class="size-3.5" />
               稽核資訊（僅管理員可見）
             </p>
             <dl class="grid grid-cols-1 gap-x-4 gap-y-1 text-xs text-muted sm:grid-cols-[auto_1fr]">
@@ -216,12 +216,12 @@
 
         <template #footer>
           <div class="flex justify-end">
-            <UButton color="neutral" variant="outline" size="sm" @click="isOpen = false">
+            <LazyUButton color="neutral" variant="outline" size="sm" @click="isOpen = false">
               關閉
-            </UButton>
+            </LazyUButton>
           </div>
         </template>
-      </UCard>
+      </LazyUCard>
     </template>
   </component>
 </template>

@@ -189,7 +189,7 @@
         :free-quota-per-day="snapshot.neurons.freeQuotaPerDay"
         :remaining="snapshot.neurons.remaining"
       />
-      <AdminUsageTimelineChart :buckets="snapshot.timeline" :range="range" />
+      <LazyAdminUsageTimelineChart :buckets="snapshot.timeline" :range="range" />
     </template>
 
     <p v-if="lastUpdatedDate" class="text-right text-xs text-muted">
