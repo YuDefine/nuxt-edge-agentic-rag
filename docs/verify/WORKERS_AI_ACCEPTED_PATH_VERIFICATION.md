@@ -38,9 +38,10 @@ pnpm test:workers-ai-accepted-path
    - 保存 `pnpm test:workers-ai-accepted-path` 的完整輸出
 
 2. Query log rows
-   - 針對本輪 sample 查出 `channel`、`decision_path`、`retrieval_score`、`completion_latency_ms`
+   - 針對本輪 sample 查出 `channel`、`decision_path`、`retrieval_score`、`completion_latency_ms`、`workers_ai_runs_json`
    - `TC-01` 應可對到 `direct_answer`
    - `TC-06` 應可對到 `judge_pass`
+   - `workers_ai_runs_json` 應至少包含 answer run；`TC-06` 另應包含 judge run
 
 3. Response snapshot
    - Web：回答文字與 citation 摘要
@@ -54,7 +55,7 @@ pnpm test:workers-ai-accepted-path
 
 ```bash
 wrangler d1 execute "${DB_NAME:-agentic-rag-db}" --remote --command \
-  "SELECT channel, query_text, decision_path, retrieval_score, completion_latency_ms, created_at FROM query_logs ORDER BY created_at DESC LIMIT 20;"
+  "SELECT channel, query_redacted_text, decision_path, retrieval_score, completion_latency_ms, workers_ai_runs_json, created_at FROM query_logs ORDER BY created_at DESC LIMIT 20;"
 ```
 
 ## Evidence Folder Convention
@@ -72,6 +73,7 @@ evidence/<reportVersion>/workers-ai-accepted-path/2026-04-24T02-00-00Z/
 - `web-response.json`
 - `mcp-response.json`
 - `gateway-activity.png` 或 `gateway-activity.json`
+- `baseline-notes.md`
 
 ## Pass Criteria
 

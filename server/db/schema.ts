@@ -182,6 +182,13 @@ export const queryLogs = sqliteTable(
      * enum of categories.
      */
     refusalReason: text('refusal_reason'),
+    /**
+     * workers-ai-grounded-answering §3.1: serialized per-run Workers AI
+     * telemetry captured for the query. JSON array of `{modelRole, model,
+     * latencyMs, usage}` records in call order. Default `[]` preserves
+     * backwards compatibility for blocked / legacy rows with no model calls.
+     */
+    workersAiRunsJson: text('workers_ai_runs_json').notNull().default('[]'),
   },
   (table) => [index('query_logs_channel_created_idx').on(table.channel, table.createdAt)],
 )

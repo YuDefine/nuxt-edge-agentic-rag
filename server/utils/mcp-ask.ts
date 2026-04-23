@@ -537,6 +537,7 @@ export function createMcpQueryLogStore(database: D1DatabaseLike) {
       judgeScore?: number | null
       decisionPath?: string | null
       refusalReason?: string | null
+      workersAiRunsJson?: string | null
     }): Promise<void> {
       await database
         .prepare(
@@ -547,7 +548,8 @@ export function createMcpQueryLogStore(database: D1DatabaseLike) {
             '    retrieval_score = ?,',
             '    judge_score = ?,',
             '    decision_path = ?,',
-            '    refusal_reason = ?',
+            '    refusal_reason = ?,',
+            '    workers_ai_runs_json = ?',
             'WHERE id = ?',
           ].join('\n'),
         )
@@ -558,6 +560,7 @@ export function createMcpQueryLogStore(database: D1DatabaseLike) {
           input.judgeScore ?? null,
           input.decisionPath ?? null,
           input.refusalReason ?? null,
+          input.workersAiRunsJson ?? '[]',
           input.queryLogId,
         )
         .run()
