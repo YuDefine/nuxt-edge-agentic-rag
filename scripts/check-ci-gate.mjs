@@ -2,27 +2,10 @@
 
 const CI_WORKFLOW_PATH = '.github/workflows/ci.yml'
 
+const DEFAULT_INTERVAL_MS = 15_000
+const DEFAULT_TIMEOUT_MS = 15 * 60 * 1000
+
 export function evaluateCiGate({ currentRunId, expectedSha, runs }) {
-  const matchingRun = runs.find((run) => {
-    if (String(run.id) === String(currentRunId)) {
-      return false
-    }
-
-    return (
-      run.head_sha === expectedSha &&
-      run.path === CI_WORKFLOW_PATH &&
-      run.status === 'completed' &&
-      run.conclusion === 'success'
-    )
-  })
-
-  if (matchingRun) {
-    return {
-      ok: true,
-      matchingRun,
-    }
-  }
-
   const sameShaRuns = runs.filter(
     (run) =>
       String(run.id) !== String(currentRunId) &&
@@ -30,16 +13,40 @@ export function evaluateCiGate({ currentRunId, expectedSha, runs }) {
       run.path === CI_WORKFLOW_PATH,
   )
 
-  if (sameShaRuns.length > 0) {
+  const matchingRun = sameShaRuns.find(
+    (run) => run.status === 'completed' && run.conclusion === 'success',
+  )
+
+  if (matchingRun) {
     return {
-      ok: false,
-      reason: `找到 ${sameShaRuns.length} 個同 SHA 的 CI run，但尚未成功；請先讓 CI workflow 對 ${expectedSha} 轉綠後再部署。`,
+      ok: true,
+      status: 'success',
+      matchingRun,
     }
   }
 
+  if (sameShaRuns.length === 0) {
+    return {
+      ok: false,
+      status: 'missing',
+      reason: `找不到 SHA ${expectedSha} 的成功 CI run；請先執行 .github/workflows/ci.yml 並確認成功。`,
+    }
+  }
+
+  const hasRunning = sameShaRuns.some((run) => run.status !== 'completed')
+  if (hasRunning) {
+    return {
+      ok: false,
+      status: 'pending',
+      reason: `找到 ${sameShaRuns.length} 個同 SHA 的 CI run，但尚未成功；等待 CI workflow 對 ${expectedSha} 轉綠。`,
+    }
+  }
+
+  const conclusions = sameShaRuns.map((run) => run.conclusion).join(', ')
   return {
     ok: false,
-    reason: `找不到 SHA ${expectedSha} 的成功 CI run；請先執行 .github/workflows/ci.yml 並確認成功。`,
+    status: 'failed',
+    reason: `SHA ${expectedSha} 的 CI workflow 已失敗（conclusion: ${conclusions}）；請修復後重新觸發。`,
   }
 }
 
@@ -66,6 +73,48 @@ async function fetchWorkflowRuns({ githubToken, repository, perPage = 100, sha }
   return payload.workflow_runs ?? []
 }
 
+export async function waitForCiGate({
+  currentRunId,
+  expectedSha,
+  fetchRuns,
+  intervalMs = DEFAULT_INTERVAL_MS,
+  timeoutMs = DEFAULT_TIMEOUT_MS,
+  now = Date.now,
+  sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  onProgress = () => {},
+}) {
+  const deadline = now() + timeoutMs
+  let attempt = 0
+  let lastReason = '未知'
+
+  while (true) {
+    attempt += 1
+    const runs = await fetchRuns()
+    const result = evaluateCiGate({ currentRunId, expectedSha, runs })
+
+    if (result.ok) {
+      return result
+    }
+
+    if (result.status === 'failed') {
+      return result
+    }
+
+    lastReason = result.reason
+    onProgress({ attempt, status: result.status, reason: result.reason })
+
+    if (now() >= deadline) {
+      return {
+        ok: false,
+        status: 'timeout',
+        reason: `等待 CI 轉綠逾時（${Math.round(timeoutMs / 1000)}s）：${lastReason}`,
+      }
+    }
+
+    await sleep(intervalMs)
+  }
+}
+
 async function main() {
   const githubToken = process.env.GITHUB_TOKEN
   const repository = process.env.GITHUB_REPOSITORY
@@ -76,16 +125,23 @@ async function main() {
     throw new Error('Missing required GitHub Actions env vars for CI gate verification.')
   }
 
-  const runs = await fetchWorkflowRuns({
-    githubToken,
-    repository,
-    sha: expectedSha,
-  })
+  const intervalMs = Number(process.env.CI_GATE_INTERVAL_MS) || DEFAULT_INTERVAL_MS
+  const timeoutMs = Number(process.env.CI_GATE_TIMEOUT_MS) || DEFAULT_TIMEOUT_MS
 
-  const result = evaluateCiGate({
+  const result = await waitForCiGate({
     currentRunId,
     expectedSha,
-    runs,
+    fetchRuns: () =>
+      fetchWorkflowRuns({
+        githubToken,
+        repository,
+        sha: expectedSha,
+      }),
+    intervalMs,
+    timeoutMs,
+    onProgress: ({ attempt, status, reason }) => {
+      console.log(`[ci-gate] attempt #${attempt} status=${status} — ${reason}`)
+    },
   })
 
   if (!result.ok) {
