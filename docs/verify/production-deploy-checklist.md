@@ -1,6 +1,6 @@
 # Production Deploy Checklist
 
-> 此文件記錄目前 GitHub Actions 與 Cloudflare 的部署前置條件與執行步驟。現況為 local + production，另有已建立並可手動 dispatch 的 staging 部署路徑。
+> 此文件記錄目前 GitHub Actions 與 Cloudflare 的部署前置條件與執行步驟。專案目前有 `local` / `staging` / `production` 三條環境路徑；此文件以 production 為主，staging 手動 dispatch 共用同一條 deploy workflow。
 
 ## 前置條件
 
@@ -8,21 +8,25 @@
 
 在 GitHub Repository Settings > Secrets and variables > Actions 加入以下 secrets：
 
-| Secret                   | 說明                        | 取得方式                                      |
-| ------------------------ | --------------------------- | --------------------------------------------- |
-| `CLOUDFLARE_API_TOKEN`   | Cloudflare API Token        | Cloudflare Dashboard > API Tokens             |
-| `CLOUDFLARE_ACCOUNT_ID`  | Cloudflare Account ID       | Cloudflare Dashboard > Overview               |
-| `PROD_SITE_URL`          | Production site URL         | 例：`https://agentic.yudefine.com.tw`         |
-| `STAGING_SITE_URL`       | Staging site URL            | 例：`https://agentic-staging.yudefine.com.tw` |
-| `NUXT_PUBLIC_SENTRY_DSN` | Sentry 前端 DSN             | Sentry                                        |
-| `SENTRY_AUTH_TOKEN`      | Sentry release upload token | Sentry                                        |
-| `SENTRY_ORG`             | Sentry org slug             | Sentry                                        |
-| `SENTRY_PROJECT`         | Sentry project slug         | Sentry                                        |
-| `DISCORD_WEBHOOK_URL`    | Deploy 通知 webhook（可選） | Discord                                       |
+| Secret                          | 說明                                         | 取得方式                                                  |
+| ------------------------------- | -------------------------------------------- | --------------------------------------------------------- |
+| `CLOUDFLARE_API_TOKEN`          | Cloudflare API Token                         | Cloudflare Dashboard > API Tokens                         |
+| `CLOUDFLARE_ACCOUNT_ID`         | Cloudflare Account ID                        | Cloudflare Dashboard > Overview                           |
+| `PROD_ADMIN_EMAIL_ALLOWLIST`    | production build-time admin allowlist mirror | 與 Worker secret `ADMIN_EMAIL_ALLOWLIST` 保持一致         |
+| `PROD_SITE_URL`                 | Production site URL                          | 例：`https://agentic.yudefine.com.tw`                     |
+| `STAGING_ADMIN_EMAIL_ALLOWLIST` | staging build-time admin allowlist mirror    | 與 staging Worker secret `ADMIN_EMAIL_ALLOWLIST` 保持一致 |
+| `STAGING_SITE_URL`              | Staging site URL                             | 例：`https://agentic-staging.yudefine.com.tw`             |
+| `NUXT_PUBLIC_SENTRY_DSN`        | Sentry 前端 DSN                              | Sentry                                                    |
+| `SENTRY_AUTH_TOKEN`             | Sentry release upload token                  | Sentry                                                    |
+| `SENTRY_ORG`                    | Sentry org slug                              | Sentry                                                    |
+| `SENTRY_PROJECT`                | Sentry project slug                          | Sentry                                                    |
+| `DISCORD_WEBHOOK_URL`           | Deploy 通知 webhook（可選）                  | Discord                                                   |
 
 > 目前 workflow 不會在每次 deploy 時從 GitHub Actions 同步 runtime secrets 到 Worker。`NUXT_SESSION_PASSWORD`、`BETTER_AUTH_SECRET`、OAuth secrets、R2 upload keys、`ADMIN_EMAIL_ALLOWLIST` 等 runtime secrets 應預先以 `wrangler secret put` 寫入各環境的 Worker secret store。
 
 > 2026-04-22 補充：`nuxt.config.ts` 會在 build time 讀取 `NUXT_KNOWLEDGE_ENVIRONMENT`、`NUXT_KNOWLEDGE_FEATURE_PASSKEY`、`NUXT_PASSKEY_RP_ID`、`NUXT_PASSKEY_RP_NAME`。這四個值若只存在於 Worker runtime vars、沒有同時注入 GitHub Actions 的 build env，production artifact 會把 passkey UI gate 編成 `false`，且 `/api/auth/passkey/*` 路由不會註冊。
+
+> `server/auth.config.ts` 也會在 build 時讀取 `ADMIN_EMAIL_ALLOWLIST`。若 `PROD_ADMIN_EMAIL_ALLOWLIST` / `STAGING_ADMIN_EMAIL_ALLOWLIST` 沒有和各自 Worker secret 對齊，artifact 可能把 admin reconciliation 編成空名單。
 
 若 staging 需要前端直傳 R2，production / staging bucket 都要套用根目錄 `r2-cors.json`，並確認其中包含：
 
@@ -80,7 +84,7 @@
 3. production：對 `agentic-rag-db` 先跑 remote D1 migrations，再 build，再從 `.output/server` deploy
 4. staging：對 `agentic-rag-db-staging` 先跑 remote D1 migrations，再 build，接著渲染 `.output/server/wrangler.staging.json`，最後 deploy
 
-其中 build step 必須顯式帶入 `NUXT_KNOWLEDGE_ENVIRONMENT`、`NUXT_KNOWLEDGE_FEATURE_PASSKEY`、`NUXT_PASSKEY_RP_ID`、`NUXT_PASSKEY_RP_NAME` 與對應的非 secret binding vars；不可假設 `wrangler.jsonc` / `wrangler.staging.jsonc` 的 runtime vars 會自動反映到 `pnpm build`。
+其中 build step 必須顯式帶入 `ADMIN_EMAIL_ALLOWLIST`、`NUXT_KNOWLEDGE_ENVIRONMENT`、`NUXT_KNOWLEDGE_FEATURE_PASSKEY`、`NUXT_PASSKEY_RP_ID`、`NUXT_PASSKEY_RP_NAME` 與對應的非 secret binding vars；不可假設 `wrangler.jsonc` / `wrangler.staging.jsonc` 的 runtime vars 會自動反映到 `pnpm build`。
 
 > 2026-04-22 更新：workflow 的 smoke test 已改為共用 `scripts/check-deploy-health.mjs`。若 GitHub runner 對 custom domain 收到 `403` 且判定為 Cloudflare WAF / Bot protection，job 會記 warning 並放行，不再把 deploy 本體誤判為失敗。
 
@@ -140,7 +144,7 @@ npx wrangler deploy
 ### 環境變數設定
 
 ```bash
-# 設定 production URL
+# 預設 production；若要驗 staging，改成 https://agentic-staging.yudefine.com.tw
 export BASE_URL="https://agentic.yudefine.com.tw"
 
 # 從瀏覽器開發者工具取得登入後的 session cookie
@@ -230,7 +234,7 @@ curl -s -X POST "$BASE_URL/mcp" \
 echo "$NUXT_KNOWLEDGE_MCP_CONNECTOR_CLIENTS_JSON"
 
 # 2. 已登入本地帳號後，在瀏覽器開啟：
-# https://agentic.yudefine.com.tw/auth/mcp/authorize?client_id=claude-remote&redirect_uri=<connector-callback>&scope=knowledge.ask%20knowledge.search%20knowledge.category.list
+# $BASE_URL/auth/mcp/authorize?client_id=claude-remote&redirect_uri=<connector-callback>&scope=knowledge.ask%20knowledge.search%20knowledge.category.list
 
 # 3. 同意授權後，connector 以 code 打 token endpoint
 curl -s -X POST "$BASE_URL/api/auth/mcp/token" \

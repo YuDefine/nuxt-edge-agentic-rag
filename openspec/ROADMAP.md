@@ -14,8 +14,10 @@
 > - **passkey reauth / self-delete hotfix chain** 已在 production 收斂完成：`better-auth` / `@better-auth/passkey` 升至 `1.6.7`、`better-call` 鎖至 `1.3.5`，並經歷 safe logger、exact route、`auth.handler(new Request(...))` forwarding、`session.cookieCache.enabled = false` 等多輪 mitigation。最終 `v0.28.12` 以 Playwright virtual authenticator 重放 production full flow 已通過：passkey-first 註冊成功、`generate-authenticate-options` / `verify-authentication` / `account/delete` / `sign-out` 全為 `200`，且自刪後透過 hard redirect 正確回到 `/` 登入頁。
 > - **`fk-cascade-repair-for-self-delete`** 的 production D1 closeout 已完成：latest tombstone `reason = 'self-deletion'` 保留，該 test user 的 `"user"` / `passkey` / `mcp_tokens` count 皆為 `0`，TD-011 已回填為 `done`。
 > - **deploy 現況**：`v0.28.11` 與 `v0.28.12` app deploy 均成功；workflow 仍會因 docs custom domain sync 的 Cloudflare API `403 Authentication error` 顯示失敗，另外 GitHub runner 執行 smoke-test 時也會被 Cloudflare WAF/Bot protection 回 `403`，需以人工 canary 補判，但不影響 app production 站點實際上線。
-> - **既有 active changes** 目前只剩 `drizzle-refactor-credentials-admin-members` 待收尾；其餘 change 已 archive 或仍在 draft。
-> - **`multi-format-document-ingestion`** 已完成 proposal / design / tasks，現在由 `spectra` 標記為 `in-progress`，但尚未開始實作任務。
+> - **staging 環境真相已同步回 repo**：新增 `docs/decisions/2026-04-23-recognize-staging-as-active-environment.md` 作為新 decision，正式以 `local` / `staging` / `production` 三環境描述目前系統；`wrangler.staging.jsonc` 的 `NUXT_KNOWLEDGE_AI_GATEWAY_ID` 已修正為 `agentic-rag-staging`，deploy workflow 註解也不再把 staging 寫成 illustrative。
+> - **verify / runbook 已完成 staging 對齊**：`ACCEPTANCE_RUNBOOK`、`CONVERSATION_LIFECYCLE_VERIFICATION`、`CONFIG_SNAPSHOT_VERIFICATION`、`RETENTION_*`、`rollout-checklist` 等文件現已以 `BASE_URL` / `DB_NAME` / `WRANGLER_CONFIG` 參數化，可直接切換 staging / production；debug surface / smoke / deploy checklists 也已承認 staging 為現有環境。
+> - **既有 active changes** 目前共有 3 條：`drizzle-refactor-credentials-admin-members` 待收尾；`multi-format-document-ingestion` 與 `passkey-first-link-google-custom-endpoint` 在 `spectra list --json` 皆顯示為 `in-progress`，但因 tasks 仍為 `0/N`，`roadmap-sync` 的 auto stage 目前仍將兩者歸類為 `draft`。
+> - **下一條主線候選** 目前有兩條：`passkey-first-link-google-custom-endpoint` 對應 high-priority `TD-012`、屬真實功能缺口；`multi-format-document-ingestion` 則是 demo / 文件 ingestion story 的下一條實作線。
 
 ## Next Moves
 
@@ -26,11 +28,14 @@
 ### Deploy follow-up
 
 - [mid] 驗證 docs custom domains：`agentic-docs.yudefine.com.tw` 與 `agentic-docs-staging.yudefine.com.tw` 均可正常開啟，必要時檢查 Pages `pages.dev` fallback
+- [mid] 對齊 staging / production admin allowlist：確認 Worker secret `ADMIN_EMAIL_ALLOWLIST` 與 GitHub Actions `PROD_ADMIN_EMAIL_ALLOWLIST` / `STAGING_ADMIN_EMAIL_ALLOWLIST` 沒有漂移
+- [mid] 以 staging / production 各跑一次 canary，補齊 workflow smoke-test 因 Cloudflare WAF / Bot protection `403` 無法自動判斷的空缺
 
 ### 專題報告與下一條開發線
 
 - [mid] 重新讀 `reports/latest.md`，把 demo 資料現況與缺口正式寫回報告正文
-- [mid] 等既有 active changes 收尾後，再開 `multi-format-document-ingestion`：shared format registry → canonical snapshot extractor → extraction-first sync orchestration
+- [high] `drizzle-refactor-credentials-admin-members` 收尾後，預設優先啟動 `passkey-first-link-google-custom-endpoint`：custom OAuth link endpoint → callback state validation → account/settings UI 分流
+- [mid] 若當前重點改為 demo / ingestion story，則改先做 `multi-format-document-ingestion`：shared format registry → canonical snapshot extractor → extraction-first sync orchestration
 
 ### Open tech debt / follow-ups
 

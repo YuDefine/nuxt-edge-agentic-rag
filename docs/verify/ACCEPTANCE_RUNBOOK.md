@@ -2,8 +2,8 @@
 
 > 單一腳本，把 `bootstrap-v1-core-from-report` 6.2 的 #1–#5、`add-v1-core-ui` 的 #1, #3–#8，以及 `governance-refinements` 的 conversation lifecycle 與 retention cleanup 整合成可依序執行的人工驗收。
 >
-> **前提**：已依 `production-deploy-checklist.md` 部署完成（或具備 local 開發環境）。
-> **環境**：`https://agentic.yudefine.com.tw`（D1 `agentic-rag-db`、KV `661ea98dad0743be86acc9ebeaf464f4`、R2 `agentic-rag-documents`）
+> **前提**：已依 `production-deploy-checklist.md` / `DEPLOYMENT_RUNBOOK.md` 完成目標環境部署（或具備 local 開發環境）。
+> **預設目標**：production。若改在 staging 執行，先設 `BASE_URL=https://agentic-staging.yudefine.com.tw` 與 `DB_NAME=agentic-rag-db-staging`；production 預設為 `BASE_URL=https://agentic.yudefine.com.tw`、`DB_NAME=agentic-rag-db`。
 >
 > **規則**：人工檢查不由 Claude 自行勾選。使用者走完每一項後回報「OK / 問題 / skip」，Claude 才能標 `[x]`。
 >
@@ -41,7 +41,7 @@
 
 - 瀏覽器（兩個 session：正常 + 無痕，用來同時掛兩個身分）
 - MCP Inspector 或能打 MCP SSE 的 CLI（驗 #4）
-- `wrangler d1 execute agentic-rag-db --remote --command "..."`（查 D1）
+- `wrangler d1 execute "${DB_NAME:-agentic-rag-db}" --remote --command "..."`（查 D1）
 
 ## 1. 驗收矩陣
 
@@ -74,7 +74,7 @@
 
 ### Step 1.1 — Google OAuth 登入（B#1, UI#1）
 
-1. 無痕視窗開 `https://agentic.yudefine.com.tw`
+1. 無痕視窗開 `${BASE_URL:-https://agentic.yudefine.com.tw}`
 2. 以 **Web User**（非 allowlist）Google 登入
 3. 導頁後觀察 Navigation
 
@@ -102,7 +102,7 @@
 
 在 Step 1.1 的 User session：
 
-1. 直接輸入 `https://agentic.yudefine.com.tw/admin/documents`
+1. 直接輸入 `${BASE_URL:-https://agentic.yudefine.com.tw}/admin/documents`
 
 **PASS 條件**：HTTP 403 或 redirect 到 `/chat` / `/login`（不得看到列表）
 
@@ -140,7 +140,7 @@
 - D1 驗證：
 
   ```bash
-  wrangler d1 execute agentic-rag-db --remote --command \
+  wrangler d1 execute "${DB_NAME:-agentic-rag-db}" --remote --command \
     "SELECT id, title, status, (SELECT COUNT(*) FROM document_versions WHERE document_id=documents.id AND is_current=1) AS current_versions FROM documents ORDER BY updated_at DESC LIMIT 3;"
   ```
 
@@ -204,7 +204,7 @@
 2. 確認新版 publish 完成，舊版 `is_current=0`，新版 `is_current=1`
 
    ```bash
-   wrangler d1 execute agentic-rag-db --remote --command \
+   wrangler d1 execute "${DB_NAME:-agentic-rag-db}" --remote --command \
      "SELECT id, document_id, version_number, is_current, created_at FROM document_versions WHERE document_id='<Doc A id>' ORDER BY version_number;"
    ```
 
@@ -283,7 +283,7 @@
 2. 查 D1：
 
    ```bash
-   wrangler d1 execute agentic-rag-db --remote --command \
+   wrangler d1 execute "${DB_NAME:-agentic-rag-db}" --remote --command \
      "SELECT id, channel, query_redacted_text, risk_flags_json, redaction_applied, status FROM query_logs ORDER BY created_at DESC LIMIT 5;"
    ```
 
@@ -297,7 +297,7 @@
 ### Step 6.2 — Messages 無原文
 
 ```bash
-wrangler d1 execute agentic-rag-db --remote --command \
+wrangler d1 execute "${DB_NAME:-agentic-rag-db}" --remote --command \
   "SELECT id, role, content_redacted, risk_flags_json FROM messages ORDER BY created_at DESC LIMIT 10;"
 ```
 
