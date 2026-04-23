@@ -108,7 +108,7 @@ export default defineConfig({
           text: 'Runbooks',
           items: [
             { text: '總覽', link: '/runbooks/' },
-            { text: 'Claude Desktop MCP', link: '/runbooks/claude-desktop-mcp' },
+            { text: 'Remote MCP Connectors', link: '/runbooks/remote-mcp-connectors' },
             { text: 'Guest Policy', link: '/runbooks/guest-policy' },
           ],
         },
