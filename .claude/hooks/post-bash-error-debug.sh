@@ -3,8 +3,21 @@
 # 過濾掉 git/pnpm check 等預期可能失敗的指令
 
 INPUT=$(cat)
-CMD=$(echo "$INPUT" | jq -r '.tool_input.command // ""' 2>/dev/null)
-EXIT_CODE=$(echo "$INPUT" | jq -r '.tool_response.exit_code // 0' 2>/dev/null)
+CMD=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // ""' 2>/dev/null || echo "")
+EXIT_CODE=$(
+  printf '%s' "$INPUT" | jq -r '
+    def tool_response_object:
+      if (.tool_response | type) == "string" then
+        (.tool_response | fromjson? // {})
+      elif (.tool_response | type) == "object" then
+        .tool_response
+      else
+        {}
+      end;
+
+    tool_response_object.exit_code // 0
+  ' 2>/dev/null || echo "0"
+)
 
 # 只在非零 exit code 時觸發
 if [ "$EXIT_CODE" = "0" ] || [ "$EXIT_CODE" = "null" ]; then
@@ -28,7 +41,8 @@ if [ -f "$MARKER" ]; then
 fi
 touch "$MARKER"
 
-echo "[Auto-Harness] 指令執行失敗（exit code: $EXIT_CODE）。"
-echo "如果這不是預期的失敗，使用 /spectra-debug 進行系統性排查（四階段：觀察 → 假設 → 驗證 → 修復）。"
+printf -v REASON '[Auto-Harness] 指令執行失敗（exit code: %s）。如果這不是預期的失敗，使用 /spectra-debug 進行系統性排查（四階段：觀察 → 假設 → 驗證 → 修復）。' "$EXIT_CODE"
+
+printf '%s\n' "$REASON" >&2
 
 exit 0
