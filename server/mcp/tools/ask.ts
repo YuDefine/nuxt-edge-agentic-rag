@@ -14,6 +14,11 @@ import { retrieveVerifiedEvidence } from '#server/utils/knowledge-retrieval'
 import { getKnowledgeRuntimeConfig } from '#server/utils/knowledge-runtime'
 import { askKnowledge, createMcpQueryLogStore } from '#server/utils/mcp-ask'
 import { requireMcpScope } from '#server/utils/mcp-auth'
+import {
+  createWorkersAiAnswerAdapter,
+  createWorkersAiJudgeAdapter,
+  type WorkersAiBindingLike,
+} from '#server/utils/workers-ai'
 
 import type { McpAuthContext } from '#server/utils/mcp-middleware'
 
@@ -36,10 +41,11 @@ export default defineMcpTool({
     const runtimeConfig = getKnowledgeRuntimeConfig()
     const database = await getD1Database()
     const aiSearchClient = createCloudflareAiSearchClient({
-      aiBinding: getRequiredAiBinding(event),
+      aiBinding: getRequiredAiSearchBinding(event),
       indexName: getRequiredAiSearchIndex(runtimeConfig.bindings.aiSearchIndex),
       gatewayConfig: runtimeConfig.aiGateway,
     })
+    const workersAiBinding = getRequiredWorkersAiBinding(event)
     const evidenceStore = createKnowledgeEvidenceStore(database)
 
     // Touch KV binding to ensure it's wired; rate limiting itself is handled
@@ -55,10 +61,14 @@ export default defineMcpTool({
         query: args.query,
       },
       {
-        answer: createFallbackAnswer,
+        answer: createWorkersAiAnswerAdapter({
+          binding: workersAiBinding,
+        }),
         auditStore: createKnowledgeAuditStore(database),
         citationStore: createCitationStore(database),
-        judge: createFallbackJudge(runtimeConfig.governance.thresholds.answerMin),
+        judge: createWorkersAiJudgeAdapter({
+          binding: workersAiBinding,
+        }),
         queryLogStore: createMcpQueryLogStore(database),
         retrieve: (input) =>
           retrieveVerifiedEvidence(input, {
@@ -86,46 +96,7 @@ function requireMcpAuth(event: {
   return auth
 }
 
-async function createFallbackAnswer(input: {
-  evidence: Array<{
-    chunkText: string
-    documentTitle: string
-  }>
-  modelRole: string
-  query: string
-  retrievalScore: number
-}): Promise<string> {
-  const uniqueSnippets = [
-    ...new Set(input.evidence.map((item) => item.chunkText.trim()).filter(Boolean)),
-  ].slice(0, 3)
-
-  if (uniqueSnippets.length === 0) {
-    return ''
-  }
-
-  if (uniqueSnippets.length === 1) {
-    return uniqueSnippets[0] ?? ''
-  }
-
-  return uniqueSnippets.join('\n\n')
-}
-
-function createFallbackJudge(answerMin: number) {
-  return async function fallbackJudge(input: {
-    evidence: Array<unknown>
-    query: string
-    retrievalScore: number
-  }): Promise<{
-    reformulatedQuery?: string
-    shouldAnswer: boolean
-  }> {
-    return {
-      shouldAnswer: input.evidence.length > 0 && input.retrievalScore >= answerMin,
-    }
-  }
-}
-
-function getRequiredAiBinding(event: {
+function getRequiredAiSearchBinding(event: {
   context: Record<string, unknown> & { cloudflare?: { env?: Record<string, unknown> } }
 }): CloudflareAiBindingLike {
   const binding = getCloudflareEnv(event).AI
@@ -139,6 +110,22 @@ function getRequiredAiBinding(event: {
   }
 
   return binding as CloudflareAiBindingLike
+}
+
+function getRequiredWorkersAiBinding(event: {
+  context: Record<string, unknown> & { cloudflare?: { env?: Record<string, unknown> } }
+}): WorkersAiBindingLike {
+  const binding = getCloudflareEnv(event).AI
+
+  if (!binding || typeof (binding as { run?: unknown }).run !== 'function') {
+    throw createError({
+      statusCode: 503,
+      statusMessage: 'Service Unavailable',
+      message: 'Cloudflare Workers AI binding "AI" is not available',
+    })
+  }
+
+  return binding as WorkersAiBindingLike
 }
 
 function getRequiredAiSearchIndex(indexName: string): string {

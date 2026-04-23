@@ -84,7 +84,11 @@ describe('mcp get-document-chunk tool definition', () => {
         governance: {
           configSnapshotVersion: 'v1',
           models: {},
-          thresholds: { answerMin: 0.5 },
+          thresholds: {
+            answerMin: 0.51,
+            directAnswerMin: 0.71,
+            judgeMin: 0.46,
+          },
         },
       }),
     }))
