@@ -30,9 +30,9 @@
 
 ## Active Changes
 
-_last synced: 2026-04-23T19:45:41.809Z_
+_last synced: 2026-04-23T19:52:03.669Z_
 
-_No active changes._
+1 active change (0 ready · 1 in progress · 0 draft · 0 blocked)
 
 ### Ready to apply
 
@@ -40,7 +40,8 @@ _(none)_
 
 ### In progress
 
-_(none)_
+- **collapsible-chat-history-sidebar** — 5/36 tasks (14%)
+  - Specs: `responsive-and-a11y-foundation`
 
 ### Draft
 
@@ -73,7 +74,7 @@ _No active claims._
 
 ### Independent (can run in parallel)
 
-_(none)_
+- `collapsible-chat-history-sidebar`
 
 ### Mutex (same spec touched)
 
@@ -92,10 +93,7 @@ _(none)_
 > 已 `spectra park` 的 changes。檔案暫時從 `openspec/changes/` 移出，
 > metadata 保留在 `.spectra/spectra.db`。`spectra unpark <name>` 可取回。
 
-1 parked change
-
-- **collapsible-chat-history-sidebar** — 0/36 tasks (0%)
-  - Summary: 目前 chat 頁面（`/`）在 `lg` 以上永遠強制顯示…
+_No parked changes._
 
 <!-- SPECTRA-UX:ROADMAP-AUTO:/parked -->
 
