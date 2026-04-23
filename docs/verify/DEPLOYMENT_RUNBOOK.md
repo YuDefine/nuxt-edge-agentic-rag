@@ -116,7 +116,7 @@ OAuth-first remote MCP rollout 另需確認以下值：
     ],
     "environments": ["production"],
     "name": "Claude Remote",
-    "redirectUris": ["https://claude.example/callback"]
+    "redirectUris": ["https://claude.ai/api/mcp/auth_callback"]
   }
 ]
 ```
@@ -431,7 +431,7 @@ curl -sf https://agentic.yudefine.com.tw/api/auth/session \
 
 若本次部署包含 remote MCP auth / consent / allowlist 變更，額外跑一次：
 
-1. 用已存在本地帳號開啟 `/auth/mcp/authorize?client_id=...`
+1. 用已存在本地帳號開啟 `/auth/mcp/authorize?client_id=claude-remote&redirect_uri=https://claude.ai/api/mcp/auth_callback&scope=knowledge.ask%20knowledge.search%20knowledge.category.list`
 2. 確認 consent UI 能顯示 connector 名稱、granted scopes、目前授權帳號
 3. 完成 authorization code + token exchange
 4. 用取得的 access token 對 `/mcp` 呼叫：
