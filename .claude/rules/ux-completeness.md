@@ -5,6 +5,8 @@ globs: ['openspec/changes/**', 'app/**/*.vue', 'shared/types/**/*.ts', 'supabase
 
 # UX Completeness
 
+繁體中文 | [English](./ux-completeness.en.md)
+
 **核心命題**：feature 的完成度由**使用者結果**定義，不由「tasks 打勾 + tests 綠」定義。DB allow ≠ feature ready；tests pass ≠ UX done。
 
 此規則優先於 spectra skill 內嵌說明與其他規則。
