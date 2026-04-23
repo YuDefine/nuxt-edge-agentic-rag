@@ -87,6 +87,63 @@ describe('knowledge answering', () => {
     })
   })
 
+  it('passes stream delta and abort signal through the accepted answer branch', async () => {
+    const governance = createKnowledgeRuntimeConfig({
+      environment: 'local',
+    }).governance
+    const onTextDelta = vi.fn()
+    const signal = new AbortController().signal
+    const retrieve = vi.fn().mockResolvedValue({
+      evidence: [
+        {
+          accessLevel: 'internal',
+          categorySlug: 'finance',
+          chunkText: 'Revenue grew 20%.',
+          citationLocator: 'lines 1-3',
+          documentId: 'doc-1',
+          documentTitle: 'Quarterly Report',
+          documentVersionId: 'ver-2',
+          excerpt: 'Revenue grew 20%.',
+          score: 0.9,
+          sourceChunkId: 'chunk-1',
+          title: 'Quarterly Report',
+        },
+      ],
+      normalizedQuery: 'revenue growth',
+    })
+    const answer = vi.fn().mockResolvedValue('Revenue grew 20%.')
+
+    await answerKnowledgeQuery(
+      {
+        allowedAccessLevels: ['internal'],
+        query: 'What changed in revenue growth?',
+      },
+      {
+        answer,
+        governance,
+        judge: vi.fn(),
+        persistCitations: vi.fn().mockResolvedValue([]),
+        retrieve,
+        stream: {
+          onTextDelta,
+          signal,
+        },
+      } as Parameters<typeof answerKnowledgeQuery>[1] & {
+        stream: {
+          onTextDelta: typeof onTextDelta
+          signal: AbortSignal
+        }
+      },
+    )
+
+    expect(answer).toHaveBeenCalledWith(
+      expect.objectContaining({
+        onTextDelta,
+        signal,
+      }),
+    )
+  })
+
   it('judges mid-confidence evidence, retries once, and refuses if confidence stays weak', async () => {
     const governance = createKnowledgeRuntimeConfig({
       environment: 'local',

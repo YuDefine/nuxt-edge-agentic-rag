@@ -21,6 +21,11 @@ export interface KnowledgeAnsweringTelemetry {
   judgeScore: number | null
 }
 
+interface AnswerStreamCallbacks {
+  onTextDelta?: (delta: string) => Promise<void> | void
+  signal?: AbortSignal
+}
+
 export async function answerKnowledgeQuery(
   input: {
     allowedAccessLevels: string[]
@@ -30,8 +35,10 @@ export async function answerKnowledgeQuery(
     answer: (input: {
       evidence: VerifiedKnowledgeEvidence[]
       modelRole: string
+      onTextDelta?: (delta: string) => Promise<void> | void
       query: string
       retrievalScore: number
+      signal?: AbortSignal
     }) => Promise<string>
     judge: (input: {
       evidence: VerifiedKnowledgeEvidence[]
@@ -61,6 +68,7 @@ export async function answerKnowledgeQuery(
       evidence: VerifiedKnowledgeEvidence[]
       normalizedQuery: string
     }>
+    stream?: AnswerStreamCallbacks
   },
 ): Promise<{
   answer: string | null
@@ -88,6 +96,7 @@ export async function answerKnowledgeQuery(
       options.governance,
       options.answer,
       options.persistCitations,
+      options.stream,
     )
   }
 
@@ -126,6 +135,7 @@ export async function answerKnowledgeQuery(
       options.governance,
       options.answer,
       options.persistCitations,
+      options.stream,
     )
   }
 
@@ -159,6 +169,7 @@ export async function answerKnowledgeQuery(
       options.governance,
       options.answer,
       options.persistCitations,
+      options.stream,
     )
   }
 
@@ -193,8 +204,10 @@ async function answerWithCitations(
   answer: (input: {
     evidence: VerifiedKnowledgeEvidence[]
     modelRole: string
+    onTextDelta?: (delta: string) => Promise<void> | void
     query: string
     retrievalScore: number
+    signal?: AbortSignal
   }) => Promise<string>,
   persistCitations: (
     citations: Array<{
@@ -204,6 +217,7 @@ async function answerWithCitations(
       sourceChunkId: string
     }>,
   ) => Promise<Array<{ citationId: string; documentVersionId: string; sourceChunkId: string }>>,
+  stream?: AnswerStreamCallbacks,
 ): Promise<{
   answer: string
   citations: Array<{ citationId: string; documentVersionId: string; sourceChunkId: string }>
@@ -213,8 +227,10 @@ async function answerWithCitations(
   const responseText = await answer({
     evidence,
     modelRole: selectAnswerModelRole(evidence, governance.models),
+    onTextDelta: stream?.onTextDelta,
     query,
     retrievalScore,
+    signal: stream?.signal,
   })
   const citations = await persistCitations(
     evidence.map((item) => ({
