@@ -1,143 +1,87 @@
+---
+description: Scope discipline 規則——不擴散、必登記、不擅改他人成果，避免 AI 工作流吞掉 WIP 或把範圍外問題靜默遺失
+globs: ['openspec/**', 'docs/tech-debt.md', 'docs/decisions/**', 'HANDOFF.md']
+---
+
 # Scope Discipline
 
-**核心命題**：scope discipline 的本體是「**不擴散 × 必登記 × 不擅改他人成果**」三件事一起，不是「看到其他問題就裝沒看見」，也不是「看到未知變更就 revert 清場」。
+**核心命題**：scope discipline 不是「範圍外就裝沒看到」，而是三件事一起成立：
 
-此規則優先於個別 skill 說明與 subagent brief。違反本規則造成的進度遺失由主線負責，不得以「brief 寫得不清楚」「subagent 擅自行動」卸責。
+1. **不擴散**
+2. **必登記**
+3. **不擅改他人成果**
 
----
+少任何一項，都會讓 AI 工作流默默吞掉風險、遺失 WIP，或把範圍外問題埋進歷史。
 
-## 1. 正確的 scope discipline 三要素
+## 正確的 scope discipline
 
-| 要素               | 意思                                                               | 反例                                                    |
-| ------------------ | ------------------------------------------------------------------ | ------------------------------------------------------- |
-| **不擴散**         | 當前 task 範圍外的檔案 / 模組，不順手改                            | 改 A 檔順便重構 B 檔                                    |
-| **必登記**         | 途中發現的其他問題、技術債、改進點 **一律**登記，不得默默忽略      | 「這超出 scope，不管了」                                |
-| **不擅改他人成果** | 看到 unknown / uncommitted / 跨 session 變更先問，禁止 revert 清場 | `git reset --hard` / `git checkout --` 清掉不認識的 WIP |
+| 要素               | 意思                                    | 反例                                           |
+| ------------------ | --------------------------------------- | ---------------------------------------------- |
+| **不擴散**         | 當前 task 範圍外的檔案 / 模組，不順手改 | 改 A 檔順便重構 B 檔                           |
+| **必登記**         | 途中發現的問題、技術債、改進點一律登記  | 「這不在 scope，先不管」然後永遠消失           |
+| **不擅改他人成果** | 看到未知 / 未提交 / 跨 session 變更先問 | `git reset --hard`、`git checkout --` 直接清場 |
 
-三者缺一不可。只做「不擴散」不做「必登記」= 隱患埋在歷史；只做「不擴散」不做「不擅改」= 進度被吞。
+## 意外發現的登記路徑（強制）
 
----
+發現範圍外問題時，**MUST** 選一條路徑登記：
 
-## 2. 意外發現的登記路徑（強制）
+| 發現類型                         | 登記位置                               | 做法                                                                 |
+| -------------------------------- | -------------------------------------- | -------------------------------------------------------------------- |
+| 技術債 / bug / 邊界情況          | `docs/tech-debt.md`                    | 建 `TD-NNN` entry，並在當前 change `tasks.md` 加 `@followup[TD-NNN]` |
+| session 尚未完成的 WIP / blocker | `HANDOFF.md`                           | 留下目前狀態、阻擋原因、下一步                                       |
+| 未來要做但尚未 propose 的工作    | `openspec/ROADMAP.md` `## Next Moves`  | 以 `high/mid/low` + 依賴關係記錄                                     |
+| 當前 change 本身的 scope 漏項    | `spectra-ingest`                       | 更新 proposal / tasks / design artifact                              |
+| 架構層級決策                     | `docs/decisions/YYYY-MM-DD-<topic>.md` | 用 ADR 格式記錄                                                      |
 
-**NEVER** 以「這不在 scope / brief 沒要求 / 不影響當前 task」為由忽略發現。所有意外發現 **MUST** 選一個路徑登記：
+**登記後才能回到當前 task。**
 
-| 發現類型                          | 登記到                                        | 做法                                                          |
-| --------------------------------- | --------------------------------------------- | ------------------------------------------------------------- |
-| 技術債 / bug / 未處理的邊界情況   | `docs/tech-debt.md`（TD-NNN entry）           | 同時在當前 change 的 `tasks.md` 加 `@followup[TD-NNN]` marker |
-| 當前 session 未完的 WIP / blocker | `template/HANDOFF.md`                         | 下個 session 接手時讀取                                       |
-| 未來該做但還沒定案的工作          | `openspec/ROADMAP.md` → `## Next Moves`       | 依優先序 high/mid/low + 依賴關係                              |
-| 當前 change 的 scope 增補         | `spectra-ingest` 更新 artifacts               | tasks.md / proposal.md / design 對應段落                      |
-| 架構層級的設計決策                | `docs/decisions/YYYY-MM-DD-<topic>.md`（ADR） | 格式見 `knowledge-and-decisions.md`                           |
+## 未知變更的處理方式
 
-登記後**才可**回到當前 task 繼續。「我會記得」不算登記。
+看到以下任一狀態時，視為**未知成果**，必須先回報、再行動：
 
----
+- `git status` 有你不認得的 modified / untracked 檔案
+- 有不屬於當前 scope 的 active change / worktree / stash
+- `openspec/changes/<name>/` 裡出現你不清楚來源的 artifact
 
-## 3. Destructive 操作的 guardrails
+正確流程：
 
-### 3.1 看到 unknown / unexpected state 時
+1. 列出未知狀態並告知使用者
+2. 問清楚是否為其他 session / 使用者 / subagent 的 WIP
+3. 在取得明確指示前，**不清理、不覆寫、不 revert**
 
-**MUST** 先回報、後行動。所有符合以下描述的 state 視為「未知成果」，禁止直接清理：
+## 破壞性指令的 guardrails
 
-- `git status` 出現你不記得動過的 modified / untracked 檔案
-- 某個 branch 不在當前任務 scope
-- `.claude/worktrees/` 下有未知目錄
-- `openspec/changes/<name>/` 裡有你不認得的 artifact
-- stash list 出現未知 stash
+以下指令 **MUST** 先經使用者明確同意，且不得在 subagent 內自主執行：
 
-**正確流程**：
-
-1. 列出這些 state → 告知使用者「發現以下變更，不屬於當前 task，請問是否為其他 session 的 WIP？」
-2. 等待使用者確認
-3. 使用者回「是 WIP 保留」→ 絕不動它，必要時 stash 保護（`git stash push -m 'cross-session-wip' -- <files>`）然後通知 stash ref
-4. 使用者回「是 subagent 副作用要清掉」→ 才執行 revert
-
-### 3.2 禁止當成「清場工具」使用的指令
-
-下列指令 **MUST** 在取得使用者明確同意後才可跑，且**禁止**在 subagent 內自主執行：
-
-- `git reset --hard <anything>`
-- `git checkout -- <paths>` / `git restore <paths>`（對 tracked 檔案丟棄變更）
+- `git reset --hard`
+- `git checkout -- <paths>` / `git restore <paths>`
 - `git clean -fd` / `git clean -fdx`
-- `git revert <commit>`（尤其是 published commit）
-- `git reflog expire --expire=now`
-- 刪除 `.claude/worktrees/*`、`openspec/changes/*` 目錄
-- `rm -rf` 任何含 user-authored 內容的目錄
+- `git revert <commit>`
+- 刪除 `openspec/changes/*`、`.claude/worktrees/*`、或任何含 user-authored 內容的目錄
 
-**NEVER** 以「把 repo 回到 clean state」「清理 subagent 副作用」「rollback 失敗的嘗試」為由跑這些指令，**除非**已對照第 3.1 流程確認過。
+## Subagent brief 最低要求
 
-### 3.3 Subagent 內部的強制限制
-
-長駐 subagent（透過 Agent tool 啟動的）**MUST NOT** 執行第 3.2 節任何指令，即使主線給的 brief 寫「請清理」。遇到需要清理的情境，subagent 必須：
-
-1. 回報主線當前 state
-2. 要求主線決定是否清理
-3. 等主線指示，不得自主行動
-
-主線若要 subagent 清理，**MUST** 先用 `git status` / `git diff` 對照，確認要清的東西**真的**是當次 subagent 產出的，不是其他 session 或使用者的成果。
-
----
-
-## 4. Subagent brief 字眼範本
-
-寫 subagent brief 時，scope discipline 段落 **MUST** 採以下結構：
+委派 subagent 時，scope discipline 段落至少要包含：
 
 ```markdown
-## Scope discipline
+## Scope Discipline
 
-- 範圍外檔案（路徑 A、B、C 以外）不要順手改
-- 意外發現其他問題 → **不修** 但 **必登記**：
-  - 技術債 → `docs/tech-debt.md` + tasks.md `@followup[TD-NNN]`
-  - 當前 change 缺項 → 回報主線，由主線決定 ingest
-  - 不清楚該登記到哪 → 回報主線
-- 遇到不認識的 uncommitted 變更 → 停、回報、等指示
-- 禁止跑 `git reset --hard` / `git checkout --` / `git clean` 等破壞性指令
+- 範圍外檔案不要順手改
+- 意外發現其他問題：不修，但必登記
+- 看到不認識的 uncommitted 變更：停下並回報
+- 禁止跑 git reset / git checkout -- / git clean 等破壞性指令
 ```
 
-**禁止**只寫「NEVER 全域 find-replace 不看語意」「意外發現不展開修」這類**只有上半段**的句子——會被解讀為「忽略 = 合規」。
+## 與其他規則的關係
 
----
+- `follow-up-register.md`：提供技術債登記與 archive gate
+- `handoff.md`：提供跨 session 交接出口
+- `knowledge-and-decisions.md`：提供長期知識與 ADR 出口
+- `ux-completeness.md`：補上「發現未登記 = 未完成」的完成度觀點
 
-## 5. 違反時的回報格式
+## 禁止事項
 
-Hook / agent / 後續 session 偵測到違反時：
-
-```
-[Scope Discipline] 違反 <第 N 節>
-
-事件：<一句話描述發生了什麼>
-
-證據：
-  - git reflog: <HEAD@{...}: reset/checkout/...>
-  - 遺失內容：<檔案清單或 commit hash>
-
-救援可能：
-  - git fsck --lost-found 的 dangling blobs/commits
-  - .git/objects/ 在時間窗內的新物件
-  - IDE local history / VS Code Timeline
-
-修正方式：
-  - 先救回遺失內容（若仍可救）
-  - 把發現的問題補登記到對應路徑
-  - 檢討 subagent brief 字眼是否漏了「必登記」下半段
-```
-
----
-
-## 6. 與既有規則的關係
-
-- **`follow-up-register.md`**：本規則第 2 節把 `@followup[TD-NNN]` 機制擴展到所有「意外發現」類型，不限於 archive gate 擋下的 task marker
-- **`handoff.md`**：第 2 節的 HANDOFF.md 路徑依其格式
-- **`commit.md`**：第 3.2 節禁用的指令與 `/commit` 的品質閘門正交——commit 走 `/commit`，清場行為走本規則
-- **`ux-completeness.md`**：Definition of Done 包含「發現未登記 = 未完成」此精神
-
----
-
-## 7. 必禁事項
-
-- **NEVER** 把「超出 scope」當作不處理發現的理由
-- **NEVER** 把未知 uncommitted 變更當成「上次沒清乾淨」自行清掉
-- **NEVER** 在 subagent 內自主執行 `git reset` / `git checkout --` / `git clean`
-- **NEVER** 寫只有「不擴散」沒有「必登記」的 subagent brief
-- **NEVER** 以「節省對話往返」為由跳過第 3.1 的「先問再行動」
+- **NEVER** 把「超出 scope」當成忽略發現的理由
+- **NEVER** 把未知變更當作「上次沒清乾淨」直接清掉
+- **NEVER** 在 subagent 內執行 `git reset` / `git checkout --` / `git clean`
+- **NEVER** 寫只有「不擴散」沒有「必登記」的 brief

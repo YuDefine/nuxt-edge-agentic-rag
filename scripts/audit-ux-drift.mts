@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-/* eslint-disable no-console */
 /**
  * UX Drift Auditor (spectra-ux)
  *
@@ -65,7 +64,7 @@ function parseArgs(argv: string[]): CliOptions {
       console.log(
         'Usage: audit-ux-drift.mts [--changed] [--json]\n' +
           '  --changed   Scan only files touched in git diff HEAD\n' +
-          '  --json      Emit machine-readable JSON on stdout',
+          '  --json      Emit machine-readable JSON on stdout'
       )
       process.exit(0)
     } else {
@@ -330,7 +329,9 @@ function emitText(report: Report): void {
   }
 
   const label = report.mode === 'changed' ? ' (changed files only)' : ''
-  console.log(`→ Scanning ${report.enums.length} enum(s) across codebase${label}...`)
+  console.log(
+    `→ Scanning ${report.enums.length} enum(s) across codebase${label}...`
+  )
   for (const e of report.enums) {
     console.log(`  · ${e.name} (${e.values.length} values) ← ${e.source}`)
   }
@@ -354,14 +355,18 @@ function emitText(report: Report): void {
   for (const [file, fs] of byFile) {
     console.log(`  ${file}`)
     for (const f of fs) {
-      console.log(`    · ${f.enumName} [${f.handlerKind}] missing: ${f.missing.join(', ')}`)
+      console.log(
+        `    · ${f.enumName} [${f.handlerKind}] missing: ${f.missing.join(', ')}`
+      )
     }
   }
   console.log()
   console.log('Fix options:')
   console.log('  1. Convert if-chain to switch + assertNever (preferred)')
   console.log('  2. Add the missing cases to the existing handler')
-  console.log('  3. Suppress: add `// ux-drift-audit: ignore <EnumName>` near handler')
+  console.log(
+    '  3. Suppress: add `// ux-drift-audit: ignore <EnumName>` near handler'
+  )
   console.log()
   console.log('See docs/rules/ux-completeness.md — Exhaustiveness Rule')
 }
