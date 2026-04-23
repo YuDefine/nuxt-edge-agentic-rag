@@ -1,8 +1,11 @@
 <script setup lang="ts">
-  import { toRef } from 'vue'
+  import { inject, toRef } from 'vue'
 
   import type { ChatConversationSummary, ChatMessage } from '~/types/chat'
-  import { useChatConversationHistory } from '~/composables/useChatConversationHistory'
+  import {
+    ChatConversationHistoryInjectionKey,
+    useChatConversationHistory,
+  } from '~/composables/useChatConversationHistory'
   import type { ConversationRecencyBucket } from '~/utils/conversation-grouping'
   import { loadChatConversationDetail } from '~/utils/chat-conversation-loader'
   import { groupConversationsByRecency } from '~/utils/conversation-grouping'
@@ -11,7 +14,6 @@
   interface Props {
     collapsed?: boolean
     disabled?: boolean
-    onExpandRequest?: () => void
     refreshKey?: number
     selectedConversationId?: string | null
   }
@@ -31,6 +33,7 @@
         messages: ChatMessage[]
       },
     ]
+    'expand-request': []
   }>()
 
   const { $csrfFetch } = useNuxtApp() as unknown as {
@@ -38,35 +41,50 @@
   }
   const toast = useToast()
 
-  const history = useChatConversationHistory({
-    deleteConversation: async (conversationId) => {
-      await $csrfFetch(`/api/conversations/${conversationId}`, { method: 'DELETE' })
-    },
-    listConversations: async () => {
-      const response = await $csrfFetch<{ data: ChatConversationSummary[] }>('/api/conversations')
-      return response.data
-    },
-    loadConversation: (conversationId) => loadChatConversationDetail($csrfFetch, conversationId),
-    onConversationCleared: () => emit('conversation-cleared'),
-    onHistoryError: ({ action }) => {
-      toast.add({
-        title: action === 'delete' ? '無法刪除對話' : '無法更新對話列表',
-        description: '請稍後再試。',
-        color: 'error',
-        icon: 'i-lucide-alert-circle',
+  // Prefer a history instance provided by an ancestor (see app/pages/index.vue)
+  // so that multiple surfaces — inline sidebar and off-canvas drawer — share
+  // one instance and only issue one `/api/conversations` GET per page entry.
+  // If no ancestor provides one, fall back to a self-owned instance to keep
+  // the component usable in isolation (tests, Storybook).
+  const injectedHistory = inject(ChatConversationHistoryInjectionKey, null)
+  const isOwner = injectedHistory === null
+
+  const ownedHistory = isOwner
+    ? useChatConversationHistory({
+        deleteConversation: async (conversationId) => {
+          await $csrfFetch(`/api/conversations/${conversationId}`, { method: 'DELETE' })
+        },
+        listConversations: async () => {
+          const response = await $csrfFetch<{ data: ChatConversationSummary[] }>(
+            '/api/conversations',
+          )
+          return response.data
+        },
+        loadConversation: (conversationId) =>
+          loadChatConversationDetail($csrfFetch, conversationId),
+        onConversationCleared: () => emit('conversation-cleared'),
+        onHistoryError: ({ action }) => {
+          toast.add({
+            title: action === 'delete' ? '無法刪除對話' : '無法更新對話列表',
+            description: '請稍後再試。',
+            color: 'error',
+            icon: 'i-lucide-alert-circle',
+          })
+        },
+        onConversationLoadError: () => {
+          toast.add({
+            title: '無法載入對話',
+            description: '請稍後再試。',
+            color: 'error',
+            icon: 'i-lucide-alert-circle',
+          })
+        },
+        onConversationSelected: (payload) => emit('conversation-selected', payload),
+        selectedConversationId: toRef(props, 'selectedConversationId'),
       })
-    },
-    onConversationLoadError: () => {
-      toast.add({
-        title: '無法載入對話',
-        description: '請稍後再試。',
-        color: 'error',
-        icon: 'i-lucide-alert-circle',
-      })
-    },
-    onConversationSelected: (payload) => emit('conversation-selected', payload),
-    selectedConversationId: toRef(props, 'selectedConversationId'),
-  })
+    : null
+
+  const history = injectedHistory ?? ownedHistory!
 
   async function refreshHistory(): Promise<void> {
     const didRefresh = await history.refresh()
@@ -100,7 +118,7 @@
   }
 
   function requestExpand(): void {
-    props.onExpandRequest?.()
+    emit('expand-request')
   }
 
   const bucketOpenState = ref<Record<ConversationRecencyBucket, boolean>>({
@@ -111,19 +129,27 @@
     earlier: false,
   })
   const conversations = computed(() => history.conversations.value)
+  // Tick once per minute so that time-bucket grouping recomputes across the
+  // local-calendar day boundary without requiring a refetch.
+  const now = useNow({ interval: 60_000 })
   const groupedConversations = computed(() =>
-    groupConversationsByRecency(conversations.value, new Date()),
+    groupConversationsByRecency(conversations.value, now.value),
   )
   const isLoading = computed(() => history.isLoading.value)
   const deleteInFlightId = computed(() => history.deleteInFlightId.value)
 
-  watch(
-    () => props.refreshKey,
-    async () => {
-      await refreshHistory()
-    },
-    { immediate: true },
-  )
+  // Only the owner (self-created instance) drives refresh off `refreshKey`.
+  // When an ancestor provides a shared instance, it also owns the refresh
+  // pipeline, so the two surfaces don't each fire a fetch on mount.
+  if (isOwner) {
+    watch(
+      () => props.refreshKey,
+      async () => {
+        await refreshHistory()
+      },
+      { immediate: true },
+    )
+  }
 </script>
 
 <template>
@@ -135,8 +161,8 @@
       aria-label="展開對話記錄"
       @click="requestExpand"
     >
-      <UIcon name="i-lucide-history" class="size-5" aria-hidden="true" />
-      <UBadge
+      <LazyUIcon name="i-lucide-history" class="size-5" aria-hidden="true" />
+      <LazyUBadge
         v-if="conversations.length > 0"
         color="neutral"
         variant="subtle"
@@ -144,10 +170,10 @@
         class="min-w-5 justify-center px-1"
       >
         {{ conversations.length }}
-      </UBadge>
+      </LazyUBadge>
     </button>
 
-    <UButton
+    <LazyUButton
       icon="i-lucide-plus"
       variant="ghost"
       color="neutral"
@@ -186,17 +212,18 @@
           <button
             type="button"
             class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs font-medium text-muted transition hover:bg-accented hover:text-default focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
+            :aria-expanded="bucketOpenState[group.bucket]"
           >
-            <UIcon
+            <LazyUIcon
               name="i-lucide-chevron-right"
               class="size-4 shrink-0 transition-transform duration-200"
               :class="bucketOpenState[group.bucket] ? 'rotate-90' : ''"
               aria-hidden="true"
             />
             <span class="min-w-0 flex-1 truncate">{{ group.label }}</span>
-            <UBadge color="neutral" variant="subtle" size="xs">
+            <LazyUBadge color="neutral" variant="subtle" size="xs">
               {{ group.conversations.length }}
-            </UBadge>
+            </LazyUBadge>
           </button>
 
           <template #content>
@@ -235,7 +262,7 @@
                   :aria-label="`刪除對話 ${conversation.title}`"
                   @click="history.deleteConversationById(conversation.id)"
                 >
-                  <UIcon
+                  <LazyUIcon
                     :name="
                       deleteInFlightId === conversation.id
                         ? 'i-lucide-loader-circle'

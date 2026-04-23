@@ -188,15 +188,24 @@
         native: typeof globalThis.fetch
       }
     }
+    // TD-025 — `$csrfFetch.native` inherits ofetch's raw `globalThis.fetch`
+    // and therefore skips the `onRequest` hook that injects the CSRF header.
+    // Streaming still requires a raw `Response` with a readable body, so we
+    // keep `.native` but attach the header ourselves.
+    const { csrf, headerName } = useCsrf()
 
     try {
+      const headers: Record<string, string> = {
+        accept: 'text/event-stream',
+        'content-type': 'application/json',
+      }
+      if (csrf && headerName) {
+        headers[headerName] = csrf
+      }
       const response = await $csrfFetch.native('/api/chat', {
         method: 'POST',
         body: JSON.stringify(buildChatRequestBody(query, props.activeConversationId)),
-        headers: {
-          accept: 'text/event-stream',
-          'content-type': 'application/json',
-        },
+        headers,
         signal: controller.signal,
       })
 
@@ -357,7 +366,7 @@
 
     <!-- Error alert with retry action -->
     <div v-if="submitError && !isStreaming" class="px-4 pb-2">
-      <UAlert color="error" variant="subtle" icon="i-lucide-alert-circle">
+      <LazyUAlert color="error" variant="subtle" icon="i-lucide-alert-circle">
         <template #title>{{ submitError }}</template>
         <template #description>
           <span class="text-sm">如問題持續發生，請聯繫管理員。</span>
@@ -372,12 +381,12 @@
             @click="submitError = null"
           />
         </template>
-      </UAlert>
+      </LazyUAlert>
     </div>
 
     <!-- Rate limit notice -->
     <div v-if="rateLimitCountdown > 0" class="px-4 pb-2">
-      <UAlert
+      <LazyUAlert
         color="warning"
         variant="subtle"
         icon="i-lucide-clock"

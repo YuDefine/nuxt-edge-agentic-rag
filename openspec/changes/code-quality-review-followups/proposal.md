@@ -11,6 +11,7 @@
 - **TD-022**：ConversationHistory.vue 的 `groupedConversations` computed 引入 `useNow({ interval: 60_000 })` 或等效 one-shot tick，跨午夜自動重分桶，免 refetch。
 - **TD-023**：將 `useChatConversationHistory` 由兩個 LazyChatConversationHistory instance 各自掛載，改為在 app/pages/index.vue hoist 一次、以 props 傳給兩個 surface；登入首次渲染只觸發一次 `/api/conversations` GET。
 - **TD-024**：移除或改寫 test/unit/chat-history-sidebar-source-contract.test.ts，以 mountSuspended 行為測試取代 `readFileSync + toContain` 的 source-string contract；e2e/collapsible-chat-history-sidebar.spec.ts 約 L216-218 的 `await expect(page.evaluate(...)).resolves.toBe('true')` 改為 `expect(await page.evaluate(...)).toBe('true')`，確保真正 assert。
+- **TD-025（scope-extended）**：apply 過程中人工檢查 10.4/10.5/10.7 時發現 `app/components/chat/Container.vue:193` 的 `$csrfFetch.native(...)` 繞過 nuxt-csurf `onRequest` hook、固定 403。為解除 10.x 驗收的硬阻塞，就地修復（保留 `.native` 做 streaming、手動 `useCsrf()` 塞 header），並 register TD-025 `done`。
 
 ## Non-Goals
 
