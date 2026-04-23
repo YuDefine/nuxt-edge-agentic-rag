@@ -46,7 +46,7 @@ export const OUTCOME_CHART_CATEGORIES = {
 export function formatUsageTimelineLabel(iso: string, range: UsageRange): string {
   const date = new Date(iso)
   if (Number.isNaN(date.getTime())) {
-    return iso
+    return '—'
   }
 
   switch (range) {
@@ -54,10 +54,7 @@ export function formatUsageTimelineLabel(iso: string, range: UsageRange): string
       return `${date.getUTCHours().toString().padStart(2, '0')}:00`
     case '7d':
     case '30d':
-      return `${(date.getUTCMonth() + 1).toString().padStart(2, '0')}/${date
-        .getUTCDate()
-        .toString()
-        .padStart(2, '0')}`
+      return `${date.getUTCMonth() + 1}/${date.getUTCDate()}`
     default:
       return assertNever(range, 'formatUsageTimelineLabel')
   }

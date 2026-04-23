@@ -1,6 +1,7 @@
 <script setup lang="ts">
   import type { DropdownMenuItem, TableColumn } from '@nuxt/ui'
   import type { DocumentWithCurrentVersion } from '~~/shared/types/knowledge'
+  import { formatDateTime } from '~/utils/format-datetime'
   import { assertNever } from '~~/shared/utils/assert-never'
   import { srOnlyHeader } from '~~/shared/utils/table'
 
@@ -91,15 +92,7 @@
     { id: 'actions', header: srOnlyHeader('操作') },
   ]
 
-  function formatDate(dateString: string): string {
-    return new Date(dateString).toLocaleString('zh-TW', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-    })
-  }
+  const formatDate = formatDateTime
 
   function hasPublishedHistory(doc: DocumentWithCurrentVersion): boolean {
     return doc.currentVersion?.publishedAt !== null && doc.currentVersion?.publishedAt !== undefined
