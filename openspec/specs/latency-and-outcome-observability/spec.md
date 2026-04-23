@@ -165,3 +165,56 @@ tests:
   - test/integration/get-document-chunk-replay.test.ts
   - test/integration/acceptance-tc-19.test.ts
 -->
+
+---
+
+### Requirement: Outcome Breakdown Uses Standard Chart Components
+
+The observability surface SHALL render per-channel outcome aggregates with `nuxt-charts` using only the existing redaction-safe counts for `answered`, `refused`, `forbidden`, and `error`. The chart MUST preserve all governed outcome categories in a stable order, MUST support zero-count categories without removing them from the comparison, and MUST NOT request or display raw prompts, raw payloads, or per-request identifiers.
+
+#### Scenario: Admin reviews outcome distribution for a channel
+
+- **WHEN** an authorized Admin opens the latency observability surface and a channel summary includes outcome aggregates
+- **THEN** the page SHALL render a `nuxt-charts` categorical chart for that channel's `answered`, `refused`, `forbidden`, and `error` counts
+- **AND** the chart SHALL present the four governed outcome categories as a comparison within the same surface
+
+##### Example: zero-count categories stay visible
+
+| Answered | Refused | Forbidden | Error | Expected categories                 |
+| -------- | ------- | --------- | ----- | ----------------------------------- |
+| 12       | 3       | 0         | 1     | answered, refused, forbidden, error |
+| 0        | 0       | 0         | 5     | answered, refused, forbidden, error |
+
+#### Scenario: Outcome chart remains redaction-safe
+
+- **WHEN** the chart is rendered from aggregated query-log data
+- **THEN** it SHALL use only aggregate labels and counts
+- **AND** it SHALL NOT expose raw query content, raw refusal text, or any record-level identifier in the chart surface
+
+<!-- @trace
+source: standardize-chart-surfaces-on-nuxt-charts
+updated: 2026-04-24
+code:
+  - package.json
+  - docs/verify/DEPLOYMENT_RUNBOOK.md
+  - app/components/debug/OutcomeBreakdown.vue
+  - local/reports/notes/main-v0.0.52-word-compare.md
+  - vitest.config.ts
+  - docs/verify/production-deploy-checklist.md
+  - HANDOFF.md
+  - local/reports/notes/main-v0.0.52-word-copy.md
+  - .codex/hooks/_codex_hook_wrapper.sh
+  - docs/runbooks/claude-desktop-mcp.md
+  - .env.example
+  - docs/tech-debt.md
+  - .codex/hooks/post-bash-error-debug.sh
+  - app/utils/chart-series.ts
+  - app/components/admin/usage/TimelineChart.vue
+tests:
+  - test/unit/link-google-for-passkey-first-utils.test.ts
+  - test/unit/chart-series.test.ts
+  - test/unit/debug-outcome-breakdown.test.ts
+  - e2e/td003-contrast.spec.ts
+  - test/unit/admin-usage-timeline-chart.test.ts
+  - e2e/observability-review.spec.ts
+-->

@@ -14,6 +14,7 @@
  */
 
 import { parseStringArrayJson } from '#shared/utils/parse-string-array'
+import type { OutcomeBreakdown } from '#shared/types/observability'
 
 export interface DebugQueryLogDetail {
   allowedAccessLevels: string[]
@@ -39,17 +40,6 @@ export interface LatencyBucket {
   p50: number | null
   p95: number | null
   sampleCount: number
-}
-
-export interface OutcomeBreakdown {
-  /** `decision_path IN (direct_answer, judge_pass, self_correction_retry)` */
-  answered: number
-  /** `decision_path IN (judge_pass_refuse, self_correction_refuse, no_citation_refuse, sensitive_refuse)` or `status='rejected'` */
-  refused: number
-  /** `status='blocked'` — audit layer stopped the query */
-  forbidden: number
-  /** `decision_path='pipeline_error'` */
-  error: number
 }
 
 export interface ChannelLatencySummary {
