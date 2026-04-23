@@ -204,7 +204,7 @@ code:
   - HANDOFF.md
   - local/reports/notes/main-v0.0.52-word-copy.md
   - .codex/hooks/_codex_hook_wrapper.sh
-  - docs/runbooks/claude-desktop-mcp.md
+  - docs/runbooks/remote-mcp-connectors.md
   - .env.example
   - docs/tech-debt.md
   - .codex/hooks/post-bash-error-debug.sh

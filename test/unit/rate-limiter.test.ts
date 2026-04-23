@@ -38,6 +38,10 @@ describe('rate limiter', () => {
         limit: 120,
         windowMs: 5 * 60 * 1000,
       },
+      mcpPublicDcr: {
+        limit: 20,
+        windowMs: 5 * 60 * 1000,
+      },
       searchKnowledge: {
         limit: 60,
         windowMs: 5 * 60 * 1000,

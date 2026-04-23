@@ -578,7 +578,7 @@ code:
   - reports/archive/main-v0.0.28.md
   - local/reports/archive/main-v0.0.12.md
   - reports/archive/main-v0.0.48.md
-  - docs/runbooks/claude-desktop-mcp.md
+  - docs/runbooks/remote-mcp-connectors.md
   - local/reports/archive/main-v0.0.31.md
   - shared/schemas/knowledge-runtime.ts
   - local/reports/archive/main-v0.0.36.docx
@@ -749,7 +749,7 @@ code:
   - .codex/hooks/session-start-roadmap-sync.sh
   - .agents/skills/spectra-audit/SKILL.md
   - shared/schemas/knowledge-runtime.ts
-  - docs/runbooks/claude-desktop-mcp.md
+  - docs/runbooks/remote-mcp-connectors.md
   - app/components/auth/DeleteAccountDialog.vue
   - .codex/hooks/pre-archive-followup-gate.sh
   - HANDOFF.md

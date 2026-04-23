@@ -456,7 +456,7 @@ code:
   - .codex/hooks/session-start-roadmap-sync.sh
   - .agents/skills/spectra-audit/SKILL.md
   - shared/schemas/knowledge-runtime.ts
-  - docs/runbooks/claude-desktop-mcp.md
+  - docs/runbooks/remote-mcp-connectors.md
   - app/components/auth/DeleteAccountDialog.vue
   - .codex/hooks/pre-archive-followup-gate.sh
   - HANDOFF.md
@@ -569,7 +569,7 @@ code:
   - .codex/hooks/session-start-roadmap-sync.sh
   - .agents/skills/spectra-audit/SKILL.md
   - shared/schemas/knowledge-runtime.ts
-  - docs/runbooks/claude-desktop-mcp.md
+  - docs/runbooks/remote-mcp-connectors.md
   - app/components/auth/DeleteAccountDialog.vue
   - .codex/hooks/pre-archive-followup-gate.sh
   - HANDOFF.md
@@ -863,7 +863,7 @@ code:
   - reports/archive/main-v0.0.28.md
   - local/reports/archive/main-v0.0.12.md
   - reports/archive/main-v0.0.48.md
-  - docs/runbooks/claude-desktop-mcp.md
+  - docs/runbooks/remote-mcp-connectors.md
   - local/reports/archive/main-v0.0.31.md
   - shared/schemas/knowledge-runtime.ts
   - local/reports/archive/main-v0.0.36.docx
@@ -1144,7 +1144,7 @@ code:
   - docs/tech-debt.md
   - .agents/skills/critique/reference/personas.md
   - app/utils/chat-conversation-loader.ts
-  - docs/runbooks/claude-desktop-mcp.md
+  - docs/runbooks/remote-mcp-connectors.md
   - .agents/skills/design-retro/SKILL.md
   - app/components/chat/Container.vue
   - local/tooling/scripts/docx_apply.py

@@ -428,7 +428,7 @@ code:
   - .codex/hooks/session-start-roadmap-sync.sh
   - .agents/skills/spectra-audit/SKILL.md
   - shared/schemas/knowledge-runtime.ts
-  - docs/runbooks/claude-desktop-mcp.md
+  - docs/runbooks/remote-mcp-connectors.md
   - app/components/auth/DeleteAccountDialog.vue
   - .codex/hooks/pre-archive-followup-gate.sh
   - HANDOFF.md

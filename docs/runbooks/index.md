@@ -10,7 +10,7 @@
 
 ## 現有文件
 
-- [claude-desktop-mcp](./claude-desktop-mcp.md)
+- [remote-mcp-connectors](./remote-mcp-connectors.md)
 - [guest-policy](./guest-policy.md)
 
 ## 與驗證指南的差異
