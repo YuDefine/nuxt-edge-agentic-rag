@@ -47,6 +47,7 @@ const chatRouteMocks = vi.hoisted(() => {
     readValidatedBody: vi.fn(),
     requireRole: vi.fn(),
     requireUserSession: vi.fn(),
+    workersAiRun: vi.fn().mockResolvedValue({ response: 'ok' }),
   }
 })
 
@@ -67,6 +68,7 @@ vi.mock('../../server/utils/cloudflare-bindings', () => ({
   getCloudflareEnv: () => ({
     AI: {
       autorag: vi.fn().mockReturnValue({ search: vi.fn() }),
+      run: chatRouteMocks.workersAiRun,
     },
   }),
   getRequiredD1Binding: chatRouteMocks.getRequiredD1Binding,
@@ -119,6 +121,27 @@ describe('/api/chat route', () => {
   beforeEach(() => {
     vi.stubGlobal('readValidatedBody', chatRouteMocks.readValidatedBody)
     vi.stubGlobal('requireUserSession', chatRouteMocks.requireUserSession)
+    chatRouteMocks.auditKnowledgeText.mockReset()
+    chatRouteMocks.auditKnowledgeText.mockImplementation((text: string) => ({
+      redactedText: text,
+      redactionApplied: false,
+      riskFlags: [],
+      shouldBlock: false,
+    }))
+    chatRouteMocks.chatWithKnowledge.mockReset()
+    chatRouteMocks.createCitationStore.mockClear()
+    chatRouteMocks.createChatKvRateLimitStore.mockClear()
+    chatRouteMocks.createCloudflareAiSearchClient.mockClear()
+    chatRouteMocks.createConversationStaleResolver.mockClear()
+    chatRouteMocks.createConversationStore.mockReset()
+    chatRouteMocks.createKnowledgeAuditStore.mockClear()
+    chatRouteMocks.createKnowledgeEvidenceStore.mockClear()
+    chatRouteMocks.getKnowledgeRuntimeConfig.mockReset()
+    chatRouteMocks.getRequiredKvBinding.mockReset()
+    chatRouteMocks.requireRole.mockReset()
+    chatRouteMocks.requireUserSession.mockReset()
+    chatRouteMocks.workersAiRun.mockReset()
+    chatRouteMocks.workersAiRun.mockResolvedValue({ response: 'ok' })
 
     chatRouteMocks.getKnowledgeRuntimeConfig.mockReturnValue(
       createKnowledgeRuntimeConfig({
@@ -152,6 +175,7 @@ describe('/api/chat route', () => {
         id: 'user-1',
       },
     })
+    chatRouteMocks.getRequiredKvBinding.mockReturnValue({ get: vi.fn(), put: vi.fn() })
     chatRouteMocks.createConversationStore.mockReturnValue({
       createForUser: vi.fn().mockResolvedValue({
         id: 'conv-auto',
@@ -310,6 +334,65 @@ describe('/api/chat route', () => {
           cacheEnabled: true,
         },
         indexName: 'knowledge-index',
+      }),
+    )
+  })
+
+  it('injects workers-ai backed answer and judge adapters into the web orchestration', async () => {
+    chatRouteMocks.workersAiRun
+      .mockResolvedValueOnce({ response: 'ok' })
+      .mockResolvedValueOnce({ response: { shouldAnswer: false } })
+    chatRouteMocks.chatWithKnowledge.mockImplementationOnce(async (_input, options) => {
+      const answer = await options.answer({
+        evidence: [
+          {
+            chunkText: '採購流程需要先建立請購單，再建立採購單。',
+            documentTitle: '採購流程',
+          },
+        ],
+        modelRole: 'defaultAnswer',
+        query: '採購流程是什麼？',
+        retrievalScore: 0.9,
+      })
+      const judgment = await options.judge({
+        evidence: [{ chunkText: '採購流程需要先建立請購單，再建立採購單。' }],
+        query: '請比較採購與請購差異',
+        retrievalScore: 0.56,
+      })
+
+      return {
+        answer: `${answer}|${String(judgment.shouldAnswer)}`,
+        citations: [],
+        refused: false,
+      }
+    })
+
+    const { default: handler } = await import('../../server/api/chat.post')
+    const result = await handler(createRouteEvent())
+
+    expect(result).toEqual({
+      data: {
+        answer: 'ok|false',
+        citations: [],
+        conversationId: 'conv-auto',
+        conversationCreated: true,
+        refused: false,
+      },
+    })
+    expect(chatRouteMocks.workersAiRun).toHaveBeenNthCalledWith(
+      1,
+      '@cf/meta/llama-4-scout-17b-16e-instruct',
+      expect.objectContaining({
+        messages: expect.any(Array),
+      }),
+    )
+    expect(chatRouteMocks.workersAiRun).toHaveBeenNthCalledWith(
+      2,
+      '@cf/moonshotai/kimi-k2.5',
+      expect.objectContaining({
+        response_format: expect.objectContaining({
+          type: 'json_schema',
+        }),
       }),
     )
   })

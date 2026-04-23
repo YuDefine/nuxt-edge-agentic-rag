@@ -311,11 +311,32 @@ export function createCloudflareBindingsFixture(
   }
 
   return {
-    [names.ai]: options.ai ?? createAiSearchBindingFake(),
+    [names.ai]: createCompositeAiBinding(options.ai, options.workersAi),
     [names.d1]: options.d1 ?? createD1BindingFake(),
     [names.documents]: options.r2 ?? createR2BucketBindingFake(),
     [names.kv]: options.kv ?? createKvBindingFake(),
     [names.workersAi]: options.workersAi ?? createWorkersAiBindingFake(),
+  }
+}
+
+function createCompositeAiBinding(ai: unknown, workersAi: unknown) {
+  const aiBinding =
+    ai && typeof ai === 'object'
+      ? (ai as { autorag?: unknown; run?: unknown })
+      : createAiSearchBindingFake()
+  const workersBinding =
+    workersAi && typeof workersAi === 'object'
+      ? (workersAi as { run?: unknown })
+      : createWorkersAiBindingFake()
+
+  return {
+    ...aiBinding,
+    run:
+      typeof aiBinding.run === 'function'
+        ? aiBinding.run.bind(aiBinding)
+        : typeof workersBinding.run === 'function'
+          ? workersBinding.run.bind(workersBinding)
+          : undefined,
   }
 }
 

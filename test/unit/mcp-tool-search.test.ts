@@ -36,6 +36,7 @@ describe('mcp search tool definition', () => {
       getCloudflareEnv: () => ({
         AI: {
           autorag: vi.fn().mockReturnValue({ search: vi.fn() }),
+          run: vi.fn().mockResolvedValue({ response: 'ok' }),
         },
       }),
       getRequiredKvBinding: vi.fn().mockReturnValue({}),
@@ -61,7 +62,11 @@ describe('mcp search tool definition', () => {
         governance: {
           configSnapshotVersion: 'v1',
           models: {},
-          thresholds: { answerMin: 0.5 },
+          thresholds: {
+            answerMin: 0.51,
+            directAnswerMin: 0.71,
+            judgeMin: 0.46,
+          },
         },
       }),
     }))
