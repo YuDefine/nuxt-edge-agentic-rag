@@ -442,7 +442,6 @@ code:
   - .agents/skills/spectra-propose/SKILL.md
   - server/api/auth/passkey/verify-authentication.post.ts
   - app/components/auth/McpConnectorLoginCard.vue
-  - .codex/hooks/stop-accumulate.sh
   - .agents/skills/commit/SKILL.md
   - .codex/config.toml
   - .codex/agents/check-runner.toml
@@ -556,7 +555,6 @@ code:
   - .agents/skills/spectra-propose/SKILL.md
   - server/api/auth/passkey/verify-authentication.post.ts
   - app/components/auth/McpConnectorLoginCard.vue
-  - .codex/hooks/stop-accumulate.sh
   - .agents/skills/commit/SKILL.md
   - .codex/config.toml
   - .codex/agents/check-runner.toml
