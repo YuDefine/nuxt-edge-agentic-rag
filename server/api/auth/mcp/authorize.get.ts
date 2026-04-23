@@ -1,5 +1,5 @@
 import {
-  resolveMcpConnectorClient,
+  resolveMcpConnectorClientAsync,
   McpConnectorClientConfigError,
 } from '#server/utils/mcp-connector-clients'
 import { getKnowledgeRuntimeConfig } from '#server/utils/knowledge-runtime'
@@ -31,7 +31,7 @@ export default defineEventHandler(async function mcpAuthorizeHandler(event) {
   const knowledgeRuntimeConfig = getKnowledgeRuntimeConfig()
 
   try {
-    const client = resolveMcpConnectorClient(
+    const client = await resolveMcpConnectorClientAsync(
       {
         clientId: requireQueryValue(query.client_id, 'client_id'),
         redirectUri: requireQueryValue(query.redirect_uri, 'redirect_uri'),
