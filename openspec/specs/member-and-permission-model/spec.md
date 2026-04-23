@@ -97,7 +97,7 @@ code:
   - shared/schemas/nickname.ts
   - server/api/admin/debug/latency/summary.get.ts
   - server/api/admin/documents/[id].delete.ts
-  - template/HANDOFF.md
+  - HANDOFF.md
   - server/utils/display-name-guard.ts
   - server/api/admin/settings/guest-policy.get.ts
   - server/plugins/error-sanitizer.ts
@@ -207,7 +207,7 @@ code:
   - shared/schemas/nickname.ts
   - server/api/admin/debug/latency/summary.get.ts
   - server/api/admin/documents/[id].delete.ts
-  - template/HANDOFF.md
+  - HANDOFF.md
   - server/utils/display-name-guard.ts
   - server/api/admin/settings/guest-policy.get.ts
   - server/plugins/error-sanitizer.ts
@@ -345,7 +345,7 @@ code:
   - shared/schemas/nickname.ts
   - server/api/admin/debug/latency/summary.get.ts
   - server/api/admin/documents/[id].delete.ts
-  - template/HANDOFF.md
+  - HANDOFF.md
   - server/utils/display-name-guard.ts
   - server/api/admin/settings/guest-policy.get.ts
   - server/plugins/error-sanitizer.ts
@@ -431,8 +431,8 @@ code:
   - docs/runbooks/claude-desktop-mcp.md
   - app/components/auth/DeleteAccountDialog.vue
   - .codex/hooks/pre-archive-followup-gate.sh
-  - template/HANDOFF.md
-  - .github/instructions/skills.instructions.md
+  - HANDOFF.md
+  - .claude/skills/
   - server/utils/better-auth-safe-logger.ts
   - docs/verify/DEPLOYMENT_RUNBOOK.md
   - server/api/auth/mcp/authorize.get.ts
@@ -444,7 +444,7 @@ code:
   - shared/utils/mcp-connector-redirect.ts
   - .agents/skills/spectra-apply/SKILL.md
   - deliverables/defense/答辯準備_口試Q&A.md
-  - .github/instructions/follow_up_register.instructions.md
+  - .claude/rules/follow-up-register.md
   - app/pages/admin/tokens/index.vue
   - server/api/auth/mcp/authorize.post.ts
   - app/components/admin/tokens/TokenCreateModal.vue
@@ -456,15 +456,15 @@ code:
   - docs/solutions/tooling/posttooluse-hook-non-json-stdin.md
   - docs/tech-debt.md
   - CLAUDE.md
-  - .github/instructions/proactive_skills.instructions.md
+  - .claude/rules/proactive-skills.md
   - package.json
   - .agents/skills/spectra-commit/SKILL.md
   - .codex/hooks.json
-  - .github/copilot-instructions.md
+  - AGENTS.md
   - app/composables/useMcpConnectorAuthorization.ts
   - .agents/skills/spectra-ingest/SKILL.md
   - pnpm-workspace.yaml
-  - .github/instructions/scope_discipline.instructions.md
+  - .claude/rules/scope-discipline.md
   - .github/workflows/deploy.yml
 tests:
   - test/unit/better-auth-passkey-hotfix-version.test.ts

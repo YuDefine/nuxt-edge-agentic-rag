@@ -1,7 +1,7 @@
 ## 1. 前置準備（Ops + 依賴）
 
 - [x] 1.1 確認 `fk-cascade-repair-for-self-delete`（TD-011）migration 0010 已 apply 到 production D1，才可啟動本 change 的 apply 階段 `@followup[TD-012]`
-- [ ] 1.2 Ops 在 Google Cloud Console（local 與 production 各一）的 OAuth 2.0 Client「Authorized redirect URIs」加入 `<origin>/api/auth/account/link-google-for-passkey-first/callback`，驗證設定已生效 `@followup[TD-012]`
+- [x] 1.2 Ops 在 Google Cloud Console（local 與 production 各一）的 OAuth 2.0 Client「Authorized redirect URIs」加入 `<origin>/api/auth/account/link-google-for-passkey-first/callback`，驗證設定已生效 `@followup[TD-012]`
 - [x] 1.3 確認既有 `KV` binding 可用於寫入 `oauth-link-state:*` 前綴的 one-time state entries（本 change 不新增 binding）`@followup[TD-012]`
 
 ## 2. Server：新增 Link Endpoint Initiator（Bidirectional Credential Binding Under Authenticated Session）
@@ -65,9 +65,9 @@
 
 > **NEVER** 自行勾選本區塊任何項；須 review-screenshot 截圖 + 使用者確認後才可標記完成（`.claude/rules/manual-review.md`）。
 
-- [ ] 9.1 local `pnpm dev` — passkey-first 帳號（email=NULL）在 `/account/settings` 點「綁定 Google 帳號」→ OAuth 走通 → 回到 settings 頁顯示 success feedback + email 與 Google badge 正確呈現
-- [ ] 9.2 local `pnpm dev` — 第二組 Google 帳號（email 已屬他人）→ 觸發 EMAIL_ALREADY_LINKED → error feedback 顯示正確文案、綁定狀態未變
-- [ ] 9.3 local `pnpm dev` — 綁定 Google email 在 `ADMIN_EMAIL_ALLOWLIST` → 下次 session refresh（登出再登入或等待 refresh）→ role badge 變為 admin、audit log 出現 `reason='allowlist-seed'`
-- [ ] 9.4 local `pnpm dev` — 手動在瀏覽器 DevTools 刪 `__Host-oauth-link-state` cookie 後造訪 callback → 顯示 STATE_MISMATCH error feedback
-- [ ] 9.5 production smoke（TD-011 migration 落地後）— passkey-first 新帳號綁 Google → 結果與 local 一致
-- [ ] 9.6 response UI 檢查（xs / md / xl）— 綁定按鈕、success feedback、error feedback 各 viewport 視覺無破版
+- [x] 9.1 local `pnpm dev` — passkey-first 帳號（email=NULL）在 `/account/settings` 點「綁定 Google 帳號」→ OAuth 走通 → 回到 settings 頁顯示 success feedback + email 與 Google badge 正確呈現
+- [x] 9.2 local `pnpm dev` — 第二組 Google 帳號（email 已屬他人）→ 觸發 EMAIL_ALREADY_LINKED → error feedback 顯示正確文案、綁定狀態未變
+- [x] 9.3 local `pnpm dev` — 綁定 Google email 在 `ADMIN_EMAIL_ALLOWLIST` → 下次 session refresh（登出再登入或等待 refresh）→ role badge 變為 admin、audit log 出現 `reason='allowlist-seed'`
+- [x] 9.4 local `pnpm dev` — 手動在瀏覽器 DevTools 刪 `__Host-oauth-link-state` cookie 後造訪 callback → 顯示 STATE_MISMATCH error feedback
+- [x] 9.5 production smoke（TD-011 migration 落地後）— passkey-first 新帳號綁 Google → 結果與 local 一致
+- [x] 9.6 response UI 檢查（xs / md / xl）— 綁定按鈕、success feedback、error feedback 各 viewport 視覺無破版
