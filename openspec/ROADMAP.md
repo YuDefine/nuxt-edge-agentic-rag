@@ -30,9 +30,9 @@
 
 ## Active Changes
 
-_last synced: 2026-04-23T20:18:41.986Z_
+_last synced: 2026-04-23T22:02:34.716Z_
 
-_No active changes._
+1 active change (0 ready · 1 in progress · 0 draft · 0 blocked)
 
 ### Ready to apply
 
@@ -40,7 +40,8 @@ _(none)_
 
 ### In progress
 
-_(none)_
+- **code-quality-review-followups** — 10/43 tasks (23%)
+  - Specs: `oauth-remote-mcp-auth`, `web-chat-ui`
 
 ### Draft
 
@@ -59,9 +60,17 @@ _(none)_
 > 即時 ownership 由 `.spectra/claims/*.json` 提供。
 > 接手 handoff / 開始做 change 時，先 claim，再移除 `HANDOFF.md` 對應項目。
 
-_No active claims._
+1 claim (1 active · 0 stale)
 
-> 若你要開始做上面的 active change，先跑 `spectra:claim -- <change>`。
+### Live Ownership
+
+- **code-quality-review-followups** — unknown:charles@charlesdeMac-mini.local (unknown)
+  - Accepted from: manual
+  - Last heartbeat: 2026-04-23T21:43:28.249Z
+
+### Stale Claims
+
+_(none)_
 
 <!-- SPECTRA-UX:ROADMAP-AUTO:/claims -->
 
@@ -73,7 +82,7 @@ _No active claims._
 
 ### Independent (can run in parallel)
 
-_(none)_
+- `code-quality-review-followups`
 
 ### Mutex (same spec touched)
 
