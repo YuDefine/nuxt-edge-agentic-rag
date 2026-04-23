@@ -4,22 +4,20 @@
 
 ## Current State
 
-> 狀態（2026-04-23 更新）：目前 branch `main`，`package.json` 已升到 `v0.29.0`，但 deploy commit / tag 尚未建立，所以最新已發布 release 仍是 `v0.28.13`。專題報告與舊工具鏈資產已移到 `local/`，repo root 不再保留歷史 `reports/` / `tooling/` 路徑。Open tech debt 現況：TD-010 mid / TD-012 high / TD-014 mid。
+> 狀態（2026-04-23 更新）：目前 branch `main`，`package.json` 已升到 `v0.29.0`，但 deploy commit / tag 尚未建立，所以最新已發布 release 仍是 `v0.28.13`。專題報告與舊工具鏈資產已移到 `local/`，repo root 不再保留歷史 `reports/` / `tooling/` 路徑。Open tech debt 現況：TD-014 mid。
 >
 > **最新進度**（2026-04-23）：
 >
 > - **Spectra / Claude workflow orchestration** 已完成一輪基礎設施刷新：新增 `.agent/skills/*` 與 `scripts/spectra-ux/*` claim / release / design-gate / reminder 流程，並同步更新 `AGENTS.md`、`CLAUDE.md`、`GEMINI.md`、commit / handoff / roadmap / screenshot 規則。
 > - **web chat persistence** 已完成 archive：conversation history refresh race、last-click-wins、stale restore、in-flight request 汙染等問題已修掉，並補齊 unit + Playwright evidence（`docs/verify/WEB_CHAT_PERSISTENCE_VERIFICATION.md`）。
-> - **`passkey-first-link-google-custom-endpoint`** 已推進到 38/45 tasks：custom GET initiator / callback、`/account/settings` UI、spec / design-review / ui-audit / regression tests 都已落地。
+> - **`passkey-first-link-google-custom-endpoint`** 已完成 archive：custom GET initiator / callback、`/account/settings` UI、spec sync、design-review、ui-audit 與 local / production 人工驗證皆已完成。
 > - **本輪手動驗證結果**：在 `http://localhost:3000` 的真實 member session 下，conversation history 列表已可正常 render，切換對話會載入內容，刪除也會同步更新畫面；原先 `/api/conversations` `500` blocker 已排除。
-> - **仍待收斂的 local 環境問題**：`.data/db/sqlite.db` 跑 `verify-auth-storage-consistency.sh --local` 仍失敗，`account` / `session` 等表殘留 `*_new` FK refs，導致 `/api/_dev/login` 無法替新測試帳號建立 credential account。這是下一手最需要處理的 local drift。
-> - **既有 active changes** 目前仍是 3 條：`drizzle-refactor-credentials-admin-members` 待 manual regression closeout；`passkey-first-link-google-custom-endpoint` 待最終 UI evidence / archive；`multi-format-document-ingestion` 尚未開始，可獨立並行。
+> - **local auth storage drift** 已處理：`.data/db/sqlite.db` 與 local wrangler D1 已重建，`user_new` / `query_logs_new` 殘留 FK refs 已排除，`/_dev/login` 與 Google linking local flow 已恢復。
+> - **既有 active changes** 目前剩 2 條：`drizzle-refactor-credentials-admin-members` 已補齊 closeout evidence、待 archive；`multi-format-document-ingestion` 尚未開始，可獨立並行。
 
 ## Next Moves
 
-- [high] 完成 `passkey-first-link-google-custom-endpoint` closeout：在 `http://localhost:3000` 補齊 screenshot review 的 in-flight 鎖定證據，然後 archive change — 依賴：既有 local admin/member session / 互斥：`drizzle-refactor-credentials-admin-members`
-- [high] 修復或重建 `.data/db/sqlite.db` 的 auth-storage drift，讓 `bash scripts/checks/verify-auth-storage-consistency.sh --local .data/db/sqlite.db` 轉綠並恢復 `/api/_dev/login` 新建帳號 — 依賴：`auth-storage-consistency` / 互斥：`drizzle-refactor-credentials-admin-members`
-- [mid] 完成 `drizzle-refactor-credentials-admin-members` 的 `/account/settings` 與 `/admin/members` manual regression，回填 TD-010，再決定是否 archive — 依賴：production admin 驗證路徑
+- [mid] archive `drizzle-refactor-credentials-admin-members`，把 closeout 已完成的 change 從 active queue 移出
 - [mid] 驗證 docs custom domains 與 staging / production canary，補齊 workflow smoke-test 被 Cloudflare WAF / Bot protection `403` 擋住的人工判定缺口 — 依賴：deploy 後環境
 - [mid] 若 auth 線 closeout 完成，啟動 `multi-format-document-ingestion`：shared format registry → canonical snapshot extractor → extraction-first sync orchestration — 獨立
 
@@ -29,9 +27,9 @@
 
 ## Active Changes
 
-_last synced: 2026-04-23T09:31:50.124Z_
+_last synced: 2026-04-23T14:30:00.921Z_
 
-3 active changes (0 ready · 2 in progress · 1 draft · 0 blocked)
+1 active change (0 ready · 0 in progress · 1 draft · 0 blocked)
 
 ### Ready to apply
 
@@ -39,10 +37,7 @@ _(none)_
 
 ### In progress
 
-- **drizzle-refactor-credentials-admin-members** — 25/27 tasks (93%)
-  - Specs: `admin-member-management-ui`, `auth-storage-consistency`, `passkey-authentication`, `responsive-and-a11y-foundation`
-- **passkey-first-link-google-custom-endpoint** — 38/45 tasks (84%)
-  - Specs: `auth-storage-consistency`, `passkey-authentication`
+_(none)_
 
 ### Draft
 
@@ -80,8 +75,7 @@ _No active claims._
 
 ### Mutex (same spec touched)
 
-- **auth-storage-consistency** — conflict between: `drizzle-refactor-credentials-admin-members`, `passkey-first-link-google-custom-endpoint`
-- **passkey-authentication** — conflict between: `drizzle-refactor-credentials-admin-members`, `passkey-first-link-google-custom-endpoint`
+_(none)_
 
 ### Blocked by dependency
 

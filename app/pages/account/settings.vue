@@ -485,15 +485,14 @@
         </template>
         <div class="flex flex-col gap-3">
           <p class="text-sm text-muted">
-            綁定 Google 後可用 Google 帳號登入，並在失去 passkey 時作為備援。若該 email
-            屬於管理員，下次登入會自動升級為管理員。
+            綁定後，你可以改用 Google 帳號登入；如果暫時用不到 passkey，也能用 Google 帳號找回來。
           </p>
           <LazyUAlert
             color="info"
             variant="subtle"
             icon="i-lucide-info"
-            title="綁定後會同步補齊 email"
-            description="若該 Google email 位於管理員 allowlist，下一次 session refresh 會自動套用 admin 權限。"
+            title="綁定後會補上電子郵件"
+            description="如果這個 Google 帳號本來就有管理權限，重新登入後會自動生效。"
           />
           <p v-if="linkGoogleLoading" class="text-sm font-medium text-default" aria-live="polite">
             正在導向 Google 驗證頁面…

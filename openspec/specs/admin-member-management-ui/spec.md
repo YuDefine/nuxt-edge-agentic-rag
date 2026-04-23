@@ -83,7 +83,7 @@ code:
   - shared/schemas/nickname.ts
   - server/api/admin/debug/latency/summary.get.ts
   - server/api/admin/documents/[id].delete.ts
-  - template/HANDOFF.md
+  - HANDOFF.md
   - server/utils/display-name-guard.ts
   - server/api/admin/settings/guest-policy.get.ts
   - server/plugins/error-sanitizer.ts
@@ -191,7 +191,7 @@ code:
   - shared/schemas/nickname.ts
   - server/api/admin/debug/latency/summary.get.ts
   - server/api/admin/documents/[id].delete.ts
-  - template/HANDOFF.md
+  - HANDOFF.md
   - server/utils/display-name-guard.ts
   - server/api/admin/settings/guest-policy.get.ts
   - server/plugins/error-sanitizer.ts

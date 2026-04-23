@@ -1,9 +1,8 @@
 {
-  "version": "1.12.0",
+  "version": "1.13.1",
   "agents": {
     "claude": true,
     "codex": true,
-    "copilot": true
   },
   "paths": {
     "types": ["shared/types"],

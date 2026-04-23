@@ -18,10 +18,10 @@
 | TD-006 | Nuxt UI subtle variant tonal badge 對比度不足             | mid      | done   | 2026-04-20 TD-003 e2e exclude     | —     |
 | TD-007 | 裝飾 icon tonal color 低於 WCAG 1.4.11 non-text AA        | low      | done   | 2026-04-20 TD-006 review          | —     |
 | TD-008 | acceptance-tc-0x MCP 整合測試在 TD-001 修後破損           | mid      | done   | 2026-04-20 add-ai-gateway         | —     |
-| TD-009 | user_profiles.email_normalized 全面改 nullable            | mid      | open   | 2026-04-21 passkey-authentication | —     |
-| TD-010 | credentials / admin-members endpoint libsql 不相容        | mid      | open   | 2026-04-21 passkey §16 DR         | —     |
+| TD-009 | user_profiles.email_normalized 全面改 nullable            | mid      | done   | 2026-04-21 passkey-authentication | —     |
+| TD-010 | credentials / admin-members endpoint libsql 不相容        | mid      | done   | 2026-04-21 passkey §16 DR         | —     |
 | TD-011 | migration 0009 FK cascade 設計不符 self-delete / audit    | high     | done   | 2026-04-21 passkey §17.8          | —     |
-| TD-012 | passkey-first → link Google 被 better-auth email 檢驗擋住 | high     | open   | 2026-04-21 passkey §17.3          | —     |
+| TD-012 | passkey-first → link Google 被 better-auth email 檢驗擋住 | high     | done   | 2026-04-21 passkey §17.3          | —     |
 | TD-013 | /account/settings 新增 passkey 缺 naming dialog           | low      | done   | 2026-04-21 passkey §17.2          | —     |
 | TD-014 | error-sanitizer 後 12 test 抛 evlog Logger not init       | mid      | open   | 2026-04-21 drizzle-refactor apply | —     |
 
@@ -29,7 +29,7 @@
 
 ## TD-001 — mcp-token-store libsql 不相容
 
-**Status**: done
+**Status**: open
 **Resolved**: 2026-04-20 — `createMcpTokenStore()` 3 個 function 遷移 Drizzle ORM（commit 1f6a4d1）+ 新增 `test/integration/mcp-token-store.spec.ts` 8 test cases 覆蓋 CRUD / scope / expiry / touch
 **Priority**: low
 **Discovered**: 2026-04-20 — `member-and-permission-management` 人工檢查 #10
@@ -418,7 +418,8 @@ TD-001 修復後（commit 1f6a4d1，mcp-token-store 遷移 Drizzle）兩類 fail
 
 ## TD-010 — credentials / admin-members endpoint libsql 不相容
 
-**Status**: open
+**Status**: done
+**Resolved**: 2026-04-23 — portable ORM refactor、local happy-path 響應式驗證與 production `/account/settings` + `/admin/members` manual regression evidence 全數補齊，`drizzle-refactor-credentials-admin-members` closeout 條件滿足
 **Priority**: mid
 **Discovered**: 2026-04-21 — `passkey-authentication` §16 Design Review 跑 `/review-screenshot` 時，`/account/settings` 與 `/admin/members` 兩頁回 500
 **Location**:
@@ -434,7 +435,8 @@ TD-001 修復後（commit 1f6a4d1，mcp-token-store 遷移 Drizzle）兩類 fail
 - `/api/auth/me/credentials` 回 200：`email = "admin@test.local"`, `displayName = "Test Admin"`, `hasGoogle = false`, `passkeys = []`。
 - `/api/admin/members?page=1&pageSize=20` 回 200，`data.length = 17`，列資料包含 `displayName` / `credentialTypes` / `registeredAt` / `lastActivityAt`。
 - Playwright 載入 `/account/settings` 與 `/admin/members` 皆 HTTP 200、停留在目標 URL、未偵測已知 error text；截圖在 `screenshots/local/td010-continuation/`。
-- Status 保持 `open`，直到人工確認 local UI、production D1 回歸與 §16 responsive pipeline 後再更新為 `done`。
+- 2026-04-23 使用者於 production admin session 手動驗證：`/account/settings` happy path 正常顯示 email / display name / passkey / Google 綁定區塊；`/admin/members` happy path 正常顯示會員列表 / role badge / credential badges / last activity，且本次資料量全部落於單頁，未出現 `500` / `暫時無法載入會員清單` / error state。
+- local UI、production D1 回歸與 §16 responsive pipeline 已全數補齊，Status 更新為 `done`。
 
 ### Problem
 
@@ -535,7 +537,7 @@ task 7.2 設計意圖：
 
 ## TD-012 — passkey-first → link Google 被 better-auth email 檢驗擋住
 
-**Status**: open
+**Status**: done
 **Priority**: high
 **Discovered**: 2026-04-21 — `passkey-authentication` §17.3 實機測試 passkey-first 帳號點 `/account/settings` 的「綁定 Google 帳號」，`/api/auth/link-social` 回 200 但 OAuth callback 回 `please_restart_the_process`，後端 log 顯示 `Failed to parse state: link.email expected string, received null`
 
@@ -554,7 +556,7 @@ better-auth `linkSocial` endpoint 在建構 OAuth state 時，把 `session.user.
 
 影響：`passkey-authentication` 的 Decision 5 / §17.3 scenario「passkey-first 使用者綁 Google」**無法透過 better-auth 原生 API 實作**。
 
-目前 workaround：暫無；使用者必須先用 Google OAuth 登入（建立 Google-only user），然後以其他方式合併 passkey。
+目前 workaround：已不需要。2026-04-23 已透過 `passkey-first-link-google-custom-endpoint` change 落地 custom endpoint pair，並完成 local / production 人工驗證、allowlist 升權驗證與 archive。
 
 ### Fix approach
 

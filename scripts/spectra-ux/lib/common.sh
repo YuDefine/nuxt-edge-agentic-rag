@@ -9,11 +9,12 @@
 #   sux_extract_journey_urls — extract URLs from a proposal's User Journeys
 #   sux_extract_section      — extract a ## Section from a markdown file
 #   sux_touched_files        — list git-tracked files touched in working tree + index
-#   sux_change_touched_files — like sux_touched_files, but also includes commits
-#                              since the change dir was first introduced (for archive)
+#   sux_change_touched_files — list files touched for a specific change
 #   sux_count_marker         — count bypass markers in a file, defaults to 0
 #   sux_check_url_touched    — check if a URL's page file was touched in git diff
 #   sux_url_has_page         — check if a URL maps to any existing page file
+#   sux_path_is_ui_related   — check if a file path points at a configured UI file
+#   sux_tasks_has_ui_scope   — check if tasks.md text mentions configured UI files/dirs
 
 # Idempotent guard so multiple sources don't redefine.
 if [ -n "${SUX_COMMON_LOADED:-}" ]; then
@@ -49,10 +50,10 @@ sux_load_config() {
   SUX_TYPES_DIRS="shared/types"
   SUX_UI_DIRS="app/pages app/components"
   SUX_UI_EXTS=".vue"
+  SUX_MIGRATIONS_DIR="supabase/migrations"
   SUX_NAV_FILES="app/layouts/default.vue"
   SUX_SCRIPTS_DIR="scripts"
   SUX_OPENSPEC_DIR="openspec"
-  SUX_MIGRATIONS_DIR="server/database/migrations"
 
   if [ -f "$config" ] && command -v jq >/dev/null 2>&1; then
     # Batch all fields in a single jq invocation to avoid ~7× spawn cost.
@@ -65,10 +66,10 @@ sux_load_config() {
         (.paths.types       | if type=="array" then join(" ") else (. // "") end),
         (.paths.ui          | if type=="array" then join(" ") else (. // "") end),
         (.paths.uiExtensions| if type=="array" then join(" ") else (. // "") end),
+        (.paths.migrations  // ""),
         (.paths.navigation  | if type=="array" then join(" ") else (. // "") end),
         (.paths.scripts     // ""),
-        (.paths.openspec    // ""),
-        (.paths.migrations  // "")
+        (.paths.openspec    // "")
       ] | @tsv
     ' "$config" 2>/dev/null)
     if [ -n "$raw" ]; then
@@ -76,10 +77,10 @@ sux_load_config() {
       [ -n "${_f1:-}" ] && SUX_TYPES_DIRS=$_f1
       [ -n "${_f2:-}" ] && SUX_UI_DIRS=$_f2
       [ -n "${_f3:-}" ] && SUX_UI_EXTS=$_f3
-      [ -n "${_f4:-}" ] && SUX_NAV_FILES=$_f4
-      [ -n "${_f5:-}" ] && SUX_SCRIPTS_DIR=$_f5
-      [ -n "${_f6:-}" ] && SUX_OPENSPEC_DIR=$_f6
-      [ -n "${_f7:-}" ] && SUX_MIGRATIONS_DIR=$_f7
+      [ -n "${_f4:-}" ] && SUX_MIGRATIONS_DIR=$_f4
+      [ -n "${_f5:-}" ] && SUX_NAV_FILES=$_f5
+      [ -n "${_f6:-}" ] && SUX_SCRIPTS_DIR=$_f6
+      [ -n "${_f7:-}" ] && SUX_OPENSPEC_DIR=$_f7
     fi
   fi
 
@@ -104,7 +105,7 @@ sux_load_config() {
   done
   SUX_UI_EXT_RE="$parts"
 
-  export SUX_TYPES_DIRS SUX_TYPES_PRIMARY SUX_UI_DIRS SUX_UI_EXTS SUX_UI_EXT SUX_UI_EXT_RE SUX_NAV_FILES SUX_SCRIPTS_DIR SUX_OPENSPEC_DIR SUX_MIGRATIONS_DIR
+  export SUX_TYPES_DIRS SUX_TYPES_PRIMARY SUX_UI_DIRS SUX_UI_EXTS SUX_UI_EXT SUX_UI_EXT_RE SUX_MIGRATIONS_DIR SUX_NAV_FILES SUX_SCRIPTS_DIR SUX_OPENSPEC_DIR
 }
 
 # Find the most recently modified active change directory.
@@ -157,19 +158,6 @@ sux_touched_files() {
 
 # List files touched for a spectra change, broadening sux_touched_files to also
 # include commits since the change directory was first introduced.
-#
-# Rationale: by the time `spectra-archive` runs, the change's implementation is
-# typically already committed — looking only at working tree + index (the
-# default sux_touched_files behavior) would report an empty set and break
-# every "touch detection" check. Walking from the first commit that added
-# anything under the change dir captures the full scope of the change even
-# after merges.
-#
-# Callers (e.g. archive-gate.sh) should assign the result to SUX_TOUCHED_FILES
-# before invoking any check that consumes the cache:
-#
-#   SUX_TOUCHED_FILES=$(sux_change_touched_files "$CHANGE_DIR")
-#   export SUX_TOUCHED_FILES
 sux_change_touched_files() {
   local change_dir=$1
   local repo_root first_commit base rel_path
@@ -185,8 +173,6 @@ sux_change_touched_files() {
       git -C "$repo_root" diff --cached --name-only 2>/dev/null
     } | sort -u
   else
-    # Change not committed yet (or its first commit is the repo root) —
-    # fall back to working tree + index only.
     {
       git -C "$repo_root" diff --name-only HEAD 2>/dev/null
       git -C "$repo_root" diff --cached --name-only 2>/dev/null
@@ -254,5 +240,44 @@ sux_url_has_page() {
       fi
     done
   done
+  return 1
+}
+
+# Check whether a file path points to a configured UI file or directory.
+sux_path_is_ui_related() {
+  local path=$1 ui_dir
+  [ -n "$path" ] || return 1
+
+  if echo "$path" | grep -qE "(${SUX_UI_EXT_RE})$" 2>/dev/null; then
+    return 0
+  fi
+
+  for ui_dir in $SUX_UI_DIRS; do
+    case "$path" in
+      "$ui_dir"/*|*/"$ui_dir"/*) return 0 ;;
+    esac
+  done
+
+  return 1
+}
+
+# Check whether a tasks file appears to include UI work based on configured
+# UI dirs/extensions. This is text-based on purpose: propose-time tasks.md
+# often references target files before they exist on disk.
+sux_tasks_has_ui_scope() {
+  local file=$1 ui_dir base
+  [ -f "$file" ] || return 1
+
+  if grep -qiE "(${SUX_UI_EXT_RE})" "$file" 2>/dev/null; then
+    return 0
+  fi
+
+  for ui_dir in $SUX_UI_DIRS; do
+    base=${ui_dir##*/}
+    if grep -qiE "${ui_dir}/|${base}/" "$file" 2>/dev/null; then
+      return 0
+    fi
+  done
+
   return 1
 }

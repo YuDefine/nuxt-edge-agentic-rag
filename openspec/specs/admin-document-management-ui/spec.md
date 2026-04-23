@@ -69,7 +69,7 @@ source: add-v1-core-ui
 updated: 2026-04-16
 code:
   - .agents/commands/doc-sync.md
-  - template/HANDOFF.md
+  - HANDOFF.md
 -->
 
 ---
@@ -89,7 +89,7 @@ source: add-v1-core-ui
 updated: 2026-04-16
 code:
   - .agents/commands/doc-sync.md
-  - template/HANDOFF.md
+  - HANDOFF.md
 -->
 
 ---
