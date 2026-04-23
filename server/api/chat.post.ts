@@ -1,4 +1,4 @@
-import { useLogger } from 'evlog'
+import { useLogger, type RequestLogger } from 'evlog'
 import { z } from 'zod'
 
 import {
@@ -34,8 +34,23 @@ const chatBodySchema = z
   })
   .strict()
 
+const CHAT_STREAM_CONTENT_TYPE = 'text/event-stream; charset=utf-8'
+
+interface ChatLogFields {
+  user: {
+    id: string | null
+  }
+  result: {
+    citationCount: number
+    conversationCreated: boolean
+    conversationId: string
+    followUpForcedFreshRetrieval: boolean
+    refused: boolean
+  }
+}
+
 export default defineEventHandler(async function chatHandler(event) {
-  const log = useLogger(event)
+  const log = useLogger<ChatLogFields>(event)
 
   try {
     // B16 §6.1: Member-level gate. Admin / Member always pass; Guest
@@ -113,63 +128,75 @@ export default defineEventHandler(async function chatHandler(event) {
     const workersAiRuns = createWorkersAiRunRecorder()
     const auditStore = createKnowledgeAuditStore(database)
     const staleResolver = createConversationStaleResolver(database)
-    const result = await chatWithKnowledge(
-      {
-        auth: {
-          // B16 Q2=A: role is the single source of truth. The allowlist
-          // already fed `session.user.role` via the better-auth hook
-          // (see `server/auth.config.ts`); re-reading the env var here
-          // would be both redundant and a regression to the Phase-0
-          // two-source model.
-          isAdmin: sessionUser.role === 'admin',
-          userId: session.user.id,
+    const runChatRequest = (stream?: {
+      onTextDelta?: (delta: string) => Promise<void> | void
+      signal?: AbortSignal
+    }) =>
+      chatWithKnowledge(
+        {
+          auth: {
+            // B16 Q2=A: role is the single source of truth. The allowlist
+            // already fed `session.user.role` via the better-auth hook
+            // (see `server/auth.config.ts`); re-reading the env var here
+            // would be both redundant and a regression to the Phase-0
+            // two-source model.
+            isAdmin: sessionUser.role === 'admin',
+            userId: session.user.id,
+          },
+          conversationId: effectiveConversationId,
+          governance: runtimeConfig.governance,
+          environment: runtimeConfig.environment,
+          query: body.query,
         },
-        conversationId: effectiveConversationId,
-        governance: runtimeConfig.governance,
-        environment: runtimeConfig.environment,
-        query: body.query,
-      },
-      {
-        answer: createWorkersAiAnswerAdapter({
-          binding: workersAiBinding,
-          onUsage: workersAiRuns.record,
-        }),
-        persistCitations: createCitationStore(database).persistCitations,
-        auditStore: {
-          ...auditStore,
-          updateQueryLog: auditStore.updateQueryLog
-            ? (input) =>
-                auditStore.updateQueryLog({
-                  ...input,
-                  workersAiRunsJson: workersAiRuns.serialize(),
-                })
-            : undefined,
-        },
-        judge: createWorkersAiJudgeAdapter({
-          binding: workersAiBinding,
-          onUsage: workersAiRuns.record,
-        }),
-        rateLimitStore: createChatKvRateLimitStore(
-          getRequiredKvBinding(event, runtimeConfig.bindings.rateLimitKv),
-        ),
-        resolveStaleness: staleResolver.resolveStaleness,
-        retrieve: (input) =>
-          retrieveVerifiedEvidence(input, {
-            governance: runtimeConfig.governance,
-            search: aiSearchClient.search,
-            store: createKnowledgeEvidenceStore(database),
+        {
+          answer: createWorkersAiAnswerAdapter({
+            binding: workersAiBinding,
+            onUsage: workersAiRuns.record,
           }),
-      },
-    )
+          persistCitations: createCitationStore(database).persistCitations,
+          auditStore: {
+            ...auditStore,
+            updateQueryLog: auditStore.updateQueryLog
+              ? (input) =>
+                  auditStore.updateQueryLog({
+                    ...input,
+                    workersAiRunsJson: workersAiRuns.serialize(),
+                  })
+              : undefined,
+          },
+          judge: createWorkersAiJudgeAdapter({
+            binding: workersAiBinding,
+            onUsage: workersAiRuns.record,
+          }),
+          rateLimitStore: createChatKvRateLimitStore(
+            getRequiredKvBinding(event, runtimeConfig.bindings.rateLimitKv),
+          ),
+          resolveStaleness: staleResolver.resolveStaleness,
+          retrieve: (input) =>
+            retrieveVerifiedEvidence(input, {
+              governance: runtimeConfig.governance,
+              search: aiSearchClient.search,
+              store: createKnowledgeEvidenceStore(database),
+            }),
+          ...(stream ? { stream } : {}),
+        },
+      )
 
-    log.set({
-      result: {
-        conversationId: effectiveConversationId,
+    if (wantsSseResponse(event)) {
+      return createSseChatResponse({
         conversationCreated: createdConversation,
-        citationCount: result.citations.length,
-        refused: result.refused,
-        followUpForcedFreshRetrieval: result.followUp?.forcedFreshRetrieval ?? false,
-      },
+        conversationId: effectiveConversationId,
+        execute: runChatRequest,
+        log,
+      })
+    }
+
+    const result = await runChatRequest()
+
+    recordChatResult(log, {
+      conversationCreated: createdConversation,
+      conversationId: effectiveConversationId,
+      result,
     })
 
     return {
@@ -196,6 +223,14 @@ export default defineEventHandler(async function chatHandler(event) {
         statusCode: error.statusCode,
         statusMessage: error.message,
         message: error.message,
+      })
+    }
+
+    if (error instanceof z.ZodError) {
+      throw createError({
+        statusCode: 400,
+        statusMessage: 'Bad Request',
+        message: 'Invalid chat request',
       })
     }
 
@@ -259,4 +294,131 @@ function getRequiredAiSearchIndex(indexName: string): string {
 
 function isHandledError(error: unknown): error is { statusCode: number } {
   return typeof error === 'object' && error !== null && 'statusCode' in error
+}
+
+function wantsSseResponse(event: { headers?: Headers }): boolean {
+  return event.headers?.get('accept')?.includes('text/event-stream') ?? false
+}
+
+function createSseChatResponse(input: {
+  conversationCreated: boolean
+  conversationId: string
+  execute: (stream: {
+    onTextDelta?: (delta: string) => Promise<void> | void
+    signal?: AbortSignal
+  }) => ReturnType<typeof chatWithKnowledge>
+  log: ReturnType<typeof useLogger>
+}): Response {
+  const encoder = new TextEncoder()
+  const abortController = new AbortController()
+
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      let closed = false
+      const close = () => {
+        if (!closed) {
+          controller.close()
+          closed = true
+        }
+      }
+      const enqueue = (event: string, data: Record<string, unknown>) => {
+        if (closed) {
+          return
+        }
+        controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`))
+      }
+
+      try {
+        enqueue('ready', {
+          conversationCreated: input.conversationCreated,
+          conversationId: input.conversationId,
+        })
+
+        const result = await input.execute({
+          onTextDelta: (delta) => {
+            enqueue('delta', { content: delta })
+          },
+          signal: abortController.signal,
+        })
+
+        recordChatResult(input.log, {
+          conversationCreated: input.conversationCreated,
+          conversationId: input.conversationId,
+          result,
+        })
+
+        if (result.refused) {
+          enqueue('refusal', {
+            answer: null,
+            citations: [],
+            conversationCreated: input.conversationCreated,
+            conversationId: input.conversationId,
+            refused: true,
+          })
+        } else {
+          enqueue('complete', {
+            answer: result.answer,
+            citations: result.citations,
+            conversationCreated: input.conversationCreated,
+            conversationId: input.conversationId,
+            refused: false,
+          })
+        }
+      } catch (error) {
+        if (!isAbortError(error)) {
+          input.log.error(error as Error, { operation: 'web-chat-stream' })
+          enqueue('error', { message: '發生錯誤，請稍後再試' })
+        }
+      } finally {
+        close()
+      }
+    },
+    cancel() {
+      abortController.abort(createAbortError())
+    },
+  })
+
+  return new Response(stream, {
+    headers: {
+      'cache-control': 'no-cache, no-transform',
+      connection: 'keep-alive',
+      'content-type': CHAT_STREAM_CONTENT_TYPE,
+    },
+  })
+}
+
+function recordChatResult(
+  log: RequestLogger<ChatLogFields>,
+  input: {
+    conversationCreated: boolean
+    conversationId: string
+    result: Awaited<ReturnType<typeof chatWithKnowledge>>
+  },
+) {
+  log.set({
+    result: {
+      conversationId: input.conversationId,
+      conversationCreated: input.conversationCreated,
+      citationCount: input.result.citations.length,
+      refused: input.result.refused,
+      followUpForcedFreshRetrieval: input.result.followUp?.forcedFreshRetrieval ?? false,
+    },
+  })
+}
+
+function isAbortError(error: unknown): boolean {
+  if (error instanceof DOMException && error.name === 'AbortError') {
+    return true
+  }
+
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'name' in error &&
+    (error as { name?: unknown }).name === 'AbortError'
+  )
+}
+
+function createAbortError(): DOMException {
+  return new DOMException('aborted', 'AbortError')
 }
