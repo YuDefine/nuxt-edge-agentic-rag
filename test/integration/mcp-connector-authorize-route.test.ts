@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createRouteEvent, installNuxtRouteTestGlobals } from './helpers/nuxt-route'
 
 const mocks = vi.hoisted(() => ({
+  fetch: vi.fn(),
   useRuntimeConfig: vi.fn(),
   requireUserSession: vi.fn(),
   getQuery: vi.fn(),
@@ -13,6 +14,7 @@ installNuxtRouteTestGlobals()
 describe('GET /api/auth/mcp/authorize', () => {
   beforeEach(() => {
     vi.resetModules()
+    vi.stubGlobal('fetch', mocks.fetch)
     vi.stubGlobal('useRuntimeConfig', mocks.useRuntimeConfig)
     vi.stubGlobal('requireUserSession', mocks.requireUserSession)
     vi.stubGlobal('getQuery', mocks.getQuery)
@@ -45,6 +47,7 @@ describe('GET /api/auth/mcp/authorize', () => {
       scope: 'knowledge.ask knowledge.search',
       state: 'opaque-state',
     })
+    mocks.fetch.mockReset()
   })
 
   it('rejects requests without an authenticated local session', async () => {
@@ -99,6 +102,35 @@ describe('GET /api/auth/mcp/authorize', () => {
         state: 'opaque-state',
         userId: 'user-1',
       },
+    })
+  })
+
+  it('accepts URL client_id metadata documents for MCP clients without preregistration', async () => {
+    mocks.getQuery.mockReturnValueOnce({
+      client_id: 'https://claude.ai/.well-known/oauth-client-metadata/mcp',
+      redirect_uri: 'https://claude.ai/api/mcp/auth_callback',
+      scope: 'knowledge.ask knowledge.search',
+      state: 'opaque-state',
+    })
+    mocks.fetch.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          client_id: 'https://claude.ai/.well-known/oauth-client-metadata/mcp',
+          client_name: 'Claude',
+          redirect_uris: ['https://claude.ai/api/mcp/auth_callback'],
+        }),
+        { headers: { 'content-type': 'application/json' } },
+      ),
+    )
+
+    const { default: handler } = await import('../../server/api/auth/mcp/authorize.get')
+    const result = await handler(createRouteEvent())
+
+    expect(result.data).toMatchObject({
+      clientId: 'https://claude.ai/.well-known/oauth-client-metadata/mcp',
+      clientName: 'Claude',
+      grantedScopes: ['knowledge.ask', 'knowledge.search'],
+      redirectUri: 'https://claude.ai/api/mcp/auth_callback',
     })
   })
 })

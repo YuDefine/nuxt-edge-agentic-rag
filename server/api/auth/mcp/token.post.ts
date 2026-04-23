@@ -48,7 +48,9 @@ export default defineEventHandler(async function mcpTokenHandler(event) {
     const token = await grants.exchangeAuthorizationCode({
       clientId: parsedBody.data.clientId,
       code: parsedBody.data.code,
+      codeVerifier: parsedBody.data.codeVerifier,
       redirectUri: parsedBody.data.redirectUri,
+      resource: parsedBody.data.resource,
     })
 
     return {

@@ -2,7 +2,7 @@ import { z } from 'zod'
 
 import { getRequiredKvBinding } from '#server/utils/cloudflare-bindings'
 import {
-  resolveMcpConnectorClient,
+  resolveMcpConnectorClientAsync,
   McpConnectorClientConfigError,
 } from '#server/utils/mcp-connector-clients'
 import { createMcpOauthGrantStore, McpOauthGrantError } from '#server/utils/mcp-oauth-grants'
@@ -11,12 +11,15 @@ import { getKnowledgeRuntimeConfig } from '#server/utils/knowledge-runtime'
 const requestSchema = z
   .object({
     approved: z.boolean(),
+    codeChallenge: z.string().trim().min(1).optional(),
+    codeChallengeMethod: z.literal('S256').optional(),
     clientId: z.string().trim().min(1),
     redirectUri: z.string().url(),
+    resource: z.string().url().optional(),
     scope: z.string().trim().min(1),
     state: z.string().trim().min(1).nullable().optional(),
   })
-  .strict()
+  .passthrough()
 
 export default defineEventHandler(async function mcpAuthorizePostHandler(event) {
   const session = await requireUserSession(event)
@@ -49,7 +52,7 @@ export default defineEventHandler(async function mcpAuthorizePostHandler(event) 
   const knowledgeRuntimeConfig = getKnowledgeRuntimeConfig()
 
   try {
-    const client = resolveMcpConnectorClient(
+    const client = await resolveMcpConnectorClientAsync(
       {
         clientId: parsedBody.data.clientId,
         redirectUri: parsedBody.data.redirectUri,
@@ -65,8 +68,11 @@ export default defineEventHandler(async function mcpAuthorizePostHandler(event) 
       kv,
     })
     const code = await grants.issueAuthorizationCode({
+      codeChallenge: parsedBody.data.codeChallenge,
+      codeChallengeMethod: parsedBody.data.codeChallengeMethod,
       clientId: client.clientId,
       redirectUri: client.redirectUri,
+      resource: parsedBody.data.resource,
       scopes: client.grantedScopes,
       userId: session.user.id,
     })
