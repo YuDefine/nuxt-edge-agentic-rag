@@ -16,10 +16,6 @@
 | `PROD_SITE_URL`                 | Production site URL                          | 例：`https://agentic.yudefine.com.tw`                     |
 | `STAGING_ADMIN_EMAIL_ALLOWLIST` | staging build-time admin allowlist mirror    | 與 staging Worker secret `ADMIN_EMAIL_ALLOWLIST` 保持一致 |
 | `STAGING_SITE_URL`              | Staging site URL                             | 例：`https://agentic-staging.yudefine.com.tw`             |
-| `NUXT_PUBLIC_SENTRY_DSN`        | Sentry 前端 DSN                              | Sentry                                                    |
-| `SENTRY_AUTH_TOKEN`             | Sentry release upload token                  | Sentry                                                    |
-| `SENTRY_ORG`                    | Sentry org slug                              | Sentry                                                    |
-| `SENTRY_PROJECT`                | Sentry project slug                          | Sentry                                                    |
 | `DISCORD_WEBHOOK_URL`           | Deploy 通知 webhook（可選）                  | Discord                                                   |
 
 > 目前 workflow 不會在每次 deploy 時從 GitHub Actions 同步 runtime secrets 到 Worker。`NUXT_SESSION_PASSWORD`、`BETTER_AUTH_SECRET`、OAuth secrets、R2 upload keys、`ADMIN_EMAIL_ALLOWLIST` 等 runtime secrets 應預先以 `wrangler secret put` 寫入各環境的 Worker secret store。

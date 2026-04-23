@@ -70,7 +70,6 @@ pnpm exec wrangler deployments list --name nuxt-edge-agentic-rag
 - [ ] `/api/admin/*`（admin 登入）不 500
 - [ ] `wrangler tail` 觀察 60 秒，無異常 5xx
 - [ ] 之前 incident 的症狀已消失
-- [ ] 對照 `SENTRY`（若啟用）錯誤率回落至 baseline
 
 ### 1.4 不能用 `wrangler rollback` 的情境
 
@@ -508,7 +507,6 @@ jobs:
 | 指導教授                 | email + 簡訊              | T0+15min | 「事故通報：`<symptom>`，已開始處置，預計 `<ETA>` 前更新。」         |
 | 同 team 組員             | Discord / 群組            | T0+5min  | 同上，附 incident channel 連結                                       |
 | 外部使用者（若全站影響） | Status page / 首頁 banner | T0+30min | 「系統暫時異常維護中，已知問題 `<simplified>`，預計 `<ETA>` 恢復。」 |
-| Sentry alerts 收件人     | 自動（若已設）            | 即時     | —                                                                    |
 
 **Post-resolution**（T0 + Wm 宣告 resolved 後）：
 
