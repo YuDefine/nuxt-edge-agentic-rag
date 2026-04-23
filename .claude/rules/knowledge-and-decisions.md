@@ -5,6 +5,8 @@ globs: ['docs/solutions/**', 'docs/decisions/**', 'openspec/**']
 
 # Knowledge Accumulation & Decision Records
 
+繁體中文 | [English](./knowledge-and-decisions.en.md)
+
 ## 知識萃取（任務結束時）
 
 解決非 trivial 問題後，若符合任一條件，**SHOULD** 萃取到 `docs/solutions/`：

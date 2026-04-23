@@ -7,7 +7,16 @@ description: '截圖、看畫面、確認 UI、看一下頁面、幫我看 UI、
 
 所有截圖工作由 `screenshot-review` agent（Sonnet）執行。**MUST** 使用 spawn_agent 工具 派遣，不要在主 session 直接跑截圖命令。
 
-工具選擇規則見 `.github/instructions/screenshot-strategy.md` — agent 會自行判斷，主 session 不需指定。
+工具選擇規則見 `.claude/rules/screenshot-strategy.md` — agent 會自行判斷，主 session 不需指定。
+
+## 硬性規則
+
+- **MUST** 將所有截圖與 review artifact 存在 `screenshots/<environment>/<topic>/`
+- **MUST** 使用語義化 topic，例如 `<change-name>/`、`review/`、`debug/`
+- **SHOULD** 將檢查摘要寫到同目錄的 `review.md`
+- **NEVER** 把截圖存到家目錄、`/tmp`、repo 根目錄、`screenshots/` 裸根目錄或其他未分類位置
+- **NEVER** 把 screenshot review 當成已完成 `## 人工檢查`；主 session 仍需展示證據並取得使用者確認
+- **NEVER** 在需要多 viewport、跨瀏覽器或可重現回歸時硬用一次性 ad-hoc 截圖流程
 
 ## 觸發時機
 
@@ -101,6 +110,7 @@ Agent 回傳後，主 session 應：
 1. 向使用者展示摘要表格（通過/需確認/有問題）
 2. 列出需要人工確認的項目及截圖路徑
 3. 報告檔位置：`screenshots/<env>/<語義>/review.md`（路徑規則見 rule）
+4. 未經使用者確認，不得代勾 `## 人工檢查`
 
 ## 注意事項
 

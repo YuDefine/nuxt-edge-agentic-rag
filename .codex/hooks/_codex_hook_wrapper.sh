@@ -43,8 +43,22 @@ if [ "$status" -eq 0 ]; then
   fi
 
   message="$(cat "$stdout_file")"
-  jq -n --arg systemMessage "$message" '{ systemMessage: $systemMessage, suppressOutput: true }'
-  exit 0
+  case "$HOOK_EVENT" in
+    SessionStart)
+      printf '%s
+' "$message"
+      exit 0
+      ;;
+    Stop)
+      jq -n --arg reason "$message" '{ decision: "block", reason: $reason }'
+      exit 0
+      ;;
+    *)
+      printf '%s
+' "$message"
+      exit 0
+      ;;
+  esac
 fi
 
 if [ -s "$stdout_file" ]; then

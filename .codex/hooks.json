@@ -45,6 +45,11 @@
             "statusMessage": "Syncing Spectra roadmap...",
             "timeout": 10,
             "type": "command"
+          },
+          {
+            "command": "HOOK_EVENT='SessionStart' ORIGINAL_HOOK_COMMAND='\"$(git rev-parse --show-toplevel)\"/.codex/hooks/session-start-roadmap-sync.sh' \"$(git rev-parse --show-toplevel)/.codex/hooks/_codex_hook_wrapper.sh\"",
+            "timeout": 10,
+            "type": "command"
           }
         ]
       }
