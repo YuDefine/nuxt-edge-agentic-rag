@@ -1,4 +1,9 @@
 <script setup lang="ts">
+  import type { ChatMessage } from '~/types/chat'
+
+  import { useChatConversationSession } from '~/composables/useChatConversationSession'
+  import { loadChatConversationDetail } from '~/utils/chat-conversation-loader'
+
   /**
    * Home page - shows login when signed out, chat when signed in.
    */
@@ -7,8 +12,11 @@
     layout: false, // Manually handle layout switching
   })
 
-  const { loggedIn, signIn, fetchSession } = useUserSession()
+  const { loggedIn, signIn, fetchSession, user } = useUserSession()
   const { parseAuthError } = useAuthError()
+  const { $csrfFetch } = useNuxtApp() as unknown as {
+    $csrfFetch: typeof $fetch
+  }
   // `describePasskeyError` comes from `app/utils/passkey-error.ts` which
   // Nuxt auto-imports. Never surface raw plugin / browser English messages
   // to the UI — always route errors through this helper.
@@ -29,9 +37,16 @@
   const passkeyLoginLoading = shallowRef(false)
   const errorMessage = shallowRef('')
   const registerDialogOpen = ref(false)
+  const conversationInteractionLocked = shallowRef(false)
+  const historyRefreshKey = shallowRef(0)
 
-  // In v1.0 MVP, we only track the current session
-  const currentSessionId = ref<string | undefined>(undefined)
+  const conversationSession = useChatConversationSession({
+    userId: computed(() => user.value?.id ?? null),
+    loadConversation: (conversationId) => loadChatConversationDetail($csrfFetch, conversationId),
+    storage: import.meta.client ? sessionStorage : null,
+  })
+  const activeConversationId = computed(() => conversationSession.activeConversationId.value)
+  const persistedMessages = computed(() => conversationSession.persistedMessages.value)
 
   async function handleGoogleLogin() {
     socialLoading.value = true
@@ -80,12 +95,57 @@
     // switch off on its own once the session atom reports signed-in.
   }
 
-  function handleHistoryDrawerClick() {
-    // Auto-close the history drawer after a selection so the chat area
-    // returns to focus on `< lg` viewports. In v1.0.0 MVP there is only
-    // one conversation entry so any click inside closes the drawer.
+  function handleConversationPersisted(payload: {
+    conversationId: string
+    conversationCreated: boolean
+    messages: ChatMessage[]
+  }) {
+    conversationSession.setActiveConversation({
+      conversationId: payload.conversationId,
+      messages: payload.messages,
+    })
+    if (payload.conversationCreated) {
+      historyRefreshKey.value += 1
+    }
+  }
+
+  function handleConversationSelected(payload: {
+    conversationId: string
+    messages: ChatMessage[]
+  }) {
+    conversationSession.setActiveConversation({
+      conversationId: payload.conversationId,
+      messages: payload.messages,
+    })
     historyDrawer.close()
   }
+
+  function handleConversationCleared() {
+    conversationSession.setActiveConversation({
+      conversationId: null,
+      messages: [],
+    })
+  }
+
+  function handleConversationBusyChange(isBusy: boolean) {
+    conversationInteractionLocked.value = isBusy
+  }
+
+  watch(
+    [loggedIn, computed(() => user.value?.id ?? null)],
+    async ([isLoggedIn, userId]) => {
+      if (!isLoggedIn || !userId) {
+        conversationSession.setActiveConversation({
+          conversationId: null,
+          messages: [],
+        })
+        return
+      }
+
+      await conversationSession.restoreActiveConversation()
+    },
+    { immediate: true },
+  )
 </script>
 
 <template>
@@ -183,7 +243,13 @@
             class="hidden w-64 shrink-0 border-r border-default lg:flex lg:flex-col"
             aria-label="對話記錄"
           >
-            <LazyChatConversationHistory :current-session-id="currentSessionId" />
+            <LazyChatConversationHistory
+              :disabled="conversationInteractionLocked"
+              :refresh-key="historyRefreshKey"
+              :selected-conversation-id="activeConversationId"
+              @conversation-cleared="handleConversationCleared"
+              @conversation-selected="handleConversationSelected"
+            />
           </aside>
 
           <!-- Chat column. Parent chat layout owns the `<main>` landmark,
@@ -200,7 +266,14 @@
               </div>
             </div>
 
-            <LazyChatContainer class="flex-1" :disabled="!canAsk" />
+            <LazyChatContainer
+              class="flex-1"
+              :disabled="!canAsk"
+              :active-conversation-id="activeConversationId"
+              :initial-messages="persistedMessages"
+              @busy-change="handleConversationBusyChange"
+              @conversation-persisted="handleConversationPersisted"
+            />
           </section>
         </div>
 
@@ -217,9 +290,14 @@
               class="h-full"
               role="navigation"
               aria-label="對話記錄（抽屜）"
-              @click="handleHistoryDrawerClick"
             >
-              <LazyChatConversationHistory :current-session-id="currentSessionId" />
+              <LazyChatConversationHistory
+                :disabled="conversationInteractionLocked"
+                :refresh-key="historyRefreshKey"
+                :selected-conversation-id="activeConversationId"
+                @conversation-cleared="handleConversationCleared"
+                @conversation-selected="handleConversationSelected"
+              />
             </div>
           </template>
         </USlideover>

@@ -274,6 +274,30 @@ describe('auth.config databaseHooks (B16 §9.2)', () => {
       )
     })
 
+    it('session hook promotes a passkey-first account after Google linking populates an allowlisted email', async () => {
+      const { databaseHooks } = await loadHooks('linked-admin@example.com')
+
+      // This mirrors the post-linking state:
+      //   1. account started as passkey-first (`email = NULL`, role='guest')
+      //   2. custom link endpoint wrote `user.email = linked-admin@example.com`
+      //   3. next session refresh runs `session.create.before`
+      mocks.hubDbSelect.mockResolvedValue([{ email: 'linked-admin@example.com', role: 'guest' }])
+
+      await databaseHooks.session.create.before({ userId: 'linked-passkey-user-1' })
+
+      expect(mocks.hubDbUpdate).toHaveBeenCalledWith({ role: 'admin' })
+      expect(mocks.recordRoleChange).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          userId: 'linked-passkey-user-1',
+          fromRole: 'guest',
+          toRole: 'admin',
+          changedBy: 'system',
+          reason: 'allowlist-seed',
+        }),
+      )
+    })
+
     it('falls back to runtime ADMIN_EMAIL_ALLOWLIST when compiled config allowlist is blank', async () => {
       process.env.ADMIN_EMAIL_ALLOWLIST = 'fallback-admin@example.com'
       const { databaseHooks } = await loadHooks('')
