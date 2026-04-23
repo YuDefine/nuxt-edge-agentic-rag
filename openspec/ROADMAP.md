@@ -30,7 +30,7 @@
 
 ## Active Changes
 
-_last synced: 2026-04-23T23:23:45.218Z_
+_last synced: 2026-04-23T23:29:42.497Z_
 
 2 active changes (0 ready · 1 in progress · 1 draft · 0 blocked)
 
@@ -40,7 +40,7 @@ _(none)_
 
 ### In progress
 
-- **code-quality-review-followups** — 37/43 tasks (86%)
+- **code-quality-review-followups** — 38/43 tasks (88%)
   - Specs: `oauth-remote-mcp-auth`, `web-chat-ui`
 
 ### Draft
