@@ -1,5 +1,6 @@
 <script setup lang="ts">
   import type { ChatMessage, MessageRole } from '~/types/chat'
+  import { formatTimeShort } from '~/utils/format-datetime'
   import { assertNever } from '~~/shared/utils/assert-never'
 
   interface Props {
@@ -119,12 +120,7 @@
         </div>
 
         <div class="mt-2 text-xs text-muted">
-          {{
-            new Date(message.createdAt).toLocaleTimeString('zh-TW', {
-              hour: '2-digit',
-              minute: '2-digit',
-            })
-          }}
+          {{ formatTimeShort(message.createdAt) }}
         </div>
       </div>
     </div>

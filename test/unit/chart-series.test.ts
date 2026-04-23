@@ -11,14 +11,14 @@ import {
 describe('formatUsageTimelineLabel', () => {
   it.each<[UsageRange, string, string]>([
     ['today', '2026-04-24T08:00:00.000Z', '08:00'],
-    ['7d', '2026-04-24T00:00:00.000Z', '04/24'],
-    ['30d', '2026-04-24T00:00:00.000Z', '04/24'],
+    ['7d', '2026-04-24T00:00:00.000Z', '4/24'],
+    ['30d', '2026-04-24T00:00:00.000Z', '4/24'],
   ])('formats %s buckets using the spec example label style', (range, iso, expectedLabel) => {
     expect(formatUsageTimelineLabel(iso, range)).toBe(expectedLabel)
   })
 
-  it('falls back to the raw timestamp when the value is invalid', () => {
-    expect(formatUsageTimelineLabel('not-a-date', 'today')).toBe('not-a-date')
+  it('returns em dash when the value is invalid', () => {
+    expect(formatUsageTimelineLabel('not-a-date', 'today')).toBe('—')
   })
 })
 

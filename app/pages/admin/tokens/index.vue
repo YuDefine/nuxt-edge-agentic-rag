@@ -1,6 +1,7 @@
 <script setup lang="ts">
   import type { TableColumn } from '@nuxt/ui'
 
+  import { formatDateTime } from '~/utils/format-datetime'
   import { srOnlyHeader } from '~~/shared/utils/table'
   import { getUiPageState } from '~~/shared/utils/ui-state'
 
@@ -104,16 +105,7 @@
     }
   }
 
-  function formatDate(dateString: string | null): string {
-    if (!dateString) return '—'
-    return new Date(dateString).toLocaleString('zh-TW', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-    })
-  }
+  const formatDate = formatDateTime
 
   const columns: TableColumn<TokenRow>[] = [
     { accessorKey: 'name', header: '名稱' },
