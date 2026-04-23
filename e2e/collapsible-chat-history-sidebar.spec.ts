@@ -213,9 +213,9 @@ test.describe('collapsible chat history sidebar', () => {
     await expect(
       page.locator('aside[aria-label="對話記錄（已收合）"]').getByText('5'),
     ).toBeVisible()
-    await expect(
-      page.evaluate(() => localStorage.getItem('chat:history-sidebar:collapsed')),
-    ).resolves.toBe('true')
+    expect(await page.evaluate(() => localStorage.getItem('chat:history-sidebar:collapsed'))).toBe(
+      'true',
+    )
 
     await page.getByRole('button', { name: '展開對話記錄' }).first().hover()
     await expect(page.locator('[role="tooltip"]').filter({ hasText: '展開對話記錄' })).toBeVisible()

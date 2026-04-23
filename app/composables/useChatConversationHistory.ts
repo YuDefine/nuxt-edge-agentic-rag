@@ -1,8 +1,14 @@
 import { shallowRef } from 'vue'
-import type { Ref } from 'vue'
+import type { InjectionKey, Ref } from 'vue'
 
 import type { ChatConversationLoadResult, ChatConversationSummary, ChatMessage } from '~/types/chat'
 import { mapConversationDetailToChatMessages } from '~/utils/chat-conversation-state'
+
+export type ChatConversationHistoryApi = ReturnType<typeof useChatConversationHistory>
+
+export const ChatConversationHistoryInjectionKey = Symbol(
+  'ChatConversationHistory',
+) as InjectionKey<ChatConversationHistoryApi>
 
 export function useChatConversationHistory(input: {
   listConversations: () => Promise<ChatConversationSummary[]>
