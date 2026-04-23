@@ -2,6 +2,7 @@
   import type { TableColumn } from '@nuxt/ui'
   import type { CalendarDate } from '@internationalized/date'
   import { DateFormatter, getLocalTimeZone } from '@internationalized/date'
+  import { formatDateTime } from '~/utils/format-datetime'
 
   import { KNOWLEDGE_CHANNEL_VALUES } from '~~/shared/schemas/knowledge-runtime'
   import { srOnlyHeader } from '~~/shared/utils/table'
@@ -125,15 +126,7 @@
     }),
   )
 
-  function formatDate(dateString: string): string {
-    return new Date(dateString).toLocaleString('zh-TW', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-    })
-  }
+  const formatDate = formatDateTime
 
   function resetFilters() {
     filters.channel = ALL_OPTION_VALUE

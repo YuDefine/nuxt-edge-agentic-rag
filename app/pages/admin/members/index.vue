@@ -1,6 +1,7 @@
 <script setup lang="ts">
   import type { TableColumn } from '@nuxt/ui'
 
+  import { formatDateTime } from '~/utils/format-datetime'
   import { assertNever } from '#shared/utils/assert-never'
   import { PAGE_SIZE_MAX } from '#shared/schemas/pagination'
   import type { AdminMemberRow } from '#shared/types/admin-members'
@@ -79,16 +80,7 @@
     }
   }
 
-  function formatDate(dateString: string | null | undefined): string {
-    if (!dateString) return '—'
-    return new Date(dateString).toLocaleString('zh-TW', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-    })
-  }
+  const formatDate = formatDateTime
 
   // passkey-authentication §13.2 — Column layout reshuffled so the
   // primary identifier is `displayName` (the immutable nickname) rather
