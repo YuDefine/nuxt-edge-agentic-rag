@@ -113,7 +113,9 @@ EOF
 pnpm tag
 ```
 
-`pnpm tag` 會建立 `v{版本號}` tag 並推送到 origin。
+`pnpm tag` 會依序：建立 `v{版本號}` tag → `git push origin main` 推送 commits → `git push origin --tags` 推送 tag。順序固定先 main 再 tag，避免 tag 先上而 commits 沒跟上。
+
+若 `git push origin main` 因 non-fast-forward 被擋，停下處理 upstream 漂移（pull / rebase），不要手動單獨 `git push origin --tags` 讓 tag 搶跑。
 
 ## Step 5: 完成報告
 
