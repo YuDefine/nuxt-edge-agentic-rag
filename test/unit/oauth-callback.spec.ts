@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 /**
  * B16 §9.2 — OAuth callback databaseHooks three-behaviour coverage.
@@ -142,6 +142,10 @@ describe('auth.config databaseHooks (B16 §9.2)', () => {
     mocks.recordRoleChange.mockResolvedValue({ id: 'audit-1' })
   })
 
+  afterEach(() => {
+    delete process.env.ADMIN_EMAIL_ALLOWLIST
+  })
+
   describe('(a) new non-allowlist user → role=guest, no audit', () => {
     it('user.create.before stamps role="guest"', async () => {
       const { databaseHooks } = await loadHooks('admin@example.com')
@@ -262,6 +266,48 @@ describe('auth.config databaseHooks (B16 §9.2)', () => {
         expect.anything(),
         expect.objectContaining({
           userId: 'promote-me-1',
+          fromRole: 'member',
+          toRole: 'admin',
+          changedBy: 'system',
+          reason: 'allowlist-seed',
+        }),
+      )
+    })
+
+    it('falls back to runtime ADMIN_EMAIL_ALLOWLIST when compiled config allowlist is blank', async () => {
+      process.env.ADMIN_EMAIL_ALLOWLIST = 'fallback-admin@example.com'
+      const { databaseHooks } = await loadHooks('')
+
+      mocks.hubDbSelect.mockResolvedValue([{ email: 'fallback-admin@example.com', role: 'member' }])
+
+      await databaseHooks.session.create.before({ userId: 'fallback-admin-1' })
+
+      expect(mocks.hubDbUpdate).toHaveBeenCalledWith({ role: 'admin' })
+      expect(mocks.recordRoleChange).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          userId: 'fallback-admin-1',
+          fromRole: 'member',
+          toRole: 'admin',
+          changedBy: 'system',
+          reason: 'allowlist-seed',
+        }),
+      )
+    })
+
+    it('prefers runtime ADMIN_EMAIL_ALLOWLIST over a stale compiled allowlist', async () => {
+      process.env.ADMIN_EMAIL_ALLOWLIST = 'runtime-admin@example.com'
+      const { databaseHooks } = await loadHooks('compiled-admin@example.com')
+
+      mocks.hubDbSelect.mockResolvedValue([{ email: 'runtime-admin@example.com', role: 'member' }])
+
+      await databaseHooks.session.create.before({ userId: 'runtime-admin-1' })
+
+      expect(mocks.hubDbUpdate).toHaveBeenCalledWith({ role: 'admin' })
+      expect(mocks.recordRoleChange).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          userId: 'runtime-admin-1',
           fromRole: 'member',
           toRole: 'admin',
           changedBy: 'system',

@@ -14,9 +14,9 @@
 #   - push tag v*       → production deploy（先驗證同 SHA 已有成功的 CI run）
 #   - workflow_dispatch → 可選 production 或 staging（同上，不重跑 CI）
 #
-# STAGING 區塊為 illustrative — 若尚未建立 staging 環境，可將 `deploy-staging`
-# job 保留為註解或維持 `if: false` 避免觸發失敗。啟用步驟見
-# docs/verify/DEPLOYMENT_RUNBOOK.md §2.6（Staging 環境）。
+# STAGING 區塊對應現有的 Cloudflare staging 資源。若 staging bindings / secrets
+# 有變更，需同步更新 `wrangler.staging.jsonc`、本 workflow 與
+# docs/verify/DEPLOYMENT_RUNBOOK.md §2.6。
 name: Deploy
 
 on:
@@ -94,9 +94,19 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: d1 migrations apply agentic-rag-db --remote
 
+      - name: Validate production build-time admin allowlist
+        env:
+          ADMIN_EMAIL_ALLOWLIST: ${{ secrets.PROD_ADMIN_EMAIL_ALLOWLIST }}
+        run: |
+          test -n "$ADMIN_EMAIL_ALLOWLIST" || {
+            echo 'Missing required secret: PROD_ADMIN_EMAIL_ALLOWLIST' >&2
+            exit 1
+          }
+
       - name: Build
         run: pnpm build
         env:
+          ADMIN_EMAIL_ALLOWLIST: ${{ secrets.PROD_ADMIN_EMAIL_ALLOWLIST }}
           BETTER_AUTH_SECRET: ${{ secrets.PROD_BETTER_AUTH_SECRET || 'build-only-prod-better-auth-secret-32chars' }}
           NODE_OPTIONS: --max-old-space-size=4096
           # `nuxt.config.ts` reads these at build time for both the public
@@ -131,12 +141,12 @@ jobs:
           command: deploy
 
   # ---------------------------------------------------------------------------
-  # STAGING deploy — illustrative
+  # STAGING deploy — manual dispatch to the existing staging environment
   # ---------------------------------------------------------------------------
-  # 啟用前提（見 docs/verify/DEPLOYMENT_RUNBOOK.md §2.6）：
-  #   1. 已建立 staging D1/R2/KV 資源（各加 -staging 後綴）
-  #   2. 已建立 wrangler.staging.jsonc 或以 --env staging 區分
-  #   3. GitHub 已設定 STAGING_* prefix 的 secrets
+  # 維護前提（見 docs/verify/DEPLOYMENT_RUNBOOK.md §2.6）：
+  #   1. `wrangler.staging.jsonc` 必須持續對齊 staging D1/R2/KV/AI route
+  #   2. GitHub 已設定 STAGING_* prefix 的 secrets / vars
+  #   3. staging build env 與 runtime vars 不可漂移
   deploy-staging:
     needs: verify-ci-gate
     if: |
@@ -184,9 +194,19 @@ jobs:
           # 或 --config wrangler.staging.jsonc 其一
           command: d1 migrations apply agentic-rag-db-staging --remote --config wrangler.staging.jsonc
 
+      - name: Validate staging build-time admin allowlist
+        env:
+          ADMIN_EMAIL_ALLOWLIST: ${{ secrets.STAGING_ADMIN_EMAIL_ALLOWLIST }}
+        run: |
+          test -n "$ADMIN_EMAIL_ALLOWLIST" || {
+            echo 'Missing required secret: STAGING_ADMIN_EMAIL_ALLOWLIST' >&2
+            exit 1
+          }
+
       - name: Build (staging)
         run: pnpm build
         env:
+          ADMIN_EMAIL_ALLOWLIST: ${{ secrets.STAGING_ADMIN_EMAIL_ALLOWLIST }}
           BETTER_AUTH_SECRET: ${{ secrets.STAGING_BETTER_AUTH_SECRET || 'build-only-staging-better-auth-secret-32chars' }}
           NODE_OPTIONS: --max-old-space-size=4096
           # Keep staging's compiled config aligned with `wrangler.staging.jsonc`

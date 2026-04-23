@@ -18,7 +18,13 @@ function getStepBlock(stepName: string): string {
 describe('deploy workflow build env wiring', () => {
   it('injects production-only build env for passkey and remote mcp connector config', () => {
     const buildStep = getStepBlock('Build')
+    const validateStep = getStepBlock('Validate production build-time admin allowlist')
 
+    expect(validateStep).toContain(
+      'ADMIN_EMAIL_ALLOWLIST: ${{ secrets.PROD_ADMIN_EMAIL_ALLOWLIST }}',
+    )
+    expect(validateStep).toContain('Missing required secret: PROD_ADMIN_EMAIL_ALLOWLIST')
+    expect(buildStep).toContain('ADMIN_EMAIL_ALLOWLIST: ${{ secrets.PROD_ADMIN_EMAIL_ALLOWLIST }}')
     expect(buildStep).toContain('NUXT_KNOWLEDGE_AI_GATEWAY_ID: agentic-rag-production')
     expect(buildStep).toContain('NUXT_KNOWLEDGE_ENVIRONMENT: production')
     expect(buildStep).toContain(
@@ -31,7 +37,15 @@ describe('deploy workflow build env wiring', () => {
 
   it('injects staging-only build env for passkey and remote mcp connector config', () => {
     const buildStep = getStepBlock('Build (staging)')
+    const validateStep = getStepBlock('Validate staging build-time admin allowlist')
 
+    expect(validateStep).toContain(
+      'ADMIN_EMAIL_ALLOWLIST: ${{ secrets.STAGING_ADMIN_EMAIL_ALLOWLIST }}',
+    )
+    expect(validateStep).toContain('Missing required secret: STAGING_ADMIN_EMAIL_ALLOWLIST')
+    expect(buildStep).toContain(
+      'ADMIN_EMAIL_ALLOWLIST: ${{ secrets.STAGING_ADMIN_EMAIL_ALLOWLIST }}',
+    )
     expect(buildStep).toContain('NUXT_KNOWLEDGE_AI_GATEWAY_ID: agentic-rag-staging')
     expect(buildStep).toContain('NUXT_KNOWLEDGE_ENVIRONMENT: staging')
     expect(buildStep).toContain(
