@@ -1,0 +1,73 @@
+{
+  "command": "pnpm exec playwright test e2e/chat-persistence.spec.ts",
+  "generatedAt": "2026-04-23T09:05:35.902Z",
+  "requestLog": [
+    {
+      "query": "第一個持久化問題"
+    },
+    {
+      "conversationId": "11111111-1111-4111-8111-111111111111",
+      "query": "第二個持久化問題"
+    }
+  ],
+  "detailReadLog": [
+    "11111111-1111-4111-8111-111111111111",
+    "22222222-2222-4222-8222-222222222222",
+    "11111111-1111-4111-8111-111111111111",
+    "11111111-1111-4111-8111-111111111111"
+  ],
+  "deleteLog": ["11111111-1111-4111-8111-111111111111"],
+  "listReadLog": [
+    "2026-04-23T09:05:32.277Z",
+    "2026-04-23T09:05:33.353Z",
+    "2026-04-23T09:05:33.875Z",
+    "2026-04-23T09:05:34.911Z",
+    "2026-04-23T09:05:35.360Z"
+  ],
+  "checkpoints": [
+    {
+      "checkpoint": "create",
+      "assertions": [
+        "首次 /api/chat 請求未攜帶 conversationId。",
+        "第一輪回答建立持久化對話並出現在歷史列表。",
+        "建立後畫面可見引用按鈕，代表訊息與 citations 一起落地。"
+      ],
+      "screenshot": "screenshots/chat-persistence/01-create.png"
+    },
+    {
+      "checkpoint": "reload",
+      "assertions": [
+        "重新整理後，歷史列表仍可見剛建立的對話。",
+        "重新整理後，訊息與引用由伺服器 detail read 重建，而非 client-only 記憶體。"
+      ],
+      "screenshot": "screenshots/chat-persistence/02-reload.png"
+    },
+    {
+      "checkpoint": "select",
+      "assertions": [
+        "選取歷史對話會用 detail API 取回該對話訊息。",
+        "訊息窗格切換為所選對話內容，不再顯示其他對話的持久化訊息。"
+      ],
+      "screenshot": "screenshots/chat-persistence/03-select.png"
+    },
+    {
+      "checkpoint": "follow_up",
+      "assertions": [
+        "續問時 /api/chat 會重用目前作用中的 conversationId。",
+        "第二輪回答追加到同一個持久化對話，而不是另建 client-only session。",
+        "同一對話續問不會額外重抓整份歷史清單。"
+      ],
+      "screenshot": "screenshots/chat-persistence/04-follow-up.png"
+    },
+    {
+      "checkpoint": "delete",
+      "assertions": [
+        "刪除後，對話會從歷史列表與訊息窗格一併移除。",
+        "重新整理後不會回復已刪除對話，detail read 直接回 404。",
+        "sessionStorage 不再保留已刪除的 active conversation id。"
+      ],
+      "screenshot": "screenshots/chat-persistence/05-delete.png"
+    }
+  ],
+  "spec": "e2e/chat-persistence.spec.ts"
+}

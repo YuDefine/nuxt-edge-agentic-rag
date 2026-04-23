@@ -19,7 +19,27 @@ interface D1DatabaseLike {
   prepare(query: string): D1PreparedStatementLike
 }
 
-const authSchema = {
+interface LibsqlResultLike {
+  lastInsertRowid?: bigint | number | null
+  rows?: Record<string, unknown>[]
+  rowsAffected?: number
+}
+
+interface LibsqlStatementLike {
+  args?: unknown[]
+  sql: string
+}
+
+interface LibsqlClientLike {
+  batch(statements: LibsqlStatementLike[]): Promise<unknown>
+  execute(statement: LibsqlStatementLike | string, args?: unknown[]): Promise<LibsqlResultLike>
+}
+
+interface AdaptedPreparedStatement extends D1PreparedStatementLike {
+  toLibsqlStatement(): LibsqlStatementLike
+}
+
+export const authSchema = {
   user: sqliteTable('user', {
     id: text('id').primaryKey(),
     name: text('name').notNull(),
@@ -44,8 +64,12 @@ const authSchema = {
       accessToken: text('accessToken'),
       refreshToken: text('refreshToken'),
       idToken: text('idToken'),
-      accessTokenExpiresAt: integer('accessTokenExpiresAt', { mode: 'timestamp_ms' }),
-      refreshTokenExpiresAt: integer('refreshTokenExpiresAt', { mode: 'timestamp_ms' }),
+      accessTokenExpiresAt: integer('accessTokenExpiresAt', {
+        mode: 'timestamp_ms',
+      }),
+      refreshTokenExpiresAt: integer('refreshTokenExpiresAt', {
+        mode: 'timestamp_ms',
+      }),
       scope: text('scope'),
       password: text('password'),
       createdAt: integer('createdAt', { mode: 'timestamp_ms' }).notNull(),
@@ -68,6 +92,93 @@ async function importHubDb() {
   return import('hub:db')
 }
 
+function isD1DatabaseLike(value: unknown): value is D1DatabaseLike {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'prepare' in value &&
+    typeof value.prepare === 'function' &&
+    'batch' in value &&
+    typeof value.batch === 'function'
+  )
+}
+
+function isLibsqlClientLike(value: unknown): value is LibsqlClientLike {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'execute' in value &&
+    typeof value.execute === 'function' &&
+    'batch' in value &&
+    typeof value.batch === 'function'
+  )
+}
+
+function isAdaptedPreparedStatement(
+  value: D1PreparedStatementLike,
+): value is AdaptedPreparedStatement {
+  return 'toLibsqlStatement' in value && typeof value.toLibsqlStatement === 'function'
+}
+
+function createAdaptedPreparedStatement(
+  client: LibsqlClientLike,
+  sql: string,
+): AdaptedPreparedStatement {
+  let boundArgs: unknown[] = []
+
+  async function execute(): Promise<LibsqlResultLike> {
+    return client.execute({
+      sql,
+      args: boundArgs,
+    })
+  }
+
+  return {
+    bind(...values: unknown[]) {
+      boundArgs = values
+      return this
+    },
+    async all<T>() {
+      const result = await execute()
+      return {
+        results: (result.rows ?? []) as T[],
+      }
+    },
+    async first<T>() {
+      const result = await execute()
+      return ((result.rows ?? [])[0] ?? null) as T | null
+    },
+    run() {
+      return execute()
+    },
+    toLibsqlStatement() {
+      return {
+        sql,
+        args: boundArgs,
+      }
+    },
+  }
+}
+
+function createD1DatabaseAdapter(client: LibsqlClientLike): D1DatabaseLike {
+  return {
+    async batch(statements) {
+      return client.batch(
+        statements.map((statement) => {
+          if (isAdaptedPreparedStatement(statement)) {
+            return statement.toLibsqlStatement()
+          }
+
+          throw new TypeError('Expected statements created by getD1Database() libsql adapter')
+        }),
+      )
+    },
+    prepare(query) {
+      return createAdaptedPreparedStatement(client, query)
+    },
+  }
+}
+
 /**
  * Get the underlying D1 database client from hub:db
  *
@@ -76,8 +187,24 @@ async function importHubDb() {
  */
 export async function getD1Database(): Promise<D1DatabaseLike> {
   const { db } = await import('hub:db')
-  // $client is the underlying D1 database instance
-  return db.$client as unknown as D1DatabaseLike
+
+  if (isD1DatabaseLike(db)) {
+    return db
+  }
+
+  const client = (db as { $client?: unknown }).$client
+
+  if (isD1DatabaseLike(client)) {
+    return client
+  }
+
+  // Local dev patches `hub:db` to libsql so raw D1 stores still need a
+  // compatibility layer for `.prepare().bind().all()/first()/run()`.
+  if (isLibsqlClientLike(client)) {
+    return createD1DatabaseAdapter(client)
+  }
+
+  throw new TypeError('hub:db does not expose a D1-compatible database client')
 }
 
 /**

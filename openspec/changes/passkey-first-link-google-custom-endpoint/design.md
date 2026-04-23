@@ -19,7 +19,7 @@
 1. passkey-first 使用者在 `/account/settings` 點「綁定 Google 帳號」能走完 OAuth flow，成功後 `user.email` 填入、`account` 表 Google row 建立、passkey row 保留。
 2. 綁定成功後，下一次 session refresh 由既有 `databaseHooks.session.create.before` reconciliation 自動套用 allowlist 升級（不在本 change 重寫 reconciliation 邏輯）。
 3. OAuth state 抗 CSRF（cookie + KV 雙層比對 + TTL）、抗 replay（one-time KV key 用完即刪）。
-4. email collision（Google email 已屬其他 `user.id`）回 HTTP 409 `EMAIL_ALREADY_LINKED`，UI 以 toast 明確告知。
+4. email collision（Google email 已屬其他 `user.id`）回 HTTP 409 `EMAIL_ALREADY_LINKED`，UI 以頁內 feedback alert 明確告知。
 5. Token exchange / id_token 解析 / DB 寫入任一失敗皆以使用者可讀訊息回報，不洩漏內部細節（遵守 `error-handling.md`）。
 
 **Non-Goals:**
@@ -72,63 +72,78 @@ Callback 時：
 
 ### id_token 驗證策略
 
-**Decision**：直接 fetch Google token endpoint 以 `grant_type=authorization_code` 交換 access_token + id_token，取得 id_token 後**解 JWT payload**取 `email` / `email_verified` / `name` / `picture`，**不做**完整 JWT signature 驗證。
+**Decision**：直接 fetch Google token endpoint 以 `grant_type=authorization_code` 交換 id_token，之後以 Google JWKS 做完整 JWT 驗簽，並檢查 `iss` / `aud` / `exp`；驗證通過後才讀取 `email` / `email_verified` / `picture` / `sub`。
 
-**Rationale**：id_token 從 Google token endpoint 直接回傳（TLS + client_secret 驗證過），不是由 user agent 轉手。Google 的 docs 明文此情境可省 signature 驗證（「If you get your ID token directly from Google via HTTPS... it's unnecessary to validate the signature」）。我們仍檢 `iss === 'https://accounts.google.com'` 和 `aud === NUXT_OAUTH_GOOGLE_CLIENT_ID` 作為 defense in depth。
+**Rationale**：這條 flow 會把 Google 身分直接綁到既有 `user.id`，安全面屬於 Tier 3。即使 token 由 Google token endpoint 直接回傳，也不接受「base64 decode 後直接信任 claim」這種鬆散做法；改成 JWKS + `jose` 驗證後，過期 token、非 Google 簽發 token、以及 audience 不符都會在進 DB 前被擋下。
 
 **Additional check**：若 `email_verified !== true` → 回 400 `EMAIL_NOT_VERIFIED`，不寫入 DB。
 
 **Alternatives considered**:
 
-- **完整 signature 驗證（fetch JWKS + RS256 verify）**：多一次 HTTP、額外 `jose` 或 Web Crypto code。**拒絕**：在 confidential client + 直接 token endpoint 場景 overkill。
-- **改呼叫 Google `userinfo` endpoint 取 email**：避開 id_token 解析。**拒絕**：多一次 HTTP round-trip，延遲增加 200–500ms，無額外安全性。
+- **只做 payload decode**：**拒絕**。無法辨識過期 token / 偽造 token，review 已確認風險不可接受。
+- **改呼叫 Google `userinfo` endpoint 取 email**：避開 id_token 解析。**拒絕**：仍需 access token round-trip，且不如直接驗證 id_token 明確。
 
 ### Email Collision 檢測
 
 **Decision**：token exchange 成功後、寫 DB 前，執行：
 
 ```sql
-SELECT id FROM "user" WHERE email = ? AND id != ? LIMIT 1
+SELECT id FROM "user" WHERE email = ? AND id != ? LIMIT 1;
+SELECT userId FROM account WHERE providerId = 'google' AND accountId = ? AND userId != ? LIMIT 1;
 ```
 
-若有 row → 立即中止 flow、刪 KV state、回 HTTP 409 `EMAIL_ALREADY_LINKED`。**不**寫入任何 DB 資料。
+任一查到 row → 立即中止 flow、刪 KV state、回 HTTP 409 `EMAIL_ALREADY_LINKED`。**不**寫入任何 DB 資料。
 
-**UX**：callback 不 redirect 回 settings 帶 query，而是 redirect `/account/settings?linkError=EMAIL_ALREADY_LINKED`；settings.vue `onMounted` watch query 並顯示 error toast（文案：「此 Google 帳號（<email>）已綁定於另一組帳號。請改用 Google 登入該帳號後新增 Passkey。」）。
+**UX**：callback redirect `/account/settings?linkError=EMAIL_ALREADY_LINKED`；settings.vue 顯示 generic error feedback alert，不把衝突 email 帶進 query string，避免 PII 落入 URL / browser history / referer。
 
-**Rationale**：與 better-auth 既有 §6.3 Scenario 的 409 行為對齊；使用者需要具體 email 才能判斷要切哪個帳號。
+**Rationale**：Google 官方要求以 `sub` 作為帳號唯一識別；只檢 email 不足以防止同一個 Google identity 被重綁到其他本地 user。
 
 ### DB 寫入：User UPDATE + Account INSERT 交易性
 
-**Decision**：兩條 SQL 分開跑，若 `INSERT account` 失敗則**明確 rollback `user` 的 email 更新**（D1 不支援跨 connection transaction，但同一 handler 內可順序執行 + catch compensate）：
+**Decision**：以 Drizzle `transaction(...)` 包住 `user` UPDATE 與 `account` INSERT，避免 callback 寫入繞過 schema 的 `timestamp_ms` mapper。所有時間欄位先以 `Date.now()` 取得 millisecond epoch，再轉成 `Date` 物件交給 Drizzle，讓 D1 最終儲存為 `INTEGER` affinity。
 
 ```typescript
-// 1. UPDATE user SET email, image, updatedAt WHERE id = ?
-// 2. try INSERT account (userId, providerId='google', accountId, accessToken, refreshToken, idToken, scope, createdAt, updatedAt)
-//    catch → UPDATE user SET email=NULL, image=<previous> WHERE id = ?  (compensation)
+const nowMs = Date.now()
+const now = new Date(nowMs)
+
+await db.transaction(async (tx) => {
+  await tx.update(schema.user).set({ email, image, updatedAt: now }).where(...)
+  await tx.insert(schema.account).values({
+    providerId: 'google',
+    accountId: sub,
+    accessToken: null,
+    refreshToken: null,
+    idToken: null,
+    scope: null,
+    createdAt: now,
+    updatedAt: now,
+  })
+})
 ```
 
-**Rationale**：D1 的 batch API（`db.batch([...])`）可把兩條 statement 打包成一個 atomic 請求，優先使用；只有當某些欄位需要前一條結果時才 fallback 到手動 compensation。
+**Rationale**：這條 flow 同時有兩個要求：寫入必須 atomic，且 `user.updatedAt` / `account.createdAt` / `account.updatedAt` 必須符合 Drizzle `timestamp_ms` 宣告。raw D1 `batch([...])` 雖然能保 atomic，但會繞過 mapper；直接走 Drizzle transaction 才能一次滿足兩者。
 
-**Decision refined**：使用 Drizzle 的 `db.batch([...])` 將兩個 statement 打包（D1 原生支援 batch 為 transaction）。若 batch 失敗 → 整體 rollback by D1，handler throw 500。
+**Decision refined**：collision checks 仍保留 raw D1 read path；真正的寫入改成 `getDrizzleDb()` + `db.transaction(async (tx) => ...)`。由於這條 flow 只需要建立可登入的 Google identity mapping，不需要後續 Google API 存取，因此 `account.accessToken` / `refreshToken` / `idToken` / `scope` 一律寫 `NULL`，避免保存額外憑證。若 transaction 失敗 → 整體 rollback，handler 回 `DB_WRITE_FAILED`。
 
 **Alternatives considered**:
 
-- **先 INSERT account 再 UPDATE user**：insert 失敗 user 還沒變。**接受**：但 better-auth 的 schema expectation 是 email 在 user 上，先更新 user 讓 reconciliation 觸發更單純。最終採 batch 不用排序。
+- **raw D1 `db.batch([...])`**：可保 atomic，但會繞過 Drizzle `timestamp_ms` mapper。**拒絕**。
+- **先 INSERT account 再 UPDATE user**：insert 失敗 user 還沒變。**接受**：但 better-auth 的 schema expectation 是 email 在 user 上，先更新 user 讓 reconciliation 觸發更單純。最終採 transaction，不依賴排序。
 - **不做 compensation，accept 部分成功**：**拒絕**，會留下 inconsistent state（account row 存在但 user.email 仍 NULL），下次登入邏輯會困惑。
 
 ### Error Code 對照表
 
-| 情境                                   | HTTP | Error code                | UI 文案                                                                               |
-| -------------------------------------- | ---- | ------------------------- | ------------------------------------------------------------------------------------- |
-| session 無 / email 非 NULL             | 400  | `INVALID_ENTRY_STATE`     | 此流程僅限 Passkey-only 帳號。                                                        |
-| cookie ↔ URL state 不符 / cookie 缺失  | 401  | `STATE_MISMATCH`          | 連線已失效，請重試綁定。                                                              |
-| KV state 查無 / 過期                   | 401  | `STATE_EXPIRED`           | 連線已過期，請重試綁定。                                                              |
-| KV state.userId ≠ 當前 session.user.id | 401  | `SESSION_MISMATCH`        | 連線已失效，請重新登入後再試。                                                        |
-| Google token endpoint 非 2xx           | 502  | `GOOGLE_TOKEN_EXCHANGE`   | 無法向 Google 驗證，請稍後再試。                                                      |
-| id_token 解析失敗 / iss/aud 不符       | 502  | `GOOGLE_ID_TOKEN_INVALID` | Google 回傳資料無效，請重試。                                                         |
-| `email_verified !== true`              | 400  | `EMAIL_NOT_VERIFIED`      | 此 Google 帳號尚未驗證 email，請先在 Google 驗證 email 後再綁定。                     |
-| email 已綁至其他 user                  | 409  | `EMAIL_ALREADY_LINKED`    | 此 Google 帳號（<email>）已綁定於另一組帳號。請改用 Google 登入該帳號後新增 Passkey。 |
-| D1 batch 失敗                          | 500  | `DB_WRITE_FAILED`         | 綁定失敗，請稍後再試。                                                                |
+| 情境                                   | HTTP | Error code                | UI 文案                                                                    |
+| -------------------------------------- | ---- | ------------------------- | -------------------------------------------------------------------------- |
+| session 無 / email 非 NULL             | 400  | `INVALID_ENTRY_STATE`     | 此流程僅限 Passkey-only 帳號。                                             |
+| cookie ↔ URL state 不符 / cookie 缺失  | 401  | `STATE_MISMATCH`          | 連線已失效，請重試綁定。                                                   |
+| KV state 查無 / 過期                   | 401  | `STATE_EXPIRED`           | 連線已過期，請重試綁定。                                                   |
+| KV state.userId ≠ 當前 session.user.id | 401  | `SESSION_MISMATCH`        | 連線已失效，請重新登入後再試。                                             |
+| Google token endpoint 非 2xx           | 502  | `GOOGLE_TOKEN_EXCHANGE`   | 無法向 Google 驗證，請稍後再試。                                           |
+| id_token 解析失敗 / iss/aud 不符       | 502  | `GOOGLE_ID_TOKEN_INVALID` | Google 回傳資料無效，請重試。                                              |
+| `email_verified !== true`              | 400  | `EMAIL_NOT_VERIFIED`      | 此 Google 帳號尚未驗證 email，請先在 Google 驗證 email 後再綁定。          |
+| email 或 Google `sub` 已綁至其他 user  | 409  | `EMAIL_ALREADY_LINKED`    | 此 Google 帳號已綁定於另一組帳號。請改用 Google 登入該帳號後新增 Passkey。 |
+| DB transaction 失敗                    | 500  | `DB_WRITE_FAILED`         | 綁定失敗，請稍後再試。                                                     |
 
 錯誤皆以 `createError({ statusCode, statusMessage: <code>, message: <UI 文案> })`，**NEVER** 帶 `data`。handler 內 log：400/401/409 不 `log.error`（預期分支），502/500 要 `log.error`。
 
@@ -150,7 +165,7 @@ if (credentials.value?.email === null) {
 
 同步**移除**：目前的 `isPasskeyFirst` disable condition 與 `useToast().add({ title: '開發中'... })`。
 
-Callback 成功 → `/account/settings?linked=google`，settings.vue watch 此 query 顯示 success toast + 強制 `await refreshCredentials()`（重新從 `/api/auth/me/credentials` 取 `email` / `hasGoogle`）。
+Callback 成功 → `/account/settings?linked=google`，settings.vue watch 此 query 顯示 success feedback alert + 強制 `await refreshCredentials()`（重新從 `/api/auth/me/credentials` 取 `email` / `hasGoogle`）。
 
 ## Risks / Trade-offs
 
@@ -160,13 +175,13 @@ Callback 成功 → `/account/settings?linked=google`，settings.vue watch 此 q
 
 - **[Risk] KV eventual consistency** → KV write 後立即 read 在 Cloudflare edge 可能小機率 miss。**Mitigation**：state write 後先 redirect 到 Google（中間有使用者互動延遲，足夠 KV 同步）；callback 讀 miss 回 `STATE_EXPIRED` 使用者可重試。
 
-- **[Risk] DB batch 失敗導致 user.email 留在不一致狀態** → **Mitigation**：採 D1 `db.batch([...])` atomic batch，原生 transaction。若真的失敗，handler throw 500 + `log.error`，ops 可從 log 追溯 user.id 手動修復。
+- **[Risk] DB transaction 失敗導致 user/account 寫入中斷** → **Mitigation**：採 Drizzle `transaction(...)`，同時保住 atomicity 與 `timestamp_ms` 寫入契約。若真的失敗，handler 回 500 + `log.error`，ops 可從 log 追溯 user.id 手動修復。
 
 - **[Trade-off] 每個綁定流程多一次 KV write + KV read + KV delete** → 額外 ~5–15ms latency。**接受**：綁定是 rare event（每 user 一次），額外延遲不影響 UX。
 
 - **[Trade-off] 手動 fetch Google token endpoint 增加維護面** → 不走 better-auth adapter，Google API 若改版需要我們自己跟進。**接受**：Google OAuth token endpoint API 極穩定（v2 已多年），風險低。
 
-- **[Trade-off] 不做 id_token signature 驗證** → 若 Google TLS 被 MITM 則理論可注入。**接受**：同場景 better-auth 也只做此層級驗證；TLS 破則 session cookie 也不安全。
+- **[Trade-off] 多一次 JWKS fetch** → callback 首次驗證會多一次外部 HTTP。**接受**：相較於把未驗證 token claim 直接寫入帳號，這個延遲是合理成本。
 
 ## Migration Plan
 

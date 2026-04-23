@@ -560,7 +560,7 @@ better-auth `linkSocial` endpoint 在建構 OAuth state 時，把 `session.user.
 
 新增 custom endpoint pair（繞開 better-auth linkSocial，自建 OAuth flow）：
 
-1. `POST /api/auth/account/link-google-for-passkey-first`
+1. `GET /api/auth/account/link-google-for-passkey-first`
    - `requireUserSession` + 驗 `session.user.email === null`
    - 建 OAuth state（自己的 cookie / KV key，帶 session.user.id）
    - redirect 到 Google authorization URL（用現有 `NUXT_OAUTH_GOOGLE_CLIENT_ID` 與 redirect_uri）

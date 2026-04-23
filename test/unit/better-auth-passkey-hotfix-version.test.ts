@@ -55,7 +55,7 @@ describe('better-auth passkey hotfix dependency resolution', () => {
 
     expect(packageJson.dependencies?.['better-auth']).toBe('^1.6.7')
     expect(packageJson.dependencies?.['@better-auth/passkey']).toBe('^1.6.7')
-    expect(packageJson.devDependencies?.['@vitest/coverage-v8']).toBe('4.1.4')
+    expect(packageJson.devDependencies?.['@vitest/coverage-v8']).toBe('4.1.5')
     expect(packageJson.devDependencies?.['vite']).toBe('npm:@voidzero-dev/vite-plus-core@0.1.19')
     expect(packageJson.devDependencies?.['vitest']).toBe('npm:@voidzero-dev/vite-plus-test@0.1.19')
     expect(workspaceConfig.overrides?.['better-call']).toBe('1.3.5')
@@ -66,7 +66,7 @@ describe('better-auth passkey hotfix dependency resolution', () => {
       specifier: '^1.6.7',
     })
     expect(rootImporter?.devDependencies?.['@vitest/coverage-v8']).toMatchObject({
-      specifier: '4.1.4',
+      specifier: '4.1.5',
     })
     expect(rootImporter?.devDependencies?.['vite']).toMatchObject({
       specifier: 'npm:@voidzero-dev/vite-plus-core@0.1.19',
@@ -85,6 +85,6 @@ describe('better-auth passkey hotfix dependency resolution', () => {
     ])
     expect(listResolvedVersions(lockfile.packages, 'better-auth')).toContain('1.6.7')
     expect(listResolvedVersions(lockfile.packages, 'better-auth')).not.toContain('1.6.6')
-    expect(listResolvedVersions(lockfile.packages, '@vitest/coverage-v8')).toEqual(['4.1.4'])
+    expect(listResolvedVersions(lockfile.packages, '@vitest/coverage-v8')).toEqual(['4.1.5'])
   })
 })

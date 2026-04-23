@@ -105,7 +105,7 @@ export default defineNuxtConfig({
   ],
 
   typescript: {
-    typeCheck: true,
+    typeCheck: process.env.PLAYWRIGHT !== 'true',
   },
 
   experimental: {
@@ -243,6 +243,15 @@ export default defineNuxtConfig({
   },
 
   vite: {
+    resolve: {
+      alias: {
+        // `vite-plugin-checker` injects `/@vite-plugin-checker-runtime`, but
+        // Nuxt's asset base rewrites the import to `/_nuxt/...` during dev.
+        // Alias it back so the virtual module can resolve and the dev overlay
+        // stops blanking the entire SPA.
+        '/_nuxt/@vite-plugin-checker-runtime': '/@vite-plugin-checker-runtime',
+      },
+    },
     build: {
       rollupOptions: isVitest
         ? undefined
@@ -269,7 +278,7 @@ export default defineNuxtConfig({
   },
 
   devtools: {
-    enabled: true,
+    enabled: process.env.NUXT_DEVTOOLS_ENABLED !== 'false' && process.env.PLAYWRIGHT !== 'true',
   },
 
   nitro: {

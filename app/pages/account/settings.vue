@@ -1,5 +1,13 @@
 <script setup lang="ts">
   import { getErrorMessage } from '#shared/utils/error-message'
+  import {
+    LINK_GOOGLE_FOR_PASSKEY_FIRST_ENTRY_PATH,
+    LINK_GOOGLE_FOR_PASSKEY_FIRST_ERROR_KEY,
+    LINK_GOOGLE_FOR_PASSKEY_FIRST_SUCCESS_KEY,
+    LINK_GOOGLE_FOR_PASSKEY_FIRST_SUCCESS_VALUE,
+    getLinkGoogleForPasskeyFirstMessage,
+    isLinkGoogleForPasskeyFirstErrorCode,
+  } from '#shared/utils/link-google-for-passkey-first'
   import { getUiPageState } from '#shared/utils/ui-state'
 
   /**
@@ -33,13 +41,20 @@
     }
   }
 
+  interface LinkGoogleFeedbackState {
+    color: 'error' | 'success'
+    description: string
+    title: string
+  }
+
   const { $csrfFetch } = useNuxtApp() as unknown as {
     $csrfFetch: typeof $fetch
   }
   // `useUserSession()` exposes authClient (`client`) + `signIn` (which
   // covers passkey + social) from `@onmax/nuxt-better-auth`. `addPasskey`
   // lives on the authClient itself (`client.passkey.addPasskey`).
-  const { client, signIn } = useUserSession()
+  const { client } = useUserSession()
+  const route = useRoute()
   const toast = useToast()
   const passkeyFeatureEnabled = computed<boolean>(
     () => useRuntimeConfig().public?.knowledge?.features?.passkey === true,
@@ -70,8 +85,10 @@
   const addPasskeyLoading = ref(false)
   const addPasskeyError = ref('')
   const linkGoogleLoading = ref(false)
+  const linkGoogleFeedback = ref<LinkGoogleFeedbackState | null>(null)
   const deleteDialogOpen = ref(false)
   const deletingPasskeyId = ref<string | null>(null)
+  const linkGoogleFeedbackHandling = ref(false)
 
   // Naming dialog — shown before the WebAuthn ceremony so users can
   // give each passkey a recognisable label (e.g. "MacBook Pro", "iPhone
@@ -156,18 +173,48 @@
   }
 
   async function handleLinkGoogle(): Promise<void> {
-    // TD-012: better-auth `linkSocial` state parser requires
-    // `session.user.email` to be a non-null string, which rejects every
-    // passkey-first user. The template button is `disabled` with an
-    // explanatory alert; this guard prevents keyboard-race / programmatic
-    // triggers from reaching a guaranteed-to-fail endpoint and surfacing
-    // raw English errors via getErrorMessage.
-    toast.add({
-      title: '功能尚在開發中',
-      description: '目前 passkey-only 帳號無法直接綁定 Google，請等待後續版本支援。',
-      color: 'info',
-      icon: 'i-lucide-info',
-    })
+    if (linkGoogleLoading.value) return
+
+    let fullPageRedirect = false
+    linkGoogleLoading.value = true
+    linkGoogleFeedback.value = null
+
+    try {
+      if (credentials.value?.email === null) {
+        fullPageRedirect = true
+        await nextTick()
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+        if (import.meta.client) {
+          window.location.href = LINK_GOOGLE_FOR_PASSKEY_FIRST_ENTRY_PATH
+          return
+        }
+
+        await navigateTo(LINK_GOOGLE_FOR_PASSKEY_FIRST_ENTRY_PATH, {
+          external: true,
+        })
+        return
+      }
+
+      if (!client) {
+        throw new Error('Google 綁定尚未初始化，請重新整理頁面')
+      }
+
+      const result = await client.linkSocial({ provider: 'google' })
+      if (result?.error) {
+        throw result.error
+      }
+    } catch (err) {
+      fullPageRedirect = false
+      linkGoogleFeedback.value = {
+        color: 'error',
+        description: getErrorMessage(err, '請稍後再試'),
+        title: 'Google 綁定失敗',
+      }
+    } finally {
+      if (!fullPageRedirect) {
+        linkGoogleLoading.value = false
+      }
+    }
   }
 
   function formatDate(dateString: string | null | undefined): string {
@@ -187,6 +234,73 @@
       !credentials.value.hasGoogle &&
       credentials.value.email === null,
   )
+
+  async function clearLinkGoogleQuery(keys: string[]): Promise<void> {
+    const nextQuery = { ...route.query }
+    for (const key of keys) {
+      delete nextQuery[key]
+    }
+
+    await navigateTo(
+      {
+        path: route.path,
+        query: nextQuery,
+      },
+      { replace: true },
+    )
+  }
+
+  async function handleLinkGoogleFeedback(): Promise<void> {
+    if (!import.meta.client) return
+    if (linkGoogleFeedbackHandling.value) return
+
+    const linked = route.query[LINK_GOOGLE_FOR_PASSKEY_FIRST_SUCCESS_KEY]
+    if (linked === LINK_GOOGLE_FOR_PASSKEY_FIRST_SUCCESS_VALUE) {
+      linkGoogleFeedbackHandling.value = true
+      try {
+        linkGoogleFeedback.value = {
+          color: 'success',
+          description: '已同步更新帳號 email 與 Google 綁定狀態。',
+          title: 'Google 綁定成功',
+        }
+        await refetch()
+      } finally {
+        await clearLinkGoogleQuery([LINK_GOOGLE_FOR_PASSKEY_FIRST_SUCCESS_KEY])
+        linkGoogleFeedbackHandling.value = false
+      }
+      return
+    }
+
+    const rawError = route.query[LINK_GOOGLE_FOR_PASSKEY_FIRST_ERROR_KEY]
+
+    if (typeof rawError !== 'string' || !isLinkGoogleForPasskeyFirstErrorCode(rawError)) {
+      return
+    }
+
+    linkGoogleFeedbackHandling.value = true
+    try {
+      linkGoogleFeedback.value = {
+        color: 'error',
+        description: getLinkGoogleForPasskeyFirstMessage(rawError),
+        title: 'Google 綁定失敗',
+      }
+      await refetch()
+    } finally {
+      await clearLinkGoogleQuery([LINK_GOOGLE_FOR_PASSKEY_FIRST_ERROR_KEY])
+      linkGoogleFeedbackHandling.value = false
+    }
+  }
+
+  watch(
+    () => [
+      route.query[LINK_GOOGLE_FOR_PASSKEY_FIRST_SUCCESS_KEY],
+      route.query[LINK_GOOGLE_FOR_PASSKEY_FIRST_ERROR_KEY],
+    ],
+    () => {
+      void handleLinkGoogleFeedback()
+    },
+    { immediate: true },
+  )
 </script>
 
 <template>
@@ -194,6 +308,22 @@
     <div>
       <h1 class="text-2xl font-bold text-default">帳號設定</h1>
       <p class="mt-1 text-sm text-muted">管理你的登入憑證、個人資料與帳號狀態。</p>
+    </div>
+
+    <div
+      v-if="linkGoogleFeedback"
+      :role="linkGoogleFeedback.color === 'error' ? 'alert' : 'status'"
+      :aria-live="linkGoogleFeedback.color === 'error' ? 'assertive' : 'polite'"
+    >
+      <LazyUAlert
+        :color="linkGoogleFeedback.color"
+        variant="subtle"
+        :icon="
+          linkGoogleFeedback.color === 'error' ? 'i-lucide-alert-circle' : 'i-lucide-check-circle'
+        "
+        :title="linkGoogleFeedback.title"
+        :description="linkGoogleFeedback.description"
+      />
     </div>
 
     <UCard v-if="pageState === 'loading'">
@@ -326,7 +456,8 @@
                   {{ passkey.name || '未命名 passkey' }}
                 </p>
                 <p class="text-xs text-muted">
-                  {{ passkey.deviceType === 'singleDevice' ? '本裝置專用' : '跨裝置同步' }} · 建立於
+                  {{ passkey.deviceType === 'singleDevice' ? '本裝置專用' : '跨裝置同步' }}
+                  · 建立於
                   {{ formatDate(passkey.createdAt) }}
                 </p>
               </div>
@@ -347,12 +478,7 @@
         </div>
       </UCard>
 
-      <!-- Link Google (only when email is null).
-           TD-012: better-auth's linkSocial requires session.user.email to
-           be non-null (state parse enforces string type), so passkey-first
-           users currently cannot link Google through the built-in API.
-           Button is disabled with an explanation until the custom
-           link-google-for-passkey-first endpoint is built. -->
+      <!-- Link Google (only when email is null). -->
       <UCard v-if="showLinkGoogleSection">
         <template #header>
           <h2 class="text-lg font-semibold text-default">綁定 Google 帳號</h2>
@@ -366,16 +492,19 @@
             color="info"
             variant="subtle"
             icon="i-lucide-info"
-            title="功能尚在開發中"
-            description="目前 passkey-only 帳號無法直接綁定 Google，請等待後續版本支援；過渡期可先新增第二個 passkey 以確保登入備援。"
+            title="綁定後會同步補齊 email"
+            description="若該 Google email 位於管理員 allowlist，下一次 session refresh 會自動套用 admin 權限。"
           />
+          <p v-if="linkGoogleLoading" class="text-sm font-medium text-default" aria-live="polite">
+            正在導向 Google 驗證頁面…
+          </p>
           <UButton
             color="neutral"
             variant="solid"
             size="md"
             icon="i-simple-icons-google"
-            disabled
-            aria-label="綁定 Google 帳號（開發中）"
+            :disabled="linkGoogleLoading"
+            aria-label="綁定 Google 帳號"
             :loading="linkGoogleLoading"
             @click="handleLinkGoogle"
           >
@@ -387,14 +516,17 @@
       <!-- Danger zone -->
       <UCard>
         <template #header>
-          <h2 class="text-lg font-semibold text-error">危險區域</h2>
+          <div class="flex items-center gap-2">
+            <UIcon name="i-lucide-triangle-alert" class="size-5 text-error" aria-hidden="true" />
+            <h2 class="text-lg font-semibold text-default">危險區域</h2>
+          </div>
         </template>
         <div class="flex flex-col gap-3">
           <p class="text-sm text-muted">
             刪除帳號後所有資料將被清除，且無法復原。audit 紀錄會保留為法遵追溯。
           </p>
           <UButton
-            color="error"
+            color="neutral"
             variant="outline"
             size="md"
             icon="i-lucide-trash-2"

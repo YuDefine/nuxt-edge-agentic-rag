@@ -127,3 +127,273 @@ code:
   - .agents/commands/doc-sync.md
   - template/HANDOFF.md
 -->
+
+---
+
+### Requirement: Persisted Conversation Session Continuity
+
+The Web chat UI SHALL treat the persisted `conversations/messages` store as the source of truth for conversation identity and message history. A first question without an existing conversation selection SHALL create a new persisted conversation, subsequent questions in the same active thread SHALL reuse that `conversationId`, and a page reload SHALL restore the visible conversation history from the server rather than from client-only memory.
+
+#### Scenario: First question creates a persisted conversation
+
+- **WHEN** a signed-in user submits a question without an active conversation selected
+- **THEN** the UI creates a new persisted conversation through the existing chat flow
+- **AND** the response state stores the returned `conversationId` as the active thread for follow-up questions
+
+#### Scenario: Reload restores persisted history
+
+- **WHEN** a signed-in user reloads the chat page after sending one or more questions
+- **THEN** the UI reloads the user's visible conversations from the server
+- **AND** opening the active conversation shows the persisted messages and citations instead of an empty client-only session
+
+#### Scenario: Follow-up question reuses the active conversation
+
+- **WHEN** a signed-in user submits a second question while a persisted conversation is active
+- **THEN** the UI sends that same `conversationId` with the request
+- **AND** the resulting user and assistant messages are appended to the same persisted conversation
+
+<!-- @trace
+source: complete-web-chat-persistence
+updated: 2026-04-23
+code:
+  - reports/archive/main-v0.0.27.md
+  - .agents/skills/spectra-discuss/SKILL.md
+  - reports/archive/main-v0.0.36.md
+  - reports/archive/main-v0.0.13.md
+  - .agents/skills/spectra-debug/SKILL.md
+  - tooling/__init__.py
+  - references/yuntech/專題報告編排規範1141216.pdf
+  - tooling/scripts/__init__.py
+  - reports/archive/main-v0.0.35.md
+  - reports/archive/main-v0.0.37.docx
+  - scripts/spectra-ux/design-gate.sh
+  - tooling/scripts/legacy/transform_v36.py
+  - reports/archive/main-v0.0.11.docx
+  - tooling/scripts/docx_diff.py
+  - reports/archive/main-v0.0.37.md
+  - package.json
+  - reports/archive/main-v0.0.21.md
+  - reports/archive/main-v0.0.12.md
+  - scripts/spectra-ux/roadmap-sync.mts
+  - README.md
+  - tooling/scripts/clone_section.py
+  - tooling/scripts/docx_rebuild_content.py
+  - docs/verify/index.md
+  - .agents/skills/spectra-propose/SKILL.md
+  - reports/archive/main-v0.0.20.md
+  - spectra-ux.config.json
+  - app/components/chat/Container.vue
+  - tooling/scripts/docx_sections.py
+  - reports/archive/main-v0.0.29.md
+  - reports/archive/main-v0.0.32.md
+  - reports/notes/diagram.md
+  - tooling/scripts/office/__init__.py
+  - references/yuntech/人工智慧實務專題書面成果報告內容規範1141216.pdf
+  - app/composables/useChatConversationHistory.ts
+  - reports/archive/main-v0.0.22.md
+  - app/utils/chat-conversation-state.ts
+  - reports/archive/main-v0.0.18.md
+  - .agents/skills/spectra-audit/SKILL.md
+  - docs/verify/evidence/web-chat-persistence.json
+  - .agents/skills/spectra-archive/SKILL.md
+  - app/composables/useChatConversationSession.ts
+  - .agents/skills/spectra-apply/SKILL.md
+  - server/api/auth/account/link-google-for-passkey-first/callback.get.ts
+  - .agents/skills/spectra-ingest/SKILL.md
+  - deliverables/defense/國立雲林科技大學人工智慧技優專班114學年實務專題審查.pdf
+  - tooling/scripts/office/pack.py
+  - reports/archive/main-v0.0.34.md
+  - app/types/chat.ts
+  - reports/archive/main-v0.0.25.md
+  - tooling/requirements.txt
+  - app/pages/account/settings.vue
+  - server/utils/link-google-for-passkey-first.ts
+  - scripts/spectra-ux/ui-qa-reminder.sh
+  - app/components/chat/ConversationHistory.vue
+  - app/pages/index.vue
+  - docs/verify/WEB_CHAT_PERSISTENCE_VERIFICATION.md
+  - app/utils/assert-never.ts
+  - reports/archive/main-v0.0.23.md
+  - server/api/auth/account/link-google-for-passkey-first/index.get.ts
+  - reports/archive/main-v0.0.1.docx
+  - reports/archive/main-v0.0.33.md
+  - reports/archive/main-v0.0.49.md
+  - reports/archive/main-v0.0.11.md
+  - reports/archive/main-v0.0.50.md
+  - template/HANDOFF.md
+  - templates/海報樣板.pptx
+  - .agents/skills/spectra-ask/SKILL.md
+  - tooling/scripts/docx_apply.py
+  - reports/archive/main-v0.0.48.md
+  - tooling/scripts/office/unpack.py
+  - playwright.config.ts
+  - reports/archive/main-v0.0.30.md
+  - reports/archive/main-v0.0.26.md
+  - scripts/spectra-ux/collect-followups.mts
+  - nuxt.config.ts
+  - scripts/spectra-ux/design-inject.sh
+  - tooling/scripts/sync_docx_content.py
+  - reports/archive/main-v0.0.10.md
+  - reports/archive/main-v0.0.11_assets/image1.jpeg
+  - reports/archive/main-v0.0.31.md
+  - deliverables/defense/答辯準備_口試Q&A.md
+  - tooling/scripts/clone_insert_docx.py
+  - GEMINI.md
+  - reports/archive/main-v0.0.36.docx
+  - .agents/skills/spectra-commit/SKILL.md
+  - AGENTS.md
+  - reports/archive/main-v0.0.19.md
+  - reports/archive/main-v0.0.24.md
+  - reports/archive/main-v0.0.28.md
+  - reports/latest.md
+  - reports/archive/main-v0.0.16.md
+  - scripts/audit-ux-drift.mts
+  - shared/utils/link-google-for-passkey-first.ts
+  - reports/archive/main-v0.0.14.md
+  - reports/archive/main-v0.0.15.md
+  - reports/archive/main-v0.0.17.md
+  - tooling/scripts/extract_docx_to_md.py
+tests:
+  - test/unit/chat-conversation-session.test.ts
+  - e2e/chat-persistence.spec.ts
+  - test/unit/oauth-callback.spec.ts
+  - tooling/tests/test_extract_docx_to_md.py
+  - test/unit/chat-conversation-state.test.ts
+  - tooling/tests/test_office_pack_unpack.py
+  - test/integration/passkey-first-link-google.spec.ts
+  - test/unit/better-auth-passkey-hotfix-version.test.ts
+  - test/unit/chat-conversation-history.test.ts
+  - test/unit/link-google-for-passkey-first-initiator.test.ts
+-->
+
+---
+
+### Requirement: Persisted Conversation History Interaction
+
+The Web chat UI SHALL provide a server-backed history interaction model for persisted conversations. The history list SHALL load from the conversation APIs, selecting an item SHALL replace the visible message pane with that conversation's persisted messages, and deleting an item SHALL immediately remove it from the visible history.
+
+#### Scenario: Selecting a conversation loads persisted messages
+
+- **WHEN** a signed-in user selects a conversation from the history list
+- **THEN** the UI fetches that conversation's persisted messages from the server
+- **AND** the message pane renders the returned messages and citations for that conversation only
+
+#### Scenario: Deleting a conversation evicts it from the UI
+
+- **WHEN** a signed-in user deletes a conversation from the history UI
+- **THEN** the UI removes that conversation from the history list without requiring a full page refresh
+- **AND** the message pane no longer displays the deleted conversation's persisted messages
+
+<!-- @trace
+source: complete-web-chat-persistence
+updated: 2026-04-23
+code:
+  - reports/archive/main-v0.0.27.md
+  - .agents/skills/spectra-discuss/SKILL.md
+  - reports/archive/main-v0.0.36.md
+  - reports/archive/main-v0.0.13.md
+  - .agents/skills/spectra-debug/SKILL.md
+  - tooling/__init__.py
+  - references/yuntech/專題報告編排規範1141216.pdf
+  - tooling/scripts/__init__.py
+  - reports/archive/main-v0.0.35.md
+  - reports/archive/main-v0.0.37.docx
+  - scripts/spectra-ux/design-gate.sh
+  - tooling/scripts/legacy/transform_v36.py
+  - reports/archive/main-v0.0.11.docx
+  - tooling/scripts/docx_diff.py
+  - reports/archive/main-v0.0.37.md
+  - package.json
+  - reports/archive/main-v0.0.21.md
+  - reports/archive/main-v0.0.12.md
+  - scripts/spectra-ux/roadmap-sync.mts
+  - README.md
+  - tooling/scripts/clone_section.py
+  - tooling/scripts/docx_rebuild_content.py
+  - docs/verify/index.md
+  - .agents/skills/spectra-propose/SKILL.md
+  - reports/archive/main-v0.0.20.md
+  - spectra-ux.config.json
+  - app/components/chat/Container.vue
+  - tooling/scripts/docx_sections.py
+  - reports/archive/main-v0.0.29.md
+  - reports/archive/main-v0.0.32.md
+  - reports/notes/diagram.md
+  - tooling/scripts/office/__init__.py
+  - references/yuntech/人工智慧實務專題書面成果報告內容規範1141216.pdf
+  - app/composables/useChatConversationHistory.ts
+  - reports/archive/main-v0.0.22.md
+  - app/utils/chat-conversation-state.ts
+  - reports/archive/main-v0.0.18.md
+  - .agents/skills/spectra-audit/SKILL.md
+  - docs/verify/evidence/web-chat-persistence.json
+  - .agents/skills/spectra-archive/SKILL.md
+  - app/composables/useChatConversationSession.ts
+  - .agents/skills/spectra-apply/SKILL.md
+  - server/api/auth/account/link-google-for-passkey-first/callback.get.ts
+  - .agents/skills/spectra-ingest/SKILL.md
+  - deliverables/defense/國立雲林科技大學人工智慧技優專班114學年實務專題審查.pdf
+  - tooling/scripts/office/pack.py
+  - reports/archive/main-v0.0.34.md
+  - app/types/chat.ts
+  - reports/archive/main-v0.0.25.md
+  - tooling/requirements.txt
+  - app/pages/account/settings.vue
+  - server/utils/link-google-for-passkey-first.ts
+  - scripts/spectra-ux/ui-qa-reminder.sh
+  - app/components/chat/ConversationHistory.vue
+  - app/pages/index.vue
+  - docs/verify/WEB_CHAT_PERSISTENCE_VERIFICATION.md
+  - app/utils/assert-never.ts
+  - reports/archive/main-v0.0.23.md
+  - server/api/auth/account/link-google-for-passkey-first/index.get.ts
+  - reports/archive/main-v0.0.1.docx
+  - reports/archive/main-v0.0.33.md
+  - reports/archive/main-v0.0.49.md
+  - reports/archive/main-v0.0.11.md
+  - reports/archive/main-v0.0.50.md
+  - template/HANDOFF.md
+  - templates/海報樣板.pptx
+  - .agents/skills/spectra-ask/SKILL.md
+  - tooling/scripts/docx_apply.py
+  - reports/archive/main-v0.0.48.md
+  - tooling/scripts/office/unpack.py
+  - playwright.config.ts
+  - reports/archive/main-v0.0.30.md
+  - reports/archive/main-v0.0.26.md
+  - scripts/spectra-ux/collect-followups.mts
+  - nuxt.config.ts
+  - scripts/spectra-ux/design-inject.sh
+  - tooling/scripts/sync_docx_content.py
+  - reports/archive/main-v0.0.10.md
+  - reports/archive/main-v0.0.11_assets/image1.jpeg
+  - reports/archive/main-v0.0.31.md
+  - deliverables/defense/答辯準備_口試Q&A.md
+  - tooling/scripts/clone_insert_docx.py
+  - GEMINI.md
+  - reports/archive/main-v0.0.36.docx
+  - .agents/skills/spectra-commit/SKILL.md
+  - AGENTS.md
+  - reports/archive/main-v0.0.19.md
+  - reports/archive/main-v0.0.24.md
+  - reports/archive/main-v0.0.28.md
+  - reports/latest.md
+  - reports/archive/main-v0.0.16.md
+  - scripts/audit-ux-drift.mts
+  - shared/utils/link-google-for-passkey-first.ts
+  - reports/archive/main-v0.0.14.md
+  - reports/archive/main-v0.0.15.md
+  - reports/archive/main-v0.0.17.md
+  - tooling/scripts/extract_docx_to_md.py
+tests:
+  - test/unit/chat-conversation-session.test.ts
+  - e2e/chat-persistence.spec.ts
+  - test/unit/oauth-callback.spec.ts
+  - tooling/tests/test_extract_docx_to_md.py
+  - test/unit/chat-conversation-state.test.ts
+  - tooling/tests/test_office_pack_unpack.py
+  - test/integration/passkey-first-link-google.spec.ts
+  - test/unit/better-auth-passkey-hotfix-version.test.ts
+  - test/unit/chat-conversation-history.test.ts
+  - test/unit/link-google-for-passkey-first-initiator.test.ts
+-->

@@ -1,5 +1,6 @@
 <script setup lang="ts">
   import type { ChatMessage, ChatCitation } from '~/types/chat'
+  import { buildChatRequestBody } from '~/utils/chat-conversation-state'
 
   /**
    * Main chat container integrating:
@@ -13,6 +14,8 @@
   interface ChatResponse {
     answer: string | null
     citations: ChatCitation[]
+    conversationCreated: boolean
+    conversationId: string
     refused: boolean
   }
 
@@ -27,9 +30,25 @@
      * submit new questions.
      */
     disabled?: boolean
+    activeConversationId?: string | null
+    initialMessages?: ChatMessage[]
   }
 
-  const props = withDefaults(defineProps<Props>(), { disabled: false })
+  const props = withDefaults(defineProps<Props>(), {
+    disabled: false,
+    activeConversationId: null,
+    initialMessages: () => [],
+  })
+  const emit = defineEmits<{
+    'busy-change': [isBusy: boolean]
+    'conversation-persisted': [
+      payload: {
+        conversationCreated: boolean
+        conversationId: string
+        messages: ChatMessage[]
+      },
+    ]
+  }>()
 
   type ChatErrorKind = 'abort' | 'rate_limit' | 'network' | 'timeout' | 'unauthorized' | 'unknown'
 
@@ -52,6 +71,14 @@
   let activeController: AbortController | null = null
   let streamingCancelled = false
   const toast = useToast()
+  const isConversationBusy = computed(() => isSubmitting.value || isStreaming.value)
+
+  function cloneChatMessages(input: ChatMessage[]): ChatMessage[] {
+    return input.map((message) => ({
+      ...message,
+      ...(message.citations ? { citations: [...message.citations] } : {}),
+    }))
+  }
 
   function generateMessageId(): string {
     return `msg_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`
@@ -143,6 +170,15 @@
     activeController.abort()
   }
 
+  function abortActiveConversationRequest() {
+    if (!activeController) {
+      return
+    }
+
+    streamingCancelled = true
+    activeController.abort()
+  }
+
   async function handleSubmit(query: string) {
     if (props.disabled) return
     if (isSubmitting.value || isStreaming.value) return
@@ -179,7 +215,7 @@
     try {
       const response = await $csrfFetch<{ data: ChatResponse }>('/api/chat', {
         method: 'POST',
-        body: { query },
+        body: buildChatRequestBody(query, props.activeConversationId),
         signal: controller.signal,
       })
 
@@ -197,6 +233,11 @@
         createdAt: new Date().toISOString(),
       }
       messages.value.push(assistantMessage)
+      emit('conversation-persisted', {
+        conversationId: response.data.conversationId,
+        conversationCreated: response.data.conversationCreated,
+        messages: cloneChatMessages(messages.value),
+      })
     } catch (error) {
       const kind = classifyError(error)
       const retryAfter = kind === 'rate_limit' ? extractRetryAfterSeconds(error) : 0
@@ -272,9 +313,29 @@
 
   // Scroll to bottom when messages change
   watch(
+    () => props.initialMessages,
+    (nextMessages) => {
+      abortActiveConversationRequest()
+      messages.value = cloneChatMessages(nextMessages)
+    },
+    { immediate: true },
+  )
+
+  watch(
+    () => props.activeConversationId,
+    (nextConversationId, previousConversationId) => {
+      if (nextConversationId !== previousConversationId) {
+        abortActiveConversationRequest()
+      }
+    },
+  )
+
+  watch(
     () => messages.value.length,
     () => scrollToBottom(),
   )
+
+  watch(isConversationBusy, (nextValue) => emit('busy-change', nextValue), { immediate: true })
 </script>
 
 <template>

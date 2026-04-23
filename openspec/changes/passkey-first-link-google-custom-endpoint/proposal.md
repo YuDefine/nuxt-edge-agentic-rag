@@ -6,9 +6,9 @@ passkey-first 使用者（`user.email = NULL`）目前**無法**透過 `/account
 
 ## What Changes
 
-- **新增** `POST /api/auth/account/link-google-for-passkey-first` — 驗證 `session.user.email === null` → 建 OAuth state（cookie + KV 雙層，state 綁 `session.user.id`） → redirect 到 Google authorization URL（重用既有 `NUXT_OAUTH_GOOGLE_CLIENT_ID` / redirect_uri 設定）。
+- **新增** `GET /api/auth/account/link-google-for-passkey-first` — 驗證 `session.user.email === null` → 建 OAuth state（cookie + KV 雙層，state 綁 `session.user.id`） → redirect 到 Google authorization URL（重用既有 `NUXT_OAUTH_GOOGLE_CLIENT_ID` / redirect_uri 設定）。
 - **新增** `GET /api/auth/account/link-google-for-passkey-first/callback` — 驗證自家 state（cookie ↔ KV 比對，過期或不合即 401） → `code` 換 access_token + id_token（直接 fetch `https://oauth2.googleapis.com/token`） → 解 id_token 拿 `email` / `name` / `image` → **email collision 檢查**（若同 email 已綁到其他 `user.id` 回 HTTP 409 `EMAIL_ALREADY_LINKED`） → `UPDATE "user" SET email/image WHERE id = <session.user.id>` + `INSERT INTO account (providerId='google', accountId, accessToken, idToken, refreshToken, scope, createdAt, updatedAt)`（對齊 better-auth schema） → redirect 回 `/account/settings?linked=google`。
-- **修改** `app/pages/account/settings.vue` 的 `handleLinkGoogle`：依 `credentials.email === null` 分流——passkey-first 走新 endpoint，Google-first 加綁（若未來有此情境）仍走 better-auth `client.linkSocial`。同時**移除**現在的 disable state 與「開發中」alert。
+- **修改** `app/pages/account/settings.vue` 的 `handleLinkGoogle`：依 `credentials.email === null` 分流——passkey-first 走新 endpoint，Google-first 加綁（若未來有此情境）仍走 better-auth `client.linkSocial`。同時**移除**現在的 disable state 與「開發中」alert，callback feedback 改為頁內 alert 以避開 toaster 的 a11y warning。
 - **新增** integration test `test/integration/passkey-first-link-google.spec.ts`：happy path（綁定成功 → email 填入 + account row 建立 + passkey 保留） + 409 collision + allowlist upgrade（email 在 `ADMIN_EMAIL_ALLOWLIST` → 下次 session refresh 由 `session.create.before` 升 admin + audit `reason='allowlist-seed'`）。
 - **修改** spec `passkey-authentication` §6.2 Scenario「Passkey-first user binds Google and email gets populated」：從隱含 `linkSocial` 改為明確走 custom endpoint；新增 Scenario「Google email collision is rejected with 409 via custom endpoint」對齊 §6.3 但指向新 endpoint。
 - **修改** spec `auth-storage-consistency`：若新 endpoint 寫入 `account` 表的 timestamp 欄位，必須與既有 `timestamp_ms` affinity 契約一致（本 change 只補 requirement，不新增 migration）。
@@ -45,7 +45,7 @@ passkey-first 使用者（`user.email = NULL`）目前**無法**透過 `/account
   - `openspec/specs/passkey-authentication/spec.md` §6.2 / §6.3 對應 Requirement
   - `openspec/specs/auth-storage-consistency/spec.md`
 - **Affected code**:
-  - `server/api/auth/account/link-google-for-passkey-first/index.post.ts`（**new**）
+  - `server/api/auth/account/link-google-for-passkey-first/index.get.ts`（**new**）
   - `server/api/auth/account/link-google-for-passkey-first/callback.get.ts`（**new**）
   - `app/pages/account/settings.vue`（修改 `handleLinkGoogle` 分流；移除 disable + 「開發中」alert）
   - `test/integration/passkey-first-link-google.spec.ts`（**new**）
@@ -58,6 +58,6 @@ passkey-first 使用者（`user.email = NULL`）目前**無法**透過 `/account
   - Google OAuth redirect_uri（新 endpoint 使用不同 callback path）— 需在 Google Cloud Console authorized redirect URIs 補 `<origin>/api/auth/account/link-google-for-passkey-first/callback`（ops 需配合）
   - `KV`（重用既有 binding，prefix `oauth-link-state:`）
 - **UI surface 影響**:
-  - `/account/settings`「綁定 Google 帳號」按鈕：passkey-first 從 disable 變 active；新增 409 error toast；綁定成功返回後顯示 email + Google badge（依 `credentials.email` reactive 更新）
+  - `/account/settings`「綁定 Google 帳號」按鈕：passkey-first 從 disable 變 active；新增 409 error feedback；綁定成功返回後顯示 email + Google badge（依 `credentials.email` reactive 更新）
 - **Runtime**: Cloudflare Workers（Web Standard `fetch`，無 Node.js-only API，CPU 時間 < 1s），遵守 `.claude/rules/api-patterns.md`。
 - **Review tier**: Tier 3（auth endpoint + OAuth state handling + DB mutation），需 `spectra-audit` + `code-review` agent。

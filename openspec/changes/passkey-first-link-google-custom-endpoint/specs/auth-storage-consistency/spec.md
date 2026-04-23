@@ -10,9 +10,9 @@ The custom OAuth link endpoint `GET /api/auth/account/link-google-for-passkey-fi
 - **THEN** `SELECT typeof(createdAt), typeof(updatedAt) FROM account WHERE userId = <session.user.id> AND providerId = 'google'` SHALL return `'integer'` for both columns
 - **AND** `SELECT typeof(updatedAt) FROM user WHERE id = <session.user.id>` SHALL return `'integer'`
 
-#### Scenario: Atomic batch write preserves FK integrity
+#### Scenario: Atomic transactional write preserves FK integrity
 
-- **WHEN** the custom endpoint issues the D1 `batch` that updates `user` and inserts `account`
+- **WHEN** the custom endpoint executes the Drizzle transaction that updates `user` and inserts `account`
 - **THEN** either both statements SHALL commit or both SHALL roll back
 - **AND** after a successful commit `PRAGMA foreign_key_check` SHALL return zero rows
-- **AND** after a failed batch the `user` row SHALL retain its pre-flow `email` value (NULL) and no `account` row with `providerId = 'google'` for that `userId` SHALL exist
+- **AND** after a failed transaction the `user` row SHALL retain its pre-flow `email` value (NULL) and no `account` row with `providerId = 'google'` for that `userId` SHALL exist
