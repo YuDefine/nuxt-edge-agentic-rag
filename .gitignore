@@ -40,6 +40,10 @@ playwright-report/
 temp/
 tmp/
 
+# Local machine artifacts
+.codex/installation_id
+local/backups/
+
 # Screenshots (review artifacts)
 screenshots/
 coverage/

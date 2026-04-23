@@ -5,6 +5,8 @@ globs: ['openspec/changes/**/tasks.md', 'docs/manual-review-archive.md']
 
 # 人工檢查（Manual Review）
 
+繁體中文 | [English](./manual-review.en.md)
+
 ## 核心規則
 
 **NEVER** 自行標記 `## 人工檢查` 區塊中的 `- [ ]` 為 `- [x]`。

@@ -49,4 +49,4 @@ tags:
 
 - 先搜尋是否已有相似記錄；有則更新，無則新建
 - 聚焦 root cause、失敗嘗試與可重用解法，不寫流水帳
-- 若同一 pattern 重複出現，考慮升級為 `.github/instructions/` 規則
+- 若同一 pattern 重複出現，考慮升級為 `.claude/rules/` 規則，並同步到 `AGENTS.md` / `CLAUDE.md` 可到達的 instruction surface
