@@ -1,7 +1,6 @@
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js'
 
 interface McpConnectableServer {
-  close?(): Promise<void> | void
   connect(transport: WebStandardStreamableHTTPServerTransport): Promise<void>
   transport?: unknown
 }
@@ -38,10 +37,6 @@ export function createMcpHandler(server: McpConnectableServer, options: McpHandl
       enableJsonResponse: options.enableJsonResponse,
       sessionIdGenerator: undefined,
     })
-
-    transport.onclose = () => {
-      void server.close?.()
-    }
 
     await server.connect(transport)
     return transport.handleRequest(request)
