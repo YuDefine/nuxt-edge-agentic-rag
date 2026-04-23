@@ -39,6 +39,7 @@ describe('mcp search tool definition', () => {
           run: vi.fn().mockResolvedValue({ response: 'ok' }),
         },
       }),
+      getRequiredD1Binding: vi.fn().mockReturnValue({}),
       getRequiredKvBinding: vi.fn().mockReturnValue({}),
     }))
     vi.doMock('#server/utils/database', () => ({
@@ -120,7 +121,7 @@ describe('mcp search tool definition', () => {
 
     useEventMock.mockReturnValue({
       context: {
-        cloudflare: { env: {} },
+        cloudflare: { env: { DB: {} } },
         mcpAuth: {
           scopes: ['knowledge.search'],
           token: {},
