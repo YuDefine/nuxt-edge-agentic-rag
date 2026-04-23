@@ -69,8 +69,10 @@ export function createWorkersAiAnswerAdapter(input: {
   return async function workersAiAnswer(inputShape: {
     evidence: VerifiedKnowledgeEvidence[]
     modelRole: string
+    onTextDelta?: (delta: string) => Promise<void> | void
     query: string
     retrievalScore: number
+    signal?: AbortSignal
   }): Promise<string> {
     const model = resolveModelId(inputShape.modelRole, input.modelByRole)
     const startedAt = Date.now()
@@ -87,17 +89,28 @@ export function createWorkersAiAnswerAdapter(input: {
           role: 'user',
         },
       ],
+      ...(inputShape.onTextDelta ? { stream: true } : {}),
       temperature: 0.1,
     })
+
+    const { text, usage } = inputShape.onTextDelta
+      ? await readStreamedTextResponse(response, {
+          onTextDelta: inputShape.onTextDelta,
+          signal: inputShape.signal,
+        })
+      : {
+          text: readTextResponse(response),
+          usage: readUsageSnapshot(response),
+        }
 
     input.onUsage?.({
       latencyMs: Date.now() - startedAt,
       model,
       modelRole: inputShape.modelRole,
-      usage: readUsageSnapshot(response),
+      usage,
     })
 
-    return readTextResponse(response)
+    return text
   }
 }
 
@@ -235,6 +248,102 @@ function readTextResponse(response: unknown): string {
   throw new Error('Workers AI answer response did not contain text')
 }
 
+async function readStreamedTextResponse(
+  response: unknown,
+  options: {
+    onTextDelta: (delta: string) => Promise<void> | void
+    signal?: AbortSignal
+  },
+): Promise<{ text: string; usage: WorkersAiUsageSnapshot | null }> {
+  const stream = resolveReadableStream(response)
+  if (!stream) {
+    const text = readTextResponse(response)
+    await options.onTextDelta(text)
+    return {
+      text,
+      usage: readUsageSnapshot(response),
+    }
+  }
+
+  const reader = stream.getReader()
+  const decoder = new TextDecoder()
+  const abortError = createAbortError()
+  let buffer = ''
+  let text = ''
+  let usage: WorkersAiUsageSnapshot | null = null
+
+  const abortReader = () => {
+    void reader.cancel(abortError)
+  }
+
+  if (options.signal?.aborted) {
+    abortReader()
+    throw abortError
+  }
+
+  options.signal?.addEventListener('abort', abortReader, { once: true })
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) {
+        break
+      }
+
+      buffer += decoder.decode(value, { stream: true })
+      const blocks = buffer.split('\n\n')
+      buffer = blocks.pop() ?? ''
+
+      for (const block of blocks) {
+        const parsed = parseSseBlock(block)
+        if (parsed === '[DONE]' || parsed === null) {
+          continue
+        }
+
+        const delta = readStreamDelta(parsed)
+        if (delta) {
+          text += delta
+          await options.onTextDelta(delta)
+          if (options.signal?.aborted) {
+            throw abortError
+          }
+        }
+
+        usage = readUsageSnapshot(parsed) ?? usage
+      }
+    }
+
+    const trailingBlock = buffer.trim()
+    if (trailingBlock) {
+      const parsed = parseSseBlock(trailingBlock)
+      if (parsed !== '[DONE]' && parsed !== null) {
+        const delta = readStreamDelta(parsed)
+        if (delta) {
+          text += delta
+          await options.onTextDelta(delta)
+          if (options.signal?.aborted) {
+            throw abortError
+          }
+        }
+        usage = readUsageSnapshot(parsed) ?? usage
+      }
+    }
+  } catch (error) {
+    if (options.signal?.aborted) {
+      throw abortError
+    }
+    throw error
+  } finally {
+    options.signal?.removeEventListener('abort', abortReader)
+    reader.releaseLock()
+  }
+
+  return {
+    text: text.trim(),
+    usage,
+  }
+}
+
 function readJudgeResponse(response: unknown): {
   reformulatedQuery?: string
   shouldAnswer: boolean
@@ -279,6 +388,80 @@ function readResponseValue(response: unknown): unknown {
   }
 
   return response
+}
+
+function resolveReadableStream(response: unknown): ReadableStream<Uint8Array> | null {
+  if (isReadableStream(response)) {
+    return response
+  }
+
+  if (typeof response !== 'object' || response === null) {
+    return null
+  }
+
+  if ('response' in response && isReadableStream((response as { response?: unknown }).response)) {
+    return (response as { response: ReadableStream<Uint8Array> }).response
+  }
+
+  if ('body' in response && isReadableStream((response as { body?: unknown }).body)) {
+    return (response as { body: ReadableStream<Uint8Array> }).body
+  }
+
+  return null
+}
+
+function isReadableStream(value: unknown): value is ReadableStream<Uint8Array> {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'getReader' in value &&
+    typeof (value as { getReader?: unknown }).getReader === 'function'
+  )
+}
+
+function parseSseBlock(block: string): unknown | '[DONE]' | null {
+  const payload = block
+    .split('\n')
+    .filter((line) => line.startsWith('data: '))
+    .map((line) => line.slice(6))
+    .join('\n')
+    .trim()
+
+  if (!payload) {
+    return null
+  }
+
+  if (payload === '[DONE]') {
+    return '[DONE]'
+  }
+
+  try {
+    return JSON.parse(payload) as unknown
+  } catch {
+    return null
+  }
+}
+
+function readStreamDelta(payload: unknown): string {
+  if (typeof payload !== 'object' || payload === null) {
+    return ''
+  }
+
+  const directResponse = (payload as { response?: unknown }).response
+  if (typeof directResponse === 'string') {
+    return directResponse
+  }
+
+  const firstChoice = Array.isArray((payload as { choices?: unknown[] }).choices)
+    ? (payload as { choices: Array<{ delta?: { content?: unknown } }> }).choices[0]
+    : null
+  const deltaContent = firstChoice?.delta?.content
+
+  return typeof deltaContent === 'string' ? deltaContent : ''
+}
+
+function createAbortError(): DOMException {
+  return new DOMException('aborted', 'AbortError')
 }
 
 function normalizeStructuredResponse(candidate: unknown): Record<string, unknown> {
