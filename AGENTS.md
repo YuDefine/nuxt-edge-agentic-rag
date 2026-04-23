@@ -64,7 +64,7 @@ database_path = "/Users/charles/.codex/memories/rtk/history.db"
 3. **更新 current report**：進行中的最新內容直接維護 `reports/latest.md`
 4. **禁止覆寫**：不得直接修改既有版本檔案
 
-<!-- SPECTRA-UX:START v1.11.0 -->
+<!-- SPECTRA-UX:START v1.12.0 -->
 
 ## UX Completeness Rules
 
