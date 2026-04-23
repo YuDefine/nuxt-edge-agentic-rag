@@ -4,44 +4,24 @@
 
 ## Current State
 
-> 狀態（2026-04-23 更新）：目前 branch `main`，最新 release 已到 `v0.28.13`。`reports/latest.md` 仍是 current report single source of truth，`reports/archive/` 保存版本化快照。Open tech debt 現況：TD-010 mid / TD-012 high / TD-014 mid。
+> 狀態（2026-04-23 更新）：目前 branch `main`，`package.json` 已升到 `v0.29.0`，但 deploy commit / tag 尚未建立，所以最新已發布 release 仍是 `v0.28.13`。專題報告與舊工具鏈資產已移到 `local/`，repo root 不再保留歷史 `reports/` / `tooling/` 路徑。Open tech debt 現況：TD-010 mid / TD-012 high / TD-014 mid。
 >
 > **最新進度**（2026-04-23）：
 >
-> - **專題報告治理 / 工作區重整** 已完成並入版：報告本體與 archive 目錄完成收斂，repo root 的歷史 `main-v*` 與舊 backup 已搬移，current report / archive 路徑規則已同步到 `AGENTS.md`、`CLAUDE.md`、`docs/STRUCTURE.md` 與 governance specs。
-> - **文件站正式化 + Cloudflare Pages 流程** 已完成實作：README、docs landing / onboarding / verify / runbooks / specs index 已改寫為開發者導向文件；docs deploy 已整合進主 deploy workflow，並補上 custom domain sync 與 smoke test fallback。
-> - **`oauth-user-delegated-remote-mcp`** 已完成 archive：delta specs 已同步回主 specs，remote MCP OAuth connector 正式進入 archive。
-> - **passkey reauth / self-delete hotfix chain** 已在 production 收斂完成：`better-auth` / `@better-auth/passkey` 升至 `1.6.7`、`better-call` 鎖至 `1.3.5`，並經歷 safe logger、exact route、`auth.handler(new Request(...))` forwarding、`session.cookieCache.enabled = false` 等多輪 mitigation。最終 `v0.28.12` 以 Playwright virtual authenticator 重放 production full flow 已通過：passkey-first 註冊成功、`generate-authenticate-options` / `verify-authentication` / `account/delete` / `sign-out` 全為 `200`，且自刪後透過 hard redirect 正確回到 `/` 登入頁。
-> - **`fk-cascade-repair-for-self-delete`** 的 production D1 closeout 已完成：latest tombstone `reason = 'self-deletion'` 保留，該 test user 的 `"user"` / `passkey` / `mcp_tokens` count 皆為 `0`，TD-011 已回填為 `done`。
-> - **deploy 現況**：`v0.28.11` 與 `v0.28.12` app deploy 均成功；workflow 仍會因 docs custom domain sync 的 Cloudflare API `403 Authentication error` 顯示失敗，另外 GitHub runner 執行 smoke-test 時也會被 Cloudflare WAF/Bot protection 回 `403`，需以人工 canary 補判，但不影響 app production 站點實際上線。
-> - **staging 環境真相已同步回 repo**：新增 `docs/decisions/2026-04-23-recognize-staging-as-active-environment.md` 作為新 decision，正式以 `local` / `staging` / `production` 三環境描述目前系統；`wrangler.staging.jsonc` 的 `NUXT_KNOWLEDGE_AI_GATEWAY_ID` 已修正為 `agentic-rag-staging`，deploy workflow 註解也不再把 staging 寫成 illustrative。
-> - **verify / runbook 已完成 staging 對齊**：`ACCEPTANCE_RUNBOOK`、`CONVERSATION_LIFECYCLE_VERIFICATION`、`CONFIG_SNAPSHOT_VERIFICATION`、`RETENTION_*`、`rollout-checklist` 等文件現已以 `BASE_URL` / `DB_NAME` / `WRANGLER_CONFIG` 參數化，可直接切換 staging / production；debug surface / smoke / deploy checklists 也已承認 staging 為現有環境。
-> - **`v0.28.13` 已發布**：deploy workflow 目前會強制檢查 `PROD_ADMIN_EMAIL_ALLOWLIST` / `STAGING_ADMIN_EMAIL_ALLOWLIST`，並讓 `server/auth.config.ts` / runtime config 以 Worker secret `ADMIN_EMAIL_ALLOWLIST` 優先於 stale compiled allowlist，避免登入時錯誤降權。
-> - **既有 active changes** 目前共有 3 條：`drizzle-refactor-credentials-admin-members` 待收尾；`multi-format-document-ingestion` 與 `passkey-first-link-google-custom-endpoint` 在 `spectra list --json` 皆顯示為 `in-progress`，但因 tasks 仍為 `0/N`，`roadmap-sync` 的 auto stage 目前仍將兩者歸類為 `draft`。
-> - **下一條主線候選** 目前有兩條：`passkey-first-link-google-custom-endpoint` 對應 high-priority `TD-012`、屬真實功能缺口；`multi-format-document-ingestion` 則是 demo / 文件 ingestion story 的下一條實作線。
+> - **Spectra / Claude workflow orchestration** 已完成一輪基礎設施刷新：新增 `.agent/skills/*` 與 `scripts/spectra-ux/*` claim / release / design-gate / reminder 流程，並同步更新 `AGENTS.md`、`CLAUDE.md`、`GEMINI.md`、commit / handoff / roadmap / screenshot 規則。
+> - **web chat persistence** 已完成 archive：conversation history refresh race、last-click-wins、stale restore、in-flight request 汙染等問題已修掉，並補齊 unit + Playwright evidence（`docs/verify/WEB_CHAT_PERSISTENCE_VERIFICATION.md`）。
+> - **`passkey-first-link-google-custom-endpoint`** 已推進到 38/45 tasks：custom GET initiator / callback、`/account/settings` UI、spec / design-review / ui-audit / regression tests 都已落地。
+> - **本輪手動驗證結果**：在 `http://localhost:3000` 的真實 member session 下，conversation history 列表已可正常 render，切換對話會載入內容，刪除也會同步更新畫面；原先 `/api/conversations` `500` blocker 已排除。
+> - **仍待收斂的 local 環境問題**：`.data/db/sqlite.db` 跑 `verify-auth-storage-consistency.sh --local` 仍失敗，`account` / `session` 等表殘留 `*_new` FK refs，導致 `/api/_dev/login` 無法替新測試帳號建立 credential account。這是下一手最需要處理的 local drift。
+> - **既有 active changes** 目前仍是 3 條：`drizzle-refactor-credentials-admin-members` 待 manual regression closeout；`passkey-first-link-google-custom-endpoint` 待最終 UI evidence / archive；`multi-format-document-ingestion` 尚未開始，可獨立並行。
 
 ## Next Moves
 
-### 既有 active changes closeout
-
-- [mid] `drizzle-refactor-credentials-admin-members`：完成 local / production `/account/settings` 與 `/admin/members` manual regression，並回填 TD-010 狀態
-
-### Deploy follow-up
-
-- [mid] 驗證 docs custom domains：`agentic-docs.yudefine.com.tw` 與 `agentic-docs-staging.yudefine.com.tw` 均可正常開啟，必要時檢查 Pages `pages.dev` fallback
-- [mid] 對齊 staging / production admin allowlist：確認 Worker secret `ADMIN_EMAIL_ALLOWLIST` 與 GitHub Actions `PROD_ADMIN_EMAIL_ALLOWLIST` / `STAGING_ADMIN_EMAIL_ALLOWLIST` 沒有漂移
-- [mid] 以 staging / production 各跑一次 canary，補齊 workflow smoke-test 因 Cloudflare WAF / Bot protection `403` 無法自動判斷的空缺
-
-### 專題報告與下一條開發線
-
-- [mid] 重新讀 `reports/latest.md`，把 demo 資料現況與缺口正式寫回報告正文
-- [high] `drizzle-refactor-credentials-admin-members` 收尾後，預設優先啟動 `passkey-first-link-google-custom-endpoint`：custom OAuth link endpoint → callback state validation → account/settings UI 分流
-- [mid] 若當前重點改為 demo / ingestion story，則改先做 `multi-format-document-ingestion`：shared format registry → canonical snapshot extractor → extraction-first sync orchestration
-
-### Open tech debt / follow-ups
-
-- [high] **TD-012** 實作 `passkey-first → link Google` 的 custom endpoint（better-auth `linkSocial` 不支援 email=NULL session）
-- [mid] **TD-014** error-sanitizer 後 12 個 integration tests 拋 `evlog` logger not init — 獨立 follow-up
+- [high] 完成 `passkey-first-link-google-custom-endpoint` closeout：在 `http://localhost:3000` 補齊 screenshot review 的 in-flight 鎖定證據，然後 archive change — 依賴：既有 local admin/member session / 互斥：`drizzle-refactor-credentials-admin-members`
+- [high] 修復或重建 `.data/db/sqlite.db` 的 auth-storage drift，讓 `bash scripts/checks/verify-auth-storage-consistency.sh --local .data/db/sqlite.db` 轉綠並恢復 `/api/_dev/login` 新建帳號 — 依賴：`auth-storage-consistency` / 互斥：`drizzle-refactor-credentials-admin-members`
+- [mid] 完成 `drizzle-refactor-credentials-admin-members` 的 `/account/settings` 與 `/admin/members` manual regression，回填 TD-010，再決定是否 archive — 依賴：production admin 驗證路徑
+- [mid] 驗證 docs custom domains 與 staging / production canary，補齊 workflow smoke-test 被 Cloudflare WAF / Bot protection `403` 擋住的人工判定缺口 — 依賴：deploy 後環境
+- [mid] 若 auth 線 closeout 完成，啟動 `multi-format-document-ingestion`：shared format registry → canonical snapshot extractor → extraction-first sync orchestration — 獨立
 
 <!-- SPECTRA-UX:ROADMAP-MANUAL:END -->
 
@@ -49,9 +29,9 @@
 
 ## Active Changes
 
-_last synced: 2026-04-22T20:23:48.699Z_
+_last synced: 2026-04-23T09:31:50.124Z_
 
-3 active changes (0 ready · 1 in progress · 2 draft · 0 blocked)
+3 active changes (0 ready · 2 in progress · 1 draft · 0 blocked)
 
 ### Ready to apply
 
@@ -61,19 +41,32 @@ _(none)_
 
 - **drizzle-refactor-credentials-admin-members** — 25/27 tasks (93%)
   - Specs: `admin-member-management-ui`, `auth-storage-consistency`, `passkey-authentication`, `responsive-and-a11y-foundation`
+- **passkey-first-link-google-custom-endpoint** — 38/45 tasks (84%)
+  - Specs: `auth-storage-consistency`, `passkey-authentication`
 
 ### Draft
 
 - **multi-format-document-ingestion** — 0/21 tasks (0%)
   - Specs: `admin-document-management-ui`, `document-ingestion-and-publishing`
-- **passkey-first-link-google-custom-endpoint** — 0/45 tasks (0%)
-  - Specs: `auth-storage-consistency`, `passkey-authentication`
 
 ### Blocked
 
 _(none)_
 
 <!-- SPECTRA-UX:ROADMAP-AUTO:/active -->
+
+<!-- SPECTRA-UX:ROADMAP-AUTO:claims -->
+
+## Active Claims
+
+> 即時 ownership 由 `.spectra/claims/*.json` 提供。
+> 接手 handoff / 開始做 change 時，先 claim，再移除 `HANDOFF.md` 對應項目。
+
+_No active claims._
+
+> 若你要開始做上面的 active change，先跑 `spectra:claim -- <change>`。
+
+<!-- SPECTRA-UX:ROADMAP-AUTO:/claims -->
 
 <!-- SPECTRA-UX:ROADMAP-AUTO:parallelism -->
 

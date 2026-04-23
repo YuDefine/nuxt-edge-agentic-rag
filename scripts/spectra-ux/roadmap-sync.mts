@@ -168,7 +168,7 @@ function parseArgs(argv: string[]): CliOptions {
       console.log(
         'Usage: roadmap-sync.mts [--check] [--json]\n' +
           '  --check   Validate only; do not write. Exit 1 if roadmap is stale.\n' +
-          '  --json    Emit report as JSON instead of the normal summary.'
+          '  --json    Emit report as JSON instead of the normal summary.',
       )
       process.exit(0)
     } else {
@@ -226,8 +226,7 @@ function loadConfig(): Config {
       claims?: { enabled?: boolean; path?: string; staleSeconds?: number }
     }
     const openspecDir = raw.paths?.openspec ?? defaults.openspecDir
-    const roadmapPath =
-      raw.roadmap?.path ?? `${openspecDir.replace(/\/$/, '')}/ROADMAP.md`
+    const roadmapPath = raw.roadmap?.path ?? `${openspecDir.replace(/\/$/, '')}/ROADMAP.md`
     const enabled = raw.roadmap?.enabled ?? true
     const claimsEnabled = raw.claims?.enabled ?? defaults.claimsEnabled
     const claimsDir = raw.claims?.path ?? defaults.claimsDir
@@ -389,7 +388,7 @@ function extractBlockedReason(content: string): string | null {
 function classifyStage(
   tasks: { done: number; total: number },
   hasTasksFile: boolean,
-  blockedReason: string | null
+  blockedReason: string | null,
 ): Stage {
   if (blockedReason) return 'blocked'
   if (!hasTasksFile || tasks.total === 0) return 'draft'
@@ -532,7 +531,7 @@ function collectParkedChanges(): {
     return { parked, source: 'cli' }
   } catch (err) {
     console.warn(
-      `roadmap-sync: spectra CLI unavailable, parked block will render empty (${(err as Error).message})`
+      `roadmap-sync: spectra CLI unavailable, parked block will render empty (${(err as Error).message})`,
     )
     return { parked: [], source: 'unavailable' }
   }
@@ -642,8 +641,7 @@ function detectManualDrift(content: string, openspecDir: string): ManualDrift[] 
     if (endIdx === -1) continue
     autoRanges.push([startIdx, endIdx])
   }
-  const inAutoRegion = (idx: number): boolean =>
-    autoRanges.some(([s, e]) => idx >= s && idx <= e)
+  const inAutoRegion = (idx: number): boolean => autoRanges.some(([s, e]) => idx >= s && idx <= e)
 
   const drifts: ManualDrift[] = []
   const seen = new Set<string>()
@@ -780,8 +778,9 @@ function fmtClaimLine(claim: ClaimView): string {
     claim.record.paths.length > 0
       ? `\n  - Paths: ${claim.record.paths.map((path) => `\`${path}\``).join(', ')}`
       : ''
-  const takeover =
-    claim.stale ? `\n  - Status: stale (last heartbeat ${claim.record.updatedAt})` : ''
+  const takeover = claim.stale
+    ? `\n  - Status: stale (last heartbeat ${claim.record.updatedAt})`
+    : ''
   return `- **${claim.record.change}** — ${claim.record.owner} (${claim.record.runtime})\n  - Accepted from: ${claim.record.acceptedFrom}\n  - Last heartbeat: ${claim.record.updatedAt}${task}${note}${session}${paths}${takeover}`
 }
 
@@ -841,17 +840,14 @@ function renderParallelismBlock(report: ParallelismReport): string {
     ? report.mutex
         .map(
           (m) =>
-            `- **${m.spec}** — conflict between: ${m.changes.map((c) => `\`${c}\``).join(', ')}`
+            `- **${m.spec}** — conflict between: ${m.changes.map((c) => `\`${c}\``).join(', ')}`,
         )
         .join('\n')
     : ''
 
   const blockedBody = report.blocked.length
     ? report.blocked
-        .map(
-          (b) =>
-            `- \`${b.change}\` waits for: ${b.waitsFor.map((w) => `\`${w}\``).join(', ')}`
-        )
+        .map((b) => `- \`${b.change}\` waits for: ${b.waitsFor.map((w) => `\`${w}\``).join(', ')}`)
         .join('\n')
     : ''
 
@@ -868,10 +864,7 @@ function renderParallelismBlock(report: ParallelismReport): string {
     .trimEnd()
 }
 
-function renderParkedBlock(
-  parked: ParkedChange[],
-  source: 'cli' | 'unavailable'
-): string {
+function renderParkedBlock(parked: ParkedChange[], source: 'cli' | 'unavailable'): string {
   const intro = [
     '## Parked Changes',
     '',
@@ -921,7 +914,7 @@ function replaceBetween(
   startMarker: string,
   endMarker: string,
   body: string,
-  insertBefore?: string
+  insertBefore?: string,
 ): string {
   const startIdx = content.indexOf(startMarker)
   const endIdx = content.indexOf(endMarker)
@@ -1049,13 +1042,13 @@ function syncRoadmap(): SyncReport {
     MARKERS.claimsStart,
     MARKERS.claimsEnd,
     claimsBody,
-    MARKERS.parallelismStart
+    MARKERS.parallelismStart,
   )
   content = replaceBetween(
     content,
     MARKERS.parallelismStart,
     MARKERS.parallelismEnd,
-    parallelismBody
+    parallelismBody,
   )
   // First-time installs land the parked block right above the MANUAL backlog
   // so the rendering order is: active → parallelism → parked → backlog.
@@ -1064,7 +1057,7 @@ function syncRoadmap(): SyncReport {
     MARKERS.parkedStart,
     MARKERS.parkedEnd,
     parkedBody,
-    MARKERS.backlogStart
+    MARKERS.backlogStart,
   )
 
   // Ensure the manual block exists so users/agents have somewhere to write.
@@ -1135,8 +1128,8 @@ function emitJson(report: SyncReport): void {
         manualDrift: report.manualDrift,
       },
       null,
-      2
-    )
+      2,
+    ),
   )
 }
 
@@ -1153,7 +1146,7 @@ function emitManualDrift(drifts: ManualDrift[]): void {
     return 'version-mismatch'
   }
   console.error(
-    `⚠ roadmap-sync: MANUAL block drift detected (${drifts.length} item${drifts.length === 1 ? '' : 's'})`
+    `⚠ roadmap-sync: MANUAL block drift detected (${drifts.length} item${drifts.length === 1 ? '' : 's'})`,
   )
   for (const drift of drifts) {
     console.error(`  [line ${drift.lineNumber}] [${label(drift.type)}]`)
@@ -1197,13 +1190,15 @@ function emitText(report: SyncReport): void {
       ? ` · ${activeClaims} claimed${staleClaims > 0 ? ` · ${staleClaims} stale claim${staleClaims === 1 ? '' : 's'}` : ''}`
       : ''
   console.log(
-    `✓ roadmap-sync: ${verb} (${active} change${active === 1 ? '' : 's'}: ${ready} ready · ${wip} wip · ${draft} draft · ${blocked} blocked${claimsSegment}${parkedSegment})`
+    `✓ roadmap-sync: ${verb} (${active} change${active === 1 ? '' : 's'}: ${ready} ready · ${wip} wip · ${draft} draft · ${blocked} blocked${claimsSegment}${parkedSegment})`,
   )
   if (mutex > 0) {
     console.log(`  ⚠ ${mutex} spec collision${mutex === 1 ? '' : 's'} — check Parallel Tracks`)
   }
   if (staleClaims > 0) {
-    console.log(`  ⚠ ${staleClaims} stale claim${staleClaims === 1 ? '' : 's'} — review Active Claims before takeover`)
+    console.log(
+      `  ⚠ ${staleClaims} stale claim${staleClaims === 1 ? '' : 's'} — review Active Claims before takeover`,
+    )
   }
   emitManualDrift(report.manualDrift)
 }
