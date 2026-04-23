@@ -125,6 +125,31 @@ function toDetail(conversation: MockConversation) {
   }
 }
 
+function createChatStreamBody(input: {
+  answer: string
+  citations: Array<{
+    citationId: string
+    sourceChunkId: string
+  }>
+  conversationCreated: boolean
+  conversationId: string
+}) {
+  return [
+    `event: ready\ndata: ${JSON.stringify({
+      conversationCreated: input.conversationCreated,
+      conversationId: input.conversationId,
+    })}\n\n`,
+    `event: delta\ndata: ${JSON.stringify({ content: input.answer })}\n\n`,
+    `event: complete\ndata: ${JSON.stringify({
+      answer: input.answer,
+      citations: input.citations,
+      conversationCreated: input.conversationCreated,
+      conversationId: input.conversationId,
+      refused: false,
+    })}\n\n`,
+  ].join('')
+}
+
 async function captureCheckpoint(
   page: Page,
   evidence: EvidenceCheckpoint[],
@@ -213,20 +238,17 @@ async function installConversationRoutes(
 
       await route.fulfill({
         status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          data: {
-            answer: '第一輪回覆：持久化測試答案。',
-            citations: [
-              {
-                citationId: 'cite-created-1',
-                sourceChunkId: 'chunk-created-1',
-              },
-            ],
-            conversationCreated: true,
-            conversationId: CREATED_CONVERSATION_ID,
-            refused: false,
-          },
+        contentType: 'text/event-stream',
+        body: createChatStreamBody({
+          answer: '第一輪回覆：持久化測試答案。',
+          citations: [
+            {
+              citationId: 'cite-created-1',
+              sourceChunkId: 'chunk-created-1',
+            },
+          ],
+          conversationCreated: true,
+          conversationId: CREATED_CONVERSATION_ID,
         }),
       })
 
@@ -269,20 +291,17 @@ async function installConversationRoutes(
 
     await route.fulfill({
       status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        data: {
-          answer: '第二輪回覆：沿用同一個 conversationId。',
-          citations: [
-            {
-              citationId: 'cite-created-2',
-              sourceChunkId: 'chunk-created-2',
-            },
-          ],
-          conversationCreated: false,
-          conversationId: conversation.id,
-          refused: false,
-        },
+      contentType: 'text/event-stream',
+      body: createChatStreamBody({
+        answer: '第二輪回覆：沿用同一個 conversationId。',
+        citations: [
+          {
+            citationId: 'cite-created-2',
+            sourceChunkId: 'chunk-created-2',
+          },
+        ],
+        conversationCreated: false,
+        conversationId: conversation.id,
       }),
     })
   })
@@ -591,15 +610,12 @@ test('chat history actions stay locked while a response is still in flight', asy
 
     await route.fulfill({
       status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        data: {
-          answer: '延遲回覆完成。',
-          citations: [],
-          conversationCreated: false,
-          conversationId: SEEDED_CONVERSATION_ID,
-          refused: false,
-        },
+      contentType: 'text/event-stream',
+      body: createChatStreamBody({
+        answer: '延遲回覆完成。',
+        citations: [],
+        conversationCreated: false,
+        conversationId: SEEDED_CONVERSATION_ID,
       }),
     })
   })

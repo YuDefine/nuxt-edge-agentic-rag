@@ -39,6 +39,9 @@
   const registerDialogOpen = ref(false)
   const conversationInteractionLocked = shallowRef(false)
   const historyRefreshKey = shallowRef(0)
+  const sidebarCollapsed = useLocalStorage('chat:history-sidebar:collapsed', false, {
+    onError: () => {},
+  })
 
   const conversationSession = useChatConversationSession({
     userId: computed(() => user.value?.id ?? null),
@@ -129,6 +132,14 @@
 
   function handleConversationBusyChange(isBusy: boolean) {
     conversationInteractionLocked.value = isBusy
+  }
+
+  function collapseHistorySidebar() {
+    sidebarCollapsed.value = true
+  }
+
+  function expandHistorySidebar() {
+    sidebarCollapsed.value = false
   }
 
   watch(
@@ -238,16 +249,45 @@
              column full-width for phones / small tablets. -->
         <div class="flex h-[calc(100dvh-4rem)] min-h-0 gap-0">
           <aside
-            class="hidden w-64 shrink-0 border-r border-default lg:flex lg:flex-col"
-            aria-label="對話記錄"
+            class="hidden shrink-0 border-r border-default transition-[width] duration-200 motion-reduce:transition-none lg:flex lg:flex-col"
+            :class="sidebarCollapsed ? 'lg:w-12' : 'lg:w-64'"
+            :aria-label="sidebarCollapsed ? '對話記錄（已收合）' : '對話記錄'"
           >
+            <div v-if="sidebarCollapsed" class="flex justify-center pt-3">
+              <UTooltip text="展開對話記錄">
+                <UButton
+                  data-testid="chat-history-expand-toggle"
+                  variant="ghost"
+                  color="neutral"
+                  size="xs"
+                  icon="i-lucide-panel-left-open"
+                  aria-label="展開對話記錄"
+                  @click="expandHistorySidebar"
+                />
+              </UTooltip>
+            </div>
+
             <LazyChatConversationHistory
+              :collapsed="sidebarCollapsed"
               :disabled="conversationInteractionLocked"
+              :on-expand-request="expandHistorySidebar"
               :refresh-key="historyRefreshKey"
               :selected-conversation-id="activeConversationId"
               @conversation-cleared="handleConversationCleared"
               @conversation-selected="handleConversationSelected"
-            />
+            >
+              <template #header-action>
+                <UButton
+                  v-if="!sidebarCollapsed"
+                  variant="ghost"
+                  color="neutral"
+                  size="xs"
+                  icon="i-lucide-panel-left-close"
+                  aria-label="收合對話記錄"
+                  @click="collapseHistorySidebar"
+                />
+              </template>
+            </LazyChatConversationHistory>
           </aside>
 
           <!-- Chat column. Parent chat layout owns the `<main>` landmark,
