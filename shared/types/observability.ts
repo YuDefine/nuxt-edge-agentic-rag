@@ -13,6 +13,13 @@
  * NULL retaining its "no data" meaning.
  */
 
+export interface OutcomeBreakdown {
+  answered: number
+  refused: number
+  forbidden: number
+  error: number
+}
+
 export const DECISION_PATH_VALUES = [
   /**
    * Retrieval top-score met `directAnswerMin` on the first pass. Answer

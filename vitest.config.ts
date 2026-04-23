@@ -1,4 +1,5 @@
-import { existsSync, readdirSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { defineVitestProject } from '@nuxt/test-utils/config'
@@ -33,46 +34,58 @@ const sharedTestConfig = {
   exclude: ['e2e/**', 'node_modules/**'],
 }
 
-function directoryHasMatchingFile(
+function collectMatchingFiles(
   directoryPath: string,
   fileNamePattern: RegExp,
   relativePathPattern?: RegExp,
-): boolean {
+): string[] {
   if (!existsSync(directoryPath)) {
-    return false
+    return []
   }
 
   const entries = readdirSync(directoryPath, { recursive: true, withFileTypes: true })
 
-  return entries.some((entry) => {
+  return entries.flatMap((entry) => {
     if (!entry.isFile() || !fileNamePattern.test(entry.name)) {
-      return false
-    }
-
-    if (!relativePathPattern) {
-      return true
+      return []
     }
 
     const parentPath = typeof entry.parentPath === 'string' ? entry.parentPath : directoryPath
-    const relativePath = `${parentPath.replace(`${directoryPath}/`, '')}/${entry.name}`
+    const relativePath = `${parentPath.replace(`${directoryPath}/`, '')}/${entry.name}`.replace(
+      /^\//u,
+      '',
+    )
 
-    return relativePathPattern.test(relativePath)
+    if (!relativePathPattern) {
+      return [relativePath]
+    }
+
+    return relativePathPattern.test(relativePath) ? [relativePath] : []
   })
 }
 
-function hasNuxtTestFiles(): boolean {
-  const testRoot = fileURLToPath(new URL('./test', import.meta.url))
-  const appRoot = fileURLToPath(new URL('./app', import.meta.url))
-  const nuxtTestRoot = fileURLToPath(new URL('./test/nuxt', import.meta.url))
+function requiresNuxtRuntime(filePath: string): boolean {
+  const source = readFileSync(filePath, 'utf8')
+  return /@nuxt\/test-utils\/runtime|mountSuspended|mockComponent/u.test(source)
+}
 
-  return (
-    directoryHasMatchingFile(nuxtTestRoot, /\.[cm]?[jt]s$/) ||
-    directoryHasMatchingFile(appRoot, /\.(test|spec)\.ts$/) ||
-    directoryHasMatchingFile(testRoot, /\.(test|spec)\.ts$/, /(^|\/).+\.nuxt\.(test|spec)\.ts$/)
+function getNuxtUnitFiles(): string[] {
+  const testRoot = fileURLToPath(new URL('./test', import.meta.url))
+  const unitTestFiles = collectMatchingFiles(
+    testRoot,
+    /\.(test|spec)\.ts$/,
+    /^unit\/.+\.(test|spec)\.ts$/,
   )
+
+  return unitTestFiles
+    .filter((relativePath) => requiresNuxtRuntime(join(testRoot, relativePath)))
+    .map((relativePath) => `test/${relativePath}`)
 }
 
 export default defineConfig(async () => {
+  const appRoot = fileURLToPath(new URL('./app', import.meta.url))
+  const nuxtTestRoot = fileURLToPath(new URL('./test/nuxt', import.meta.url))
+  const nuxtUnitFiles = getNuxtUnitFiles()
   const projects = [
     {
       ...nodeProjectConfig,
@@ -90,22 +103,23 @@ export default defineConfig(async () => {
         name: 'unit',
         environment: 'node',
         include: ['test/unit/**/*.{test,spec}.ts'],
-        exclude: [...sharedTestConfig.exclude, 'test/unit/**/*.nuxt.{test,spec}.ts'],
+        exclude: [...sharedTestConfig.exclude, ...nuxtUnitFiles],
       },
     },
   ]
 
-  if (hasNuxtTestFiles()) {
+  const hasNuxtProjectFiles =
+    collectMatchingFiles(nuxtTestRoot, /\.[cm]?[jt]s$/).length > 0 ||
+    collectMatchingFiles(appRoot, /\.(test|spec)\.ts$/).length > 0 ||
+    nuxtUnitFiles.length > 0
+
+  if (hasNuxtProjectFiles) {
     const nuxtProject = await defineVitestProject({
       ...sharedProjectConfig,
       test: {
         ...sharedTestConfig,
         name: 'nuxt',
-        include: [
-          'app/**/*.test.ts',
-          'test/nuxt/**/*.{test,spec}.ts',
-          'test/unit/**/*.nuxt.{test,spec}.ts',
-        ],
+        include: ['app/**/*.test.ts', 'test/nuxt/**/*.{test,spec}.ts', ...nuxtUnitFiles],
         environment: 'nuxt',
       },
     })
