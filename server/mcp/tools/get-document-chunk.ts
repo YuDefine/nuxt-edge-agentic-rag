@@ -1,5 +1,5 @@
 import { useLogger } from 'evlog'
-import { z } from 'zod/v3'
+import { z } from 'zod/v4'
 
 import { getCurrentMcpEvent } from '#server/utils/current-mcp-event'
 import { getRequiredD1Binding, getRequiredKvBinding } from '#server/utils/cloudflare-bindings'
