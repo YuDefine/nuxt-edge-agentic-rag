@@ -184,6 +184,17 @@ export default defineNuxtConfig({
       // a doomed API call.
       adminDashboardEnabled:
         (process.env.NUXT_ADMIN_DASHBOARD_ENABLED ?? 'true').toLowerCase() !== 'false',
+      // Client-visible effective access for observability debug surfaces.
+      // Mirrors `requireInternalDebugAccess()` semantics in
+      // `server/utils/debug-surface-guard.ts`: non-production is always
+      // allowed (so admins can exercise the UI during dev / staging),
+      // production only when the operator flips
+      // `NUXT_DEBUG_SURFACE_ENABLED=true`. The server guard stays the
+      // authoritative gate; this mirror only lets the UI hide the nav
+      // entry so admins don't click into a 403.
+      debugSurfaceEnabled:
+        (process.env.NUXT_KNOWLEDGE_ENVIRONMENT ?? 'local') !== 'production' ||
+        process.env.NUXT_DEBUG_SURFACE_ENABLED === 'true',
       // passkey-authentication: client-visible mirror of
       // `knowledge.features.passkey` (Decision 4: dual gate — server
       // plugin registration + UI conditional render). The server plugin
