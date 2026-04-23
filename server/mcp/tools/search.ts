@@ -5,11 +5,8 @@ import {
   createCloudflareAiSearchClient,
   type CloudflareAiBindingLike,
 } from '#server/utils/ai-search'
-import {
-  getCloudflareEnv,
-  getRequiredD1Binding,
-  getRequiredKvBinding,
-} from '#server/utils/cloudflare-bindings'
+import { requireAiBinding } from '#server/utils/ai-binding'
+import { getRequiredD1Binding, getRequiredKvBinding } from '#server/utils/cloudflare-bindings'
 import { createKnowledgeEvidenceStore } from '#server/utils/knowledge-evidence-store'
 import { retrieveVerifiedEvidence } from '#server/utils/knowledge-retrieval'
 import { getAllowedAccessLevels, getKnowledgeRuntimeConfig } from '#server/utils/knowledge-runtime'
@@ -92,15 +89,8 @@ function requireMcpAuth(event: {
 function getRequiredAiBinding(event: {
   context: Record<string, unknown> & { cloudflare?: { env?: Record<string, unknown> } }
 }): CloudflareAiBindingLike {
-  const binding = getCloudflareEnv(event).AI
-
-  if (!binding || typeof (binding as { autorag?: unknown }).autorag !== 'function') {
-    throw createError({
-      statusCode: 503,
-      statusMessage: 'Service Unavailable',
-      message: 'Cloudflare AI binding "AI" is not available',
-    })
-  }
-
-  return binding as CloudflareAiBindingLike
+  return requireAiBinding<CloudflareAiBindingLike>(event, {
+    method: 'autorag',
+    message: 'Cloudflare AI binding "AI" is not available',
+  })
 }

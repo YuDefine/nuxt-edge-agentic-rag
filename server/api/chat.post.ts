@@ -5,7 +5,8 @@ import {
   createCloudflareAiSearchClient,
   type CloudflareAiBindingLike,
 } from '#server/utils/ai-search'
-import { getCloudflareEnv, getRequiredKvBinding } from '#server/utils/cloudflare-bindings'
+import { requireAiBinding } from '#server/utils/ai-binding'
+import { getRequiredKvBinding } from '#server/utils/cloudflare-bindings'
 import { getD1Database } from '#server/utils/database'
 import { createCitationStore } from '#server/utils/citation-store'
 import { createConversationStaleResolver } from '#server/utils/conversation-stale-resolver'
@@ -251,33 +252,19 @@ export default defineEventHandler(async function chatHandler(event) {
 function getRequiredAiSearchBinding(event: {
   context: Record<string, unknown> & { cloudflare?: { env?: Record<string, unknown> } }
 }): CloudflareAiBindingLike {
-  const binding = getCloudflareEnv(event).AI
-
-  if (!binding || typeof (binding as { autorag?: unknown }).autorag !== 'function') {
-    throw createError({
-      statusCode: 503,
-      statusMessage: 'Service Unavailable',
-      message: 'Cloudflare AI binding "AI" is not available',
-    })
-  }
-
-  return binding as CloudflareAiBindingLike
+  return requireAiBinding<CloudflareAiBindingLike>(event, {
+    method: 'autorag',
+    message: 'Cloudflare AI binding "AI" is not available',
+  })
 }
 
 function getRequiredWorkersAiBinding(event: {
   context: Record<string, unknown> & { cloudflare?: { env?: Record<string, unknown> } }
 }): WorkersAiBindingLike {
-  const binding = getCloudflareEnv(event).AI
-
-  if (!binding || typeof (binding as { run?: unknown }).run !== 'function') {
-    throw createError({
-      statusCode: 503,
-      statusMessage: 'Service Unavailable',
-      message: 'Cloudflare Workers AI binding "AI" is not available',
-    })
-  }
-
-  return binding as WorkersAiBindingLike
+  return requireAiBinding<WorkersAiBindingLike>(event, {
+    method: 'run',
+    message: 'Cloudflare Workers AI binding "AI" is not available',
+  })
 }
 
 function getRequiredAiSearchIndex(indexName: string): string {
