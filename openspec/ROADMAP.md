@@ -30,9 +30,9 @@
 
 ## Active Changes
 
-_last synced: 2026-04-23T19:52:03.669Z_
+_last synced: 2026-04-23T20:18:41.986Z_
 
-1 active change (0 ready · 1 in progress · 0 draft · 0 blocked)
+_No active changes._
 
 ### Ready to apply
 
@@ -40,8 +40,7 @@ _(none)_
 
 ### In progress
 
-- **collapsible-chat-history-sidebar** — 5/36 tasks (14%)
-  - Specs: `responsive-and-a11y-foundation`
+_(none)_
 
 ### Draft
 
@@ -74,7 +73,7 @@ _No active claims._
 
 ### Independent (can run in parallel)
 
-- `collapsible-chat-history-sidebar`
+_(none)_
 
 ### Mutex (same spec touched)
 
