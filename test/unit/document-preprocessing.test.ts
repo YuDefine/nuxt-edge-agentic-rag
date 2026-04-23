@@ -106,21 +106,66 @@ describe('document preprocessing', () => {
     ])
   })
 
-  it('rejects unsupported source mime types', async () => {
+  it('rejects unsupported deferred mime types', async () => {
     await expect(
       prepareDocumentVersionAssets({
         accessLevel: 'internal',
         categorySlug: 'ops',
         documentId: 'doc-1',
         environment: 'local',
-        sourceMimeType: 'application/pdf',
-        sourceObjectKey: 'staged/local/admin-1/upload-1/playbook.pdf',
-        sourceText: '%PDF-1.7',
+        sourceMimeType: 'application/msword',
+        sourceObjectKey: 'staged/local/admin-1/upload-1/playbook.doc',
+        sourceText: 'legacy-binary-placeholder',
         title: 'Ops Playbook',
         versionId: 'ver-1',
         versionNumber: 1,
       }),
-    ).rejects.toThrow('Only text/plain and text/markdown uploads are supported')
+    ).rejects.toThrow(
+      'Only text/plain, text/markdown, application/pdf, DOCX, XLSX, and PPTX uploads are supported',
+    )
+  })
+
+  it('accepts supported rich sources when the filename carries the format but the MIME falls back to octet-stream', async () => {
+    const result = await prepareDocumentVersionAssets({
+      accessLevel: 'internal',
+      categorySlug: 'ops',
+      documentId: 'doc-1',
+      environment: 'local',
+      sourceMimeType: 'application/octet-stream',
+      sourceObjectKey: 'staged/local/admin-1/upload-1/playbook.docx',
+      sourceText: 'Playbook Overview\nEscalation Matrix',
+      title: 'Ops Playbook',
+      versionId: 'ver-1',
+      versionNumber: 1,
+    })
+
+    expect(result.normalizedText).toBe('Playbook Overview\nEscalation Matrix')
+    expect(result.sourceChunks).toHaveLength(1)
+  })
+
+  it('keeps markdown normalization when the filename is .md but the browser reports octet-stream', async () => {
+    const result = await prepareDocumentVersionAssets({
+      accessLevel: 'internal',
+      categorySlug: 'ops',
+      documentId: 'doc-1',
+      environment: 'local',
+      sourceMimeType: 'application/octet-stream',
+      sourceObjectKey: 'staged/local/admin-1/upload-1/playbook.md',
+      sourceText: [
+        '---',
+        'title: Ops Playbook',
+        '---',
+        '# Playbook',
+        '',
+        '- Escalate quickly',
+      ].join('\n'),
+      title: 'Ops Playbook',
+      versionId: 'ver-1',
+      versionNumber: 1,
+    })
+
+    expect(result.normalizedText).toBe(['Playbook', 'Escalate quickly'].join('\n'))
+    expect(result.smokeTestQueries).toEqual(['Playbook'])
   })
 
   it('builds zero-padded chunk R2 keys scoped to the version', () => {
