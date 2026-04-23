@@ -290,10 +290,7 @@ export function createWorkersAiBindingFake(options: WorkersAiBindingFakeOptions 
         return configured
       }
 
-      return {
-        model,
-        ok: true,
-      }
+      return buildDefaultWorkersAiResponse(payload)
     },
   }
 }
@@ -379,4 +376,88 @@ function defaultD1Response(method: D1ExecutionCall['method']): D1ResponderResult
 
 function matchesQuery(match: RegExp | string, query: string): boolean {
   return typeof match === 'string' ? query.includes(match) : match.test(query)
+}
+
+function buildDefaultWorkersAiResponse(payload: Record<string, unknown>) {
+  if (isStructuredJudgeRequest(payload)) {
+    return {
+      response: JSON.stringify({
+        shouldAnswer: true,
+      }),
+    }
+  }
+
+  const synthesizedAnswer = synthesizeAnswerFromPayload(payload)
+
+  return {
+    response: synthesizedAnswer,
+  }
+}
+
+function isStructuredJudgeRequest(payload: Record<string, unknown>): boolean {
+  const responseFormat = payload.response_format
+
+  return (
+    typeof responseFormat === 'object' &&
+    responseFormat !== null &&
+    (responseFormat as { type?: unknown }).type === 'json_schema'
+  )
+}
+
+function synthesizeAnswerFromPayload(payload: Record<string, unknown>): string {
+  const messages = payload.messages
+  if (!Array.isArray(messages)) {
+    return '測試用 Workers AI 回答'
+  }
+
+  const userMessage = messages.find(
+    (message) =>
+      typeof message === 'object' &&
+      message !== null &&
+      (message as { role?: unknown }).role === 'user',
+  ) as { content?: unknown } | undefined
+
+  const prompt = typeof userMessage?.content === 'string' ? userMessage.content : ''
+  const sections = prompt
+    .split('\n\n')
+    .map((section) => section.trim())
+    .filter((section) => section.length > 0)
+
+  const evidenceChunks = sections
+    .map((section) => extractEvidenceChunk(section))
+    .filter((chunk): chunk is string => typeof chunk === 'string' && chunk.length > 0)
+
+  if (evidenceChunks.length > 0) {
+    return evidenceChunks.join(' ')
+  }
+
+  return prompt || '測試用 Workers AI 回答'
+}
+
+function extractEvidenceChunk(section: string): string | null {
+  if (
+    section.startsWith('問題：') ||
+    section.startsWith('retrievalScore：') ||
+    section === '證據：' ||
+    section.startsWith('請判斷這些證據是否足以回答問題。') ||
+    section.startsWith('若證據足夠') ||
+    section.startsWith('若證據不足')
+  ) {
+    return null
+  }
+
+  const lines = section
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+
+  const contentLines = lines.filter(
+    (line) => !line.startsWith('[') && !line.startsWith('Locator:') && !line.startsWith('Score:'),
+  )
+
+  if (contentLines.length > 0) {
+    return contentLines.join(' ')
+  }
+
+  return section
 }
