@@ -48,17 +48,6 @@
           }
         ]
       }
-    ],
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "command": "HOOK_EVENT='Stop' ORIGINAL_HOOK_COMMAND='$(git rev-parse --show-toplevel)/.codex/hooks/stop-accumulate.sh' \"$(git rev-parse --show-toplevel)/.codex/hooks/_codex_hook_wrapper.sh\"",
-            "timeout": 5,
-            "type": "command"
-          }
-        ]
-      }
     ]
   }
 }
