@@ -16,6 +16,9 @@ const mcpToolkitProviderPath = (provider: 'cloudflare' | 'node') =>
   )
 const mcpToolkitCloudflareProvider = mcpToolkitProviderPath('cloudflare')
 const mcpToolkitNodeProvider = mcpToolkitProviderPath('node')
+const mcpAgentsCompatProvider = fileURLToPath(
+  new URL('./server/utils/mcp-agents-compat.ts', import.meta.url),
+)
 
 // https://nuxt.com/docs/api/configuration/nuxt-config
 const knowledgeRuntimeConfig = createKnowledgeRuntimeConfig({
@@ -296,6 +299,7 @@ export default defineNuxtConfig({
     preset: 'cloudflare_module',
     alias: {
       [mcpToolkitCloudflareProvider]: mcpToolkitNodeProvider,
+      'agents/mcp': mcpAgentsCompatProvider,
     },
     cloudflare: {
       deployConfig: true,
