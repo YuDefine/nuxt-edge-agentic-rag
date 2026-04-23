@@ -18,7 +18,7 @@ globs: ['HANDOFF.md', 'openspec/changes/**']
 - session 結束時仍有 active spectra change
 - 被 `/clear`、context window、或外部中斷打斷
 - 有未 commit 的 WIP 需要之後接續
-- 工作轉交給其他 agent / runtime（Claude、Codex、Cursor、subagent）
+- 工作轉交給其他 agent / runtime（Claude、Codex、Copilot、Cursor、subagent）
 - 使用者明確要求留下交接
 
 ## 建議格式
