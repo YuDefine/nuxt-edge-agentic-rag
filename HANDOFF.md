@@ -73,61 +73,60 @@
 
 ---
 
-### `code-quality-review-followups`（上輪 session，批 2/3 待新 session）
+### `code-quality-review-followups`（僅剩人工檢查）
 
-Active change: `code-quality-review-followups`（in-progress，10/43 tasks）
+Active change: `code-quality-review-followups`（in-progress，**38/43 tasks (88%)**，只剩 group 10 人工檢查 6 項待使用者實測）
 
-批 1（server / util / test，無 UI）已完成並入庫：
+批 1、2、3 code 改動已全部入庫：
 
-- ✅ TD-017 AI binding 共用 helper（含 simplify 擴展涵蓋 mcp/tools/ask + search）
-- ✅ TD-018 chat error classification util + lookup table
-- ✅ TD-020 ChatGPT connector OAuth path regex 收緊
+- ✅ **批 1**（commit `32f6df2`/`fb2f1f7`/`a817b91`）：TD-017 / 018 / 020
+- ✅ **批 2**（commit `bea4deb`）：TD-021 bucket toggle aria-expanded、TD-022 跨午夜重分組（useNow 60s 間隔）、TD-023 useChatConversationHistory hoist + provide/inject 消除重複 fetch
+- ✅ **批 3**（commit `bea4deb`）：TD-024 test suite 重構 + 新增 aria / midnight / fetch-dedup spec
+- ✅ **Scope 擴張**（commit `bea4deb`）：TD-025 Container.vue CSRF 修復（`$csrfFetch.native` 跳 csurf hook → 手動 `useCsrf()` 注入 header）+ Nuxt UI Lazy 遷移
+- 🆕 **TD-026 已在 `docs/tech-debt.md` 登記**（open，low）— index.vue vs ConversationHistory owner-fallback 重複 config，不在本 change 修
 
-批 2、3 尚未開始，等新 session 接手。
+### 剩下的 group 10 人工檢查（6 項）
 
-### 批次計劃
+**必須使用者本人瀏覽器實測**（按 `code-quality-review-followups/tasks.md` 的 group 10）：
 
-| 批   | Groups     | 內容                                                                           | 狀態             |
-| ---- | ---------- | ------------------------------------------------------------------------------ | ---------------- |
-| 批 1 | 1, 2, 3    | TD-017 / 018 / 020（server + util + test，無 UI）                              | ✅ 完成並 commit |
-| 批 2 | 4, 5, 6, 9 | TD-021 / 022 / 023（都碰 ConversationHistory.vue + index.vue） + Design Review | 待新 session     |
-| 批 3 | 7, 8, 10   | TD-024 test 改寫 + tech-debt docs + 人工檢查（7 項你親測）                     | 待新 session     |
+1. 跨午夜重分組（TD-022 驗證）
+2. aria-expanded AT（assistive-tech 鍵盤 walkthrough，TD-021 驗證）
+3. OAuth reject 三種 payload
+4. classifyError 五類錯誤（TD-018 分類驗證）
+5. AI binding 503 error 行為
+6. fetch dedup 用 Network tab 確認只送一次（TD-023 驗證）
 
 ### 接手方式（新 session）
 
 1. 確認 claim 未過期：`pnpm spectra:claim code-quality-review-followups`（若 stale）
-2. 進入批 2：`/spectra-apply code-quality-review-followups` 會自動載入進度，從 tasks.md 最後一個未勾項（4.1）續跑
-3. 批 2 必須做 Design Review（spectra.yaml design_review: true），請跑 `/design improve app/components/chat/ConversationHistory.vue app/pages/index.vue` 起頭
-4. 批 3 的 group 10 有 7 項人工檢查，必須使用者本人瀏覽器實測（跨午夜、aria-expanded AT、OAuth reject 三種 payload、classifyError 五類錯誤、AI binding 503、fetch dedup Network tab）
+2. `/spectra-apply code-quality-review-followups` 續跑，從 tasks.md 第一個未勾人工檢查項開始
+3. 逐項實測 + 勾選 → 全勾完 `/spectra-archive code-quality-review-followups`
 
-### 本次 commit 的 scope 微調（告知接手者）
+### 上輪 commit 的 scope 微調紀錄
 
-- **TD-017**：helper 放新檔 `server/utils/ai-binding.ts`（非原 task 寫的 chat.post.ts 內 local）。
-  原因：`server/utils/cloudflare-bindings.ts` 被 15+ integration test 透過 `vi.mock` 攔截。
-- **TD-018**：抽到 `app/utils/chat-error-classification.ts`（非原 task 寫的 Container.vue 內）。
-  原因：`.spectra.yaml` 開 tdd: true，SFC 內部 function 無法直接 unit test。
+- **TD-017**：helper 放新檔 `server/utils/ai-binding.ts`（非原 task 寫的 chat.post.ts 內 local）。原因：`server/utils/cloudflare-bindings.ts` 被 15+ integration test 透過 `vi.mock` 攔截。
+- **TD-018**：抽到 `app/utils/chat-error-classification.ts`（非原 task 寫的 Container.vue 內）。原因：`.spectra.yaml` 開 tdd: true，SFC 內部 function 無法直接 unit test。
+- **TD-025**：保留 `.native`（SSE streaming 需要 raw Response），手動用 `useCsrf()` 注入 `x-csrf-token` header。
 
 ## Next Steps
 
-0. **auth-redirect-refactor（最優先，使用者立刻接手）**：見 In Progress 區塊第一項，`/spectra-discuss` 起步，留意與 `code-quality-review-followups` 批 2/3 在 `index.vue` 的 file ownership 衝突。
-   0-b. **fix-mcp-streamable-http-session**（另開新 change，上個 session 發現）：MCP transport body fix 已 deploy（v0.34.5），但 Claude tool/call 仍因 SSE session 問題失敗。走 `/spectra-discuss fix-mcp-streamable-http-session` 收斂方向 A/B/C。詳見 In Progress 第二項。
-1. **批 2（TD-021 / 022 / 023 + Design Review）**：最優先，新 session 接手；需要瀏覽器
-   端驗證跨午夜重分組、aria-expanded 切換。
-2. **批 3（TD-024 + tech-debt docs + 人工檢查）**：在批 2 完成後做；人工檢查必須使用者
-   本人。
-3. **Deploy 後 smoke `/admin/usage`**：上一輪 `fix(admin-usage)` 改為從 Cloudflare
+1. **auth-redirect-refactor（使用者立刻接手）**：見 In Progress 第一項，`/spectra-discuss auth-redirect-refactor` 起步；`app/pages/index.vue` 批 2/3 改動已 commit（`bea4deb`），file ownership 衝突解除。
+2. **fix-mcp-streamable-http-session**（另開新 change）：MCP transport body fix 已 deploy（v0.34.5），但 Claude tool/call 仍因 SSE session 問題失敗。走 `/spectra-discuss fix-mcp-streamable-http-session` 收斂方向 A/B/C。詳見 In Progress 第二項。
+3. **code-quality-review-followups**（僅剩人工檢查）：使用者本人瀏覽器跑完 group 10 的 6 項實測後 `/spectra-archive`。詳見 In Progress 第三項。
+4. **Deploy 後 smoke `/admin/usage`**：上一輪 `fix(admin-usage)` 改為從 Cloudflare
    Workers env 讀 secret；production / staging 第一次請求前確認 `wrangler secret put`
    已寫入 `CLOUDFLARE_ACCOUNT_ID` / `CLOUDFLARE_API_TOKEN_ANALYTICS` /
    `NUXT_KNOWLEDGE_AI_GATEWAY_ID`，admin 進 `/admin/usage` 不再回 503「尚未設定完成」。
-4. **驗證日期格式變化**：上上輪 refactor 把 6 個頁面的日期顯示從 `YYYY/MM/DD HH:mm` 改成
+5. **驗證日期格式變化**：上上輪 refactor 把 6 個頁面的日期顯示從 `YYYY/MM/DD HH:mm` 改成
    `YYYY/M/D HH:mm:ss`。deploy 後到 `/account/settings`、`/admin/documents/:id`、
    `/admin/members`、`/admin/query-logs`（list + detail）、`/admin/tokens` 目視確認
    新格式符合預期，若不滿意可調整 `app/utils/format-datetime.ts`。
-5. **本 change archive 後**：
+6. **`code-quality-review-followups` archive 後的後續 change**：
    - TD-009（user_profiles.email_normalized 全面改 nullable）仍 open，sentinel
      workaround 仍在；另開 Tier 3 migration change 處理。
    - TD-015（SSE heartbeat）+ TD-019（SSE reader pattern 抽共用）+ TD-016
      （isAbortError 抽共用）：SSE 相關技術債，下一條 change（B2 線）合併處理。
+   - TD-026（index.vue vs ConversationHistory owner-fallback 重複 config）：low priority，隨手修。
 
 ## 使用者並行 WIP（不屬於本 change）
 
