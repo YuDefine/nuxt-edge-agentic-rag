@@ -7,19 +7,23 @@ import { getKnowledgeRuntimeConfig } from '#server/utils/knowledge-runtime'
 const requestSchema = z
   .object({
     code: z.string().trim().min(1),
+    codeVerifier: z.string().trim().min(1).optional(),
     grantType: z.literal('authorization_code'),
     clientId: z.string().trim().min(1),
     redirectUri: z.string().url(),
+    resource: z.string().url().optional(),
   })
-  .strict()
+  .passthrough()
 
 export default defineEventHandler(async function mcpTokenHandler(event) {
   const rawBody = (await readBody(event).catch(() => ({}))) ?? {}
   const normalizedBody = {
     code: rawBody.code,
+    codeVerifier: rawBody.codeVerifier ?? rawBody.code_verifier,
     grantType: rawBody.grantType ?? rawBody.grant_type,
     clientId: rawBody.clientId ?? rawBody.client_id,
     redirectUri: rawBody.redirectUri ?? rawBody.redirect_uri,
+    resource: rawBody.resource,
   }
   const parsedBody = requestSchema.safeParse(normalizedBody)
 
