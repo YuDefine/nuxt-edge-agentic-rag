@@ -30,7 +30,7 @@
     "spectra:followups": "node scripts/spectra-ux/collect-followups.mts",
     "spectra:release": "node scripts/spectra-ux/release-work.mts",
     "spectra:roadmap": "node scripts/spectra-ux/roadmap-sync.mts",
-    "tag": "git tag v$(node -p \"require('./package.json').version\") && git push origin --tags",
+    "tag": "git tag v$(node -p \"require('./package.json').version\") && git push origin main && git push origin --tags",
     "test": "vp test run --config ./vitest.config.ts",
     "test:acceptance": "vp test run --config ./vitest.config.ts test/unit/acceptance-*.test.ts",
     "test:contracts": "vp test run --config ./vitest.config.ts test/unit/mcp-*.test.ts test/integration/mcp-routes.test.ts",
