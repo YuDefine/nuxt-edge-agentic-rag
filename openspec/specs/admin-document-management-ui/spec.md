@@ -462,7 +462,7 @@ code:
   - .codex/hooks/session-start-roadmap-sync.sh
   - tooling/scripts/office/pack.py
   - .github/copilot-instructions.md
-  - docs/runbooks/claude-desktop-mcp.md
+  - docs/runbooks/remote-mcp-connectors.md
   - scripts/audit-ux-drift.mts
   - tooling/__init__.py
   - local/reports/archive/main-v0.0.18.md

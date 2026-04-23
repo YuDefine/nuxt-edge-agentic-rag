@@ -65,3 +65,29 @@ export async function consumeMcpToolRateLimit(input: {
 
   return result
 }
+
+export async function consumeMcpPublicRateLimit(input: {
+  environment: string
+  ip: string
+  now?: number
+  operation: 'registerClient' | 'chatGptMetadata'
+  store: FixedWindowRateLimitStore
+}): Promise<FixedWindowRateLimitResult> {
+  const preset = FIXED_WINDOW_RATE_LIMIT_PRESETS.mcpPublicDcr
+  const result = await consumeFixedWindowRateLimit({
+    key: `mcp-public:${input.environment}:${input.operation}:${input.ip}`,
+    now: input.now,
+    preset,
+    store: input.store,
+  })
+
+  if (!result.allowed) {
+    throw new McpRateLimitExceededError(
+      `Rate limit exceeded for ${input.operation}`,
+      429,
+      result.retryAfterMs,
+    )
+  }
+
+  return result
+}
