@@ -6,6 +6,7 @@
   import type { ConversationRecencyBucket } from '~/utils/conversation-grouping'
   import { loadChatConversationDetail } from '~/utils/chat-conversation-loader'
   import { groupConversationsByRecency } from '~/utils/conversation-grouping'
+  import { formatShortDateTime } from '~/utils/format-datetime'
 
   interface Props {
     collapsed?: boolean
@@ -91,17 +92,7 @@
   }
 
   function formatUpdatedAt(value: string): string {
-    const date = new Date(value)
-    if (Number.isNaN(date.getTime())) {
-      return '時間未知'
-    }
-
-    return new Intl.DateTimeFormat('zh-TW', {
-      hour: '2-digit',
-      minute: '2-digit',
-      month: '2-digit',
-      day: '2-digit',
-    }).format(date)
+    return formatShortDateTime(value, { fallback: '時間未知' })
   }
 
   function isSelected(conversationId: string): boolean {
@@ -185,7 +176,7 @@
       </div>
 
       <div v-else class="flex flex-col gap-2">
-        <UCollapsible
+        <LazyUCollapsible
           v-for="group in groupedConversations"
           :key="group.bucket"
           :open="bucketOpenState[group.bucket]"
@@ -257,7 +248,7 @@
               </div>
             </div>
           </template>
-        </UCollapsible>
+        </LazyUCollapsible>
       </div>
     </div>
   </div>
