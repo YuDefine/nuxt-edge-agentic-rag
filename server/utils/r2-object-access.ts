@@ -44,11 +44,12 @@ export function loadKnowledgeUploadsConfig(): KnowledgeUploadsS3Config {
 }
 
 export interface R2ObjectAccess {
+  getBytes(key: string): Promise<ArrayBuffer | null>
   getText(key: string): Promise<string | null>
   head(key: string): Promise<UploadedObjectMetadata | null>
   put(
     key: string,
-    value: string,
+    value: ArrayBuffer | ArrayBufferView | string,
     contentType: string,
     customMetadata?: Record<string, string>,
   ): Promise<void>
@@ -59,6 +60,12 @@ export function createR2ObjectAccess(event: H3Event): R2ObjectAccess {
   const bucket = getRequiredR2Binding(event, bindingName)
 
   return {
+    async getBytes(key) {
+      const obj = await bucket.get(key)
+      if (!obj) return null
+
+      return obj.arrayBuffer()
+    },
     async getText(key) {
       const obj = await bucket.get(key)
       if (!obj) return null
@@ -70,6 +77,7 @@ export function createR2ObjectAccess(event: H3Event): R2ObjectAccess {
       if (!obj) return null
 
       const metadata: UploadedObjectMetadata = {
+        customMetadata: obj.customMetadata,
         httpMetadata: {
           contentType: obj.httpMetadata?.contentType ?? null,
         },

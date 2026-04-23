@@ -1,6 +1,13 @@
 <script setup lang="ts">
   import { z } from 'zod'
   import type { FormSubmitEvent } from '@nuxt/ui'
+  import {
+    DOCUMENT_SOURCE_FORMATS,
+    classifyDocumentSourceFormat,
+    getDocumentSourceRejectionMessage,
+    getSupportedUploadAcceptValues,
+    type DocumentSourceSupportTier,
+  } from '~~/shared/utils/document-source-format'
   import { assertNever } from '~~/shared/utils/assert-never'
 
   const { $csrfFetch } = useNuxtApp()
@@ -354,13 +361,99 @@
     return btoa(binary)
   }
 
-  const ALLOWED_EXTENSIONS = ['.txt', '.md', '.pdf']
-  const ALLOWED_MIME_TYPES = new Set(['text/plain', 'text/markdown', 'application/pdf'])
+  const SUPPORTED_UPLOAD_ACCEPT_VALUES = getSupportedUploadAcceptValues()
   const MAX_FILE_SIZE_MB = 10
   const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
 
   const validationError = ref<string | null>(null)
   const isDragging = ref(false)
+
+  function listFormatsByTier(tier: Exclude<DocumentSourceSupportTier, 'unknown'>): string {
+    return DOCUMENT_SOURCE_FORMATS.filter((format) => format.supportTier === tier)
+      .flatMap((format) => format.extensions)
+      .join('、')
+  }
+
+  const supportTierCards = [
+    {
+      description: '沿用既有文字正規化路徑，適合手動整理後的知識稿',
+      formats: listFormatsByTier('direct-text'),
+      key: 'direct-text',
+      label: '直接文字',
+    },
+    {
+      description: '系統會先抽成 canonical snapshot，再進入 replay / indexing 流程',
+      formats: listFormatsByTier('supported-rich'),
+      key: 'supported-rich',
+      label: '支援 rich document',
+    },
+    {
+      description: '請先轉成現代 Office、PDF，或整理成文字版後再上傳',
+      formats: listFormatsByTier('deferred-legacy-office'),
+      key: 'deferred-legacy-office',
+      label: '需先轉檔',
+    },
+    {
+      description: '音訊與影片需要後續 transcript pipeline，這一波不走同步上傳',
+      formats: '音訊、影片',
+      key: 'deferred-media',
+      label: '延後媒體',
+    },
+  ] as const
+
+  const selectedFileSourceFormat = computed(() =>
+    selectedFile.value
+      ? classifyDocumentSourceFormat({
+          filename: selectedFile.value.name,
+          mimeType: selectedFile.value.type || 'application/octet-stream',
+        })
+      : null,
+  )
+
+  const selectedFileTierLabel = computed(() => {
+    const tier = selectedFileSourceFormat.value?.supportTier
+
+    switch (tier) {
+      case 'direct-text':
+        return '直接文字'
+      case 'supported-rich':
+        return '支援 rich document'
+      case 'deferred-legacy-office':
+        return '需先轉檔'
+      case 'deferred-media':
+        return '延後媒體'
+      case 'unknown':
+      case undefined:
+        return null
+      default:
+        return assertNever(tier, 'selectedFileTierLabel')
+    }
+  })
+
+  interface UploadErrorLike {
+    data?: { message?: string } | null
+    message?: string | null
+    statusMessage?: string | null
+  }
+
+  function getUploadErrorDetail(error: unknown, fallback: string): string {
+    const err = error as UploadErrorLike | null | undefined
+    return err?.data?.message ?? err?.message ?? err?.statusMessage ?? fallback
+  }
+
+  function getStageErrorPrefix(step: WizardStep, error: unknown): string {
+    const statusMessage = (error as UploadErrorLike | null | undefined)?.statusMessage
+
+    if (step === 'sync' && statusMessage === 'non-replayable-source') {
+      return '無法抽出可引用文字'
+    }
+
+    if (step === 'sync' && statusMessage === 'unsupported-format') {
+      return '檔案格式尚未支援'
+    }
+
+    return STAGE_ERROR_LABEL[step] ?? '處理失敗'
+  }
 
   function handleDragOver(event: DragEvent) {
     event.preventDefault()
@@ -395,13 +488,16 @@
   }
 
   function validateFile(file: File): { valid: boolean; error?: string } {
-    const extension = file.name.toLowerCase().match(/\.[^/.]+$/)?.[0] ?? ''
-    const mimeType = file.type || 'application/octet-stream'
+    const sourceFormat = classifyDocumentSourceFormat({
+      filename: file.name,
+      mimeType: file.type || 'application/octet-stream',
+    })
+    const rejectionMessage = getDocumentSourceRejectionMessage(sourceFormat, 'upload')
 
-    if (!ALLOWED_EXTENSIONS.includes(extension) && !ALLOWED_MIME_TYPES.has(mimeType)) {
+    if (rejectionMessage) {
       return {
         valid: false,
-        error: `不支援的檔案格式。支援格式：${ALLOWED_EXTENSIONS.join(', ')}`,
+        error: rejectionMessage,
       }
     }
 
@@ -580,8 +676,8 @@
       startIndexingPolling()
     } catch (error) {
       errorStep.value = currentStep.value
-      const stagePrefix = STAGE_ERROR_LABEL[currentStep.value] ?? '處理失敗'
-      const detail = error instanceof Error ? error.message : '上傳過程發生錯誤'
+      const stagePrefix = getStageErrorPrefix(currentStep.value, error)
+      const detail = getUploadErrorDetail(error, '上傳過程發生錯誤')
       errorMessage.value = `${stagePrefix}：${detail}`
     } finally {
       isProcessing.value = false
@@ -608,7 +704,7 @@
     } catch (error) {
       errorStep.value = 'publish'
       const stagePrefix = STAGE_ERROR_LABEL.publish
-      const detail = error instanceof Error ? error.message : '發布失敗'
+      const detail = getUploadErrorDetail(error, '發布失敗')
       errorMessage.value = `${stagePrefix}：${detail}`
     } finally {
       isProcessing.value = false
@@ -636,7 +732,7 @@
 </script>
 
 <template>
-  <div class="flex flex-col gap-6">
+  <div class="flex flex-col gap-6" data-testid="upload-wizard">
     <div v-if="currentStep !== 'complete'" class="flex flex-col gap-2 pb-2">
       <ol
         class="flex items-center gap-2 overflow-x-auto"
@@ -743,17 +839,33 @@
         <p class="mb-2 text-sm text-default">
           {{ isDragging ? '放開以上傳' : '拖放檔案至此，或點擊選擇' }}
         </p>
-        <p class="mb-4 text-xs text-muted">支援 .txt, .md, .pdf 格式，最大 10 MB（單一檔案）</p>
+        <p class="mb-4 text-xs text-muted">
+          支援 direct text 與 rich document，最大 10 MB（單一檔案）
+        </p>
         <input
           ref="fileInputRef"
           type="file"
-          accept=".txt,.md,.pdf,text/plain,text/markdown,application/pdf"
+          :accept="SUPPORTED_UPLOAD_ACCEPT_VALUES.join(',')"
           class="hidden"
           @change="handleFileInputChange"
         />
         <UButton color="neutral" variant="outline" size="sm" @click="triggerFileSelect">
           選擇檔案
         </UButton>
+      </div>
+
+      <div class="grid gap-3 md:grid-cols-2">
+        <div
+          v-for="tier in supportTierCards"
+          :key="tier.key"
+          class="rounded-lg border border-default bg-elevated px-4 py-3"
+        >
+          <p class="text-sm font-medium text-default">{{ tier.label }}</p>
+          <p class="mt-1 text-xs text-default">{{ tier.formats }}</p>
+          <p class="mt-2 text-xs leading-5 text-default">
+            {{ tier.description }}
+          </p>
+        </div>
       </div>
 
       <div v-if="!selectedFile" class="flex justify-end gap-2">
@@ -774,7 +886,16 @@
             <UIcon name="i-lucide-file-text" class="mt-0.5 size-5 text-muted" />
             <div class="min-w-0 flex-1">
               <p class="truncate font-medium text-default">{{ selectedFile.name }}</p>
-              <p class="text-sm text-muted">{{ (selectedFile.size / 1024).toFixed(1) }} KB</p>
+              <div class="mt-1 flex flex-wrap items-center gap-2">
+                <p class="text-sm text-muted">{{ (selectedFile.size / 1024).toFixed(1) }} KB</p>
+                <UBadge
+                  v-if="selectedFileTierLabel"
+                  color="neutral"
+                  variant="soft"
+                  size="sm"
+                  :label="selectedFileTierLabel"
+                />
+              </div>
             </div>
           </div>
 
