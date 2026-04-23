@@ -34,6 +34,7 @@ export function createMcpAuthorizationServerMetadata(event: H3Event) {
 
   return {
     authorization_endpoint: `${origin}/auth/mcp/authorize`,
+    client_id_metadata_document_supported: true,
     code_challenge_methods_supported: ['S256'],
     grant_types_supported: ['authorization_code'],
     issuer: origin,

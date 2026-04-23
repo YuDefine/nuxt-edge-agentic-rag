@@ -1,4 +1,4 @@
-import { randomBytes } from 'node:crypto'
+import { createHash, randomBytes } from 'node:crypto'
 
 interface KvLike {
   get(key: string): Promise<string | null>
@@ -6,10 +6,13 @@ interface KvLike {
 }
 
 interface AuthorizationCodeRecord {
+  codeChallenge?: string
+  codeChallengeMethod?: 'S256'
   clientId: string
   consumedAt: string | null
   expiresAt: string
   redirectUri: string
+  resource?: string
   scopes: string[]
   userId: string
 }
@@ -51,18 +54,24 @@ export function createMcpOauthGrantStore(input: {
 
   return {
     async issueAuthorizationCode(payload: {
+      codeChallenge?: string
+      codeChallengeMethod?: 'S256'
       clientId: string
       redirectUri: string
+      resource?: string
       scopes: string[]
       userId: string
     }): Promise<string> {
       const code = createOpaqueToken()
       const expiresAt = new Date(now() + input.authorizationCodeTtlSeconds * 1000).toISOString()
       const record: AuthorizationCodeRecord = {
+        codeChallenge: payload.codeChallenge,
+        codeChallengeMethod: payload.codeChallengeMethod,
         clientId: payload.clientId,
         consumedAt: null,
         expiresAt,
         redirectUri: payload.redirectUri,
+        resource: payload.resource,
         scopes: payload.scopes,
         userId: payload.userId,
       }
@@ -77,7 +86,9 @@ export function createMcpOauthGrantStore(input: {
     async exchangeAuthorizationCode(payload: {
       clientId: string
       code: string
+      codeVerifier?: string
       redirectUri: string
+      resource?: string
     }): Promise<McpOauthAccessTokenExchange> {
       const rawGrant = await input.kv.get(grantKey(payload.code))
 
@@ -102,6 +113,20 @@ export function createMcpOauthGrantStore(input: {
 
       if (grant.redirectUri !== payload.redirectUri) {
         throw new McpOauthGrantError('Authorization code redirect URI mismatch', 400)
+      }
+
+      if (grant.resource && payload.resource && grant.resource !== payload.resource) {
+        throw new McpOauthGrantError('Authorization code resource mismatch', 400)
+      }
+
+      if (grant.codeChallenge) {
+        if (!payload.codeVerifier) {
+          throw new McpOauthGrantError('Authorization code PKCE verifier is required', 400)
+        }
+
+        if (createS256CodeChallenge(payload.codeVerifier) !== grant.codeChallenge) {
+          throw new McpOauthGrantError('Authorization code PKCE mismatch', 400)
+        }
       }
 
       const consumedGrant: AuthorizationCodeRecord = {
@@ -174,6 +199,10 @@ export async function getMcpOauthAccessTokenRecord(input: {
 
 function createOpaqueToken(): string {
   return randomBytes(24).toString('base64url')
+}
+
+function createS256CodeChallenge(codeVerifier: string): string {
+  return createHash('sha256').update(codeVerifier).digest('base64url')
 }
 
 function grantKey(code: string): string {

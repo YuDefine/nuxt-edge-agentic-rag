@@ -39,6 +39,7 @@ describe('MCP OAuth discovery metadata', () => {
       code_challenge_methods_supported: ['S256'],
       grant_types_supported: ['authorization_code'],
       issuer: 'https://agentic.example',
+      client_id_metadata_document_supported: true,
       response_types_supported: ['code'],
       scopes_supported: [
         'knowledge.ask',

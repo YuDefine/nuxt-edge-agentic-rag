@@ -27,6 +27,8 @@ describe('mcp oauth grants', () => {
     })
 
     const code = await grants.issueAuthorizationCode({
+      codeChallenge: 'iMnq5o6zALKXGivsnlom_0F5_WYda32GHkxlV7mq7hQ',
+      codeChallengeMethod: 'S256',
       clientId: 'claude-remote',
       redirectUri: 'https://claude.example/callback',
       scopes: ['knowledge.ask', 'knowledge.search'],
@@ -36,6 +38,7 @@ describe('mcp oauth grants', () => {
     const token = await grants.exchangeAuthorizationCode({
       clientId: 'claude-remote',
       code,
+      codeVerifier: 'verifier',
       redirectUri: 'https://claude.example/callback',
     })
 
@@ -87,5 +90,33 @@ describe('mcp oauth grants', () => {
     ).rejects.toThrowError(
       new McpOauthGrantError('Authorization code has already been consumed', 400),
     )
+  })
+
+  it('rejects PKCE verifier mismatches for challenged authorization codes', async () => {
+    const kv = createKvStub()
+    const grants = createMcpOauthGrantStore({
+      accessTokenTtlSeconds: 600,
+      authorizationCodeTtlSeconds: 120,
+      kv,
+      now: () => 1_700_000_000_000,
+    })
+
+    const code = await grants.issueAuthorizationCode({
+      codeChallenge: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+      codeChallengeMethod: 'S256',
+      clientId: 'claude-remote',
+      redirectUri: 'https://claude.example/callback',
+      scopes: ['knowledge.ask'],
+      userId: 'user-1',
+    })
+
+    await expect(
+      grants.exchangeAuthorizationCode({
+        clientId: 'claude-remote',
+        code,
+        codeVerifier: 'wrong-verifier',
+        redirectUri: 'https://claude.example/callback',
+      }),
+    ).rejects.toThrowError(new McpOauthGrantError('Authorization code PKCE mismatch', 400))
   })
 })
