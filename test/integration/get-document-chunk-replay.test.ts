@@ -85,6 +85,7 @@ const replayRouteMocks = vi.hoisted(() => {
     getAllowedAccessLevels: vi.fn().mockReturnValue(['internal']),
     getDocumentChunk: vi.fn(),
     getKnowledgeRuntimeConfig: vi.fn(),
+    getRequiredD1Binding: vi.fn().mockReturnValue({}),
     getRequiredKvBinding: vi.fn().mockReturnValue({ get: vi.fn(), put: vi.fn() }),
     requireMcpBearerToken: vi.fn().mockResolvedValue({
       scopes: ['knowledge.citation.read'],
@@ -106,6 +107,7 @@ vi.mock('evlog', () => ({
 vi.mock('../../server/utils/database', () => createHubDbMock())
 
 vi.mock('../../server/utils/cloudflare-bindings', () => ({
+  getRequiredD1Binding: replayRouteMocks.getRequiredD1Binding,
   getRequiredKvBinding: replayRouteMocks.getRequiredKvBinding,
 }))
 
@@ -191,7 +193,7 @@ describe('MCP getDocumentChunk — retention replay contract', () => {
       { citationId: 'citation-in-window' },
       {
         authorizationHeader: 'Bearer test-token',
-        cloudflareEnv: {},
+        cloudflareEnv: { DB: {} },
         params: { citationId: 'citation-in-window' },
         pendingEvent,
         userRoleLookup: adminRoleLookup,
@@ -231,7 +233,7 @@ describe('MCP getDocumentChunk — retention replay contract', () => {
         { citationId: 'citation-never-existed' },
         {
           authorizationHeader: 'Bearer test-token',
-          cloudflareEnv: {},
+          cloudflareEnv: { DB: {} },
           params: { citationId: 'citation-never-existed' },
           pendingEvent,
           userRoleLookup: adminRoleLookup,
@@ -267,7 +269,7 @@ describe('MCP getDocumentChunk — retention replay contract', () => {
         { citationId: 'citation-scrubbed' },
         {
           authorizationHeader: 'Bearer test-token',
-          cloudflareEnv: {},
+          cloudflareEnv: { DB: {} },
           params: { citationId: 'citation-scrubbed' },
           pendingEvent,
           userRoleLookup: adminRoleLookup,
@@ -311,7 +313,7 @@ describe('MCP getDocumentChunk — retention replay contract', () => {
         { citationId: 'citation-restricted' },
         {
           authorizationHeader: 'Bearer test-token',
-          cloudflareEnv: {},
+          cloudflareEnv: { DB: {} },
           params: { citationId: 'citation-restricted' },
           pendingEvent,
           userRoleLookup: adminRoleLookup,
@@ -354,7 +356,7 @@ describe('MCP getDocumentChunk — retention replay contract', () => {
       { citationId: 'citation-boundary' },
       {
         authorizationHeader: 'Bearer test-token',
-        cloudflareEnv: {},
+        cloudflareEnv: { DB: {} },
         params: { citationId: 'citation-boundary' },
         pendingEvent,
         userRoleLookup: adminRoleLookup,
@@ -385,7 +387,7 @@ describe('MCP getDocumentChunk — retention replay contract', () => {
         { citationId: 'citation-x' },
         {
           authorizationHeader: 'Bearer test-token',
-          cloudflareEnv: {},
+          cloudflareEnv: { DB: {} },
           params: { citationId: 'citation-x' },
           pendingEvent,
           userRoleLookup: adminRoleLookup,
