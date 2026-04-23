@@ -55,10 +55,6 @@ Cloudflare 相關 token 目前分成三類，不可混用：
 | `PROD_ADMIN_EMAIL_ALLOWLIST`    | production build-time admin mirror | `charles@example.com,admin@example.com` | medium      |
 | `STAGING_ADMIN_EMAIL_ALLOWLIST` | staging build-time admin mirror    | `charles@example.com,admin@example.com` | medium      |
 | `NUXT_PUBLIC_SITE_URL`          | 前端 canonical URL                 | `https://agentic.yudefine.com.tw`       | low         |
-| `NUXT_PUBLIC_SENTRY_DSN`        | Sentry 前端錯誤上報                | `https://xxx@sentry.io/123`             | low         |
-| `SENTRY_AUTH_TOKEN`             | Sentry release upload              | `sntrys_...`                            | **high**    |
-| `SENTRY_ORG`                    | Sentry org slug                    | `yuntech-project`                       | low         |
-| `SENTRY_PROJECT`                | Sentry project slug                | `nuxt-edge-agentic-rag`                 | low         |
 
 ### 1.4 Runtime secrets（以 `wrangler secret put` 預先管理）
 
