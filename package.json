@@ -49,6 +49,7 @@
     "@better-auth/passkey": "^1.6.7",
     "@internationalized/date": "^3.12.1",
     "@libsql/client": "^0.17.2",
+    "@modelcontextprotocol/sdk": "1.29.0",
     "@nuxt/hints": "1.0.3",
     "@nuxt/image": "^2.0.0",
     "@nuxt/ui": "^4.6.1",
