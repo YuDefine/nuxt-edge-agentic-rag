@@ -3,7 +3,7 @@ import type { H3Event } from 'h3'
 export const CHATGPT_CONNECTOR_LEGACY_REDIRECT_URI =
   'https://chatgpt.com/connector_platform_oauth_redirect'
 
-const CHATGPT_CONNECTOR_OAUTH_PATH_PATTERN = /^\/connector\/oauth\/[^/?#]+$/
+const CHATGPT_CONNECTOR_OAUTH_PATH_PATTERN = /^\/connector\/oauth\/[A-Za-z0-9_-]{1,64}$/
 
 export interface ChatGptClientMetadataInput {
   clientName?: string
