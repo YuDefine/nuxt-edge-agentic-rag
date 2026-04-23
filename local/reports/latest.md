@@ -26,7 +26,7 @@
 
 在系統設計上，前端以 Nuxt 提供 Web 問答與管理後台，後端部署於 Cloudflare Workers，整合 D1、R2、KV、AI Search 與 AI Gateway；現階段回答層由應用層 fallback 合成器與結構式判斷器承擔，並保留後續接入 Workers AI 與外部模型路由的擴充空間。本專題已完成可部署、可驗證、可答辯的最小閉環：Google OAuth 配合 Admin/Member/Guest 三級角色 RBAC、文件上傳與版本管理、AI Search 同步、Web 問答、可回放引用，以及 4 個無狀態 MCP Tools。角色部分，Admin 由 `ADMIN_EMAIL_ALLOWLIST` seed，Member 由 Admin 於 UI 升格，Guest 權限由 `system_settings.guest_policy` dial（`same_as_member` / `browse_only` / `no_access`）統一控制，Web 與 MCP 入口均套用同一條閘。正式回答一律以 D1 驗證 `active/indexed/current` 狀態，並以前處理階段預先建立的 `source_chunks` 作為 `citationId` 回放來源。
 
-在問答決策上，本系統採分段式信心判斷：Query Normalization 僅做規則式標準化；第一輪檢索可使用 query rewrite；僅於邊界區間才由 answerability judge 與 Query Reformulation 介入；若證據仍不足則拒答。驗證面以分層資料集、整合測試、引用回放與權限稽核為主，聚焦回答正確性、拒答精準性、引用正確性、MCP Tool 契約穩定性、current-version-only 檢索正確性與遮罩完整性。Web 對話與 MCP 無狀態契約分流；核心驗收資料以 `md`、`txt` 與預先轉 Markdown 且經人工校閱之文件為主，並以本版已完成之介面截圖、自動化驗證結果與部署治理設計作為答辯依據。
+在問答決策上，本系統採分段式信心判斷：Query Normalization 僅做規則式標準化；第一輪檢索可使用 query rewrite；僅於邊界區間才由 answerability judge 與 Query Reformulation 介入；若證據仍不足則拒答。驗證面以分層資料集、整合測試、引用回放與權限稽核為主，聚焦回答正確性、拒答精準性、引用正確性、MCP Tool 契約穩定性、current-version-only 檢索正確性與遮罩完整性。Web 對話與 MCP 無狀態契約分流；現階段文件 ingestion 已支援 `md`、`txt` 與 `.pdf`、`.docx`、`.xlsx`、`.pptx` 進入 canonical snapshot → replay path，`.doc`、`.xls`、`.ppt` 仍需先轉成現代 Office / 文字格式，scanned / image-only PDF 與媒體檔則不納入可引用同步路徑，並以本版已完成之介面截圖、自動化驗證結果與部署治理設計作為答辯依據。
 
 關鍵字：代理式檢索增強生成（Agentic RAG）、邊緣原生架構（Edge-Native）、Cloudflare AI Search、Self-Correction、Model Context Protocol（MCP）、規格驅動開發（SDD）
 
@@ -305,13 +305,13 @@ RAG 能透過外部知識檢索降低生成式模型的幻覺風險，已廣泛�
 
 表 1-1 現階段實作範圍與先後順序
 
-| 分類     | 首批必做                                                                                                                                                                    | 後續規劃                                                                                                                                                        |
-| -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 身分驗證 | Google OAuth、Passkey、Admin/Member/Guest 角色、部署環境變數 `ADMIN_EMAIL_ALLOWLIST`                                                                                        | Admin 路由與管理介面的細節優化                                                                                                                                  |
-| 知識管理 | 一次性 signed URL 上傳至 R2、版本管理、`source_chunks` 預建、AI Search 同步、文件狀態管理、`is_current` 發布規則；核心驗收資料集優先採 `md`、`txt` 或預先轉 Markdown 之文件 | rich format 條件支援擴充：優先 `pdf`、`docx`、`xlsx`、`pptx` canonical snapshot；`.doc`、`.xls`、`.ppt` 經 conversion path；音檔 / 影片另走 transcript pipeline |
-| 問答流程 | 規則式 Query Normalization、AI Search 檢索、分段式置信度評估、Self-Correction、拒答、引用顯示、Web 對話歷史                                                                 | Debug 分數面板、非核心 UI 細節與延遲調校                                                                                                                        |
-| MCP 介面 | `askKnowledge`、`getDocumentChunk`、OAuth-compatible remote MCP、`knowledge.restricted.read` scope、無狀態呼叫                                                              | `searchKnowledge`、`listCategories`、Claude 以外之 connector 相容性與安裝指引補完                                                                               |
-| 可觀測性 | 遮罩後 `query_logs`、`source_chunks` / `citation_records`、最小必要決策路徑與設定快照版本                                                                                   | 管理統計儀表板、延遲趨勢圖、保留期限自動化報表                                                                                                                  |
+| 分類     | 首批必做                                                                                                                                                                                               | 後續規劃                                                                                          |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------- |
+| 身分驗證 | Google OAuth、Passkey、Admin/Member/Guest 角色、部署環境變數 `ADMIN_EMAIL_ALLOWLIST`                                                                                                                   | Admin 路由與管理介面的細節優化                                                                    |
+| 知識管理 | 一次性 signed URL 上傳至 R2、版本管理、`source_chunks` 預建、AI Search 同步、文件狀態管理、`is_current` 發布規則；現階段支援 `md`、`txt` 與 `pdf`、`docx`、`xlsx`、`pptx` canonical snapshot ingestion | legacy Office conversion path、scanned / image-only PDF OCR 評估、音檔 / 影片 transcript pipeline |
+| 問答流程 | 規則式 Query Normalization、AI Search 檢索、分段式置信度評估、Self-Correction、拒答、引用顯示、Web 對話歷史                                                                                            | Debug 分數面板、非核心 UI 細節與延遲調校                                                          |
+| MCP 介面 | `askKnowledge`、`getDocumentChunk`、OAuth-compatible remote MCP、`knowledge.restricted.read` scope、無狀態呼叫                                                                                         | `searchKnowledge`、`listCategories`、Claude 以外之 connector 相容性與安裝指引補完                 |
+| 可觀測性 | 遮罩後 `query_logs`、`source_chunks` / `citation_records`、最小必要決策路徑與設定快照版本                                                                                                              | 管理統計儀表板、延遲趨勢圖、保留期限自動化報表                                                    |
 
 開始實作時，應先完成可部署、可驗證、可答辯的 Web 核心閉環，再補齊現階段尚未納入的後續規劃。
 
@@ -380,12 +380,12 @@ Cloudflare AI Search 每個 instance 最多支援 5 個 custom metadata 欄位�
 
 表 1-2 實作前平台能力確認與通過條件
 
-| 面向       | 實作前確認事項                                                                                           | 現階段通過條件                                                                                       | 若未通過之降階原則                                                                                                                                    |
-| ---------- | -------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 檢索介面   | 確認 AI Search 在目標環境可穩定提供搜尋 API 或 Workers binding，並回傳足以做 D1 post-verification 的欄位 | 可對指定 `document_version_id` 完成 smoke query，取得分數、必要 metadata 與可用候選片段              | 先保留 Web 問答、管理後台同步與引用回放能力為核心閉環；`searchKnowledge` / `listCategories` 等 MCP 對外包裝與進階 filter 可延後到核心檢索穩定後再接入 |
-| 引用回放   | 確認驗收資料集的候選片段可穩定對應至既有 `source_chunks`                                                 | 用於驗收與答辯的 current 文件皆能通過 smoke retrieval 與 `citationId` 回放                           | 核心驗收資料集先限 `md`、`txt` 或預先轉 Markdown 之文件；`pdf`、`docx` 改為條件支援                                                                   |
-| 模型可用性 | 確認 Workers AI 於部署當下至少存在一個低延遲回答模型與一個較強判斷／整合模型                             | Preview 環境能完成 direct path、judge 與 Self-Correction 三條路徑，且實際模型名稱已鎖定至設定檔      | 以角色型常數 `models.defaultAnswer` / `models.agentJudge` 維持規格，待可用模型穩定後再回填實際名稱                                                    |
-| 範圍收斂   | 確認現階段先完成可展示的最小閉環，而非一次完成所有優化項                                                 | 至少完成「文件發布 → Web 問答 → 引用回放 → current-version-only 驗證 → 權限隔離 → 查詢日誌」六步閉環 | 延後 debug 視覺化、進階調校與非核心 UI 細節，不得為了展示而先做不納入目前範圍之能力                                                                   |
+| 面向       | 實作前確認事項                                                                                           | 現階段通過條件                                                                                       | 若未通過之降階原則                                                                                                                                          |
+| ---------- | -------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 檢索介面   | 確認 AI Search 在目標環境可穩定提供搜尋 API 或 Workers binding，並回傳足以做 D1 post-verification 的欄位 | 可對指定 `document_version_id` 完成 smoke query，取得分數、必要 metadata 與可用候選片段              | 先保留 Web 問答、管理後台同步與引用回放能力為核心閉環；`searchKnowledge` / `listCategories` 等 MCP 對外包裝與進階 filter 可延後到核心檢索穩定後再接入       |
+| 引用回放   | 確認驗收資料集的候選片段可穩定對應至既有 `source_chunks`                                                 | 用於驗收與答辯的 current 文件皆能通過 smoke retrieval 與 `citationId` 回放                           | 若 rich format canonical snapshot 不穩定，先回退至 `md`、`txt` 或人工校閱文字版；`.doc`、`.xls`、`.ppt` 與 scanned / image-only PDF 不作核心 pass/fail 依據 |
+| 模型可用性 | 確認 Workers AI 於部署當下至少存在一個低延遲回答模型與一個較強判斷／整合模型                             | Preview 環境能完成 direct path、judge 與 Self-Correction 三條路徑，且實際模型名稱已鎖定至設定檔      | 以角色型常數 `models.defaultAnswer` / `models.agentJudge` 維持規格，待可用模型穩定後再回填實際名稱                                                          |
+| 範圍收斂   | 確認現階段先完成可展示的最小閉環，而非一次完成所有優化項                                                 | 至少完成「文件發布 → Web 問答 → 引用回放 → current-version-only 驗證 → 權限隔離 → 查詢日誌」六步閉環 | 延後 debug 視覺化、進階調校與非核心 UI 細節，不得為了展示而先做不納入目前範圍之能力                                                                         |
 
 現階段最小可行閉環如下：
 
@@ -398,7 +398,7 @@ Cloudflare AI Search 每個 instance 最多支援 5 個 custom metadata 欄位�
 
 上述閉環中的「引用回放」屬核心能力，而非可有可無的 MCP 外層功能。實作順序可先以內部驗證流程或測試 harness 確認 `citationId` 回放，再於核心檢索穩定後接上 `getDocumentChunk`；但現階段正式驗收與答辯稿仍須補齊 4 個無狀態 MCP Tools。
 
-若時程受壓，現階段的刪減順序應為：先延後 debug 分數面板與管理摘要視覺化，再延後 rich format 直接 ingestion，最後才縮減 MCP 以外的輔助功能；不得先刪 current-version-only、引用回放、權限隔離與遮罩記錄等核心治理能力。
+若時程受壓，現階段的刪減順序應為：先延後 debug 分數面板與管理摘要視覺化，再延後 legacy Office / 媒體 / OCR 類擴充，最後才縮減 MCP 以外的輔助功能；不得先刪 current-version-only、引用回放、權限隔離與遮罩記錄等核心治理能力。
 
 ### 1.3.4 實作啟動凍結與回填邊界
 
@@ -782,7 +782,7 @@ else:
 為讓 `citationId` 在供應商 chunk ID 變動、reindex 或 rich format 轉檔差異下仍可回放，現階段採「應用層 canonical text + deterministic segmentation」策略：
 
 1. 原始檔上傳後，先由應用層產出單一正規化文字快照，寫入 `normalized_text_r2_key`。
-2. `md` / `txt` 直接正規化；`pdf` / `docx` / `xlsx` / `pptx` 需先轉為可檢查之 canonical text snapshot，確認段落、標題、工作表 / 投影片結構與主要表格文字未嚴重缺失後，才可進入後續流程。
+2. `md` / `txt` 直接正規化；`pdf` / `docx` / `xlsx` / `pptx` 需先轉為可檢查之 canonical text snapshot，確認段落、標題、工作表 / 投影片結構與主要表格文字未嚴重缺失後，才可進入後續流程；其中 PDF 若抽不出可選取文字（例如 scanned / image-only source）即視為 non-replayable。
 3. `.doc` / `.xls` / `.ppt` 不直接走現階段 ingestion 路徑；應先經 conversion boundary 轉為現代 Office 或文字版，再進入 canonical snapshot 流程。
 4. 音檔與影片不直接納入本階段文件 ingestion；若後續擴充，應以獨立 transcript pipeline 產出可校閱文字稿後，再進入既有 `normalized_text_r2_key` / `source_chunks` 契約。
 5. 應用層以固定切分規則（標題層級、段落邊界、最大字數與最小字數）預先建立 `source_chunks`，並一次產生 `chunk_index`、`citation_locator`、`chunk_hash`、opaque `citationId` 與 `smoke_test_queries_json`；供應商觀測欄位（`ai_search_file_id` / `ai_search_chunk_id` / 供應商 locator）寫入 `source_chunks.metadata_json` 以便後續比對。
@@ -1193,11 +1193,12 @@ else:
 
 為避免文件管理規格與 AI Search 實際限制脫節，現階段補充以下上傳與 ingestion 邊界：
 
-- 現階段核心驗收資料集與正式驗收統計，應以 `md`、`txt`，以及可先轉為 Markdown 並經人工校閱之文件為主；若擴充 direct rich format ingestion，優先順序為 `pdf`、`docx`、`xlsx`、`pptx`；`.doc`、`.xls`、`.ppt` 與音檔 / 影片不作本階段核心 pass/fail 依據。
+- 現階段核心驗收資料集與正式驗收統計，可納入 `md`、`txt` 與已通過 canonical snapshot 驗證之 `pdf`、`docx`、`xlsx`、`pptx`；`.doc`、`.xls`、`.ppt`、音檔 / 影片與 scanned / image-only PDF 不作本階段核心 pass/fail 依據。
 - 現階段 Web 上傳一律採一次性 signed URL 直傳 R2；應用伺服器不轉送大檔，僅負責簽發 upload URL、驗證 metadata、產生 `normalized_text_r2_key` 與建立版本紀錄。
 - rich format 文件（例如 `pdf`、`docx`、`xlsx`、`pptx`）若超出 Cloudflare AI Search 當前公開限制，應在上傳前提示管理員改傳 Markdown/TXT，或先經應用層轉換為 canonical text snapshot 後再同步；答辯核心資料集不得把供應商自動轉檔當成唯一相依路徑。以 2026-04 查核時，官方公開 rich format 上限已提升至 4 MB。[26]
 - `.doc`、`.xls`、`.ppt` 與音檔 / 影片若要納入後續規劃，應分別透過 conversion path 與 transcript pipeline 先產出可校閱文字稿，再進入既有 `normalized_text_r2_key` / `source_chunks` 契約，而非直接共用目前同步 request path。
 - 上傳流程需在建立 `document_versions` 前先完成副檔名、MIME type、檔案大小與 checksum 驗證；未通過者不得進入 `queued`。
+- scanned / image-only PDF 可通過上傳與 checksum 驗證，但若 extraction 後無法產出可引用文字，sync 應以 non-replayable 4xx 失敗，並明確提示管理員改提供可選取文字版本或先整理成 Markdown。
 - 若 rich format 轉檔後的 `normalized_text_r2_key` 出現缺段、段落錯位或主要表格文字流失到無法引用，該版本不得進入同步；必要時應改以人工整理之 Markdown 作為核心驗收版本來源。
 - smoke retrieval 驗證除確認可檢回片段外，亦需確認片段文字皆可對應至既有 `source_chunks`；若只能取得摘要、無法對應或對應後內容不足以回放，該版本不得發布。
 - 現階段不把供應商的自動轉檔品質視為保證值；若同一來源在不同 reindex 產生明顯不同切塊，應以最新發布版本重新驗證，而非假定舊有 chunk 對應仍然有效。
@@ -1253,7 +1254,7 @@ else:
 | M7   | W12-13 | 查詢日誌、rate limit、保留期限、錯誤處理    | 可觀測與可治理版本       |
 | M8   | W14-15 | 測試驗證、圖表回填、報告與答辯資料          | 完整專題交付物           |
 
-若時程受壓，應優先完成 1.3.3 所定義之最小可行閉環，再處理 MCP 契約擴充、rich format 條件支援與畫面優化；不得為了趕展示而先跳過 current-version-only、引用回放或權限治理。
+若時程受壓，應優先完成 1.3.3 所定義之最小可行閉環，再處理 MCP 契約擴充、legacy Office / 媒體 / OCR 類延伸與畫面優化；不得為了趕展示而先跳過 current-version-only、引用回放或權限治理。
 
 ## 第四節 其他相關設計或考量
 
@@ -1408,7 +1409,7 @@ else:
 
 - 初始驗證資料集：20 筆，供欄位檢查、早期 dry run 與流程走通，不納入正式統計。
 - 校準資料集：獨立於正式驗收集，用於校準門檻、prompt 與模型路由。
-- 正式驗收資料集：30–50 筆，凍結後不得再改 threshold、prompt、route 或題目標註規則；正式統計預設僅納入 `md`、`txt` 與預先轉 Markdown 且經人工校閱之文件。若需調整，應建立下一版驗收集並重跑。
+- 正式驗收資料集：30–50 筆，凍結後不得再改 threshold、prompt、route 或題目標註規則；正式統計可納入 `md`、`txt` 與已通過 canonical snapshot 驗證之 `pdf`、`docx`、`xlsx`、`pptx`，但 `.doc`、`.xls`、`.ppt`、媒體檔與 scanned / image-only PDF 仍應排除。若需調整，應建立下一版驗收集並重跑。
 - 答辯展示案例集：可自正式驗收資料集挑選，但不得回頭改寫正式驗收規則。
 - 每筆案例至少需定義：適用通道、gold facts、必要引用、不可犯錯、預期 `http_status`，以及是否允許 judge／Self-Correction。
 
@@ -1581,19 +1582,19 @@ Admin 先取得一次性 signed URL 與 `uploadId` → 原始檔直傳 R2 staged
 
 表 3-4 系統功能模組說明
 
-| 功能模組           | 說明                                                                                                                                                                                                  |
-| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 身分驗證           | 現階段支援 Google OAuth 與 Passkey；角色採三級 RBAC（Admin/Member/Guest），Admin 由 `ADMIN_EMAIL_ALLOWLIST` seed，Guest 權限由 `system_settings.guest_policy` dial 控制                               |
-| 成員與權限管理     | Admin 可於 `/admin/members` 升降 Guest↔Member；於 `/admin/settings/guest-policy` 切換 Guest dial（`same_as_member` / `browse_only` / `no_access`）；升降事件一律寫入 `member_role_changes` 留稽核軌跡 |
-| 智慧問答           | 支援自然語言問答、分段式置信度評估、Self-Correction、拒答                                                                                                                                             |
-| 對話歷史           | Web 對話持久化；依 `conversations.access_level` 與目前權限重算可見性；MCP 現階段採無狀態呼叫，僅以 `query_logs` 支援審計                                                                              |
-| 知識管理           | 一次性 signed URL 上傳至 R2、版本管理、分類、標籤、狀態轉移（封存／解除封存／刪除 draft）、版本重試同步、顯式發布 current 版本與 AI Search 同步                                                       |
-| MCP 介面           | 提供 4 個核心 Tools，支援 Bearer token 與 `knowledge.restricted.read` scope；三級角色擴充後 middleware 額外以 token 創建者 role × `guest_policy` 作為前置閘                                           |
-| 引用追溯           | 以 `source_chunks.id` 作為可回放 `citationId`，支援 `getDocumentChunk`                                                                                                                                |
-| Token 管理         | 建立、檢視、撤銷 MCP token，並控管 scope 與到期時間                                                                                                                                                   |
-| 用量儀表板         | `/admin/usage` 呈現 Cloudflare AI Gateway 當日 / 當月 tokens、requests、cache hit rate、Neurons 剩餘額度與近 24h 折線圖；讀取端另需 `CLOUDFLARE_API_TOKEN_ANALYTICS` read-only secret                 |
-| 查詢日誌與營運治理 | 記錄延遲、judge、拒答、Self-Correction、版本、設定快照與遮罩執行情形                                                                                                                                  |
-| 響應式與無障礙     | 全頁 mobile / tablet / desktop 三 breakpoint 適配；`@nuxt/a11y` dev report 作為離線檢查輔助；鍵盤 walkthrough 覆蓋關鍵操作路徑                                                                        |
+| 功能模組           | 說明                                                                                                                                                                                                                                   |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 身分驗證           | 現階段支援 Google OAuth 與 Passkey；角色採三級 RBAC（Admin/Member/Guest），Admin 由 `ADMIN_EMAIL_ALLOWLIST` seed，Guest 權限由 `system_settings.guest_policy` dial 控制                                                                |
+| 成員與權限管理     | Admin 可於 `/admin/members` 升降 Guest↔Member；於 `/admin/settings/guest-policy` 切換 Guest dial（`same_as_member` / `browse_only` / `no_access`）；升降事件一律寫入 `member_role_changes` 留稽核軌跡                                  |
+| 智慧問答           | 支援自然語言問答、分段式置信度評估、Self-Correction、拒答                                                                                                                                                                              |
+| 對話歷史           | Web 對話持久化；依 `conversations.access_level` 與目前權限重算可見性；MCP 現階段採無狀態呼叫，僅以 `query_logs` 支援審計                                                                                                               |
+| 知識管理           | 一次性 signed URL 上傳至 R2、版本管理、分類、標籤、狀態轉移（封存／解除封存／刪除 draft）、版本重試同步、顯式發布 current 版本與 AI Search 同步；`md`、`txt`、`pdf`、`docx`、`xlsx`、`pptx` 皆可進入 canonical snapshot ingestion path |
+| MCP 介面           | 提供 4 個核心 Tools，支援 Bearer token 與 `knowledge.restricted.read` scope；三級角色擴充後 middleware 額外以 token 創建者 role × `guest_policy` 作為前置閘                                                                            |
+| 引用追溯           | 以 `source_chunks.id` 作為可回放 `citationId`，支援 `getDocumentChunk`                                                                                                                                                                 |
+| Token 管理         | 建立、檢視、撤銷 MCP token，並控管 scope 與到期時間                                                                                                                                                                                    |
+| 用量儀表板         | `/admin/usage` 呈現 Cloudflare AI Gateway 當日 / 當月 tokens、requests、cache hit rate、Neurons 剩餘額度與近 24h 折線圖；讀取端另需 `CLOUDFLARE_API_TOKEN_ANALYTICS` read-only secret                                                  |
+| 查詢日誌與營運治理 | 記錄延遲、judge、拒答、Self-Correction、版本、設定快照與遮罩執行情形                                                                                                                                                                   |
+| 響應式與無障礙     | 全頁 mobile / tablet / desktop 三 breakpoint 適配；`@nuxt/a11y` dev report 作為離線檢查輔助；鍵盤 walkthrough 覆蓋關鍵操作路徑                                                                                                         |
 
 ### 3.2.3 操作與介面說明
 
@@ -2282,7 +2283,7 @@ scope 對照如下：
 2. `必要引用` 欄若為「無」，表示該案應維持零引用；若列出多份文件，則各文件均須有對應引用。
 3. `不可犯錯` 任一命中即直接判定不通過，不因回答流暢、篇幅完整或延遲較低而豁免。
 
-正式擴充正式驗收資料集時，除補足問答案例外，亦需建立對應的 `EV-xx` 補充證據，處理 OAuth／allowlist 變更後的權限重算、publish no-op / 失敗 rollback、rate limit、stale 對話重算與 rich format 條件支援等不適合只用單一問句描述的驗收項目。
+正式擴充正式驗收資料集時，除補足問答案例外，亦需建立對應的 `EV-xx` 補充證據，處理 OAuth／allowlist 變更後的權限重算、publish no-op / 失敗 rollback、rate limit、stale 對話重算與 rich format canonical snapshot 驗證等不適合只用單一問句描述的驗收項目。
 
 正式回填執行結果表時，需新增以下欄位：
 
