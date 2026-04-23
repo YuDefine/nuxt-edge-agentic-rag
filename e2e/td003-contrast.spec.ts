@@ -26,6 +26,7 @@ import { ADMIN_EMAIL, BASE_URL, devLogin } from './helpers'
 const CONTRAST_RULE = ['color-contrast']
 
 const ADMIN_ROUTES = [
+  '/admin/usage',
   '/admin/debug/latency',
   '/admin/query-logs',
   '/admin/tokens',

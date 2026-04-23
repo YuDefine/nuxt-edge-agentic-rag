@@ -1,4 +1,4 @@
-import { test } from '@playwright/test'
+import { expect, test } from '@playwright/test'
 import path from 'path'
 import { fileURLToPath } from 'url'
 
@@ -11,6 +11,59 @@ const SS_DIR = path.resolve(__dirname, '../screenshots/local/observability-revie
 // Known test log IDs seeded via SQLite
 const LOG_ID_ANSWERED = 'log-test-answered-1'
 const LOG_ID_REFUSED = 'log-test-refused-1'
+
+const MOCK_USAGE_RESPONSE = {
+  data: {
+    tokens: { input: 1200, output: 800, total: 2000 },
+    neurons: { used: 1400, freeQuotaPerDay: 10000, remaining: 8600 },
+    requests: { total: 21, cached: 7, cacheHitRate: 33.3 },
+    timeline: [
+      {
+        timestamp: '2026-04-24T08:00:00.000Z',
+        tokens: 1200,
+        requests: 12,
+        cacheHits: 4,
+      },
+      {
+        timestamp: '2026-04-24T09:00:00.000Z',
+        tokens: 840,
+        requests: 9,
+        cacheHits: 3,
+      },
+    ],
+    lastUpdatedAt: '2026-04-24T09:05:00.000Z',
+  },
+} as const
+
+const MOCK_LATENCY_SUMMARY_RESPONSE = {
+  data: {
+    days: 7,
+    channels: [
+      {
+        channel: 'web',
+        firstTokenMs: { p50: 180, p95: 320, sampleCount: 16 },
+        completionMs: { p50: 420, p95: 760, sampleCount: 16 },
+        outcomes: {
+          answered: 12,
+          refused: 3,
+          forbidden: 0,
+          error: 1,
+        },
+      },
+      {
+        channel: 'mcp',
+        firstTokenMs: { p50: 160, p95: 280, sampleCount: 5 },
+        completionMs: { p50: 390, p95: 610, sampleCount: 5 },
+        outcomes: {
+          answered: 0,
+          refused: 0,
+          forbidden: 0,
+          error: 5,
+        },
+      },
+    ],
+  },
+} as const
 
 // ─────────────────────────────────────────────────────────────────────
 // Admin sidebar + navigation structure
@@ -65,9 +118,35 @@ test('#1b-refused admin debug detail: refused (refusal diagnostics + null latenc
 // ─────────────────────────────────────────────────────────────────────
 test('#1c admin debug latency summary page', async ({ page }) => {
   await devLogin(page, ADMIN_EMAIL)
+  await page.route('**/api/admin/debug/latency/summary**', async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify(MOCK_LATENCY_SUMMARY_RESPONSE),
+    })
+  })
   await page.goto(`${BASE_URL}/admin/debug/latency`)
-  await page.waitForTimeout(2000)
+  await expect(page.getByRole('heading', { name: 'web 結果分布' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'mcp 結果分布' })).toBeVisible()
+  await expect(page.getByText('阻擋').first()).toBeVisible()
+  await expect(page.getByText('0 (0%)').first()).toBeVisible()
   await page.screenshot({ path: `${SS_DIR}/#1c-admin-debug-latency.png`, fullPage: true })
+})
+
+// ─────────────────────────────────────────────────────────────────────
+// #1d — Admin usage dashboard page
+// ─────────────────────────────────────────────────────────────────────
+test('#1d admin usage dashboard page', async ({ page }) => {
+  await devLogin(page, ADMIN_EMAIL)
+  await page.route('**/api/admin/usage?range=**', async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify(MOCK_USAGE_RESPONSE),
+    })
+  })
+  await page.goto(`${BASE_URL}/admin/usage`)
+  await expect(page.getByTestId('usage-timeline-chart')).toBeVisible()
+  await expect(page.getByText('Tokens 時間分佈')).toBeVisible()
+  await page.screenshot({ path: `${SS_DIR}/#1d-admin-usage-dashboard.png`, fullPage: true })
 })
 
 // ─────────────────────────────────────────────────────────────────────
@@ -90,7 +169,8 @@ test('#2a member chat page: no debug fields', async ({ page }) => {
     'Debug',
     'Internal Debug',
   ]
-  debugTerms.filter((term) => bodyText?.includes(term))
+  const leakedTerms = debugTerms.filter((term) => bodyText?.includes(term))
+  expect(leakedTerms).toEqual([])
 })
 
 // ─────────────────────────────────────────────────────────────────────
@@ -147,8 +227,8 @@ test('#3c debug latency summary null handling', async ({ page }) => {
     bodyText?.includes('N/A') ||
     bodyText?.includes('無任何記錄') ||
     bodyText?.includes('所選期間內無任何記錄')
-  void hasZero
-  void hasNullDisplay
+  expect(hasZero).toBe(false)
+  expect(hasNullDisplay).toBe(true)
 })
 
 // ─────────────────────────────────────────────────────────────────────

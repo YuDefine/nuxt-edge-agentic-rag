@@ -10,17 +10,12 @@
     middleware: ['admin'],
   })
 
+  import type { OutcomeBreakdown } from '~~/shared/types/observability'
+
   interface LatencyBucket {
     p50: number | null
     p95: number | null
     sampleCount: number
-  }
-
-  interface OutcomeBreakdown {
-    answered: number
-    refused: number
-    forbidden: number
-    error: number
   }
 
   interface ChannelLatencySummary {
