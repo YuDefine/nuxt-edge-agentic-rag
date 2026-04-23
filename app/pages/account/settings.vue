@@ -1,4 +1,5 @@
 <script setup lang="ts">
+  import { formatDateTime } from '~/utils/format-datetime'
   import { getErrorMessage } from '#shared/utils/error-message'
   import {
     LINK_GOOGLE_FOR_PASSKEY_FIRST_ENTRY_PATH,
@@ -217,16 +218,7 @@
     }
   }
 
-  function formatDate(dateString: string | null | undefined): string {
-    if (!dateString) return '—'
-    return new Date(dateString).toLocaleString('zh-TW', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-    })
-  }
+  const formatDate = formatDateTime
 
   const showLinkGoogleSection = computed(
     () =>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+  import { formatDateTime } from '~/utils/format-datetime'
   import { getUiPageState } from '~~/shared/utils/ui-state'
 
   /**
@@ -55,16 +56,7 @@
     }),
   )
 
-  function formatDate(dateString: string): string {
-    return new Date(dateString).toLocaleString('zh-TW', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-    })
-  }
+  const formatDate = formatDateTime
 </script>
 
 <template>

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+  import { formatTimeShort } from '~/utils/format-datetime'
+
   /**
    * Dedicated refusal message component with distinct styling.
    * Used when the assistant refuses to answer a question.
@@ -93,7 +95,7 @@
     </div>
 
     <div class="mt-3 text-xs text-muted">
-      {{ new Date(createdAt).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' }) }}
+      {{ formatTimeShort(createdAt) }}
     </div>
   </div>
 </template>

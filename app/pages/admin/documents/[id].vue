@@ -3,6 +3,7 @@
     DocumentVersion,
     DocumentWithAllVersions,
   } from '~~/server/utils/document-list-store'
+  import { formatDateTime } from '~/utils/format-datetime'
   import { assertNever } from '~~/shared/utils/assert-never'
 
   /**
@@ -42,15 +43,7 @@
 
   const versionCount = computed(() => document.value?.versions.length ?? 0)
 
-  function formatDate(dateString: string): string {
-    return new Date(dateString).toLocaleString('zh-TW', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-    })
-  }
+  const formatDate = formatDateTime
 
   function canShowRetry(version: DocumentVersion): boolean {
     return version.syncStatus === 'pending' || version.syncStatus === 'failed'
