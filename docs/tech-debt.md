@@ -8,28 +8,32 @@
 
 ## Index
 
-| ID     | Title                                                     | Priority | Status | Discovered                        | Owner |
-| ------ | --------------------------------------------------------- | -------- | ------ | --------------------------------- | ----- |
-| TD-001 | mcp-token-store libsql 不相容                             | low      | done   | 2026-04-20 B16 #10                | —     |
-| TD-002 | guest_policy DB-direct UPDATE 造成 cache drift            | mid      | done   | 2026-04-20 B16 #7                 | —     |
-| TD-003 | text-dimmed 對比度不足（cross-change residual）           | mid      | done   | 2026-04-20 B17 C#11.9             | —     |
-| TD-004 | 首頁 Google login button 高度 36px < WCAG 40px            | high     | done   | B17 viewport-baseline.spec.ts     | —     |
-| TD-005 | Admin 頁面 a11y violations 批次（@nuxt/a11y 首輪掃描）    | high     | done   | 2026-04-21 RAF @nuxt/a11y         | —     |
-| TD-006 | Nuxt UI subtle variant tonal badge 對比度不足             | mid      | done   | 2026-04-20 TD-003 e2e exclude     | —     |
-| TD-007 | 裝飾 icon tonal color 低於 WCAG 1.4.11 non-text AA        | low      | done   | 2026-04-20 TD-006 review          | —     |
-| TD-008 | acceptance-tc-0x MCP 整合測試在 TD-001 修後破損           | mid      | done   | 2026-04-20 add-ai-gateway         | —     |
-| TD-009 | user_profiles.email_normalized 全面改 nullable            | mid      | done   | 2026-04-21 passkey-authentication | —     |
-| TD-010 | credentials / admin-members endpoint libsql 不相容        | mid      | done   | 2026-04-21 passkey §16 DR         | —     |
-| TD-011 | migration 0009 FK cascade 設計不符 self-delete / audit    | high     | done   | 2026-04-21 passkey §17.8          | —     |
-| TD-012 | passkey-first → link Google 被 better-auth email 檢驗擋住 | high     | done   | 2026-04-21 passkey §17.3          | —     |
-| TD-013 | /account/settings 新增 passkey 缺 naming dialog           | low      | done   | 2026-04-21 passkey §17.2          | —     |
-| TD-014 | error-sanitizer 後 12 test 抛 evlog Logger not init       | mid      | done   | 2026-04-21 drizzle-refactor apply | —     |
-| TD-015 | SSE 長連線缺 heartbeat，30s proxy timeout 風險            | mid      | open   | 2026-04-24 /commit review         | —     |
-| TD-016 | isAbortError / createAbortError 在四處重複實作            | low      | open   | 2026-04-24 /commit review         | —     |
-| TD-017 | chat.post.ts 兩個 AI binding getter 可合併                | low      | open   | 2026-04-24 /commit review         | —     |
-| TD-018 | Container.vue classifyError 巢狀條件抽 lookup table       | low      | open   | 2026-04-24 /commit review         | —     |
-| TD-019 | SSE reader pattern 在 client/server 雷同可抽共用          | low      | open   | 2026-04-24 /commit review         | —     |
-| TD-020 | CHATGPT_CONNECTOR_OAUTH_PATH_PATTERN 可收緊字元集         | low      | open   | 2026-04-24 /commit review         | —     |
+| ID     | Title                                                            | Priority | Status | Discovered                        | Owner |
+| ------ | ---------------------------------------------------------------- | -------- | ------ | --------------------------------- | ----- |
+| TD-001 | mcp-token-store libsql 不相容                                    | low      | done   | 2026-04-20 B16 #10                | —     |
+| TD-002 | guest_policy DB-direct UPDATE 造成 cache drift                   | mid      | done   | 2026-04-20 B16 #7                 | —     |
+| TD-003 | text-dimmed 對比度不足（cross-change residual）                  | mid      | done   | 2026-04-20 B17 C#11.9             | —     |
+| TD-004 | 首頁 Google login button 高度 36px < WCAG 40px                   | high     | done   | B17 viewport-baseline.spec.ts     | —     |
+| TD-005 | Admin 頁面 a11y violations 批次（@nuxt/a11y 首輪掃描）           | high     | done   | 2026-04-21 RAF @nuxt/a11y         | —     |
+| TD-006 | Nuxt UI subtle variant tonal badge 對比度不足                    | mid      | done   | 2026-04-20 TD-003 e2e exclude     | —     |
+| TD-007 | 裝飾 icon tonal color 低於 WCAG 1.4.11 non-text AA               | low      | done   | 2026-04-20 TD-006 review          | —     |
+| TD-008 | acceptance-tc-0x MCP 整合測試在 TD-001 修後破損                  | mid      | done   | 2026-04-20 add-ai-gateway         | —     |
+| TD-009 | user_profiles.email_normalized 全面改 nullable                   | mid      | done   | 2026-04-21 passkey-authentication | —     |
+| TD-010 | credentials / admin-members endpoint libsql 不相容               | mid      | done   | 2026-04-21 passkey §16 DR         | —     |
+| TD-011 | migration 0009 FK cascade 設計不符 self-delete / audit           | high     | done   | 2026-04-21 passkey §17.8          | —     |
+| TD-012 | passkey-first → link Google 被 better-auth email 檢驗擋住        | high     | done   | 2026-04-21 passkey §17.3          | —     |
+| TD-013 | /account/settings 新增 passkey 缺 naming dialog                  | low      | done   | 2026-04-21 passkey §17.2          | —     |
+| TD-014 | error-sanitizer 後 12 test 抛 evlog Logger not init              | mid      | done   | 2026-04-21 drizzle-refactor apply | —     |
+| TD-015 | SSE 長連線缺 heartbeat，30s proxy timeout 風險                   | mid      | open   | 2026-04-24 /commit review         | —     |
+| TD-016 | isAbortError / createAbortError 在四處重複實作                   | low      | open   | 2026-04-24 /commit review         | —     |
+| TD-017 | chat.post.ts 兩個 AI binding getter 可合併                       | low      | open   | 2026-04-24 /commit review         | —     |
+| TD-018 | Container.vue classifyError 巢狀條件抽 lookup table              | low      | open   | 2026-04-24 /commit review         | —     |
+| TD-019 | SSE reader pattern 在 client/server 雷同可抽共用                 | low      | open   | 2026-04-24 /commit review         | —     |
+| TD-020 | CHATGPT_CONNECTOR_OAUTH_PATH_PATTERN 可收緊字元集                | low      | open   | 2026-04-24 /commit review         | —     |
+| TD-021 | ConversationHistory bucket toggle 缺 aria-expanded 等            | low      | open   | 2026-04-24 /commit review         | —     |
+| TD-022 | groupedConversations computed 不跨 midnight 重新分組             | low      | open   | 2026-04-24 /commit review         | —     |
+| TD-023 | index.vue 雙 LazyChatConversationHistory 產生重複 fetch          | low      | open   | 2026-04-24 /commit review         | —     |
+| TD-024 | chat-history-sidebar test suite 品質（string contract/resolves） | low      | open   | 2026-04-24 /commit review         | —     |
 
 ---
 
@@ -818,3 +822,99 @@ HTTP status code → error kind 的 mapping 目前用三元鏈 + 巢狀 if，第
 
 - `isAllowedChatGptConnectorRedirectUri` 拒絕含 `.` / Unicode / 超長 segment 的 URI
 - 既有 unit test 仍綠；新增 case 涵蓋新限制
+
+---
+
+## TD-021 — ConversationHistory bucket toggle 缺 aria-expanded；onExpandRequest 應轉 emit
+
+**Status**: open
+**Priority**: low
+**Discovered**: 2026-04-24 — `/commit` code-review（collapsible-chat-history-sidebar archive）
+**Location**: `app/components/chat/ConversationHistory.vue`（bucket toggle button、`onExpandRequest` prop）
+
+### Problem
+
+1. bucket toggle `<button>` 沒有 `aria-expanded` / `aria-controls`；目前靠 Nuxt UI `UCollapsible` 的 `:open` 外控。e2e axe 已過，但 toggle 本身未對 AT 明示狀態變化
+2. `onExpandRequest?: () => void` 以 callback-prop 形式宣告，但同檔已用 `defineEmits` 管理 `conversation-cleared` / `conversation-selected`，event 契約分裂在 props + emits 兩處
+
+### Fix approach
+
+- 在 toggle 按鈕補 `:aria-expanded="bucketOpenState[group.bucket]"`
+- 將 `onExpandRequest` 改為 `'expand-request': []` emit，父層改綁 `@expand-request="expandHistorySidebar"`
+
+### Acceptance
+
+- 新增 axe / a11y 單元測試驗證 bucket toggle 的 `aria-expanded` 依狀態更新
+- `defineEmits` 宣告包含 `expand-request`，`index.vue` 改用 `@expand-request`，e2e 仍綠
+
+---
+
+## TD-022 — groupedConversations 不跨 midnight 重新分組
+
+**Status**: open
+**Priority**: low
+**Discovered**: 2026-04-24 — `/commit` code-review
+**Location**: `app/components/chat/ConversationHistory.vue:groupedConversations` computed
+
+### Problem
+
+`groupedConversations` computed 只在 `conversations` 變動時 re-run，`new Date()` 在掛載當下被捕捉。若頁面長開跨過午夜，原本分到「今天」的對話不會自動移到「昨天」，需要 refetch 才會更新。
+
+### Fix approach
+
+引入一個「當前時間」tick（如 `useNow({ interval: 60_000 })` 或跨午夜的 one-shot timer），讓分組在日期切換時重新計算；或在 visibility change / refetch 觸發時強制重新分桶。
+
+### Acceptance
+
+- 跨午夜後無需 refetch，時間桶自動重分類（有單元測試以假時鐘覆蓋）
+- 不引入每秒重 render
+
+---
+
+## TD-023 — index.vue 雙 LazyChatConversationHistory 產生重複 /api/conversations fetch
+
+**Status**: open
+**Priority**: low
+**Discovered**: 2026-04-24 — `/commit` code-review（既存 pattern）
+**Location**: `app/pages/index.vue`（inline lg sidebar + drawer 分支各自掛 `LazyChatConversationHistory`）
+
+### Problem
+
+`<lg` 的 drawer 與 `lg` 的 inline sidebar 各自 mount 一個 `LazyChatConversationHistory`；`useChatConversationHistory` 在每個 instance 以 `immediate: true` 觸發 `/api/conversations`，造成登入首次渲染時出現兩次並行 fetch。
+
+### Fix approach
+
+把 `useChatConversationHistory` hoist 到 `index.vue`，將 state 以 props 傳給兩個 surface；或讓 drawer 以 `v-if="historyDrawer.isOpen.value"` 延後掛載，避免同時 mount。
+
+### Acceptance
+
+- 首頁首次渲染只觸發一次 `/api/conversations` GET（Network 驗證 + e2e assert）
+- 兩個 surface 仍顯示同一來源資料、互不衝突
+
+---
+
+## TD-024 — chat-history-sidebar 測試品質：string contract + Playwright resolves
+
+**Status**: open
+**Priority**: low
+**Discovered**: 2026-04-24 — `/commit` code-review（testing anti-patterns）
+**Location**:
+
+- `test/unit/chat-history-sidebar-source-contract.test.ts`
+- `e2e/collapsible-chat-history-sidebar.spec.ts`（約 L216-218）
+
+### Problem
+
+1. `chat-history-sidebar-source-contract.test.ts` 全篇以 `readFileSync` + `toContain` 比對 `.vue` raw source（class 片段、icon 名、aria-label 文字），任何無害重構（如 class 重排、把 icon 抽常數）會被誤判為違規，違反 `testing-anti-patterns.md` 的「test behavior, not source strings」
+2. e2e spec 使用 `await expect(page.evaluate(...)).resolves.toBe('true')`；`@playwright/test` 的 `expect` 沒有 `.resolves` matcher，可能 silently pass 而未真的 assert
+
+### Fix approach
+
+- 把 source-contract test 轉為 `mountSuspended` 元件測試（驗 DOM / aria / storage key 行為），或直接移除並信賴 e2e 覆蓋
+- e2e spec 改為 `expect(await page.evaluate(...)).toBe('true')` 形式
+
+### Acceptance
+
+- 移除 / 改寫後 `pnpm test` + `pnpm test:e2e` 仍綠
+- 重構 `.vue` 不再需要改 contract test
+- Playwright expect 對 evaluate 結果真正 assert（人工故意打壞邏輯可看到 red）
