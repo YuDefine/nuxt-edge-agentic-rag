@@ -27,9 +27,9 @@
 
 ## Active Changes
 
-_last synced: 2026-04-23T14:30:00.921Z_
+_last synced: 2026-04-23T15:35:06.733Z_
 
-1 active change (0 ready · 0 in progress · 1 draft · 0 blocked)
+_No active changes._
 
 ### Ready to apply
 
@@ -41,8 +41,7 @@ _(none)_
 
 ### Draft
 
-- **multi-format-document-ingestion** — 0/21 tasks (0%)
-  - Specs: `admin-document-management-ui`, `document-ingestion-and-publishing`
+_(none)_
 
 ### Blocked
 
@@ -71,7 +70,7 @@ _No active claims._
 
 ### Independent (can run in parallel)
 
-- `multi-format-document-ingestion`
+_(none)_
 
 ### Mutex (same spec touched)
 
