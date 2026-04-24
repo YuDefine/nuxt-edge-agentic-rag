@@ -35,20 +35,18 @@
 
 ## 5. 部署與驗證
 
-- [ ] 5.1 `/commit`（含版本號升級 — `fix` 走 patch）→ auto deploy
-- [ ] 5.2 wrangler tail 觀察 5 分鐘：
-  - `GET /mcp` 立即 `405`，無 `"code had hung"` 錯誤
-  - POST 全程 `200/202`，無 re-initialize 循環
-- [ ] 5.3 Claude.ai 實測 `AskKnowledge` 連續 3 次不同 query，皆回真實答案 + citations
-- [ ] 5.4 Claude.ai 實測 `ListCategories`，回真實 category 清單
-- [ ] 5.5 ChatGPT Remote MCP（若有設定）重複 5.3 / 5.4
+- [x] 5.1 `/commit`（含版本號升級 — 實際走 `feat` minor bump，v0.36.0 → v0.37.0）→ auto deploy
+- [ ] 5.2 wrangler tail 觀察 5 分鐘 — **@followup[TD-030]** 部分 PASS：`GET /mcp 405` duration ~390ms 無 hang；但有 `POST initialize 400` → `GET /mcp 405` 每 3 秒 re-initialize 循環（非 SSE timeout；Claude client-side 自發 re-init）
+- [ ] 5.3 Claude.ai 實測 `AskKnowledge` 連續 3 次不同 query — **@followup[TD-030]** FAIL：UI 顯示 "Error occurred during tool execution"，wrangler tail 無 `tools/call` log
+- [ ] 5.4 Claude.ai 實測 `ListCategories` — **@followup[TD-030]** FAIL（同 5.3 symptom）
+- [ ] 5.5 ChatGPT Remote MCP 重複 5.3 / 5.4 — **@followup[TD-030]** 未測，由 fallback change `upgrade-mcp-to-durable-objects` 接手
 
 ## 6. 人工檢查
 
-- [ ] 6.1 使用者 Claude.ai 可穩定多輪 tool call（連續 3 次不同 query 無 error banner）
-- [ ] 6.2 wrangler tail 觀察至少 5 分鐘，無 Worker hung、無 re-initialize 循環、無 SSE timeout
-- [ ] 6.3 `fix-mcp-transport-body-consumed` 的 regression test 仍過（`rehydrateMcpRequestBody` 未被打破）
-- [ ] 6.4 若 Claude.ai 對 `405` 有異常反應（不接受 / 誤判為網路錯誤）→ 不勾選本檢查，改開 fallback change `upgrade-mcp-to-durable-objects`（見 `design.md` Fallback Plan）
+- [ ] 6.1 使用者 Claude.ai 可穩定多輪 tool call — **@followup[TD-030]** FAIL：Claude 在 tool call 前自發 re-init，body 被 MCP SDK transport 判 400，從未送出 tools/call
+- [ ] 6.2 wrangler tail 觀察至少 5 分鐘 — **@followup[TD-030]** 部分 PASS：無 Worker hung、無 SSE timeout（GET 不再 hang）；但存在 `POST initialize 400` re-initialize 循環
+- [x] 6.3 `fix-mcp-transport-body-consumed` 的 regression test 仍過（`test/unit/mcp-rehydrate-request-body.test.ts` 7/7 PASS，rehydrate helper 未被打破）
+- [ ] 6.4 Claude.ai 對 `405` 有部分異常反應（回 405 正常收到但觸發 re-init 循環）→ 按本項定義不勾選，已開 fallback change `upgrade-mcp-to-durable-objects`（詳見 TD-030 + `design.md` Post-deploy Observation + Fallback Plan）— **@followup[TD-030]**
 
 ## 7. Archive
 
