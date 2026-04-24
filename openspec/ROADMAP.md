@@ -30,18 +30,19 @@
 
 ## Active Changes
 
-_last synced: 2026-04-23T23:29:42.497Z_
+_last synced: 2026-04-24T00:15:15.147Z_
 
-2 active changes (0 ready · 1 in progress · 1 draft · 0 blocked)
+3 active changes (1 ready · 1 in progress · 1 draft · 0 blocked)
 
 ### Ready to apply
 
-_(none)_
+- **code-quality-review-followups** — 43/43 tasks (100%)
+  - Specs: `oauth-remote-mcp-auth`, `web-chat-ui`
 
 ### In progress
 
-- **code-quality-review-followups** — 38/43 tasks (88%)
-  - Specs: `oauth-remote-mcp-auth`, `web-chat-ui`
+- **auth-redirect-refactor** — 6/27 tasks (22%)
+  - Specs: `web-chat-ui`
 
 ### Draft
 
@@ -61,17 +62,20 @@ _(none)_
 > 即時 ownership 由 `.spectra/claims/*.json` 提供。
 > 接手 handoff / 開始做 change 時，先 claim，再移除 `HANDOFF.md` 對應項目。
 
-1 claim (1 active · 0 stale)
+2 claims (1 active · 1 stale)
 
 ### Live Ownership
+
+- **auth-redirect-refactor** — unknown:charles@charlesdeMac-mini.local (unknown)
+  - Accepted from: manual
+  - Last heartbeat: 2026-04-24T00:07:31.661Z
+
+### Stale Claims
 
 - **code-quality-review-followups** — unknown:charles@charlesdeMac-mini.local (unknown)
   - Accepted from: manual
   - Last heartbeat: 2026-04-23T23:08:39.091Z
-
-### Stale Claims
-
-_(none)_
+  - Status: stale (last heartbeat 2026-04-23T23:08:39.091Z)
 
 <!-- SPECTRA-UX:ROADMAP-AUTO:/claims -->
 
@@ -83,12 +87,11 @@ _(none)_
 
 ### Independent (can run in parallel)
 
-- `code-quality-review-followups`
 - `fix-mcp-streamable-http-session`
 
 ### Mutex (same spec touched)
 
-_(none)_
+- **web-chat-ui** — conflict between: `auth-redirect-refactor`, `code-quality-review-followups`
 
 ### Blocked by dependency
 
