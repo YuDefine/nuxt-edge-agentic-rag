@@ -23,20 +23,14 @@
 
 - 截圖審查時 local dev `/api/auth/me/credentials` 曾間歇性回 `500`：`[nuxt-hub] DB binding not found`。詳見 TD-045。
 
-## Parallel Work Completed（未 commit，留給 /commit 分組）
+## TD-045 後續（已 commit narrow scope，仍待動）
 
-- **TD-045 narrow scope**（Claude sub-session，avoid 主線檔案，code 已實作完畢）：
-  - ✅ 新增 `scripts/check-dev-bootstrap-health.mjs`（untracked）— 非阻斷 predev 體檢；目前命中 `NUXT_KNOWLEDGE_AI_SEARCH_INDEX` 空值 warning，並預留 stale `*_new(…)` FK refs 偵測（sqlite3 CLI 查 sqlite_master，未安裝即靜默 skip）。exit code always 0，不擋 dev。
-  - ✅ `package.json` `predev` 前綴加上 health check。`pnpm predev` 已驗證跑得通（三個 script 依序 exit 0、警告正確顯示）。
-  - ✅ 本次對 `.env.example` 的註解修改被 `guard-check` 阻擋（檔案 permanent-protected），改由 script 輸出訊息本身指引到 Notion Secret 頁，不動 `.env.example`。
-  - ✅ `pnpm format:check` 綠（scripts/ 被 lint ignore，無 lint 可跑）。
-- **建議 commit 分組**（主線 commit 結束後）：
-  - Group: 「chore: add local dev bootstrap health check (TD-045 #3)」
-    - `scripts/check-dev-bootstrap-health.mjs`（new）
-    - `package.json`（predev 加 prefix，無版號變動）
-- **仍待動（後續）**：
-  - 等主線 commit `docs/tech-debt.md`（TD-046 done + TD-050 新增）完成後，再更新 TD-045 register 把 Problem #1/#2 標為 NuxtHub v0.10.7 已處理（驗證：`_hub_migrations` 表有 11 筆應用記錄、`sqlite_master` 無 `*_new` refs），narrow Fix approach 為只剩 Problem #3。
-  - `[nuxt-hub] DB binding not found` 間歇 500 不在本輪 scope（需要可重現的 trace 才能定位）。
+TD-045 narrow scope code 已隨 v0.43.2 一併入庫（`00e5314 🧹 chore: 加 predev bootstrap health check`），sub-session brief 已執行完畢。
+
+仍待動：
+
+- 更新 `docs/tech-debt.md` TD-045 register，把 Problem #1/#2 標為 NuxtHub v0.10.7 已處理（驗證：`_hub_migrations` 表有 11 筆應用記錄、`sqlite_master` 無 `*_new` refs），narrow Fix approach 為只剩 Problem #3。
+- `[nuxt-hub] DB binding not found` 間歇 500 不在本輪 scope（需要可重現的 trace 才能定位）。
 
 ## Next Steps
 
@@ -44,8 +38,8 @@
 2. Production flag=true 7 天觀察後，TD-030 / TD-041 標 `done`，archive `wire-do-tool-dispatch`，收斂 `upgrade-mcp-to-durable-objects`（§7.3 + §8）。
 3. Notion Secret 頁 staging 區塊補 `agentic-rag-staging` AutoRAG / Gateway 已建（人工，有明文 secret 需要本機 mint token 寫入）。
 4. **TD-050**（staging R2 RAG content seed） — 若 staging 真實使用情境出現再做，預計 sample docs 5–10 個或 daily sync from production（拆獨立 spectra change）。
-5. **TD-049** Acceptance 收尾：觀察後續 3 次 main push / tag 的 `deploy-docs-*` 皆綠，更新 Acceptance 勾選。
-6. **TD-045** local dev binding：影響 screenshot review 穩定性（並行 sub-session 已在做 narrow scope，見 Parallel Work 區塊）。
+5. **TD-049** Acceptance #3 已達（v0.43.0 失敗、v0.43.1 + v0.43.2 連續 2 次綠 → 第 3 次發版仍須觀察）；可開始評估標 done 的時機。
+6. **TD-045** local dev binding 後續：narrow scope 已上 v0.43.2，仍待 register status 收斂與 binding 間歇 500 trace（見上方「TD-045 後續」段）。
 
 ## Recently Completed（2026-04-25）
 
@@ -54,3 +48,8 @@
   - 🐛 fix `c20971e`：DO debug instrumentation for wire-do-tool-dispatch handler throw 定位
   - 🐛 fix `2def87f`：docs 內 yaml block 用 `v-pre` 禁 vitepress Vue 解析，解鎖 docs build
 - **v0.43.1 deploy runs**：staging `24911683359` + production `24911891236` 全綠，`deploy-docs-*` 分別 49s / 55s 通過 → **TD-049 workaround 實證有效**。`agentic-docs.yudefine.com.tw` 已更新到 v0.43.1（覆蓋 v0.43.0 docs 空窗）。
+- **v0.43.2 release**（本次 /commit）：
+  - 🐛 fix `a427682`：收 wire-do-tool-dispatch §7.1，回滾 c20971e DO debug instrumentation（root cause = TD-046 staging AutoRAG 缺漏，CF API 建 RAG + Gateway 後 4 tool call 全 isError: false）；TD-046 done + TD-050 新增。
+  - 🧹 chore `00e5314`：predev bootstrap health check（TD-045 narrow scope #3）。
+  - 📝 docs `cbebf3e`：HANDOFF + ROADMAP 同步主線 / parallel / claim heartbeat。
+- **v0.43.2 deploy runs**：staging `24913877052` + production `24914030014` 全綠，`deploy-docs-*` 分別 1m11s / 54s 通過（TD-049 連續第三次 staging+production 都過）。
