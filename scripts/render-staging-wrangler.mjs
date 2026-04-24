@@ -41,6 +41,8 @@ async function main() {
     kv_namespaces: stagingOverrides.kv_namespaces,
     ai: stagingOverrides.ai,
     r2_buckets: stagingOverrides.r2_buckets,
+    durable_objects: stagingOverrides.durable_objects,
+    migrations: stagingOverrides.migrations,
     triggers: stagingOverrides.triggers,
   }
 
