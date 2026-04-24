@@ -52,7 +52,7 @@
 
 ## Active Changes
 
-_last synced: 2026-04-24T13:58:47.372Z_
+_last synced: 2026-04-24T14:01:42.338Z_
 
 2 active changes (0 ready · 1 in progress · 1 draft · 0 blocked)
 
@@ -86,10 +86,10 @@ _(none)_
 
 ### Live Ownership
 
-- **upgrade-mcp-to-durable-objects** — unknown:charles@charlesdeMac-mini.local (unknown)
-  - Accepted from: manual
-  - Last heartbeat: 2026-04-24T13:58:43.439Z
-  - Note: session handoff — continue Phase 4 Core Implementation per HANDOFF.md
+- **upgrade-mcp-to-durable-objects** — claude-code:opus-4-7 (claude-code)
+  - Accepted from: handoff
+  - Last heartbeat: 2026-04-24T14:00:15.148Z
+  - Note: User delegated Phase 4 Core Implementation (Pivot C) to Claude Code session
 
 ### Stale Claims
 
