@@ -151,7 +151,15 @@ afterAll(async () => {
   )
 
   if (baseline !== undefined && overallScore < baseline - BASELINE_TOLERANCE_POINTS) {
-    process.exitCode = 1
+    // Vitest / evalite 吃掉 afterAll 內的 throw，也不會讀 `process.exitCode`。
+    // 直接 `process.exit(1)` 強制 non-zero 結束，讓 Decision 5 的 regression
+    // threshold 在 `pnpm eval` 正確生效。Report JSON 可能寫一半，這是可接受
+    // trade-off — regression 時我們關心的是信號 / exit code，不是完整 report。
+    // eslint-disable-next-line no-console -- regression banner，CI / stderr 必現
+    console.error(
+      `Eval regression: overall ${overallScore.toFixed(2)}% is more than ${BASELINE_TOLERANCE_POINTS}pp below baseline ${baseline.toFixed(2)}% (delta=${(delta ?? 0).toFixed(2)}pp). See lowSamples in summary above to diagnose.`,
+    )
+    process.exit(1)
   }
 })
 

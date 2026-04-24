@@ -73,6 +73,8 @@
 
 **Risks / 落地細節**: eval 需先起 dev server（或獨立 test server），harness 要有 readiness probe 等 server 啟動；如 dev server port 衝突，sticky 到 `EVAL_MCP_URL` env var。
 
+**@ingest 2026-04-24 v2 — Staging fallback**: apply 階段發現 NuxtHub local dev 未把 `hubKV()` 注入 `cloudflare.env`，本專案 `getRequiredKvBinding` 在 local 必 503，`POST /mcp` 整條路走不通（見 @followup[TD-042]）。Local infra fix 屬獨立 change scope，本 change **暫時** 允許 `EVAL_MCP_URL` 指向 **staging**（`https://agentic-staging.yudefine.com.tw/mcp`）；staging 在真 Cloudflare Workers runtime，KV binding 正常。TD-042 解完後切回 local，baseline 需 re-run 驗證分數差異 ≤ 5pp。
+
 ### Decision 4: Scoring = 分層加權（tool match + args match）
 
 **Choice**: 每筆 ground truth 評分為：
@@ -121,6 +123,31 @@
 
 - AI SDK provider package 預設讀取 `ANTHROPIC_API_KEY` / `OPENAI_API_KEY`，沿用慣例降低新人 onboarding 成本
 - 不要自訂 `EVAL_LLM_KEY` 這種 project-specific name，避免未來多處硬編碼
+
+### Decision 7: Eval dev auth = dev-only token mint CLI + `EVAL_MCP_BEARER_TOKEN` env（@ingest 2026-04-24）
+
+**Choice**: 新增 `scripts/mint-dev-mcp-token.mts` dev-only CLI — runtime guard `NUXT_KNOWLEDGE_ENVIRONMENT==='local'`，呼叫 `mcp-token-store.createToken()` 寫一個 30-day dev token 到本地 D1（scope=`knowledge.ask/search/category/citation`），stdout 印出 token 字串。使用者手動貼到 `.env` 的 `EVAL_MCP_BEARER_TOKEN`。Eval harness 的 `mcp-client.ts` 透過 `experimental_createMCPClient` transport 的 `headers: { Authorization: 'Bearer ${token}' }` 帶 token 過 middleware；token 缺失時 throw 清楚訊息指向 mint CLI。
+
+**Rationale**（apply 中發現 task 3.1 實作缺口，ingest 擴充）:
+
+- MCP middleware（`server/mcp/index.ts` → `runMcpMiddleware`）一律強制 Bearer token auth。Decision 3 要求用真實 dev MCP server（不 bypass middleware），因此必須有有效 token，不能 anonymous `tools/list`
+- Dev CLI 為一次性手動步驟：**NEVER** 改 production middleware、**NEVER** 把 DB write 副作用藏進 test helper — 兩者皆違反 Non-Goals
+- Token 過期 / `NUXT_MCP_AUTH_SIGNING_KEY` 輪替時重 mint；單步驟、explicit、failure mode 清楚
+- 同時修正 `DEFAULT_MCP_URL` 從 `http://localhost:3000/mcp` 改 `http://localhost:3010/mcp`（:3000 衝到其他專案 Nuxt dev；本 repo E2E_BASE_URL 即為 :3010）
+
+**Alternatives considered**:
+
+- **Middleware dev-mode bypass**：違反 Non-Goals「NEVER 改 server/mcp/\*\*」— 否決
+- **OAuth client_credentials flow**：本專案 connector 目前只實作 authorization_code，新增 CC grant 屬 `wire-do-tool-dispatch` scope — 否決
+- **Eval harness 自動寫 D1 mint token**：把 DB 寫入隱藏在 test helper，debug / signing-key 輪替時除錯困難；違反「單一 explicit 步驟」原則 — 否決
+- **Admin UI 手動複製 token**：需瀏覽器 GUI 步驟，不符合 CLI-reproducible prerequisites — 否決
+
+**Risks / 落地細節**:
+
+- Token 寫到本地 D1 / fs-lite sqlite；新人第一次跑必須 `pnpm mint:dev-mcp-token`，docs Prerequisites 明列
+- `NUXT_MCP_AUTH_SIGNING_KEY` 由 `wire-do-tool-dispatch` 引入，本 change docs 只 _引用_ prerequisite 不 _擁有_ 該 env；若 `wire-do-tool-dispatch` archive 前輪替 signing key，舊 dev token 失效需重 mint
+- CLI guard 以 `NUXT_KNOWLEDGE_ENVIRONMENT` 檢查；**NEVER** 在 staging / production 跑（避免意外寫入實環境 D1）
+- **@ingest 2026-04-24 v2**: Staging fallback（見 Decision 3 v2 補充）下，此 CLI **不**涵蓋 staging token。使用者需在 staging `/admin/tokens` UI 手動 mint 並把 token 貼到 `.env` 的 `EVAL_MCP_BEARER_TOKEN`。Mint CLI 擴充支援 staging 會放大 blast radius（能對 staging D1 寫 token），與「單步驟、explicit」原則衝突；保持 local-only
 
 ## Risks / Trade-offs
 

@@ -13,8 +13,10 @@ The harness SHALL execute against a running MCP server (dev server or equivalent
 #### Scenario: Harness runs against the real MCP surface
 
 - **WHEN** a developer runs the eval harness entry script
-- **THEN** the harness connects to the configured MCP server URL, performs a `tools/list` handshake, and uses the returned tool metadata as the only source of tool descriptions provided to the LLM
+- **AND** the developer has obtained a Bearer token via the dev-only mint CLI and set it in the eval environment
+- **THEN** the harness connects to the configured MCP server URL with an `Authorization: Bearer` header, performs a `tools/list` handshake, and uses the returned tool metadata as the only source of tool descriptions provided to the LLM
 - **AND** the harness does not import `server/mcp/tools/*` modules to reconstruct tool descriptions
+- **AND** the harness does not bypass the MCP middleware's Bearer-token enforcement
 
 #### Scenario: Dataset covers all four tools with multiple patterns
 
