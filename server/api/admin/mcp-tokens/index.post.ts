@@ -5,9 +5,13 @@ import { requireRuntimeAdminSession } from '#server/utils/admin-session'
 import { buildProvisionedMcpToken, createMcpTokenStore } from '#server/utils/mcp-token-store'
 
 const bodySchema = z.object({
-  name: z.string().min(1, 'Token name is required'),
-  scopes: z.array(z.string()).min(1, 'At least one scope is required'),
-  expiresInDays: z.number().int().positive().optional(),
+  name: z.string({ error: '請輸入 token 名稱' }).min(1, '請輸入 token 名稱'),
+  scopes: z.array(z.string()).min(1, '至少選擇一個 scope'),
+  expiresInDays: z
+    .number({ error: '到期天數必須為正整數' })
+    .int('到期天數必須為整數')
+    .positive('到期天數必須大於 0')
+    .optional(),
 })
 
 const VALID_SCOPES = [

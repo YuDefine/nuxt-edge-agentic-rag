@@ -1,6 +1,12 @@
 <script setup lang="ts">
   import * as z from 'zod'
+  import type { FormSubmitEvent } from '@nuxt/ui'
+  import {
+    normalizePositiveIntegerInputValue,
+    parseOptionalPositiveIntegerInput,
+  } from '~/utils/positive-integer-input'
   import { MCP_TOKEN_SCOPE_VALUES } from '~~/shared/schemas/knowledge-runtime'
+  import { getErrorMessage } from '#shared/utils/error-message'
 
   /**
    * Modal for creating a new MCP token.
@@ -43,14 +49,19 @@
     label: `${SCOPE_LABELS[value]}（${value}）`,
   }))
 
+  const TOKEN_CREATE_FORM_ID = 'mcp-token-create-form'
+
   const schema = z.object({
-    name: z.string().min(1, '請輸入 token 名稱'),
+    name: z.string({ error: '請輸入 token 名稱' }).min(1, '請輸入 token 名稱'),
     scopes: z.array(z.string()).min(1, '至少選擇一個 scope'),
     expiresInDays: z
-      .string()
-      .optional()
+      .preprocess(
+        (value) => normalizePositiveIntegerInputValue(value as null | number | string | undefined),
+        z.string({ error: '到期天數格式不正確' }),
+      )
       .refine((v) => !v || (/^\d+$/.test(v) && Number(v) > 0), '到期天數必須為正整數，或留空'),
   })
+  type Schema = z.output<typeof schema>
 
   interface FormState {
     name: string
@@ -90,20 +101,18 @@
 
   const { $csrfFetch } = useNuxtApp()
 
-  async function handleSubmit() {
+  async function handleSubmit(event: FormSubmitEvent<Schema>) {
     submitting.value = true
     submitError.value = null
 
     try {
       const payload: Record<string, unknown> = {
-        name: state.name,
-        scopes: state.scopes,
+        name: event.data.name,
+        scopes: event.data.scopes,
       }
 
-      if (state.expiresInDays && /^\d+$/.test(state.expiresInDays)) {
-        const parsed = Number(state.expiresInDays)
-        if (parsed > 0) payload.expiresInDays = parsed
-      }
+      const expiresInDays = parseOptionalPositiveIntegerInput(event.data.expiresInDays)
+      if (expiresInDays) payload.expiresInDays = expiresInDays
 
       const result = await $csrfFetch<TokenCreateResponse>('/api/admin/mcp-tokens', {
         method: 'POST',
@@ -113,8 +122,7 @@
       created.value = result
       emit('created')
     } catch (error) {
-      const fetchErr = error as { data?: { statusMessage?: string } }
-      submitError.value = fetchErr?.data?.statusMessage ?? '建立 token 失敗'
+      submitError.value = getErrorMessage(error, '建立 token 失敗')
     } finally {
       submitting.value = false
     }
@@ -196,6 +204,7 @@
       <!-- Create form -->
       <UForm
         v-else
+        :id="TOKEN_CREATE_FORM_ID"
         :state="state"
         :schema="schema"
         class="flex flex-col gap-4"
@@ -242,14 +251,7 @@
         </UFormField>
 
         <UFormField label="到期天數" name="expiresInDays" hint="留空代表永不過期">
-          <UInput
-            v-model="state.expiresInDays"
-            type="number"
-            color="neutral"
-            variant="outline"
-            size="md"
-            placeholder="例如：30"
-          />
+          <FormPositiveIntegerInput v-model="state.expiresInDays" placeholder="例如：30" />
         </UFormField>
 
         <UAlert
@@ -278,11 +280,12 @@
         <template v-else>
           <UButton color="neutral" variant="ghost" size="md" @click="handleClose">取消</UButton>
           <UButton
+            type="submit"
+            :form="TOKEN_CREATE_FORM_ID"
             color="primary"
             variant="solid"
             size="md"
             :loading="submitting"
-            @click="handleSubmit"
           >
             建立 Token
           </UButton>
