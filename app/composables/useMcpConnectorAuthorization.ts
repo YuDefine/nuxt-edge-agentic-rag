@@ -105,6 +105,9 @@ export function useMcpConnectorAuthorization() {
     if (request.value === null || authorization.value === null) {
       return
     }
+    if (isApproving.value || isDenying.value) {
+      return
+    }
 
     isApproving.value = true
     actionError.value = null
@@ -150,6 +153,9 @@ export function useMcpConnectorAuthorization() {
 
   async function denyAuthorization() {
     if (authorization.value === null) {
+      return
+    }
+    if (isApproving.value || isDenying.value) {
       return
     }
 
