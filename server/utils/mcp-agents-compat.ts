@@ -100,25 +100,6 @@ export function createMcpHandler(server: McpConnectableServer, options: McpHandl
     // termination) are rejected immediately. Without this, Cloudflare Workers
     // hang 30s on GET before runtime cancel, triggering Claude re-initialize
     // loops (see fix-mcp-streamable-http-session change).
-    // === MCP-DIAG-ENTRY @followup[TD-030] (Q6 Phase 1 spike — REMOVE AFTER CAPTURE) ===
-    // Logs shim entry BEFORE any early-return / guard so we can verify whether
-    // the singleton `server.transport` guard is the true root cause of the
-    // 400 seen in production tail.
-    // eslint-disable-next-line no-console
-    console.log(
-      '[MCP-DIAG-ENTRY]',
-      JSON.stringify({
-        method: request.method,
-        path: new URL(request.url).pathname,
-        hasExistingTransport: server.transport !== undefined,
-        headers: {
-          'mcp-session-id': request.headers.get('mcp-session-id'),
-          'mcp-protocol-version': request.headers.get('mcp-protocol-version'),
-        },
-      }),
-    )
-    // === MCP-DIAG-ENTRY END ===
-
     if (request.method === 'GET' || request.method === 'DELETE') {
       return new Response(METHOD_NOT_ALLOWED_BODY, {
         status: 405,
@@ -140,72 +121,6 @@ export function createMcpHandler(server: McpConnectableServer, options: McpHandl
 
     installEnumerableSafeEnv(env)
     await server.connect(transport)
-
-    // === MCP-DIAG START @followup[TD-030] (Q6 Phase 1 spike — REMOVE AFTER CAPTURE) ===
-    // Captures the JSON-RPC error body the SDK returns on the second
-    // POST /mcp initialize that Claude.ai issues during its re-init loop.
-    // Covers both 4xx responses AND thrown paths (try/catch below) so the
-    // spike still captures SDK internal assertions. Only logs status >= 400
-    // or thrown to keep volume low. Authorization header is deliberately
-    // omitted to avoid leaking Bearer tokens.
-    const diagMethod = request.method
-    const diagPath = new URL(request.url).pathname
-    const diagHeaders = {
-      'mcp-session-id': request.headers.get('mcp-session-id'),
-      'mcp-protocol-version': request.headers.get('mcp-protocol-version'),
-      accept: request.headers.get('accept'),
-      'content-type': request.headers.get('content-type'),
-    }
-    let diagReqBody: string | null = null
-    try {
-      diagReqBody = await request.clone().text()
-    } catch {
-      diagReqBody = '<unreadable>'
-    }
-
-    let diagResponse: Response
-    try {
-      diagResponse = await transport.handleRequest(request)
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error ? `${error.name}: ${error.message}` : String(error)
-      // eslint-disable-next-line no-console
-      console.log(
-        '[MCP-DIAG]',
-        JSON.stringify({
-          method: diagMethod,
-          path: diagPath,
-          status: 'THROWN',
-          headers: diagHeaders,
-          reqBody: diagReqBody,
-          error: errorMessage,
-        }),
-      )
-      throw error
-    }
-
-    if (diagResponse.status >= 400) {
-      let diagResBody: string
-      try {
-        diagResBody = await diagResponse.clone().text()
-      } catch {
-        diagResBody = '<unreadable>'
-      }
-      // eslint-disable-next-line no-console
-      console.log(
-        '[MCP-DIAG]',
-        JSON.stringify({
-          method: diagMethod,
-          path: diagPath,
-          status: diagResponse.status,
-          headers: diagHeaders,
-          reqBody: diagReqBody,
-          resBody: diagResBody,
-        }),
-      )
-    }
-
-    return diagResponse
-    // === MCP-DIAG END @followup[TD-030] ===
+    return transport.handleRequest(request)
   }
 }
