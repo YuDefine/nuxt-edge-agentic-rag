@@ -8,36 +8,64 @@ TBD - created by archiving change 'add-v1-core-ui'. Update Purpose after archive
 
 ### Requirement: Chat Page Access And Navigation
 
-The system SHALL provide a chat page at `/chat` for authenticated Web users and SHALL expose a role-aware navigation entry from the home page. Unauthenticated users SHALL be redirected to login. Authenticated users SHALL see only the entries their current permissions allow. The chat entry SHALL be conditionally enabled, disabled with explanation, or redirected, according to the combination of `users.role` and the current `guest_policy` system setting.
+The system SHALL serve the chat UI at the root path `/`. Access to `/` SHALL require authentication; unauthenticated visitors SHALL be redirected to `/auth/login` by the global authentication middleware, with their intended destination preserved via the `redirect` query parameter per the `auth-redirect` capability (omitted when the origin path is `/` itself). The legacy route `/chat` SHALL continue to redirect to `/` for backward compatibility. Authenticated users SHALL see only the navigation entries their current permissions allow. Chat access SHALL be conditionally enabled, disabled with explanation, or redirected, according to the combination of `users.role` and the current `guest_policy` system setting.
 
-#### Scenario: Authenticated member enters chat from home
+#### Scenario: Authenticated member accesses chat at root
 
-- **WHEN** a user with `role = 'member'` or `role = 'admin'` visits the home page
-- **THEN** the page shows an enabled entry to `/chat`
-- **AND** navigating there renders the chat interface with full question submission capability
+- **WHEN** a user with `role = 'member'` or `role = 'admin'` navigates to `/`
+- **THEN** the chat interface renders with full question submission capability
+- **AND** the page does not display any login UI
 
-#### Scenario: Unauthenticated user is redirected to login
+#### Scenario: Unauthenticated user is redirected to login with origin preserved
 
-- **WHEN** an unauthenticated user requests `/chat`
-- **THEN** the system redirects to the login page
-- **AND** preserves the intended destination for the post-login redirect
+- **WHEN** an unauthenticated user navigates to `/account/settings`
+- **THEN** the global middleware redirects to `/auth/login?redirect=%2Faccount%2Fsettings`
+- **AND** after successful login the user lands back on `/account/settings`
+
+#### Scenario: Unauthenticated user visiting root redirects without redirect query
+
+- **WHEN** an unauthenticated user navigates to `/`
+- **THEN** the global middleware redirects to `/auth/login` without any query parameters
+
+#### Scenario: Legacy chat route redirects to root
+
+- **WHEN** any user navigates to `/chat`
+- **THEN** the page redirects to `/` with `replace: true`
+- **AND** authentication rules at `/` apply normally
 
 #### Scenario: Guest under same_as_member policy uses chat normally
 
-- **WHEN** a user with `role = 'guest'` visits `/chat` and the active `guest_policy = 'same_as_member'`
+- **WHEN** a user with `role = 'guest'` visits `/` and the active `guest_policy = 'same_as_member'`
 - **THEN** the chat interface behaves identically to the member experience
 
 #### Scenario: Guest under browse_only policy sees disabled input with banner
 
-- **WHEN** a user with `role = 'guest'` visits `/chat` and the active `guest_policy = 'browse_only'`
+- **WHEN** a user with `role = 'guest'` visits `/` and the active `guest_policy = 'browse_only'`
 - **THEN** the chat interface renders with the message input disabled
 - **AND** a banner explains that guests are in browse-only mode and links to the public document catalog
 
 #### Scenario: Guest under no_access policy is redirected to account-pending
 
-- **WHEN** a user with `role = 'guest'` visits `/chat` and the active `guest_policy = 'no_access'`
+- **WHEN** a user with `role = 'guest'` visits `/` and the active `guest_policy = 'no_access'`
 - **THEN** the app redirects to `/account-pending`
 - **AND** the account-pending page explains how to contact an admin
+
+#### Scenario: Root page does not trigger conversation history fetch before authentication
+
+- **WHEN** an unauthenticated user attempts to render `/`
+- **THEN** the global middleware intercepts before any client-side chat history fetch executes
+- **AND** no request is made to `/api/conversations`
+
+<!-- @trace
+source: auth-redirect-refactor
+updated: 2026-04-24
+code:
+  - docs/solutions/mcp-streamable-http-405-stateless.md
+  - server/utils/mcp-agents-compat.ts
+tests:
+  - test/unit/mcp-agents-compat.spec.ts
+  - test/integration/mcp-streamable-http.spec.ts
+-->
 
 ---
 
