@@ -30,9 +30,9 @@
 
 ## Active Changes
 
-_last synced: 2026-04-24T09:23:32.351Z_
+_last synced: 2026-04-24T10:00:27.586Z_
 
-1 active change (0 ready · 1 in progress · 0 draft · 0 blocked)
+2 active changes (0 ready · 1 in progress · 1 draft · 0 blocked)
 
 ### Ready to apply
 
@@ -40,12 +40,13 @@ _(none)_
 
 ### In progress
 
-- **fix-mcp-streamable-http-session** — 17/27 tasks (63%)
+- **fix-mcp-streamable-http-session** — 19/27 tasks (70%)
   - Specs: `mcp-knowledge-tools`
 
 ### Draft
 
-_(none)_
+- **upgrade-mcp-to-durable-objects** — proposal only
+  - Specs: `mcp-knowledge-tools`
 
 ### Blocked
 
@@ -83,11 +84,11 @@ _(none)_
 
 ### Independent (can run in parallel)
 
-- `fix-mcp-streamable-http-session`
+_(none)_
 
 ### Mutex (same spec touched)
 
-_(none)_
+- **mcp-knowledge-tools** — conflict between: `fix-mcp-streamable-http-session`, `upgrade-mcp-to-durable-objects`
 
 ### Blocked by dependency
 
