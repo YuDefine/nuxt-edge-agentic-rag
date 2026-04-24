@@ -2,7 +2,7 @@
 
 ### Requirement: Chat Page Access And Navigation
 
-The system SHALL serve the chat UI at the root path `/`. Access to `/` SHALL require authentication; unauthenticated visitors SHALL be redirected to `/login` by the global authentication middleware, with their intended destination preserved via the `redirect` query parameter per the `auth-redirect` capability (omitted when the origin path is `/` itself). The legacy route `/chat` SHALL continue to redirect to `/` for backward compatibility. Authenticated users SHALL see only the navigation entries their current permissions allow. Chat access SHALL be conditionally enabled, disabled with explanation, or redirected, according to the combination of `users.role` and the current `guest_policy` system setting.
+The system SHALL serve the chat UI at the root path `/`. Access to `/` SHALL require authentication; unauthenticated visitors SHALL be redirected to `/auth/login` by the global authentication middleware, with their intended destination preserved via the `redirect` query parameter per the `auth-redirect` capability (omitted when the origin path is `/` itself). The legacy route `/chat` SHALL continue to redirect to `/` for backward compatibility. Authenticated users SHALL see only the navigation entries their current permissions allow. Chat access SHALL be conditionally enabled, disabled with explanation, or redirected, according to the combination of `users.role` and the current `guest_policy` system setting.
 
 #### Scenario: Authenticated member accesses chat at root
 
@@ -13,13 +13,13 @@ The system SHALL serve the chat UI at the root path `/`. Access to `/` SHALL req
 #### Scenario: Unauthenticated user is redirected to login with origin preserved
 
 - **WHEN** an unauthenticated user navigates to `/account/settings`
-- **THEN** the global middleware redirects to `/login?redirect=%2Faccount%2Fsettings`
+- **THEN** the global middleware redirects to `/auth/login?redirect=%2Faccount%2Fsettings`
 - **AND** after successful login the user lands back on `/account/settings`
 
 #### Scenario: Unauthenticated user visiting root redirects without redirect query
 
 - **WHEN** an unauthenticated user navigates to `/`
-- **THEN** the global middleware redirects to `/login` without any query parameters
+- **THEN** the global middleware redirects to `/auth/login` without any query parameters
 
 #### Scenario: Legacy chat route redirects to root
 
