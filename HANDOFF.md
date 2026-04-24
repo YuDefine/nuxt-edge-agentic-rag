@@ -12,16 +12,14 @@ v0.37.0 post-deploy 實測發現：
 
 → 使用者登記 **TD-030**（Claude.ai re-init 阻擋 tools/call），本 change 的 stateless 路線不足以解決問題。方向：新 change `upgrade-mcp-to-durable-objects` 重寫成 DO + session。
 
-### `upgrade-mcp-to-durable-objects`（draft，由 TD-030 觸發）
+### `upgrade-mcp-to-durable-objects`（draft proposal 已 commit）
 
-`openspec/changes/upgrade-mcp-to-durable-objects/` 尚未 commit（untracked），內容由使用者並行中。
+`openspec/changes/upgrade-mcp-to-durable-objects/proposal.md` 已在 `88d6596` commit（含 Why / What Changes / Open Questions / Implementation Risk Plan，已知 `agents/mcp` WorkerTransport `ownKeys` blocker 列入 Risk）。尚缺 design.md / specs delta / tasks.md，待 `/spectra-discuss` 收斂。
 
 ## Next Steps
 
 1. **走 /spectra-propose 或 /spectra-discuss 把 `upgrade-mcp-to-durable-objects` 收斂成正式 change**，跟 fix-mcp-streamable-http-session 的 Fallback Plan 對齊
-2. **`fix-mcp-streamable-http-session` 決定**：
-   - 選項 A：保留實作（stateless 快速失敗仍比 30s hang 強），用 `@followup[TD-030]` 標記未解，archive
-   - 選項 B：revert 本 change，直接走 DO 方案
+2. **`/spectra-archive fix-mcp-streamable-http-session`**：選項 A 已定（保留實作，`@followup[TD-030]` marker 已覆蓋 5.2–5.5/6.1/6.2/6.4）。archive gate 應 PASS（TD-030 登記 + entries 完整 + ux-gate backend-only）。archive 時會 sync delta spec 到 `openspec/specs/mcp-knowledge-tools/spec.md`。
 3. **`fix-mcp-streamable-http-session` 的 stale claim 處理**：`pnpm spectra:release fix-mcp-streamable-http-session`（若要放手）或 `pnpm spectra:claim fix-mcp-streamable-http-session` takeover（若要接手）
 4. **v0.38.0 後 smoke** — 使用者登入 / 登出 / Google OAuth / Passkey 全流程應該都 OK（auth-redirect-refactor 已驗），不需額外動作
 5. **staging gate 實戰反饋**：
