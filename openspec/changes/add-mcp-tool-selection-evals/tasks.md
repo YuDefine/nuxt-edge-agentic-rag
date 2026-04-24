@@ -16,6 +16,8 @@
 - [x] 3.3 建立 `scripts/mint-dev-mcp-token.mts` dev-only CLI（Decision 7，@ingest 2026-04-24）：runtime guard `NUXT_KNOWLEDGE_ENVIRONMENT==='local'`（非 local exit 1）；呼叫 `createToken()` 寫 30-day dev token 到本地 D1，scope 包含 `knowledge.ask` / `knowledge.search` / `knowledge.category.list` / `knowledge.citation.read`；stdout 僅印 token 字串（便於 shell pipe）；`package.json` 加 script `mint:dev-mcp-token`
 - [x] 3.4 修 `test/evals/helpers/mcp-client.ts`（Decision 7）：`DEFAULT_MCP_URL` 改 `http://localhost:3010/mcp`；新增 `getEvalBearerToken()` 讀 `EVAL_MCP_BEARER_TOKEN` env；`createEvalMcpClient` 的 `experimental_createMCPClient` transport 加 `headers: { Authorization: 'Bearer ${token}' }`；token 缺失時 throw「請先跑 `pnpm mint:dev-mcp-token` 並填 `.env`」；readiness probe 也帶 token（避免 500 被誤判 ready）
 - [x] 3.5 修 `.env.example`：加 `EVAL_MCP_BEARER_TOKEN=` 與註解（取得方式指向 `pnpm mint:dev-mcp-token`；runtime 不讀取；local-only；`NUXT_MCP_AUTH_SIGNING_KEY` 輪替後需重 mint）；備註 `NUXT_MCP_AUTH_SIGNING_KEY` prerequisite 由 `wire-do-tool-dispatch` 擁有
+- [x] 3.6 Dataset v2 rewrite（@ingest 2026-04-24 v3，Decision 8）：移除 3 筆 `getDocumentChunk` sample；3 個 user-facing tool 各 4 筆（specific×2 / category×1 / boundary×1）= 12 筆；所有 query 以非技術中文口吻重寫；`DATASET_VERSION` 升到 `2026-04-24-v2`；移除 `citationIdEquals` helper 與 `'getDocumentChunk'` from `KnowledgeToolName` union；`expectedArgsCheck` keyword 同步更新
+- [x] 3.7 修 `test/evals/mcp-tool-selection.eval.ts` 的 `inputSchemas`：移除 `getDocumentChunk` entry（TypeScript `satisfies` 限制要匹配新的 3-tool union）
 
 ## 4. Eval harness 主檔（Non-Blocking Eval Execution、Regression Threshold Based On Baseline、Decision 5: Threshold = 初次跑建立 baseline + 後續 regression = –5% 才算 fail）
 
@@ -27,6 +29,9 @@
 - [x] 5.1 新增 `docs/evals/mcp-tool-selection.md`：說明 eval 目的、前置（啟動 dev server、設定 `ANTHROPIC_API_KEY`）、跑法、每個 sample 格式、baseline 更新流程、「**NEVER** 讓 eval 加入 CI 必經 gate」規則；附上 design Non-Goals 摘要（不含 retrieval quality eval、不含 multi-turn、不自動擴資料集）避免日後 scope drift
 - [x] 5.2 第一次 `pnpm eval` 執行（**@followup[TD-042]** @ingest 2026-04-24 v2：因 local NuxtHub KV binding 未 bridge → `/mcp` 503，**暫時** 走 staging URL；待 TD-042 解完後 rebaseline）。前置：`EVAL_MCP_URL=https://agentic-staging.yudefine.com.tw/mcp`、staging `/admin/tokens` UI mint 過一個 eval 用 token 已填 `.env` 的 `EVAL_MCP_BEARER_TOKEN`、`ANTHROPIC_API_KEY` 已設。記錄 overall score、per-sample 結果、model 版本、dataset 版本到 `docs/evals/mcp-tool-selection.md` 的「Baseline」章節（Note: environment=staging）
 - [x] 5.3 更新 `docs/evals/mcp-tool-selection.md` Prerequisites（@ingest 2026-04-24）：(1) `NUXT_MCP_AUTH_SIGNING_KEY` 已設（由 `wire-do-tool-dispatch` 引入，32+ bytes）；(2) **Staging fallback**（目前預設）：staging `/admin/tokens` UI mint token + `EVAL_MCP_URL=https://...staging.../mcp`；(3) **Local** 暫不可用（@followup[TD-042] local KV bridge infra fix 後才能走）：`pnpm mint:dev-mcp-token` + `EVAL_MCP_URL=http://localhost:3010/mcp`；(4) 兩條路 token 都填 `.env` 的 `EVAL_MCP_BEARER_TOKEN`；(5) signing key 輪替或 token 過期需重 mint
+- [x] 5.4 Rebaseline after dataset v2（@ingest 2026-04-24 v3）：重跑 `pnpm eval`（staging），更新 `docs/evals/mcp-tool-selection.md` 的 Baseline 表（dataset=`2026-04-24-v2`、新 overall score、low samples 分析）；舊 baseline 91.67%（v1）作廢
+- [x] 5.5 更新 `docs/evals/mcp-tool-selection.md` 的 Dataset 格式 / Coverage / Non-Goals 段（@ingest 2026-04-24 v3）：反映 3-tool × 4-pattern 新覆蓋、加 `getDocumentChunk` 排除說明、加 end-user persona 原則（Decision 8）
+- [x] 5.6 補 `local/reports/latest.md` 第三章第三節「其他實測或實驗結果」eval 段（~800-1200 字）：動機 / dataset 與評分方式 / baseline 結果 / infra 限制（TD-042 staging fallback、TD-043 exit code）
 
 ## 6. 驗證與品質閘門
 
