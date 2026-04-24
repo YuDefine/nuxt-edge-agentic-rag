@@ -69,14 +69,27 @@ _(本 change 無 DB entity / enum / shared type 改動。新增 Durable Object b
 
 理由：純 MCP 協議層基建升級，沒有 UI。Journey 驗收由 Claude.ai（主）+ ChatGPT Remote MCP（副）兩個外部 integration 完成 tool call 作為 E2E 證據，跟前置 change 同路徑但要求 **tool call 穩定成功**而非僅首次 handshake 成功。
 
-## Open Questions（待 `/spectra-discuss` 收斂）
+## Open Questions
 
-- DO binding name 與 migration tag（`MCP_SESSION` vs 別的）
-- Session TTL 值（15 min? 60 min? 跟 rate-limit 窗口對齊？）
-- Feature flag `NUXT_KNOWLEDGE_FEATURE_MCP_SESSION` 啟用順序（staging 先 / production 同時 / canary）
-- Transport 選擇：`agents/mcp` `McpAgent` 是否在 DO context 規避 `ownKeys` error？若否，自寫 DO-backed transport 的介面邊界
-- ChatGPT Remote MCP 是否有類似 Claude 的 re-init 行為（需先以 Claude 收斂再驗 ChatGPT）
-- 第二次 POST initialize 400 的具體 error code（Zod parse vs `Server already initialized` vs 其他）— discuss 階段補 production tail debug log 或本地重現
+### ✅ Discuss-phase 收斂結果（2026-04-24）
+
+- **視角翻轉**：Claude re-init 循環的**真因是「沒拿到持久 `Mcp-Session-Id`」**，不是 400 本身；400 只是 re-init 後 SDK 防守的副作用。讓 Claude 停止 re-init 的充分條件是「首次 `initialize` response 帶 `Mcp-Session-Id`」。DO 的價值因此**不依賴** Q6 最終 error code 結論。
+- **SDK 400 路徑靜態分析**（`node_modules/@modelcontextprotocol/sdk/dist/esm/server/webStandardStreamableHttp.js` `handlePostRequest`）：POST `initialize` 情境下只可能命中 3 條：
+  - `line 402` → JSON-RPC `-32700` `Parse error: Invalid JSON`（`req.json()` 失敗）
+  - `line 417` → JSON-RPC `-32700` `Parse error: Invalid JSON-RPC message`（Zod schema fail）
+  - `line 427` → JSON-RPC `-32600` `Invalid Request: Server already initialized`（guard = `this._initialized && this.sessionId !== undefined`）
+- **Q6（第二次 POST initialize 400 具體原因）**：**降級為 Phase 1 diag spike task**。由於現行 shim 傳 `sessionIdGenerator: undefined`（`server/utils/mcp-agents-compat.ts:119`），`this.sessionId` 永遠 undefined，line 427 path 結構上不會命中；幾乎必然是 parse error。spike task 負責捕 response body 確認具體 code，並決定是否需要補 log request body。
+- **Q4（transport 選擇）**：**預設走「自寫 DO-backed transport」**（直接在 DO 內實例化 `WebStandardStreamableHTTPServerTransport` + 使用 `this.state.storage` 承載 session state）。理由：`agents/mcp` `WorkerTransport` 在 shim 註解明示 production `tools/call` 爆 `ownKeys` proxy error（`server/utils/mcp-agents-compat.ts:78-85`），其 root cause 是 Cloudflare env binding proxy 被 `Reflect.ownKeys` 掃描；把這個 transport 拖到 DO context 並無充分理由認為 env proxy 訪問模式會變。`McpAgent` 保留為次選，由 Phase 2 PoC spike 驗證（若 PoC 通過，可換掉自寫路徑）。
+- **Q1（DO binding name）**：`MCP_SESSION`（binding name）+ migration tag `v1`（class 名 `MCPSessionDurableObject`）。理由：name 短且與 `NUXT_KNOWLEDGE_FEATURE_MCP_SESSION` flag 呼應。
+- **Q2（Session TTL）**：預設 **30 minutes**，每次 request touch 續命（`idle TTL`，非絕對 TTL）。理由：大於 Claude 使用者思考間隔（防誤 GC），小於 rate-limit 日窗口（避免 token 續跑但 session 失效的語義漂移）。實際值寫入 `NUXT_KNOWLEDGE_MCP_SESSION_TTL_MS`，apply 階段可微調。
+- **Q3（Rollout）**：Staging-first + feature flag 雙控；**不做 per-request canary**（專案無 traffic-splitting 基建）。順序：staging flag=true → production flag=false（stateless shim path）→ staging soak 3 天 → production flag flip → 一週後 stateless fallback 降級為 kill-switch。
+- **Q5（ChatGPT Remote MCP）**：**不在本 change scope 內驗**；Claude.ai 收斂後另起觀察 task，若 ChatGPT 行為不同再開 follow-up change。
+
+### 🔄 仍 open（進 apply 後解）
+
+- Phase 1 spike 的 400 response body 實際 JSON 內容（決定 Phase 2 的修法細節：若是 Parse error，需進一步確認 request body 是否被 rehydrate 漏網）
+- Phase 2 `McpAgent` on DO PoC 結果（決定最終 transport 實作是自寫還是換 `McpAgent`）
+- DO alarm 的 TTL GC 策略具體實作（`alarm()` 驅動 session cleanup vs. lazy cleanup on next access）
 
 ## Implementation Risk Plan
 
@@ -94,7 +107,9 @@ _(本 change 無 DB entity / enum / shared type 改動。新增 Durable Object b
   - Integration：選定 transport 的 handshake + tool call 流程（可在 test 中 stub DO）
   - E2E：production wrangler tail 實測 Claude.ai 連續 3 次 `AskKnowledge` 穩定、無 re-init 循環
   - Regression：前置 change 的 `mcp-agents-compat.spec.ts` + `mcp-streamable-http.spec.ts` 在 stateless fallback 分支仍綠
-  - **Spike gate**：進 apply 前 MUST 有「`agents/mcp` `McpAgent` 在 DO context 跑 `tools/call` 是否 ownKeys error」的 PoC spike 結論
+  - **Phase 1 Spike gate（Q6 diag）**：Phase 1 產出「第二次 POST `initialize` response body JSON」為實際 artifact（spike log + `docs/solutions` 或 inline task note），否則 phase 2 不啟動
+  - **Phase 2 Spike gate（Q4 PoC）**：Phase 2 完成後必須做 `McpAgent` on DO 的 PoC 與「自寫 DO-backed transport」二選一的最終 decision log；PoC 失敗或無明顯優勢則沿用自寫 transport（預設路徑）
+  - **SDK 400 路徑靜態邊界**：已於 Open Questions 列出 3 條 400 path，phase 1 spike 以此作為 decision rule map（`-32700 Invalid JSON` / `-32700 Invalid JSON-RPC message` / `-32600 Server already initialized`）
 - **Artifact sync**:
   - `openspec/specs/mcp-knowledge-tools/spec.md` 更新 session-aware requirement（替換或擴充前置 change 留下的 stateless requirement）
   - `docs/solutions/mcp-streamable-http-session-durable-objects.md`（新）← root cause（stateless 不足） + DO 實作 + trade-off + GC 策略
