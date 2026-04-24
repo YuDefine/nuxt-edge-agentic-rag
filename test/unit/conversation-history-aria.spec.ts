@@ -1,6 +1,6 @@
 import { h, shallowRef } from 'vue'
 import { mockComponent, mountSuspended } from '@nuxt/test-utils/runtime'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { ChatConversationSummary } from '~/types/chat'
 
@@ -77,12 +77,19 @@ mockComponent('UCollapsible', {
 
 describe('ConversationHistory aria-expanded', () => {
   beforeEach(() => {
+    process.env.TZ = 'Asia/Taipei'
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-04-24T12:00:00.000+08:00'))
     historyMock.conversations.value = []
     historyMock.deleteInFlightId.value = null
     historyMock.isLoading.value = false
     historyMock.refresh.mockClear()
     historyMock.selectConversation.mockClear()
     historyMock.deleteConversationById.mockClear()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
   })
 
   async function mountConversationHistory(props = {}) {
