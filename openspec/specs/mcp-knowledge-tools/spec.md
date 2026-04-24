@@ -208,3 +208,105 @@ The `405`/`JSON response` changes SHALL NOT alter middleware auth, rate-limit, o
 - **WHEN** multiple `POST /mcp` requests arrive with the same Bearer token within the rate-limit window
 - **THEN** rate-limit is applied using the token as the window key (not a session ID)
 - **AND** exceeded limits return the existing `429` response
+
+---
+
+### Requirement: Tool Discovery Metadata
+
+The MCP tool surface SHALL expose LLM-consumable discovery metadata on every tool registered under `server/mcp/tools/` so that MCP clients can accurately select tools and construct well-formed arguments without additional prompting. Metadata SHALL include:
+
+- Field-level `.describe()` on every Zod input field, stating purpose, expected input form, and any retrieval or ownership semantics the caller needs to know.
+- Tool-level `annotations` (MCP SDK `ToolAnnotations`) specifying at minimum `readOnlyHint`, `destructiveHint`, `openWorldHint`, and `idempotentHint`. Values SHALL reflect actual handler behavior; tools that only read governed knowledge SHALL set `readOnlyHint: true` and `destructiveHint: false`.
+- `inputExamples` covering at least one typical argument payload for every tool whose input is semantically non-trivial (`askKnowledge`, `searchKnowledge`, `getDocumentChunk`).
+
+Metadata SHALL NOT change handler behavior, authentication, scope checks, or response shape. Tool `name` values SHALL NOT change.
+
+#### Scenario: Tool list response exposes field descriptions
+
+- **WHEN** an authenticated MCP client calls `tools/list`
+- **THEN** every tool entry's `inputSchema.properties.<field>.description` is a non-empty string for every declared input field
+- **AND** no field description is the literal string `"TBD"`, `"TODO"`, or an empty placeholder
+
+#### Scenario: Tool annotations reflect read-only knowledge behavior
+
+- **WHEN** an authenticated MCP client calls `tools/list`
+- **THEN** every knowledge tool entry includes `annotations.readOnlyHint === true` and `annotations.destructiveHint === false`
+- **AND** `annotations.openWorldHint` is present and aligned with whether the tool reaches the governed knowledge corpus
+
+##### Example: annotation values per tool
+
+| Tool             | readOnlyHint | destructiveHint | openWorldHint | idempotentHint |
+| ---------------- | ------------ | --------------- | ------------- | -------------- |
+| askKnowledge     | true         | false           | false         | true           |
+| searchKnowledge  | true         | false           | false         | true           |
+| getDocumentChunk | true         | false           | false         | true           |
+| listCategories   | true         | false           | false         | true           |
+
+#### Scenario: Semantically non-trivial tools ship input examples
+
+- **WHEN** an authenticated MCP client calls `tools/list`
+- **THEN** `askKnowledge`, `searchKnowledge`, and `getDocumentChunk` entries each include at least one entry in `inputExamples`
+- **AND** every example validates against the tool's own `inputSchema`
+- **AND** examples for `askKnowledge` and `searchKnowledge` cover at least one specific-topic natural-language query and one category-flavored query
+
+#### Scenario: Metadata enrichment preserves handler behavior
+
+- **WHEN** an authenticated MCP client calls `tools/call` with valid arguments for any knowledge tool
+- **THEN** the response shape, success path, error paths, and scope enforcement match the behavior observed before metadata was added
+- **AND** tool `name` values remain `askKnowledge`, `searchKnowledge`, `getDocumentChunk`, and `listCategories`
+
+<!-- @trace
+source: enhance-mcp-tool-metadata
+updated: 2026-04-24
+code:
+  - .agents/skills/manage-mcp/references/resources.md
+  - server/durable-objects/mcp-session.ts
+  - server/utils/current-mcp-event.ts
+  - app/pages/account/settings.vue
+  - .agents/skills/manage-mcp/references/testing.md
+  - server/utils/mcp-rehydrate-request-body.ts
+  - app/components/admin/tokens/TokenCreateModal.vue
+  - server/durable-objects/mcp-event-shim.ts
+  - .env.example
+  - test/evals/mcp-tool-selection.eval.ts
+  - app/components/form/PositiveIntegerInput.vue
+  - server/utils/mcp-middleware.ts
+  - wrangler.staging.jsonc
+  - app/components/auth/DeleteAccountDialog.vue
+  - nuxt.config.ts
+  - .github/workflows/deploy.yml
+  - app/utils/positive-integer-input.ts
+  - .agents/skills/commit/SKILL.md
+  - server/utils/mcp-auth-context-codec.ts
+  - HANDOFF.md
+  - server/api/admin/mcp-tokens/index.post.ts
+  - wrangler.jsonc
+  - .agents/skills/manage-mcp/SKILL.md
+  - app/pages/auth/login.vue
+  - build/nitro/rollup.ts
+  - app/utils/assert-never.ts
+  - server/mcp/index.ts
+  - server/utils/mcp-agents-compat.ts
+  - .agents/skills/manage-mcp/references/tools.md
+  - package.json
+  - .agents/skills/manage-mcp/references/middleware.md
+  - .agents/skills/manage-mcp/references/prompts.md
+  - docs/evals/mcp-tool-selection.md
+  - docs/tech-debt.md
+  - scripts/mint-dev-mcp-token.mts
+  - test/evals/helpers/mcp-client.ts
+  - .agents/skills/manage-mcp/references/troubleshooting.md
+  - app/pages/auth/callback.vue
+tests:
+  - test/unit/delete-account-dialog-initial-reauth.test.ts
+  - test/unit/mcp-auth-context-codec.test.ts
+  - test/unit/auth-login-passkey-register-transition.test.ts
+  - test/integration/mcp-session-handshake.spec.ts
+  - test/integration/mcp-session-tool-dispatch.spec.ts
+  - test/unit/account-settings-heading-order.test.ts
+  - test/unit/mcp-middleware.test.ts
+  - test/integration/mcp-auth-context-forwarding.spec.ts
+  - test/unit/mcp-event-shim.test.ts
+  - test/unit/positive-integer-input.test.ts
+  - test/integration/mcp-session-durable-object.spec.ts
+-->

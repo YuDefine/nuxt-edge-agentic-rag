@@ -4,7 +4,7 @@
 
 ## Current State
 
-> 狀態（2026-04-24 更新）：目前 branch `main`，`v0.31.0` deploy commit 與 tag 已建立；本輪文件 ingestion 擴充已完成發布與 spec 封存，專題報告與舊工具鏈資產維持在 `local/` 路徑。Open tech debt 現況：無 blocking 項。
+> 狀態（2026-04-24 更新）：目前 branch `main`，`v0.41.0` tag 已推送；production deploy + docs production 仍待最終驗收。Open tech debt 現況：無 blocking 項，但 MCP Durable Object rollout 仍需依 feature flag 分階段驗證。
 >
 > **最新進度**（2026-04-24）：
 >
@@ -16,24 +16,25 @@
 > - **local auth storage drift** 已處理：`.data/db/sqlite.db` 與 local wrangler D1 已重建，`user_new` / `query_logs_new` 殘留 FK refs 已排除，`/_dev/login` 與 Google linking local flow 已恢復。
 > - **`TD-014` integration test logger 初始化缺口** 已收斂：2026-04-24 本地重跑 `pnpm test:integration` 為 `72 files passed / 364 tests passed / 1 skipped`，目前不再阻擋 roadmap 清空。
 > - **docs custom domain / app canary 人工判定缺口** 已補齊：2026-04-24 以外部網路直接檢查 `agentic.yudefine.com.tw`、`agentic-staging.yudefine.com.tw`、`agentic-docs.yudefine.com.tw`、`agentic-docs-staging.yudefine.com.tw`，四個 custom domain 皆回 `HTTP 200`，確認 GitHub runner 上的 `403` 屬 Cloudflare WAF / Bot protection 誤擋，而非站點異常。
-> - **Workers AI 回答層 / web chat 真串流** 已完成 archive：相關 tasks 皆已完成，active / parked changes 目前清空。
+> - **Delete account Google reauth 修復**已完成 archive：Google reauth 跨 redirect resume、passkey-only regression、直接輸入 `?open-delete=1` bypass 防護與 OAuth cancel case 皆已完成驗證。
+> - **MCP Durable Object 工作線已拆分完成**：`upgrade-mcp-to-durable-objects` 保留 session lifecycle scope；`wire-do-tool-dispatch` 已從 parked 進入 active，負責 DO 內 tool dispatch、auth context HMAC forward 與 production flag rollout。
+> - **`add-mcp-tool-selection-evals`** 已進入收尾：eval harness、dataset、scorer 與文件骨架已落地；剩 dev token CLI / bearer-token client wiring、首次 baseline 與 regression fail 驗證。
+> - **Workers AI 回答層 / web chat 真串流** 已完成 archive：相關 tasks 皆已完成，後續焦點轉往 MCP session/tool dispatch 與 eval baseline。
 
 ## Next Moves
 
 進行中：
 
 - **`upgrade-mcp-to-durable-objects`** 17/27 tasks (63%)，**Phase 4 scope 縮為 session lifecycle only** — tool dispatch 改由 `wire-do-tool-dispatch` 接手（見 TD-041）；production flag 維持 false 直到 wire-do-tool-dispatch archive
-- **`fix-delete-account-dialog-google-reauth`** 10/15 tasks (67%)，TD-028 auth-critical Tier 2，實作推進中
-- **`add-mcp-tool-selection-evals`** 12/19 tasks (63%)，eval harness 實作推進中
+- **`wire-do-tool-dispatch`** 17/24 tasks (71%)，DO 內 McpServer lazy init + 4 tool dispatch + auth context forward 已完成；剩 staging / production rollout 與人工檢查
+- **`add-mcp-tool-selection-evals`** 13/23 tasks (57%)，eval harness 已落地；剩 local dev bearer token 串接、baseline 建立與 fail-path 驗證
 
 ### 已 propose，待 apply（見 AUTO Parked Changes 區塊）
 
 - [high] **`enhance-mcp-tool-metadata`** — 10/14 tasks (71%)，**parked pending production deploy**（implementation 已 commit `ece9c12`；剩 3.3 MCP Inspector 實測 + 4.1-4.3 人工 review 等 production MCP client metadata 真實呈現後 batch 驗）
-- [high] **`wire-do-tool-dispatch`** — DO 內 McpServer lazy init + `DoJsonRpcTransport.dispatch` + auth context HMAC forward（Tier 3，@followup[TD-041]）；依賴 `upgrade-mcp-to-durable-objects` session lifecycle 層；解決 TD-030 剩餘部分；production flag flip true 屬此 change rollout 範圍
 
 ### 近期（尚未 propose，可與 DO change 並行）
 
-- [low] **`assert-never` util 收斂** — `app/utils/assert-never.ts` 與 `shared/utils/assert-never.ts` 重複，typecheck 有 WARN — 獨立
 - [low] **TD-009** `user_profiles.email_normalized` nullable migration — 獨立
 - [low] **TD-026** conversation owner-fallback 重複 config 收斂 — 獨立
 - [low] **日期格式 smoke（遺留）** — `/account/settings`、`/admin/documents/:id`、`/admin/members`、`/admin/query-logs` list+detail、`/admin/tokens` 目視確認
@@ -55,7 +56,7 @@
 
 ## Active Changes
 
-_last synced: 2026-04-24T14:27:43.656Z_
+_last synced: 2026-04-24T15:46:57.481Z_
 
 3 active changes (0 ready · 3 in progress · 0 draft · 0 blocked)
 
@@ -65,10 +66,10 @@ _(none)_
 
 ### In progress
 
-- **add-mcp-tool-selection-evals** — 12/19 tasks (63%)
-- **fix-delete-account-dialog-google-reauth** — 10/15 tasks (67%)
-  - Specs: `passkey-authentication`
+- **add-mcp-tool-selection-evals** — 19/23 tasks (83%)
 - **upgrade-mcp-to-durable-objects** — 17/27 tasks (63%)
+  - Specs: `mcp-knowledge-tools`
+- **wire-do-tool-dispatch** — 17/24 tasks (71%)
   - Specs: `mcp-knowledge-tools`
 
 ### Draft
@@ -103,12 +104,10 @@ _No active claims._
 ### Independent (can run in parallel)
 
 - `add-mcp-tool-selection-evals`
-- `fix-delete-account-dialog-google-reauth`
-- `upgrade-mcp-to-durable-objects`
 
 ### Mutex (same spec touched)
 
-_(none)_
+- **mcp-knowledge-tools** — conflict between: `upgrade-mcp-to-durable-objects`, `wire-do-tool-dispatch`
 
 ### Blocked by dependency
 
@@ -123,12 +122,7 @@ _(none)_
 > 已 `spectra park` 的 changes。檔案暫時從 `openspec/changes/` 移出，
 > metadata 保留在 `.spectra/spectra.db`。`spectra unpark <name>` 可取回。
 
-2 parked changes
-
-- **enhance-mcp-tool-metadata** — 10/14 tasks (71%)
-  - Summary: 本專案是 Agentic RAG，MCP client（Cl…
-- **wire-do-tool-dispatch** — 0/24 tasks (0%)
-  - Summary: `upgrade-mcp-to-durable-object…
+_No parked changes._
 
 <!-- SPECTRA-UX:ROADMAP-AUTO:/parked -->
 
