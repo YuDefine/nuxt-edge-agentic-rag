@@ -11,8 +11,14 @@
 #   5. 所有 build-time site URL secrets 補上 PROD_ / STAGING_ prefix，避免跨環境覆寫
 #
 # 觸發策略：
-#   - push tag v*       → production deploy（先驗證同 SHA 已有成功的 CI run）
+#   - push main         → staging deploy（自動預演，production 前置驗證）
+#   - push tag v*       → production deploy（先驗 CI gate + staging gate 同 SHA）
 #   - workflow_dispatch → 可選 production 或 staging（同上，不重跑 CI）
+#
+# Production gate 兩道：
+#   1. verify-ci-gate      — 同 SHA 的 CI workflow success
+#   2. verify-staging-gate — 同 SHA 的 staging deploy + smoke success
+#      （scripts/check-staging-gate.mjs）
 #
 # STAGING 區塊對應現有的 Cloudflare staging 資源。若 staging bindings / secrets
 # 有變更，需同步更新 `wrangler.staging.jsonc`、本 workflow 與
@@ -21,6 +27,7 @@ name: Deploy
 
 on:
   push:
+    branches: [main]
     tags: ['v*']
   workflow_dispatch:
     inputs:
@@ -54,10 +61,28 @@ jobs:
         run: node scripts/check-ci-gate.mjs
 
   # ---------------------------------------------------------------------------
+  # Staging gate — production deploy 前驗證同 SHA 已有成功的 staging deploy + smoke
+  # ---------------------------------------------------------------------------
+  verify-staging-gate:
+    if: |
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.target == 'production')
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Wait for staging deploy + smoke-test to succeed on this SHA
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/check-staging-gate.mjs
+
+  # ---------------------------------------------------------------------------
   # PRODUCTION deploy — 由 tag push 或 workflow_dispatch(target=production) 觸發
   # ---------------------------------------------------------------------------
   deploy-production:
-    needs: verify-ci-gate
+    needs: [verify-ci-gate, verify-staging-gate]
     if: |
       (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
       (github.event_name == 'workflow_dispatch' && github.event.inputs.target == 'production')
@@ -146,8 +171,8 @@ jobs:
   deploy-staging:
     needs: verify-ci-gate
     if: |
-      github.event_name == 'workflow_dispatch' &&
-      github.event.inputs.target == 'staging'
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.target == 'staging')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: staging
@@ -237,7 +262,7 @@ jobs:
   # DOCS deploy — 與 app deploy 共用同一條 deploy workflow
   # ---------------------------------------------------------------------------
   deploy-docs-production:
-    needs: verify-ci-gate
+    needs: [verify-ci-gate, verify-staging-gate]
     if: |
       (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
       (github.event_name == 'workflow_dispatch' && github.event.inputs.target == 'production')
@@ -297,8 +322,8 @@ jobs:
   deploy-docs-staging:
     needs: verify-ci-gate
     if: |
-      github.event_name == 'workflow_dispatch' &&
-      github.event.inputs.target == 'staging'
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.target == 'staging')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: staging
