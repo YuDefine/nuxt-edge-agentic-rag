@@ -63,19 +63,54 @@ export function createDoMcpEventShim({ auth, doEnv, request }: CreateDoMcpEventS
 function createDoNoopLogger() {
   const context: Record<string, unknown> = {}
 
+  // TODO(remove-debug-do-logger): temporarily route log.error / log.warn /
+  // log.info to console.* so DO tool handler throws surface in `wrangler tail`
+  // (the noop variant ate the stack and left only `Tool execution failed.
+  // Please retry later.`). Restore the original noop body once
+  // `wire-do-tool-dispatch` immediate validation prints real handler errors and
+  // the root cause is fixed. See HANDOFF.md → wire-do-tool-dispatch.
   // DO requests do not pass through evlog's Nitro request hook, so there is no
-  // request-scoped drain to flush here. This keeps existing `useLogger(event)`
-  // call sites non-fatal; DO log draining remains a follow-up integration item.
+  // request-scoped drain to flush here; keeping this debug variant
+  // request-scoped (no module-level state) so concurrent DO requests do not
+  // cross-contaminate context.
+  function formatFields(fields?: Record<string, unknown>): string {
+    try {
+      return JSON.stringify({ ...context, ...fields })
+    } catch {
+      return '(unserialisable fields)'
+    }
+  }
+
   return {
-    debug: () => undefined,
+    debug: (message: unknown, fields?: Record<string, unknown>) => {
+      // eslint-disable-next-line no-console -- TODO(remove-debug-do-logger)
+      console.debug('[mcp-do debug]', message, formatFields(fields))
+    },
     emit: () => null,
-    error: () => undefined,
+    error: (error: unknown, fields?: Record<string, unknown>) => {
+      const asError = error instanceof Error ? error : new Error(String(error))
+      // eslint-disable-next-line no-console -- TODO(remove-debug-do-logger)
+      console.error(
+        '[mcp-do error]',
+        asError.name,
+        '-',
+        asError.message,
+        asError.stack ?? '(no stack)',
+        formatFields(fields),
+      )
+    },
     getContext: () => ({ ...context }),
-    info: () => undefined,
+    info: (message: unknown, fields?: Record<string, unknown>) => {
+      // eslint-disable-next-line no-console -- TODO(remove-debug-do-logger)
+      console.info('[mcp-do info]', message, formatFields(fields))
+    },
     set: (fields: Record<string, unknown>) => {
       Object.assign(context, fields)
     },
-    warn: () => undefined,
+    warn: (message: unknown, fields?: Record<string, unknown>) => {
+      // eslint-disable-next-line no-console -- TODO(remove-debug-do-logger)
+      console.warn('[mcp-do warn]', message, formatFields(fields))
+    },
   }
 }
 
