@@ -1,6 +1,7 @@
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js'
 
 import { parseBooleanFlag } from '#shared/schemas/knowledge-runtime'
+import { MCP_AUTH_CONTEXT_HEADER } from '#server/utils/mcp-auth-context-codec'
 
 interface McpConnectableServer {
   connect(transport: WebStandardStreamableHTTPServerTransport): Promise<void>
@@ -57,6 +58,7 @@ const SAFE_GLOBAL_ENV_KEYS = [
   'NUXT_KNOWLEDGE_AI_SEARCH_INDEX',
   'NUXT_KNOWLEDGE_ENVIRONMENT',
   'NUXT_KNOWLEDGE_FEATURE_PASSKEY',
+  'NUXT_MCP_AUTH_SIGNING_KEY',
   'NUXT_PASSKEY_RP_ID',
   'NUXT_PASSKEY_RP_NAME',
   'NUXT_KNOWLEDGE_AI_GATEWAY_ID',
@@ -123,7 +125,11 @@ export function createMcpHandler(server: McpConnectableServer, options: McpHandl
     // re-initialize loop (TD-030), and bypasses the `Reflect.ownKeys(env)`
     // bug family documented in Phase 1 spike. When the flag is off, the
     // stateless path below remains active as the kill-switch fallback.
-    if (isMcpSessionFlagEnabled(env) && request.method === 'POST') {
+    if (
+      isMcpSessionFlagEnabled(env) &&
+      request.method === 'POST' &&
+      request.headers.has(MCP_AUTH_CONTEXT_HEADER)
+    ) {
       const namespace = resolveMcpSessionNamespace(env)
       if (namespace) {
         const sessionId = request.headers.get('Mcp-Session-Id') ?? crypto.randomUUID()

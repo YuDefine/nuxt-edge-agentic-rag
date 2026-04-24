@@ -20,6 +20,7 @@
 import { describe, expect, it, beforeEach } from 'vitest'
 
 import { MCPSessionDurableObject } from '#server/durable-objects/mcp-session'
+import { MCP_AUTH_CONTEXT_HEADER, signAuthContext } from '#server/utils/mcp-auth-context-codec'
 
 import type {
   McpSessionDurableObjectEnv,
@@ -91,6 +92,7 @@ function createFakeState(sessionId: string) {
 function createEnv(overrides?: Partial<McpSessionDurableObjectEnv>): McpSessionDurableObjectEnv {
   return {
     NUXT_KNOWLEDGE_MCP_SESSION_TTL_MS: '60000',
+    NUXT_MCP_AUTH_SIGNING_KEY: '0123456789abcdef0123456789abcdef',
     ...overrides,
   }
 }
@@ -115,13 +117,58 @@ function makeInitializeRequest(sessionId: string) {
   })
 }
 
-function makeToolsListRequest(sessionId: string) {
+async function makeAuthContextHeader(now: number) {
+  return signAuthContext(
+    {
+      principal: {
+        authSource: 'oauth_access_token',
+        userId: 'user-1',
+      },
+      scopes: [
+        'knowledge.ask',
+        'knowledge.search',
+        'knowledge.category.list',
+        'knowledge.citation.read',
+      ],
+      tokenId: 'oauth:token-1',
+    },
+    '0123456789abcdef0123456789abcdef',
+    now,
+  )
+}
+
+async function makeInvalidSignatureAuthContextHeader(now: number) {
+  const header = await makeAuthContextHeader(now)
+  const envelope = JSON.parse(Buffer.from(header, 'base64url').toString('utf8')) as {
+    payload: string
+    signature: string
+  }
+  const payload = JSON.parse(Buffer.from(envelope.payload, 'base64url').toString('utf8')) as {
+    auth: { scopes: string[] }
+  }
+  payload.auth.scopes = ['knowledge.ask', 'knowledge.search', 'knowledge.admin']
+
+  return Buffer.from(
+    JSON.stringify({
+      ...envelope,
+      payload: Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url'),
+    }),
+    'utf8',
+  ).toString('base64url')
+}
+
+function makeToolsListRequest(sessionId: string, authContextHeader?: string) {
+  const headers = new Headers({
+    'content-type': 'application/json',
+    'Mcp-Session-Id': sessionId,
+  })
+  if (authContextHeader) {
+    headers.set(MCP_AUTH_CONTEXT_HEADER, authContextHeader)
+  }
+
   return new Request('https://do.test/mcp', {
     method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'Mcp-Session-Id': sessionId,
-    },
+    headers,
     body: JSON.stringify({
       jsonrpc: '2.0',
       id: 1,
@@ -167,45 +214,90 @@ describe('MCPSessionDurableObject — session lifecycle', () => {
     expect(alarmAfterInit).toBe(now + 60_000)
 
     now += 10_000
-    const renewResponse = await durableObject.fetch(makeToolsListRequest(sessionId))
-    // TD-041: session lifecycle still renews, but the response is a
-    // 501 JSON-RPC error because tool dispatch is not yet wired via DO.
-    expect(renewResponse.status).toBe(501)
+    const renewResponse = await durableObject.fetch(
+      makeToolsListRequest(sessionId, await makeAuthContextHeader(now)),
+    )
+    expect(renewResponse.status).toBe(200)
 
     const storedSession = await state.storage.get<McpSessionState>('session')
     expect(storedSession?.lastSeenAt).toBe(now)
     expect(await state.storage.getAlarm()).toBe(now + 60_000)
   })
 
-  it('non-initialize on live session returns 501 with TD-041 error payload (tool dispatch deferred)', async () => {
+  it('non-initialize on live session dispatches tools/list through McpServer', async () => {
     const durableObject = new MCPSessionDurableObject(state as never, env, () => now)
     await durableObject.fetch(makeInitializeRequest(sessionId))
 
-    const response = await durableObject.fetch(makeToolsListRequest(sessionId))
-    expect(response.status).toBe(501)
+    const response = await durableObject.fetch(
+      makeToolsListRequest(sessionId, await makeAuthContextHeader(now)),
+    )
+    expect(response.status).toBe(200)
     expect(response.headers.get('Mcp-Session-Id')).toBe(sessionId)
 
     const body = (await response.json()) as {
       jsonrpc: string
       id: number | string | null
-      error?: {
-        code: number
-        message: string
-        data?: { method?: string; followup?: string; toolDispatch?: string }
-      }
+      result?: { tools?: Array<{ name: string }> }
     }
     expect(body.jsonrpc).toBe('2.0')
     expect(body.id).toBe(1)
-    expect(body.error?.code).toBe(-32601)
-    expect(body.error?.data?.followup).toBe('TD-041')
-    expect(body.error?.data?.toolDispatch).toBe('not_implemented')
-    expect(body.error?.data?.method).toBe('tools/list')
+    expect(body.result?.tools?.map((tool) => tool.name).toSorted()).toEqual([
+      'askKnowledge',
+      'getDocumentChunk',
+      'listCategories',
+      'searchKnowledge',
+    ])
+  })
+
+  it('invalid auth context signature returns 401 without renewing lastSeenAt', async () => {
+    const durableObject = new MCPSessionDurableObject(state as never, env, () => now)
+    await durableObject.fetch(makeInitializeRequest(sessionId))
+    const storedBefore = await state.storage.get<McpSessionState>('session')
+
+    now += 10_000
+    const response = await durableObject.fetch(
+      makeToolsListRequest(sessionId, await makeInvalidSignatureAuthContextHeader(now)),
+    )
+
+    expect(response.status).toBe(401)
+    const storedAfter = await state.storage.get<McpSessionState>('session')
+    expect(storedAfter?.lastSeenAt).toBe(storedBefore?.lastSeenAt)
+  })
+
+  it('expired auth context header returns 401 with expiry diagnostics', async () => {
+    const durableObject = new MCPSessionDurableObject(state as never, env, () => now)
+    await durableObject.fetch(makeInitializeRequest(sessionId))
+    const storedBefore = await state.storage.get<McpSessionState>('session')
+
+    const staleHeader = await makeAuthContextHeader(now)
+    now += 60_001
+    const response = await durableObject.fetch(makeToolsListRequest(sessionId, staleHeader))
+
+    expect(response.status).toBe(401)
+    const body = (await response.json()) as { error?: { message?: string } }
+    expect(body.error?.message).toMatch(/expired/i)
+    const storedAfter = await state.storage.get<McpSessionState>('session')
+    expect(storedAfter?.lastSeenAt).toBe(storedBefore?.lastSeenAt)
+  })
+
+  it('missing auth context header returns 400 without renewing lastSeenAt', async () => {
+    const durableObject = new MCPSessionDurableObject(state as never, env, () => now)
+    await durableObject.fetch(makeInitializeRequest(sessionId))
+    const storedBefore = await state.storage.get<McpSessionState>('session')
+
+    now += 10_000
+    const response = await durableObject.fetch(makeToolsListRequest(sessionId))
+
+    expect(response.status).toBe(400)
+    const storedAfter = await state.storage.get<McpSessionState>('session')
+    expect(storedAfter?.lastSeenAt).toBe(storedBefore?.lastSeenAt)
   })
 
   it('alarm() clears session storage so later requests receive 404', async () => {
     const durableObject = new MCPSessionDurableObject(state as never, env, () => now)
     await durableObject.fetch(makeInitializeRequest(sessionId))
 
+    now += 60_001
     await durableObject.alarm()
 
     expect(await state.storage.get<McpSessionState>('session')).toBeUndefined()
@@ -215,6 +307,22 @@ describe('MCPSessionDurableObject — session lifecycle', () => {
     expect(response.status).toBe(404)
     const body = (await response.json()) as { error: { message?: string } }
     expect(body.error?.message ?? '').toMatch(/re-?initialize/i)
+  })
+
+  it('alarm() keeps a session that was renewed before the current TTL expires', async () => {
+    const durableObject = new MCPSessionDurableObject(state as never, env, () => now)
+    await durableObject.fetch(makeInitializeRequest(sessionId))
+
+    now += 10_000
+    await durableObject.fetch(makeToolsListRequest(sessionId, await makeAuthContextHeader(now)))
+    const renewedAt = now
+
+    now = renewedAt + 55_000
+    await durableObject.alarm()
+
+    const storedSession = await state.storage.get<McpSessionState>('session')
+    expect(storedSession?.lastSeenAt).toBe(renewedAt)
+    expect(await state.storage.getAlarm()).toBe(renewedAt + 60_000)
   })
 
   it('non-initialize request without prior session returns 404', async () => {

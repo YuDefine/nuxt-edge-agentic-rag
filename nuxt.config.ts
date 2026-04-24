@@ -19,6 +19,8 @@ const mcpToolkitNodeProvider = mcpToolkitProviderPath('node')
 const mcpAgentsCompatProvider = fileURLToPath(
   new URL('./server/utils/mcp-agents-compat.ts', import.meta.url),
 )
+const devMcpAuthSigningKey = 'dev-only-mcp-auth-context-signing-key-keep-out-of-production'
+const isLocalEnvironment = (process.env.NUXT_KNOWLEDGE_ENVIRONMENT ?? 'local') === 'local'
 
 // https://nuxt.com/docs/api/configuration/nuxt-config
 const knowledgeRuntimeConfig = createKnowledgeRuntimeConfig({
@@ -97,7 +99,7 @@ export default defineNuxtConfig({
   // - Production: D1 + KV + R2 via wrangler.jsonc bindings
   hub: {
     db: 'sqlite',
-    kv: process.env.NODE_ENV === 'development' ? { driver: 'fs-lite', base: '.data/kv' } : true,
+    kv: isLocalEnvironment ? { driver: 'fs-lite', base: '.data/kv' } : true,
     blob: true,
     dir: '.data',
   },
@@ -178,6 +180,13 @@ export default defineNuxtConfig({
     // to any admin. In production, the flag must be true for
     // `requireInternalDebugAccess()` to grant access; defaults to false.
     debugSurfaceEnabled: process.env.NUXT_DEBUG_SURFACE_ENABLED === 'true',
+    // Shared secret for Nuxt -> Durable Object MCP auth-context envelopes.
+    // Production/staging MUST set NUXT_MCP_AUTH_SIGNING_KEY to a distinct
+    // high-entropy value; local dev gets a deterministic fallback only when
+    // NUXT_ENV_DEV=true.
+    mcpAuthSigningKey:
+      process.env.NUXT_MCP_AUTH_SIGNING_KEY ||
+      (process.env.NUXT_ENV_DEV === 'true' ? devMcpAuthSigningKey : ''),
     // Local-only convenience password used by `/api/_dev/login` when browser-
     // initiated test helpers omit the field. Keep aligned with `e2e/helpers.ts`.
     devLoginPassword: process.env.E2E_PASSWORD || 'testpass123',

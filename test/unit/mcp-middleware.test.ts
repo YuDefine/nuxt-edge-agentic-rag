@@ -12,6 +12,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 // a full Nitro event loop.
 
 describe('runMcpMiddleware (§1.3 red)', () => {
+  const authSigningKey = '0123456789abcdef0123456789abcdef'
   let stubCreateError: ReturnType<typeof vi.fn>
   let stubSetResponseHeader: ReturnType<typeof vi.fn>
 
@@ -60,6 +61,7 @@ describe('runMcpMiddleware (§1.3 red)', () => {
 
     await expect(
       runMcpMiddleware(event, {
+        authSigningKey,
         environment: 'local',
         kvBindingName: 'KV',
         extractToolNames: async () => ['askKnowledge'],
@@ -167,6 +169,7 @@ describe('runMcpMiddleware (§1.3 red)', () => {
 
   it('populates event.context.mcpAuth and allows the request through on success', async () => {
     const { runMcpMiddleware } = await import('#server/utils/mcp-middleware')
+    const { verifyAuthContext } = await import('#server/utils/mcp-auth-context-codec')
 
     const kv = {
       get: vi.fn().mockResolvedValue(null),
@@ -194,6 +197,7 @@ describe('runMcpMiddleware (§1.3 red)', () => {
     })
 
     await runMcpMiddleware(event, {
+      authSigningKey,
       environment: 'local',
       kvBindingName: 'KV',
       extractToolNames: async () => ['askKnowledge'],
@@ -224,6 +228,16 @@ describe('runMcpMiddleware (§1.3 red)', () => {
     })
     expect(auth?.tokenId).toBe('token-1')
     expect(auth?.scopes).toEqual(['knowledge.ask', 'knowledge.search'])
+    const envelope = (event.context as { mcpAuthEnvelope?: string }).mcpAuthEnvelope
+    expect(envelope).toEqual(expect.any(String))
+    await expect(verifyAuthContext(envelope, authSigningKey)).resolves.toMatchObject({
+      principal: {
+        authSource: 'legacy_token',
+        userId: 'admin-1',
+      },
+      scopes: ['knowledge.ask', 'knowledge.search'],
+      tokenId: 'token-1',
+    })
     expect(kv.put).toHaveBeenCalled()
   })
 
@@ -262,6 +276,7 @@ describe('runMcpMiddleware (§1.3 red)', () => {
     const legacyLookup = vi.fn().mockResolvedValue(null)
 
     await runMcpMiddleware(event, {
+      authSigningKey,
       environment: 'local',
       kvBindingName: 'KV',
       extractToolNames: async () => ['askKnowledge'],
