@@ -167,6 +167,12 @@ function makeEvent(body: unknown): H3Event {
     'Mcp-Session-Id': sessionId,
   })
 
+  const request = new Request('https://worker.test/mcp', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(body),
+  })
+
   return {
     _body: body,
     headers,
@@ -178,12 +184,9 @@ function makeEvent(body: unknown): H3Event {
       },
       params: {},
     },
+    req: request.clone(),
     web: {
-      request: new Request('https://worker.test/mcp', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(body),
-      }),
+      request,
     },
   } as unknown as H3Event
 }
@@ -246,6 +249,8 @@ async function forwardThroughCompat(options: {
 
   const request = (event as unknown as { web: { request: Request } }).web.request
   expect(request.headers.get(MCP_AUTH_CONTEXT_HEADER)).toBe(envelope)
+  const preferredRequest = (event as unknown as { req?: Request }).req
+  expect(preferredRequest?.headers.get(MCP_AUTH_CONTEXT_HEADER)).toBe(envelope)
 
   const forwardedRequest = options.tamperHeader
     ? cloneRequestWithTamperedAuthHeader(request)
