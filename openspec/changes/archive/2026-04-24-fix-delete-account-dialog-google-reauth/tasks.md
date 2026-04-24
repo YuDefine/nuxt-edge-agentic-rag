@@ -19,14 +19,14 @@
 
 ## 5. 驗證與品質閘門
 
-- [ ] 5.1 `pnpm check`（format + lint + typecheck + test）全綠
+- [x] 5.1 `pnpm check`（format + lint + typecheck + test）全綠
 - [x] 5.2 `pnpm spectra:followups` 確認無 drift；`pnpm audit:ux-drift` 無新 enum drift
 - [x] 5.3 代碼 review：(a) `consumePendingDeleteReauth` 於 settings `onMounted` 只被呼叫一次、(b) `router.replace({ query: {} })` 在 consume 之後且不等待 dialog close、(c) `handleGoogleReauth` 的 save 順序為先 `saveGenericReturnTo` 再 `setPendingDeleteReauth` 再 `signIn.social`，避免 race — 對應 Scenario: Server reauth enforcement is not weakened（UI flow 永不繞過 server reauth）
 - [x] 5.4 `docs/tech-debt.md` TD-028 entry Status 保留 `open`，於本 change archive 時才由 archive 流程標為 `done`（按 follow-up register 規則）
 
 ## 6. 人工檢查
 
-- [ ] 6.1 使用者以 Google-linked 測試帳號（staging / 或隨時可刪的測試帳號）走完整 Google reauth delete flow：`/account/settings` → 刪除帳號 → Google reauth → OAuth 完成 → 回到 `/account/settings` → dialog 自動打開 → confirm 按鈕可按 → 確認刪除 → 跳 `/auth/login`。截圖兩個關鍵時刻：(1) 回到 settings 時 dialog 狀態、(2) 刪除成功後的 login 頁
-- [ ] 6.2 使用者以 passkey-only 測試帳號走 passkey reauth delete flow，確認無 regression：passkey ceremony → dialog 內狀態切換 → confirm 可按 → 刪除成功（對應 Scenario: Passkey reauth path is not affected）
-- [ ] 6.3 使用者（一般已登入 session）手動在網址列輸入 `/account/settings?open-delete=1` → 確認 dialog **不**自動打開、URL 中 `?open-delete=1` 在 onMounted 後消失（對應 Scenario: Direct access to resume URL without a valid signal does not bypass reauth）
-- [ ] 6.4 使用者觸發 Google reauth 後於 Google OAuth 頁點「取消」或關閉分頁，觀察：(a) `/auth/callback` 顯示錯誤訊息、(b) 回到 `/account/settings` 時 dialog 不自動打開、(c) pending-delete-reauth flag 在 5 分鐘內若重新打 dialog 選 Google 仍可正常走完流程
+- [x] 6.1 使用者以 Google-linked 測試帳號（staging / 或隨時可刪的測試帳號）走完整 Google reauth delete flow：`/account/settings` → 刪除帳號 → Google reauth → OAuth 完成 → 回到 `/account/settings` → dialog 自動打開 → confirm 按鈕可按 → 確認刪除 → 跳 `/auth/login`。截圖兩個關鍵時刻：(1) 回到 settings 時 dialog 狀態、(2) 刪除成功後的 login 頁
+- [x] 6.2 使用者以 passkey-only 測試帳號走 passkey reauth delete flow，確認無 regression：passkey ceremony → dialog 內狀態切換 → confirm 可按 → 刪除成功（對應 Scenario: Passkey reauth path is not affected）
+- [x] 6.3 使用者（一般已登入 session）手動在網址列輸入 `/account/settings?open-delete=1` → 確認 dialog **不**自動打開、URL 中 `?open-delete=1` 在 onMounted 後消失（對應 Scenario: Direct access to resume URL without a valid signal does not bypass reauth）
+- [x] 6.4 使用者觸發 Google reauth 後於 Google OAuth 頁點「取消」或關閉分頁，觀察：(a) `/auth/callback` 顯示錯誤訊息、(b) 回到 `/account/settings` 時 dialog 不自動打開、(c) pending-delete-reauth flag 在 5 分鐘內若重新打 dialog 選 Google 仍可正常走完流程
