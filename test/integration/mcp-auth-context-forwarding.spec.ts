@@ -198,11 +198,15 @@ function makeReqOnlyEvent(body: unknown): H3Event {
     req?: { headers: Headers; method: string; url: string }
     web?: { request?: Request }
   }
-  event.req = {
-    headers: event.headers,
-    method: 'POST',
-    url: '/mcp',
-  }
+  Object.defineProperty(event, 'req', {
+    configurable: true,
+    enumerable: true,
+    get: () => ({
+      headers: event.headers,
+      method: 'POST',
+      url: '/mcp',
+    }),
+  })
   delete event.web
   return event
 }
