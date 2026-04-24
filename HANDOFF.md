@@ -4,9 +4,11 @@
 
 ### v0.43.0 已發布（2026-04-25）
 
-- main push `5a47a63` → staging deploy 全綠：run `24908001430`（`deploy-staging` + `smoke-test-staging` 都 success；`deploy-docs-staging` 失敗，見下「⚠️ deploy-docs-staging UTF-8 commit message issue」）
-- tag `v0.43.0` → production deploy run `24908303837` 觸發中，未追完
+- main push `5a47a63` → staging deploy run `24908001430`：`deploy-staging` + `smoke-test-staging` ✅；`deploy-docs-staging` ❌（UTF-8 issue，見下）
+- tag `v0.43.0` → production deploy run `24908303837`：`deploy-production` ✅（2m1s）、`smoke-test` ✅；**但 `deploy-docs-production` 也中招 UTF-8 issue ❌**（40s 後 exit 1，Cloudflare API 同一錯誤碼 8000111）
+- 影響：**app production v0.43.0 已實際上線**（Workers / smoke 都綠）；**docs production 仍停在前一版**（`agentic-docs.yudefine.com.tw` 未更新到 v0.43.0）
 - 版本：`0.42.2` → `0.43.0`（minor，含 `web-chat-ui` 新 `Conversation History Refresh Reconciliation` requirement）
+- 後續 main push `a0e2426`（更新 HANDOFF）→ run `24908394088`：`deploy-docs-staging` **反而成功**（49s） — 觸發條件與 commit message 內容相關，非 wrangler/CF API 全面漂移
 
 ### `wire-do-tool-dispatch`
 
@@ -30,12 +32,16 @@
 ## Blocked
 
 - 截圖審查時 local dev `/api/auth/me/credentials` 曾間歇性回 `500`：`[nuxt-hub] DB binding not found`。詳見 TD-045。
-- ⚠️ **deploy-docs-staging UTF-8 commit message issue**（v0.43.0 兩次 rerun 皆失敗）：Cloudflare Pages API 回 `Invalid commit message, it must be a valid UTF-8 string [code: 8000111]`。staging app deploy + smoke 全綠；不阻擋 `verify-staging-gate` 也不阻擋 production tag。但 docs 站 v0.43.0 未更新。需要查 wrangler 4.84.1 對 git commit message 的編碼處理（疑為 multi-commit batch / 特定 CJK 字元組合 / wrangler 與 CF API contract 漂移），或在 workflow 顯式傳 `--commit-message` 用 ASCII fallback。
+- ⚠️ **docs deploy UTF-8 commit message issue**（TD-049）：Cloudflare Pages API 拒絕合法 UTF-8 commit message，`5a47a63` v0.43.0 tag 中招、後續 `a0e2426` 不中招 → 非 wrangler 全面漂移。app production 不受影響，但 `agentic-docs.yudefine.com.tw` 停在舊版。已登記 TD-049 + `docs/solutions/tooling/2026-04-25-cloudflare-pages-utf8-commit-message.md`，workaround patch 待人工套到 `.github/workflows/deploy.yml`（Claude guard 保護 workflow，無法代改）。
 
 ## Next Steps
 
-1. 追 v0.43.0 production deploy run `24908303837` 結果。
-2. 查並修 `deploy-docs-staging` UTF-8 issue；考慮升 TD entry 並在 deploy.yml 顯式傳 sanitized `--commit-message`。
+1. ~~追 v0.43.0 production deploy run `24908303837` 結果~~ → **已追完**：app ✅ / docs ❌。
+2. TD-049 docs UTF-8 workaround（in-progress）：
+   - **人工套 workflow patch**（見對話中 diff / TD-049 Fix approach）到 `.github/workflows/deploy.yml` 兩個 `deploy-docs-*` step
+   - 套完回主線跑 `/commit` 封版（TD entry + solutions doc + HANDOFF 更新已完成，workflow 由人工 edit 後自然被 `git status` 撈入同一 commit flow）
+   - merge 後 `gh workflow run deploy.yml --ref v0.43.0 -f target=production`（或在 v0.43.0 tag 上 workflow_dispatch）補 docs production v0.43.0
+   - 觀察後續 3 次發版 `deploy-docs-*` 是否持續綠，更新 TD-049 Acceptance
 3. `wire-do-tool-dispatch`：tool handler 內部 throw debug patch → 抓 stack → 修根因 → immediate validation → 勾選 §7.1 → Notion Secret 頁補 sanitized evidence。
 4. 修好後評估 flip production `NUXT_KNOWLEDGE_FEATURE_MCP_SESSION=true`，24 小時密集 tail。
 5. 7 天 production 穩定後，TD-030 / TD-041 標 done，archive `wire-do-tool-dispatch`，收斂 `upgrade-mcp-to-durable-objects`。
