@@ -1630,6 +1630,8 @@ Chat UI 沒有任何顯式的「新對話 / New chat」按鈕或 menu item：
 
 **Short-term (this TD)** — `.github/workflows/deploy.yml` 的兩個 `deploy-docs-*` step 顯式傳：
 
+<div v-pre>
+
 ```yaml
 run: pnpm exec wrangler pages deploy docs/.vitepress/dist \
   --project-name "$DOCS_CF_PAGES_PROJECT_NAME" \
@@ -1637,6 +1639,8 @@ run: pnpm exec wrangler pages deploy docs/.vitepress/dist \
   --commit-hash "${{ github.sha }}" \
   --commit-message "Deploy ${{ github.sha }}"
 ```
+
+</div>
 
 避開 git HEAD commit message 直接作為 CF API 輸入。`--commit-hash` 仍保留 SHA 供 CF dashboard 顯示。
 
