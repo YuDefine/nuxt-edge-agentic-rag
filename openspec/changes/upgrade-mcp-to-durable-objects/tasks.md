@@ -1,6 +1,6 @@
 ## 1. 基建準備
 
-- [ ] [P] 1.1 `wrangler.jsonc` 新增 `durable_objects.bindings` 條目 `{ name: "MCP_SESSION", class_name: "MCPSessionDurableObject" }` + migration tag `v1`，驗證 `wrangler deploy --dry-run` 通過（對齊 Decision：採用獨立 Durable Object class MCPSessionDurableObject 搭配 binding MCP_SESSION；Requirement: MCP Session Durable Object Binding）
+- [~] 1.1 wrangler.jsonc 加 MCP_SESSION binding（**移至 Task 4.5**；原 task 的 dry-run gate 要等 DO class 存在）
 - [x] [P] 1.2 `shared/schemas/knowledge-runtime.ts` 加 `mcp.sessionTtlMs`（預設 `1800000`），`nuxt.config.ts` runtime config 讀取 `NUXT_KNOWLEDGE_MCP_SESSION_TTL_MS`
 
 ## 2. Phase 1 Diag Spike
@@ -9,21 +9,23 @@
 - [x] 2.2 `/commit` → deploy diag patch 到 production → Claude.ai 任一 tool call 重現 re-init 循環 → `wrangler tail` 抓 `[MCP-DIAG]` JSON 至少 5 筆
 - [x] 2.3 將 `resBody.error.code` + `resBody.error.message` 對照 SDK 400 路徑 decision rule（`-32700 Invalid JSON` / `-32700 Invalid JSON-RPC message` / `-32600 Server already initialized`），記錄到 `docs/solutions/mcp-streamable-http-session-durable-objects.md` 草稿；revert diag patch 並獨立 `/commit`（diagnostic code 不留 main）
 
-## 3. Phase 2 Pivot Decision（2026-04-24 ingest 後新增）
+## 3. Phase 2 Pivot Decision（已完成 2026-04-24）
 
-Phase 1 spike 實證真因是 SDK 碰 Cloudflare env proxy `Reflect.ownKeys` TypeError，DO 架構本身不解決。**進 Core Implementation 前必須先選 Pivot A / B / C**（詳見 design.md Phase 2 Pivot decision 段 + `docs/solutions/mcp-streamable-http-session-durable-objects.md`）。
+Phase 1 spike 實證真因是 SDK 碰 Cloudflare env proxy `Reflect.ownKeys` TypeError，DO 架構本身不解決（詳見 design.md Phase 2 Pivot decision 段 + `docs/solutions/mcp-streamable-http-session-durable-objects.md`）。
 
-- [ ] 3.1 Pivot A 評估：grep SDK dist 找出 `a16` 對應的 env access pattern（例如 `Object.keys(env)` / `Reflect.ownKeys(env)` / `for (const k in env)`），列出所有位置，估算加強 `installEnumerableSafeEnv` 的覆蓋難度（執行 Decision：Phase 2 Pivot decision required before DO implementation）
-- [ ] 3.2 Pivot B 評估：檢視 SDK `Reflect.ownKeys` / `Object.keys(env)` 散布範圍，評估 fork 或 monkey-patch 的 maintenance 成本（涵蓋原 Phase 2 PoC：評估 McpAgent on DO 取代自寫 transport 的 transport 相容性疑慮——實證結果使該 PoC 已無獨立意義）
-- [ ] 3.3 Pivot C 評估：列出 MCP Streamable HTTP 的 minimum viable surface（僅 handshake + tool call），對照 SDK 當前實作行數，估算自寫成本與完整度風險
-- [ ] 3.4 Pivot decision log：三選一寫入 `docs/solutions/mcp-streamable-http-session-durable-objects.md` 並更新 `design.md` Decisions 段（對齊 Decision：預設採用自寫 DO-backed transport — 依 Pivot 結果可能保留或調整）
+- [~] 3.1 Pivot A 評估（跳過 — 選 C 後不需要；理由：SDK env access pattern 不穩定，shim 易脆）
+- [~] 3.2 Pivot B 評估（跳過 — 選 C 後不需要；涵蓋原 Phase 2 PoC：評估 McpAgent on DO 取代自寫 transport — Superseded 區段的相容性疑慮）
+- [x] 3.3 Pivot C 評估：SDK `Transport` interface 極簡（`start/send/close + onmessage`），minimum viable surface = `DoJsonRpcTransport` class ~30 行 + DO `fetch()` 橋接 HTTP ↔ JSONRPCMessage；不必實作完整 MCP Streamable HTTP spec（SDK `McpServer`/`Protocol` 處理語義）
+- [x] 3.4 Pivot decision log：**選定 Pivot C**（執行 Decision：Phase 2 Pivot decision required before DO implementation）；已寫入 `docs/solutions/mcp-streamable-http-session-durable-objects.md` § Pivot Decision — C 並更新 `design.md` Decisions 段
 
-## 4. Core Implementation
+## 4. Core Implementation（Pivot C 路線 — 自寫 minimal transport）
 
-- [ ] 4.1 新增 `server/mcp/durable-object.ts`：`MCPSessionDurableObject` class、`this.state.storage` schema（`sessionId` / `protocolVersion` / `capabilities` / `createdAt` / `lastSeenAt` / `initializedServer`）、`alarm()` handler 在 `lastSeenAt + TTL` 清空 storage（對齊 Decision：Session TTL 30 分鐘 idle 並由 DO alarm 驅動 GC；Requirement: MCP Session Durable Object Binding）
-- [ ] 4.2 DO 內實作 `fetch()`：依 Phase 2 決策建立 transport 實例，首次 `initialize` 用 `crypto.randomUUID()` 生成 session id 並在 response 帶 `Mcp-Session-Id` header（對齊 Decision：Session ID 由 server 在首次 initialize 生成並回傳 Mcp-Session-Id header；Requirement: MCP Session Initialization Issues Mcp-Session-Id；Requirement: MCP Session Has Idle TTL With Request-Triggered Renewal — 實作 request 觸發 lastSeenAt 續命與 alarm 排程）
-- [ ] 4.3 改 `server/mcp/index.ts`：依 `features.mcpSession` flag 分支——flag=true 時抽/生成 session id 並 `env.MCP_SESSION.idFromName(sessionId).fetch(request.clone())` 轉交 DO；flag=false 保留現行 stateless shim path（對齊 Decision：Stateless fallback 保留為 kill-switch；Requirement: Feature Flag Controls MCP Session Path）
-- [ ] [P] 4.4 `server/utils/mcp-middleware.ts`：加過期/撤銷 session 回 `404` 路徑（非 401）；token revoke 時同時清 session DO（對齊 Decision：Middleware 擴充：rate-limit 仍以 token 為主 session 生命週期綁 token；Requirement: Stateless MCP Authentication 的 expired session scenario）
+- [ ] 4.1 新增 `server/mcp/do-transport.ts`：`DoJsonRpcTransport` class 符合 SDK `Transport` interface（`start / send / close + onmessage` callback）；`send(msg)` 存入 per-request resolver，由 DO fetch handler 收集；~30 行（對齊 Decision：採用自寫 minimal `DoJsonRpcTransport`（Pivot C 實作））
+- [ ] 4.2 新增 `server/mcp/durable-object.ts`：`MCPSessionDurableObject` class、`this.state.storage` schema（`sessionId` / `protocolVersion` / `capabilities` / `createdAt` / `lastSeenAt` / `initializedServer`）、`alarm()` handler 在 `lastSeenAt + TTL` 清空 storage（對齊 Decision：Session TTL 30 分鐘 idle 並由 DO alarm 驅動 GC；Requirement: MCP Session Durable Object Binding）
+- [ ] 4.3 DO 內實作 `fetch()`：parse request body → `transport.onmessage(msg, { authInfo, requestInfo })` → await resolver → 回 HTTP JSON response；lazy init `McpServer` + `server.connect(transport)`；首次 `initialize` 用 `crypto.randomUUID()` 生成 session id 並在 response header 帶 `Mcp-Session-Id`（對齊 Decision：Session ID 由 server 在首次 initialize 生成並回傳 Mcp-Session-Id header；Requirement: MCP Session Initialization Issues Mcp-Session-Id；Requirement: MCP Session Has Idle TTL With Request-Triggered Renewal — 實作 request 觸發 lastSeenAt 續命與 alarm 排程）
+- [ ] 4.4 改 `server/mcp/index.ts`：依 `features.mcpSession` flag 分支——flag=true 時抽/生成 session id 並 `env.MCP_SESSION.idFromName(sessionId).fetch(request.clone())` 轉交 DO；flag=false 保留現行 stateless shim path（對齊 Decision：Stateless fallback 保留為 kill-switch；Requirement: Feature Flag Controls MCP Session Path）
+- [ ] 4.5 `wrangler.jsonc` 新增 `durable_objects.bindings` 條目 `{ name: "MCP_SESSION", class_name: "MCPSessionDurableObject" }` + migration tag `v1`，驗證 `wrangler deploy --dry-run` 通過（對齊 Decision：採用獨立 Durable Object class MCPSessionDurableObject 搭配 binding MCP_SESSION；取代原 Task 1.1——該 task 的 dry-run gate 要等 class 存在，故合併到此）
+- [ ] [P] 4.6 `server/utils/mcp-middleware.ts`：加過期/撤銷 session 回 `404` 路徑（非 401）；token revoke 時同時清 session DO（對齊 Decision：Middleware 擴充：rate-limit 仍以 token 為主 session 生命週期綁 token；Requirement: Stateless MCP Authentication 的 expired session scenario）
 
 ## 5. Test Coverage
 
