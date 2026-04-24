@@ -36,6 +36,8 @@
 | TD-024 | chat-history-sidebar test suite 品質（string contract/resolves）      | low      | done   | 2026-04-24 /commit review                              | —     |
 | TD-025 | Container.vue `$csrfFetch.native` 跳過 CSRF header 造成 /api/chat 403 | high     | done   | 2026-04-24 code-quality-review-followups 人工檢查 10.x | —     |
 | TD-026 | index.vue 與 ConversationHistory fallback 重複 config + refresh 邏輯  | low      | open   | 2026-04-24 code-quality-review-followups /commit 0-A   | —     |
+| TD-027 | MCP connector first-time authorization journey 實測待部署後驗證       | mid      | open   | 2026-04-24 auth-redirect-refactor 人工檢查 7.4         | —     |
+| TD-028 | DeleteAccountDialog Google reauth 無 callbackURL，dialog 會 unmount   | mid      | open   | 2026-04-24 auth-redirect-refactor code-review OBS-1    | —     |
 
 ---
 
@@ -1011,3 +1013,78 @@ TD-023 引入 provide/inject 後，`ConversationHistory.vue` 保留 owner-fallba
 - 既有單元測試（`conversation-history-{aria,midnight,component}.spec.ts`）仍綠
 - e2e `chat-home-fetch-dedup.spec.ts` 仍綠
 - Factory 有至少一個直接的 unit test 覆蓋 refresh reconcile 行為
+
+---
+
+## TD-027 — MCP connector first-time authorization journey 實測待部署後驗證
+
+**Status**: open
+**Priority**: mid
+**Discovered**: 2026-04-24 — `auth-redirect-refactor` 人工檢查 7.4
+**Location**: `app/pages/auth/mcp/authorize.vue`、`app/utils/mcp-connector-return-to.ts`、`app/pages/auth/callback.vue`
+**Related markers**: search `@followup[TD-027]` in repo
+
+### Problem
+
+`auth-redirect-refactor` 改動：
+
+1. `/auth/mcp/authorize` 的 Google login handler 加 `callbackURL: '/auth/callback'`（避免 better-auth 預設回 `/`）
+2. `/auth/callback` consume order 改為 MCP > generic > fallback `/`
+
+以上改動需要透過 **Claude.ai 實際發起 MCP connector connection** 才能 end-to-end 驗證，但目前 local dev 無法被 claude.ai 直接連到（需 ngrok / cloudflare tunnel / 部署到 staging）。人工檢查 7.4 因此暫未驗證。
+
+### Fix approach
+
+部署到 staging 或 production 後，執行人工驗收流程：
+
+1. Claude.ai MCP connector 指向已部署的 MCP endpoint
+2. 發起連接 → 被導去 `https://<deployed-host>/auth/mcp/authorize?client_id=...&redirect_uri=...&...`
+3. 點 Google 登入 → OAuth 完成
+4. **必須回到原 `/auth/mcp/authorize?...` 同樣 URL**（驗 `saveMcpConnectorReturnTo` sessionStorage bridge）
+5. 看到授權同意畫面 → 點授權 → 回 Claude.ai
+6. 在 Claude.ai 能正常使用 MCP tools
+
+### Acceptance
+
+- Staging / production 完成上述 6 步流程無中斷、無錯誤
+- 步驟 4 的 URL 是**原始 authorize URL 含 query**，而非 `/` / `/auth/login`
+- Claude.ai 端 connector 狀態顯示 connected 且可呼叫工具
+- 完成後將 7.4 marker 從 tasks.md 移除並更新 TD-027 Status 為 `done`
+
+---
+
+## TD-028 — DeleteAccountDialog Google reauth 無 callbackURL，dialog 會 unmount
+
+**Status**: open
+**Priority**: mid
+**Discovered**: 2026-04-24 — `auth-redirect-refactor` code-review OBS-1
+**Location**: `app/components/auth/DeleteAccountDialog.vue` `handleGoogleReauth`
+**Related markers**: 尚無 tasks.md marker（pre-existing，非本 change scope）
+
+### Problem
+
+`handleGoogleReauth` 呼叫 `signIn.social({ provider: 'google' })` 未指定 `callbackURL`，better-auth 預設回 `/`。使用者流程：
+
+1. `/account/settings` → 按「刪除帳號」→ dialog 開啟 → 按「Google 重新驗證」
+2. 跳 Google OAuth → 回到本站 `/`
+3. **Dialog 已 unmount**，`reauthComplete = true` 設在 unmounted instance
+4. 使用者看到 `/` 首頁，沒有任何指示「session 已 rotate」
+5. 必須從頭再開一次 delete 流程
+
+Passkey reauth 是同 origin 不受影響。
+
+### Fix approach
+
+兩個方向（擇一）：
+
+**A.** 加 `callbackURL: '/auth/callback'` + 透過 `saveGenericReturnTo('/account/settings?open-delete=1')` 指示 settings 頁自動重開 dialog 並跳到 confirm step。
+
+**B.** 把 Google reauth 搬去獨立頁面 `/account/settings/reauth`（避免 dialog 依賴 mounted state）。
+
+A 較簡單，沿用既有 `saveGenericReturnTo` bridge；B 架構更乾淨但範圍大。
+
+### Acceptance
+
+- 刪帳號走 Google reauth 路徑時不會中斷
+- 回到 `/account/settings` 後 dialog 自動重開且已通過 reauth 檢查
+- Passkey reauth 路徑無行為變化
