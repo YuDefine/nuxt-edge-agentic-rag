@@ -30,24 +30,23 @@
 
 ## Active Changes
 
-_last synced: 2026-04-24T00:15:15.147Z_
+_last synced: 2026-04-24T09:02:57.995Z_
 
-3 active changes (1 ready · 1 in progress · 1 draft · 0 blocked)
+2 active changes (1 ready · 1 in progress · 0 draft · 0 blocked)
 
 ### Ready to apply
 
-- **code-quality-review-followups** — 43/43 tasks (100%)
-  - Specs: `oauth-remote-mcp-auth`, `web-chat-ui`
+- **auth-redirect-refactor** — 30/30 tasks (100%)
+  - Specs: `web-chat-ui`
 
 ### In progress
 
-- **auth-redirect-refactor** — 6/27 tasks (22%)
-  - Specs: `web-chat-ui`
+- **fix-mcp-streamable-http-session** — 17/27 tasks (63%)
+  - Specs: `mcp-knowledge-tools`
 
 ### Draft
 
-- **fix-mcp-streamable-http-session** — 0/23 tasks (0%)
-  - Specs: `mcp-knowledge-tools`
+_(none)_
 
 ### Blocked
 
@@ -62,20 +61,17 @@ _(none)_
 > 即時 ownership 由 `.spectra/claims/*.json` 提供。
 > 接手 handoff / 開始做 change 時，先 claim，再移除 `HANDOFF.md` 對應項目。
 
-2 claims (1 active · 1 stale)
+1 claim (1 active · 0 stale)
 
 ### Live Ownership
 
-- **auth-redirect-refactor** — unknown:charles@charlesdeMac-mini.local (unknown)
+- **fix-mcp-streamable-http-session** — unknown:charles@charlesdeMac-mini.local (unknown)
   - Accepted from: manual
-  - Last heartbeat: 2026-04-24T00:07:31.661Z
+  - Last heartbeat: 2026-04-24T08:11:16.322Z
 
 ### Stale Claims
 
-- **code-quality-review-followups** — unknown:charles@charlesdeMac-mini.local (unknown)
-  - Accepted from: manual
-  - Last heartbeat: 2026-04-23T23:08:39.091Z
-  - Status: stale (last heartbeat 2026-04-23T23:08:39.091Z)
+_(none)_
 
 <!-- SPECTRA-UX:ROADMAP-AUTO:/claims -->
 
@@ -91,7 +87,7 @@ _(none)_
 
 ### Mutex (same spec touched)
 
-- **web-chat-ui** — conflict between: `auth-redirect-refactor`, `code-quality-review-followups`
+_(none)_
 
 ### Blocked by dependency
 
