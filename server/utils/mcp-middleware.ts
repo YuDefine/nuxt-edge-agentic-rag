@@ -1,6 +1,7 @@
 import type { H3Event } from 'h3'
 
 import { getRequiredKvBinding } from '#server/utils/cloudflare-bindings'
+import { extractMcpSessionIdFromEvent } from '#server/utils/mcp-session'
 import { getMcpOauthAccessTokenRecord } from '#server/utils/mcp-oauth-grants'
 import {
   extractBearerToken,
@@ -76,6 +77,7 @@ interface McpEventLike {
   context: Record<string, unknown> & {
     cloudflare?: { env?: Record<string, unknown> }
     mcpAuth?: McpAuthContext
+    mcpSessionId?: string | null
   }
   headers: Headers
 }
@@ -92,12 +94,23 @@ function getHeadersRecord(event: McpEventLike): Record<string, string | undefine
  * Thrown errors propagate out of the middleware and the toolkit handler relays
  * them to the client. The associated HTTP status codes are preserved so the
  * MCP spec replies (401 / 403 / 429) are delivered correctly.
+ *
+ * **Session / 401 contract (Task 4.6 + Requirement "Stateless MCP
+ * Authentication" expired-session scenario)**: this middleware MUST emit
+ * `401` only for Bearer-token failures (missing / invalid / revoked token).
+ * A valid token paired with a stale `Mcp-Session-Id` is NOT a middleware
+ * concern — `server/utils/mcp-agents-compat.ts` forwards to
+ * `MCPSessionDurableObject`, which returns `404` with re-initialize guidance.
+ * Do not short-circuit session-only issues to `401` here.
  */
 export async function runMcpMiddleware(
   event: McpEventLike,
   deps: RunMcpMiddlewareDeps,
 ): Promise<void> {
   const kv = getRequiredKvBinding(event, deps.kvBindingName)
+  // Stash the session id on event.context so downstream observability
+  // (rate-limit tags, audit logs) can read it without re-parsing headers.
+  event.context.mcpSessionId = extractMcpSessionIdFromEvent(event)
   let auth: McpAuthContext
   try {
     const bearerToken = extractBearerToken(getHeadersRecord(event))

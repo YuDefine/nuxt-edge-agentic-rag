@@ -266,7 +266,7 @@ export const DEFAULT_KNOWLEDGE_MODEL_ROLES: Readonly<KnowledgeModelRoles> = Obje
 
 export const DEFAULT_MCP_SESSION_TTL_MS = 1_800_000
 
-function parseBooleanFlag(value: boolean | string | undefined, fallback = false): boolean {
+export function parseBooleanFlag(value: boolean | string | undefined, fallback = false): boolean {
   if (typeof value === 'boolean') {
     return value
   }
@@ -280,7 +280,7 @@ function parseBooleanFlag(value: boolean | string | undefined, fallback = false)
   return fallback
 }
 
-function parsePositiveInteger(value: number | string | undefined, fallback: number): number {
+export function parsePositiveInteger(value: number | string | undefined, fallback: number): number {
   if (typeof value === 'number' && Number.isInteger(value) && value > 0) {
     return value
   }

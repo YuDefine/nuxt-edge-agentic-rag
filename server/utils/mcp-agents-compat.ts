@@ -1,5 +1,7 @@
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js'
 
+import { parseBooleanFlag } from '#shared/schemas/knowledge-runtime'
+
 interface McpConnectableServer {
   connect(transport: WebStandardStreamableHTTPServerTransport): Promise<void>
   transport?: unknown
@@ -8,6 +10,13 @@ interface McpConnectableServer {
 interface McpHandlerOptions {
   enableJsonResponse?: boolean
   route?: string
+}
+
+interface McpSessionNamespaceLike {
+  idFromName(name: string): {
+    toString?: () => string
+    fetch: (request: Request) => Promise<Response>
+  }
 }
 
 type CloudflareEnv = Record<string, unknown>
@@ -107,6 +116,24 @@ export function createMcpHandler(server: McpConnectableServer, options: McpHandl
       })
     }
 
+    // Feature flag branch (Pivot C): when the session DO path is enabled and
+    // the MCP_SESSION binding is present, the shim forwards POST requests to
+    // a per-session Durable Object addressed by `Mcp-Session-Id`. The DO is
+    // the only layer that persists session state, eliminates Claude.ai's
+    // re-initialize loop (TD-030), and bypasses the `Reflect.ownKeys(env)`
+    // bug family documented in Phase 1 spike. When the flag is off, the
+    // stateless path below remains active as the kill-switch fallback.
+    if (isMcpSessionFlagEnabled(env) && request.method === 'POST') {
+      const namespace = resolveMcpSessionNamespace(env)
+      if (namespace) {
+        const sessionId = request.headers.get('Mcp-Session-Id') ?? crypto.randomUUID()
+        const forwarded = cloneRequestWithSessionHeader(request, sessionId)
+        const stub = namespace.idFromName(sessionId)
+        const response = await stub.fetch(forwarded)
+        return ensureSessionHeader(response, sessionId)
+      }
+    }
+
     if (server.transport !== undefined) {
       throw new Error('Server is already connected to a transport')
     }
@@ -123,4 +150,42 @@ export function createMcpHandler(server: McpConnectableServer, options: McpHandl
     await server.connect(transport)
     return transport.handleRequest(request)
   }
+}
+
+function isMcpSessionFlagEnabled(env?: CloudflareEnv): boolean {
+  const raw = env?.NUXT_KNOWLEDGE_FEATURE_MCP_SESSION
+  if (typeof raw !== 'boolean' && typeof raw !== 'string') return false
+  return parseBooleanFlag(raw)
+}
+
+function resolveMcpSessionNamespace(env?: CloudflareEnv): McpSessionNamespaceLike | null {
+  const candidate = env?.MCP_SESSION
+  if (!candidate || typeof candidate !== 'object') return null
+  const namespace = candidate as McpSessionNamespaceLike
+  if (typeof namespace.idFromName !== 'function') return null
+  return namespace
+}
+
+function cloneRequestWithSessionHeader(request: Request, sessionId: string): Request {
+  const headers = new Headers(request.headers)
+  headers.set('Mcp-Session-Id', sessionId)
+  return new Request(request.url, {
+    method: request.method,
+    headers,
+    body: request.body,
+    duplex: 'half',
+  } as RequestInit)
+}
+
+function ensureSessionHeader(response: Response, sessionId: string): Response {
+  if (response.headers.get('Mcp-Session-Id')) {
+    return response
+  }
+  const headers = new Headers(response.headers)
+  headers.set('Mcp-Session-Id', sessionId)
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  })
 }
