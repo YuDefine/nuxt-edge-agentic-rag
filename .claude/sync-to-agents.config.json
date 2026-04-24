@@ -1,4 +1,5 @@
 {
+  "autoListRules": true,
   "promotionRules": {
     "api-patterns.md": {
       "mode": "source-pointer",

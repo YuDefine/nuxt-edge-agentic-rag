@@ -24,6 +24,7 @@ globs: ['app/**/*.{vue,ts}', 'server/**/*.ts', 'test/**/*.ts', 'shared/**/*.ts']
 - **ALWAYS** `PAGE_SIZE_MAX` from `shared/schemas/pagination` for `pageSize` max validation — NEVER hardcode
 - **ALWAYS** UTable cell slot 命名加 `-cell` 後綴：`#actions-cell="{ row }"`，**NEVER** `#actions="{ row }"`（不加 `-cell` slot 不會生效且無報錯）
 - **ALWAYS** Nuxt UI 元件顯式寫出樣式 props（`color`, `variant`, `size`）— **NEVER** 依賴預設值。實作前先搜尋既有頁面中相同語義的用法，複製其 props 組合。詳見 `.impeccable.md` Component Consistency Rule（若有）
+- **ALWAYS** 用 `pnpm typecheck`（= `nuxt typecheck` → vue-tsc）或 `pnpm check`（完整 chain）驗證型別 — **NEVER** 用 `pnpm tsc --noEmit` / `tsc --noEmit`（原生 tsc 不解析 `.vue` 檔的 `<script setup>` / `<template>` 型別推導，會漏掉 Nuxt UI props 型別、auto-import 型別、`<template>` 表達式的錯）。若需直接看 vue-tsc 輸出：`pnpm exec vue-tsc --noEmit`；若發現 RTK 把 multi-line error block 壓成一行摘要，改用 `rtk proxy pnpm typecheck` 保留原始輸出
 
 <!-- SPECTRA-UX:START v1.0.0 -->
 
