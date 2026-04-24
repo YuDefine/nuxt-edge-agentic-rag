@@ -10,9 +10,11 @@
  *   3. Alarm 觸發 → 清空 storage；後續帶同 session id 的 request → 404
  *   4. Non-initialize request 但 session missing → 404（re-init guidance）
  *   5. GET / DELETE 在 DO 仍回 405（stateless shim 的 spec 2025-11-25 合規）
+ *   6. Non-initialize request 對有 session 的 DO → 501 + JSON-RPC -32601
+ *      指向 TD-041（tool dispatch 待 wire-do-tool-dispatch change 接手）
  *
- * Tool handler 的 integration 留在 staging 實測（見 tasks.md §6）——本 spec 不
- * 驗 `tools/call` end-to-end，只驗 transport / session 層行為。
+ * Tool dispatch end-to-end（McpServer + DoJsonRpcTransport + tool handler）
+ * 由後續 change `wire-do-tool-dispatch` 覆蓋，不在本 spec 範圍。
  */
 
 import { describe, expect, it, beforeEach } from 'vitest'
@@ -165,11 +167,39 @@ describe('MCPSessionDurableObject — session lifecycle', () => {
     expect(alarmAfterInit).toBe(now + 60_000)
 
     now += 10_000
-    await durableObject.fetch(makeToolsListRequest(sessionId))
+    const renewResponse = await durableObject.fetch(makeToolsListRequest(sessionId))
+    // TD-041: session lifecycle still renews, but the response is a
+    // 501 JSON-RPC error because tool dispatch is not yet wired via DO.
+    expect(renewResponse.status).toBe(501)
 
     const storedSession = await state.storage.get<McpSessionState>('session')
     expect(storedSession?.lastSeenAt).toBe(now)
     expect(await state.storage.getAlarm()).toBe(now + 60_000)
+  })
+
+  it('non-initialize on live session returns 501 with TD-041 error payload (tool dispatch deferred)', async () => {
+    const durableObject = new MCPSessionDurableObject(state as never, env, () => now)
+    await durableObject.fetch(makeInitializeRequest(sessionId))
+
+    const response = await durableObject.fetch(makeToolsListRequest(sessionId))
+    expect(response.status).toBe(501)
+    expect(response.headers.get('Mcp-Session-Id')).toBe(sessionId)
+
+    const body = (await response.json()) as {
+      jsonrpc: string
+      id: number | string | null
+      error?: {
+        code: number
+        message: string
+        data?: { method?: string; followup?: string; toolDispatch?: string }
+      }
+    }
+    expect(body.jsonrpc).toBe('2.0')
+    expect(body.id).toBe(1)
+    expect(body.error?.code).toBe(-32601)
+    expect(body.error?.data?.followup).toBe('TD-041')
+    expect(body.error?.data?.toolDispatch).toBe('not_implemented')
+    expect(body.error?.data?.method).toBe('tools/list')
   })
 
   it('alarm() clears session storage so later requests receive 404', async () => {
