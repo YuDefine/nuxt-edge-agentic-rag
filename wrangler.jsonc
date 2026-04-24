@@ -39,6 +39,20 @@
       "bucket_name": "agentic-rag-documents",
     },
   ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "MCP_SESSION",
+        "class_name": "MCPSessionDurableObject",
+      },
+    ],
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["MCPSessionDurableObject"],
+    },
+  ],
   "triggers": {
     "crons": ["0 3 * * *"],
   },

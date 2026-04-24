@@ -102,19 +102,28 @@ SDK 的 `Protocol` 基類（`shared/protocol.js:215-247`）在 `connect(transpor
 
 `WebStandardStreamableHTTPServerTransport` 在 `handlePostRequest` 內呼叫 `Reflect.ownKeys(env)`（間接經 SDK minified code `a16`），碰 Cloudflare env proxy 即 throw。我們的 shim **從未讀取或反射 `env` object**——只處理 plain JSON payload。`McpServer.connect(ourShim)` 後，SDK 所有 request handler 走 `Protocol._onrequest` → `_requestHandlers.get(method)` → 我們註冊的 tool handler；這條 path 不接觸 env proxy。
 
-### 最小實作 surface
+### 最小實作 surface（Phase 4 apply 最終實作路徑）
 
-1. `server/mcp/do-transport.ts`：`DoJsonRpcTransport` class（~30 lines）
-   - `send(msg)` 把 response 收進 per-request promise resolver
-   - `onmessage` / `onclose` / `onerror` 是 SDK 設的 callbacks
-2. `server/mcp/durable-object.ts`：`MCPSessionDurableObject` class
-   - `fetch(request)`：parse body → `transport.onmessage(msg, {...})` → await `send` callback 收到 response → 回 HTTP JSON response
-   - 首次 `initialize` 簽發 `Mcp-Session-Id` header；state `this.state.storage` 持久化
-   - `alarm()` 驅動 TTL GC
-3. Worker 層 `server/mcp/index.ts`：依 `features.mcpSession` flag 路由：
-   - true → 抽 / 生成 `Mcp-Session-Id` → `env.MCP_SESSION.idFromName(sessionId).fetch(request.clone())`
-   - false → 保留現行 stateless shim path
-4. `wrangler.jsonc` 加 `durable_objects` binding + migration tag v1
+1. `server/durable-objects/mcp-do-transport.ts`：`DoJsonRpcTransport` class
+   - 實作 SDK `Transport` interface：`start` / `send` / `close` + `onmessage` / `onclose`
+   - `dispatch(msg, extra)` 把 incoming JSON-RPC 餵給 SDK，by-id resolver 等 SDK `send` 回 response
+   - Notification（無 id）fire-and-forget，回 `null`
+   - 放在 `server/durable-objects/` 而非 `server/mcp/` 以避開 `@nuxtjs/mcp-toolkit` 對 `server/mcp/**` 的 handler scan
+2. `server/durable-objects/mcp-session.ts`：`MCPSessionDurableObject` class
+   - `fetch(request)`：GET/DELETE → 405；POST parse → initialize 建 session / 非 initialize 驗 session；更新 `lastSeenAt` → 重排 `alarm` 至 `lastSeenAt + TTL`；回 HTTP JSON response
+   - State schema（`this.ctx.storage`）：`{ sessionId, protocolVersion, capabilities, createdAt, lastSeenAt, initializedServer }`
+   - `alarm()` 直接 `deleteAll()`（清 storage + alarm）
+   - TTL 由 env var `NUXT_KNOWLEDGE_MCP_SESSION_TTL_MS` 控制，預設 `DEFAULT_MCP_SESSION_TTL_MS` (1,800,000 ms / 30 min)
+3. `server/plugins/register-mcp-session-durable-object.ts`：Nitro plugin pin DO class 入 bundle（side-effect import）
+4. `build/nitro/rollup.ts`：`generateBundle` plugin 在產出 `.output/server/index.mjs` 時：
+   - 找 chunk 含 `server/durable-objects/mcp-session.ts`（實測落在 `chunks/nitro/nitro.mjs`）
+   - 注入 `export { MCPSessionDurableObject };` 到該 chunk code
+   - 在 entry `index.mjs` append `export { MCPSessionDurableObject } from './chunks/nitro/nitro.mjs';`
+   - 沒有這層 bundling 補強，Cloudflare 會 reject deploy：`Durable Objects ... not exported in your entrypoint file`
+5. `server/utils/mcp-agents-compat.ts` `createMcpHandler`：依 `NUXT_KNOWLEDGE_FEATURE_MCP_SESSION` env + `env.MCP_SESSION` binding 存在性判斷走 DO 路徑：
+   - flag=true → 抽 / 生成 `Mcp-Session-Id` → `env.MCP_SESSION.idFromName(sessionId).fetch(clonedRequestWithSessionHeader)` → 回傳時確保 response 帶 `Mcp-Session-Id` header
+   - flag=false → 現行 stateless shim（`WebStandardStreamableHTTPServerTransport` + `installEnumerableSafeEnv`）不動，kill-switch 保留
+6. `wrangler.jsonc`：`durable_objects.bindings` += `{ name: "MCP_SESSION", class_name: "MCPSessionDurableObject" }`，搭 `migrations: [{ tag: "v1", new_sqlite_classes: ["MCPSessionDurableObject"] }]`。`pnpm build + wrangler deploy --dry-run` 通過，Workers bindings list 顯示 `env.MCP_SESSION (MCPSessionDurableObject) Durable Object`
 
 ### 放棄 Pivot A/B 的理由
 
@@ -126,6 +135,23 @@ Pivot C 根除問題：我們的 transport 根本不碰 env proxy，SDK 怎麼 i
 ### 後續 (Phase 3+)
 
 詳見 `openspec/changes/upgrade-mcp-to-durable-objects/tasks.md` Phase 4 起（已依 Pivot C 重新 scope）。
+
+### Rollout timeline（summary）
+
+| 階段 | Staging flag | Production flag  | 驗證                                                              |
+| ---- | ------------ | ---------------- | ----------------------------------------------------------------- |
+| T0   | false        | false            | 舊 stateless path 基線；dry-run 已通過                            |
+| T1   | true         | false            | Staging Claude.ai 連 3 次 AskKnowledge，tail 無 re-init / ownKeys |
+| T2   | true         | false（soak 3d） | 含 workday + 週末低峰觀察                                         |
+| T3   | true         | true             | Production flip；tail 24h 監控                                    |
+| T4   | true         | true（soak 7d）  | Stateless shim 降級為 kill-switch only                            |
+
+失敗路徑：任一觀察異常 → flag flip 回 false 走 stateless shim（無需 redeploy）。
+
+### 已知 follow-up
+
+- `@followup[TD-040]` Token revoke 未同步清 MCP session DO；目前靠 idle TTL alarm 自然回收，需加 token→sessionId 索引才能即時 invalidate。
+- Tool handler 在 DO context 執行時，目前依賴 `getCurrentMcpEvent()` 回 nitro `useEvent()`——DO 內無 nitro request scope，需於 staging 實測 tool handler 是否能正確拿到 bindings（預期：若失敗，下個 change 需導入 DO-scope event context helper，例如 AsyncLocalStorage）。
 
 ## Prevention
 
