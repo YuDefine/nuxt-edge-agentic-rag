@@ -1,5 +1,6 @@
 <script setup lang="ts">
   import { getErrorMessage } from '#shared/utils/error-message'
+  import { saveGenericReturnTo, setPendingDeleteReauth } from '~/utils/auth-return-to'
 
   /**
    * passkey-authentication §12 — Self-deletion dialog.
@@ -23,6 +24,7 @@
     open: boolean
     hasPasskey: boolean
     hasGoogle: boolean
+    initialReauthComplete?: boolean
   }>()
 
   const emit = defineEmits<{
@@ -42,7 +44,7 @@
     set: (value) => emit('update:open', value),
   })
 
-  const reauthComplete = ref(false)
+  const reauthComplete = ref(props.open && props.initialReauthComplete === true)
   const reauthLoading = ref(false)
   const deleteLoading = ref(false)
   const errorMessage = ref('')
@@ -51,7 +53,7 @@
     () => props.open,
     (next) => {
       if (next) {
-        reauthComplete.value = false
+        reauthComplete.value = props.initialReauthComplete === true
         reauthLoading.value = false
         deleteLoading.value = false
         errorMessage.value = ''
@@ -80,7 +82,12 @@
     reauthLoading.value = true
     errorMessage.value = ''
     try {
-      await signIn.social({ provider: 'google' })
+      saveGenericReturnTo('/account/settings?open-delete=1')
+      setPendingDeleteReauth()
+      await signIn.social({
+        provider: 'google',
+        callbackURL: '/auth/callback',
+      })
       // Google OAuth performs a full-page redirect, so control rarely
       // returns here. If it does (e.g. provider cancellation), the
       // session hasn't rotated.
