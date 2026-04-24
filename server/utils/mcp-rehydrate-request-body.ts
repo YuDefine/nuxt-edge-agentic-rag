@@ -7,6 +7,7 @@ interface WebRequestEventShape {
   context?: {
     mcpAuthEnvelope?: string
   }
+  req?: Request
   web?: {
     request?: Request
   }
@@ -50,5 +51,7 @@ export async function rehydrateMcpRequestBody(event: H3Event): Promise<void> {
     duplex: 'half',
   } as RequestInit)
 
-  ;(event as unknown as { web: { request: Request } }).web.request = replay
+  const target = event as unknown as { req?: Request; web: { request: Request } }
+  target.req = replay
+  target.web.request = replay
 }
