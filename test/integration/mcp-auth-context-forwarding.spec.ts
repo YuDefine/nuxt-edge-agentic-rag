@@ -70,16 +70,20 @@ function createFakeState(id: string) {
 }
 
 class FakeMcpSessionNamespace {
-  readonly idFromName = vi.fn((name: string) => {
+  readonly get = vi.fn((id: { toString?: () => string }) => {
+    const name = id.toString?.() ?? ''
     const durableObject = this.getOrCreateDurableObject(name)
     return {
-      toString: () => name,
       fetch: (request: Request) => {
         this.forwardedRequests.push(request.clone())
         return durableObject.fetch(request)
       },
     }
   })
+
+  readonly idFromName = vi.fn((name: string) => ({
+    toString: () => name,
+  }))
 
   readonly forwardedRequests: Request[] = []
   private readonly instances = new Map<string, MCPSessionDurableObject>()

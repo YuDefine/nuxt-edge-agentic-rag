@@ -137,9 +137,9 @@ class FakeStorage {
 
 function makeFakeMcpSessionBinding(calls: FakeDoCall[], sessionIdOverride?: string) {
   return {
-    idFromName: (sessionId: string) => ({
-      toString: () => sessionId,
+    get: (id: { toString?: () => string }) => ({
       fetch: async (incoming: Request) => {
+        const sessionId = id.toString?.() ?? ''
         const stored: FakeDoCall = {
           sessionId,
           request: incoming,
@@ -156,6 +156,9 @@ function makeFakeMcpSessionBinding(calls: FakeDoCall[], sessionIdOverride?: stri
         })
       },
     }),
+    idFromName: (sessionId: string) => ({
+      toString: () => sessionId,
+    }),
   }
 }
 
@@ -163,8 +166,9 @@ function makeRealMcpSessionBinding(env: McpSessionDurableObjectEnv, now: () => n
   const instances = new Map<string, MCPSessionDurableObject>()
 
   return {
-    idFromName: (sessionId: string) => ({
+    get: (id: { toString?: () => string }) => ({
       fetch: async (incoming: Request) => {
+        const sessionId = id.toString?.() ?? ''
         let durableObject = instances.get(sessionId)
         if (!durableObject) {
           durableObject = new MCPSessionDurableObject(createFakeState(sessionId) as never, env, now)
@@ -172,6 +176,8 @@ function makeRealMcpSessionBinding(env: McpSessionDurableObjectEnv, now: () => n
         }
         return durableObject.fetch(incoming)
       },
+    }),
+    idFromName: (sessionId: string) => ({
       toString: () => sessionId,
     }),
   }
