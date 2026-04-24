@@ -90,7 +90,7 @@ EOF
 git log -1 --oneline
 ```
 
-## Step 4: 版本號升級與 Deploy Commit
+## Step 4: 版本號升級、Staging 驗證、Tag Production
 
 判斷升級類型：
 
@@ -110,10 +110,47 @@ git commit -m "$(cat <<'EOF'
 Co-Authored-By: Claude <noreply@anthropic.com>
 EOF
 )"
+```
+
+### 4-A. Push main → 觸發 staging 自動部署
+
+```bash
+git push origin main
+```
+
+`.github/workflows/deploy.yml` 的 `push: branches: [main]` 會觸發 `deploy-staging` + `smoke-test-staging`（以及 docs 對應 job）。
+
+若 `git push origin main` 因 non-fast-forward 被擋，停下處理 upstream 漂移（pull / rebase），**不要**跳過 staging 直接 tag。
+
+### 4-B. 自動等 staging 綠燈（`gh run watch`）
+
+取得剛才 push 觸發的 Deploy workflow run id，`gh run watch` 阻塞等結果：
+
+```bash
+# 取當前 HEAD commit 對應的 Deploy workflow run
+RUN_ID=$(gh run list --workflow=deploy.yml --branch=main --commit=$(git rev-parse HEAD) \
+  --limit=1 --json databaseId --jq '.[0].databaseId')
+
+test -n "$RUN_ID" || { echo "找不到 Deploy workflow run；確認 push 已觸發"; exit 1; }
+
+gh run watch "$RUN_ID" --exit-status
+```
+
+`--exit-status` 讓 `gh run watch` 在 run failure 時 exit 非 0。若失敗：
+
+1. 停下不 tag
+2. 修復問題（push 新 commit 會觸發新 staging run）
+3. 重跑 4-B
+
+### 4-C. Staging 綠 → 建 tag 推 production
+
+```bash
 pnpm tag
 ```
 
-`pnpm tag` 會建立 `v{版本號}` tag 並推送到 origin。
+`pnpm tag` 現在只做 `git tag v{版本號} && git push origin --tags`（main 已在 4-A push）。tag push 觸發 `deploy-production`：workflow 內的 `verify-ci-gate` + `verify-staging-gate`（跑 `scripts/check-staging-gate.mjs`）會 double-check 此 SHA 有對應的 staging success；若沒有 → production 被擋下。
+
+tag 推完後可選擇 `gh run watch` 等 production 完成，或讓 Step 6 的 HANDOFF 提醒使用者追蹤部署進度。
 
 ## Step 5: 完成報告
 
