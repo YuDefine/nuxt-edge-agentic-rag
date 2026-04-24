@@ -55,3 +55,4 @@ openspec/.vector-search.db*
 
 # Claude Code harness runtime state
 .claude/scheduled_tasks.lock
+.claude/.commit.lock
