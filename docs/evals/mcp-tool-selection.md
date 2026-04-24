@@ -4,19 +4,50 @@
 
 ## 前置
 
-1. 啟動本機 MCP server：
+> ⚠️ **目前 Local `POST /mcp` 在 NuxtHub dev 下因 KV binding 未 bridge 而 503**（見 `docs/tech-debt.md` TD-042）。本節分成 **Staging fallback（目前預設）** 與 **Local（TD-042 解完後）** 兩條路。
+
+### Staging fallback（目前預設）
+
+1. 在 staging admin UI mint 一個 eval token：
+   - 瀏覽 `https://agentic-staging.yudefine.com.tw/admin/tokens`（admin 登入）
+   - 建立 token：name = `dev-eval-staging`、scopes = `knowledge.ask` / `knowledge.search` / `knowledge.category.list` / `knowledge.citation.read`、expiresInDays = 30
+   - 複製 plaintext token（只顯示一次）
+
+2. 設定 `.env`：
+
+   ```bash
+   ANTHROPIC_API_KEY=...
+   EVAL_MCP_URL=https://agentic-staging.yudefine.com.tw/mcp
+   EVAL_MCP_BEARER_TOKEN=<上一步 UI 複製出來的 token>
+   ```
+
+3. 本機不用跑 `pnpm dev`（eval 直接打 staging）。
+
+### Local（TD-042 解完後才能走）
+
+1. 確認 `.env` 已設 `NUXT_MCP_AUTH_SIGNING_KEY`（≥ 32 bytes；由 `wire-do-tool-dispatch` 引入，本 change 不擁有該 env）。若 `wire-do-tool-dispatch` 仍 parked，可先用 `openssl rand -base64 48` 產一個 dev-only key。
+
+2. 啟動本機 MCP server（nuxt dev 在 `:3010`）：
 
    ```bash
    pnpm dev
    ```
 
-2. 設定 Anthropic API key：
+3. 取得 dev MCP Bearer token（30 天，寫入本機 sqlite；staging / production 不可用此 CLI，guard 會拒絕）：
+
+   ```bash
+   pnpm mint:dev-mcp-token
+   ```
+
+   把 stdout 印出的 token 貼到 `.env` 的 `EVAL_MCP_BEARER_TOKEN`。也支援 `--email <admin-email>` 與 `--ttl-days <n>` 覆寫。**絕對不要** 在 eval harness 內自動寫 DB — 必須走這一步，讓 token 生成顯性可見。
+
+4. `.env`：
 
    ```bash
    ANTHROPIC_API_KEY=...
+   EVAL_MCP_URL=http://localhost:3010/mcp
+   EVAL_MCP_BEARER_TOKEN=<CLI 印出的 token>
    ```
-
-3. 如需覆寫 MCP URL，設定 `EVAL_MCP_URL`。預設是 `http://localhost:3000/mcp`。
 
 `pnpm eval` 會呼叫 LLM API 並產生成本。**NEVER** 將 `pnpm eval`、`evalite` 或任何 eval script 加入 `pnpm check`、`pnpm test`、PR CI 必經 gate、部署 gate。Eval 只允許 manual 或 nightly channel 使用。
 
@@ -57,15 +88,18 @@ Overall score 是所有 sample 分數的未加權平均。
 
 ## Baseline
 
-<!-- BASELINE_SCORE: TBD -->
+<!-- BASELINE_SCORE: 91.67 -->
 
-| Field           | Value               |
-| --------------- | ------------------- |
-| Dataset version | TBD                 |
-| Model           | `claude-sonnet-4-6` |
-| Overall score   | TBD                 |
-| MCP URL         | TBD                 |
-| Run date        | TBD                 |
+| Field             | Value                                                                                                           |
+| ----------------- | --------------------------------------------------------------------------------------------------------------- |
+| Dataset version   | `2026-04-24-v1`                                                                                                 |
+| Model             | `claude-sonnet-4-6`                                                                                             |
+| Overall score     | 91.67%                                                                                                          |
+| MCP URL           | `https://agentic-staging.yudefine.com.tw/mcp`                                                                   |
+| Environment       | staging（@followup[TD-042]；待 local KV bridge infra fix 後 rebaseline 於 `http://localhost:3010/mcp`）         |
+| Run date          | 2026-04-24                                                                                                      |
+| Sample count      | 12（11 × 100% + 1 × 0%）                                                                                        |
+| Low-score samples | `ask-category-governance-review`（LLM 選 `listCategories`，期望 `askKnowledge`；tool mismatch → per-sample 0%） |
 
 Baseline 更新必須是明確文件修改：先人工執行 `pnpm eval`，確認結果合理，再更新上方 `BASELINE_SCORE` 註解與表格。Harness 不會自動覆寫 baseline。
 
