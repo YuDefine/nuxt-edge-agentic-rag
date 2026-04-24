@@ -2,137 +2,49 @@
 
 ## In Progress
 
-### 待接手：`auth-redirect-refactor`（使用者立刻另外做）
+### `code-quality-review-followups`（ready to archive）
 
-**狀態**：尚未 propose，使用者已宣告要另開 change 處理。從現行 repo 觀察到的 3 個關聯問題：
+- **43/43 tasks complete**，所有人工檢查已實測或以 unit test 為證據通過（2026-04-24 session）
+- 所有 code 改動已 commit：批 1（32f6df2/fb2f1f7/a817b91 — TD-017/018/020）、批 2/3 + TD-025（bea4deb）
+- 人工檢查勾選已隨 v0.35.0 一併 commit（`27935b2`）
+- **下一步**：`/spectra-archive code-quality-review-followups`
 
-1. **`/` 混合 login + chat，`/login` 是假的 legacy redirect**
-   - `app/pages/auth/login.vue` 目前只做 `navigateTo('/')`，不是真正登入頁
-   - 真正登入 UI 在 `app/pages/index.vue`（`auth: false` + 手動切 layout），同時也是 chat 容器
-   - 期待：`/login` 變成真正獨立登入頁；`/` 專職 chat（auth required）
+### `auth-redirect-refactor`（proposal 已 commit，實作尚未開始）
 
-2. **登入後不自動跳回原目標 URL**
-   - `app/middleware/auth.global.ts:9` `navigateTo('/')` 沒帶 `?redirect=`
-   - 登入後停在 `/`，忘掉原本要去的 `/admin/...` / `/account/...` / 等
-   - `/auth/mcp/authorize` 有自己的 `saveMcpConnectorReturnTo(route.fullPath)` 機制不受影響，但一般頁面受影響
-   - 期待：`/login?redirect=<path>` + 登入成功後 `navigateTo(redirect)`；middleware 導向時帶上 `to.fullPath`
+- proposal / design / tasks / spec 已建立，commit `1ee01d8`
+- Phase 1 infra 已進：`app/utils/auth-return-to.ts`（`parseSafeRedirect` + generic return-to sessionStorage helper）+ 22 個 unit test（commit `82835dc`）
+- **下一步**：`/spectra-apply auth-redirect-refactor` 跑後面的 middleware / pages 改動
 
-3. **未登入首頁立刻打 `/api/conversations` 回 401**
-   - `app/pages/index.vue:119-125`：`watch(historyRefreshKey, ..., { immediate: true })` 不檢查 `loggedIn.value` 就跑 `refreshConversationHistory()` → `GET /api/conversations` → 401 → toast「無法更新對話列表」
-   - 根因：`/` 當登入頁但內部仍初始化 chat history composable
-   - 拆分 `/` 與 `/login` 後自動解（`/` 只有已登入才進得去）
+**背景（為何拆）**：`/` 目前同時承擔 landing / login / chat 容器 / chat-history fetch 起點四個角色，造成：
 
-**建議走法**：
+1. `/login` 是假路由（`navigateTo('/')`）、真正登入 UI 混在 `index.vue`
+2. 登入後不回原目標（`auth.global.ts` 無條件去 `/` 不帶 `redirect`）
+3. 未登入首頁立刻打 `/api/conversations` 回 401（history 初始 watch 無 `loggedIn` 防護）
 
-- `/spectra-discuss auth-redirect-refactor` 先釐清收斂 scope，再 `/spectra-propose`
-- 要決的事：
-  - `/` 變純 chat 還是保留 public landing？
-  - `/login` 獨立全頁 vs. modal / tab？
-  - `?redirect=` 安全策略（防 open redirect — 強制 same-origin + 可能用 allowlist prefix）
-  - Google OAuth callback `/auth/callback` 要不要也 honour redirect
-  - 與 `code-quality-review-followups` 批 2/3 都要動 `app/pages/index.vue`，**必須**先協調順序（先等批 2 完成 or stash）
-- Tier 3（auth path + middleware）+ Design Review（UI 拆分會動 layout / page）
+### `fix-mcp-streamable-http-session`（draft，待 discuss）
 
-**⚠ 執行前必看**：
+前置 change `fix-mcp-transport-body-consumed` 已 archive（v0.34.5），`POST /mcp initialize` 從 400 → 200。但 Claude.ai tool/call 仍失敗，root cause 是 MCP Streamable HTTP 需要 SSE long-lived session，stateless transport 撞 Worker 30s `"code had hung"`。
 
-- `app/pages/index.vue` 目前有 `code-quality-review-followups` 批 2/3 的 uncommitted 改動，動它前 `git status` 看清楚
-- 動 `app/middleware/auth.global.ts` 要確認不破壞 `/auth/mcp/authorize` 既有 return-to 流程
-- 別忘了 `app/pages/auth/callback.vue` 裡 Google OAuth callback 流，redirect query 要透傳
+**三個方向（待收斂）**：
 
----
-
-### 待接手：`fix-mcp-streamable-http-session`（新 change，draft 狀態）
-
-**背景**：前置 change `fix-mcp-transport-body-consumed` 已 archive 到 `v0.34.5`（commit `bf6a07e`），`POST /mcp initialize` 從 400 → 200，tools/list 200 — body consumption 的 transport 問題已修好。但 Claude.ai 端 tool/call 仍失敗。
-
-**真正 root cause**（tail 觀察收斂）：MCP Streamable HTTP 協議需要 SSE long-lived session，但 server 走 stateless 模式：
-
-1. Claude.ai 首次 initialize 成功後發 `GET /mcp` 開 SSE channel
-2. Stateless transport 不快速回 405，hold 30 秒 → Worker runtime `"code had hung"` cancel
-3. Claude retry `POST initialize`（body 不完整）→ 400
-4. 死循環 → UI 顯示 "Error occurred during tool execution" / "Authorization failed"
-
-**提案的三個方向（待 discuss 收斂）**：
-
-- A. 啟 Streamable HTTP session 模式（優先）— `Mcp-Session-Id` header、真 SSE stream、跨 request session reuse；session state 存 KV / Durable Objects / memory cache
-- B. GET /mcp 快速回 405（fallback）— 讓 Claude fallback 到 POST-only
+- A. 啟 Streamable HTTP session 模式（優先）— `Mcp-Session-Id` header、SSE stream、session store (KV / Durable Objects)
+- B. `GET /mcp` 快速回 405（fallback，讓 Claude 走 POST-only）
 - C. Protocol version downgrade 到 2024-11-05
 
-**建議走法**：`/spectra-discuss fix-mcp-streamable-http-session` 先釐清方向、Cloudflare Workers SSE 可行性、session store 選擇
-
-**⚠ 執行前必看**：
-
-- 本 change 是 Tier 2-3（動 MCP protocol + auth path），要 Design Review（雖無 UI，但 API contract 變動）
-- 動 `server/mcp/index.ts` 要保留 `fix-mcp-transport-body-consumed` 留下的 `rehydrateMcpRequestBody` call，或明確評估為 no-op 後移除（unit test 要一起移）
-- Cloudflare Workers 30 秒 CPU 限制對 SSE 的影響
-
-**現況**：
-
-- `openspec/changes/fix-mcp-streamable-http-session/` 已建立 proposal + tasks + draft spec
-- `pnpm exec spectra analyze` ✓ No issues
-
----
-
-### `code-quality-review-followups`（僅剩人工檢查）
-
-Active change: `code-quality-review-followups`（in-progress，**38/43 tasks (88%)**，只剩 group 10 人工檢查 6 項待使用者實測）
-
-批 1、2、3 code 改動已全部入庫：
-
-- ✅ **批 1**（commit `32f6df2`/`fb2f1f7`/`a817b91`）：TD-017 / 018 / 020
-- ✅ **批 2**（commit `bea4deb`）：TD-021 bucket toggle aria-expanded、TD-022 跨午夜重分組（useNow 60s 間隔）、TD-023 useChatConversationHistory hoist + provide/inject 消除重複 fetch
-- ✅ **批 3**（commit `bea4deb`）：TD-024 test suite 重構 + 新增 aria / midnight / fetch-dedup spec
-- ✅ **Scope 擴張**（commit `bea4deb`）：TD-025 Container.vue CSRF 修復（`$csrfFetch.native` 跳 csurf hook → 手動 `useCsrf()` 注入 header）+ Nuxt UI Lazy 遷移
-- 🆕 **TD-026 已在 `docs/tech-debt.md` 登記**（open，low）— index.vue vs ConversationHistory owner-fallback 重複 config，不在本 change 修
-
-### 剩下的 group 10 人工檢查（6 項）
-
-**必須使用者本人瀏覽器實測**（按 `code-quality-review-followups/tasks.md` 的 group 10）：
-
-1. 跨午夜重分組（TD-022 驗證）
-2. aria-expanded AT（assistive-tech 鍵盤 walkthrough，TD-021 驗證）
-3. OAuth reject 三種 payload
-4. classifyError 五類錯誤（TD-018 分類驗證）
-5. AI binding 503 error 行為
-6. fetch dedup 用 Network tab 確認只送一次（TD-023 驗證）
-
-### 接手方式（新 session）
-
-1. 確認 claim 未過期：`pnpm spectra:claim code-quality-review-followups`（若 stale）
-2. `/spectra-apply code-quality-review-followups` 續跑，從 tasks.md 第一個未勾人工檢查項開始
-3. 逐項實測 + 勾選 → 全勾完 `/spectra-archive code-quality-review-followups`
-
-### 上輪 commit 的 scope 微調紀錄
-
-- **TD-017**：helper 放新檔 `server/utils/ai-binding.ts`（非原 task 寫的 chat.post.ts 內 local）。原因：`server/utils/cloudflare-bindings.ts` 被 15+ integration test 透過 `vi.mock` 攔截。
-- **TD-018**：抽到 `app/utils/chat-error-classification.ts`（非原 task 寫的 Container.vue 內）。原因：`.spectra.yaml` 開 tdd: true，SFC 內部 function 無法直接 unit test。
-- **TD-025**：保留 `.native`（SSE streaming 需要 raw Response），手動用 `useCsrf()` 注入 `x-csrf-token` header。
+**下一步**：`/spectra-discuss fix-mcp-streamable-http-session` 釐清方向、Cloudflare Workers SSE 可行性、session store 選型。
 
 ## Next Steps
 
-1. **auth-redirect-refactor（使用者立刻接手）**：見 In Progress 第一項，`/spectra-discuss auth-redirect-refactor` 起步；`app/pages/index.vue` 批 2/3 改動已 commit（`bea4deb`），file ownership 衝突解除。
-2. **fix-mcp-streamable-http-session**（另開新 change）：MCP transport body fix 已 deploy（v0.34.5），但 Claude tool/call 仍因 SSE session 問題失敗。走 `/spectra-discuss fix-mcp-streamable-http-session` 收斂方向 A/B/C。詳見 In Progress 第二項。
-3. **code-quality-review-followups**（僅剩人工檢查）：使用者本人瀏覽器跑完 group 10 的 6 項實測後 `/spectra-archive`。詳見 In Progress 第三項。
-4. **Deploy 後 smoke `/admin/usage`**：上一輪 `fix(admin-usage)` 改為從 Cloudflare
-   Workers env 讀 secret；production / staging 第一次請求前確認 `wrangler secret put`
-   已寫入 `CLOUDFLARE_ACCOUNT_ID` / `CLOUDFLARE_API_TOKEN_ANALYTICS` /
-   `NUXT_KNOWLEDGE_AI_GATEWAY_ID`，admin 進 `/admin/usage` 不再回 503「尚未設定完成」。
-5. **驗證日期格式變化**：上上輪 refactor 把 6 個頁面的日期顯示從 `YYYY/MM/DD HH:mm` 改成
-   `YYYY/M/D HH:mm:ss`。deploy 後到 `/account/settings`、`/admin/documents/:id`、
-   `/admin/members`、`/admin/query-logs`（list + detail）、`/admin/tokens` 目視確認
-   新格式符合預期，若不滿意可調整 `app/utils/format-datetime.ts`。
-6. **`code-quality-review-followups` archive 後的後續 change**：
-   - TD-009（user_profiles.email_normalized 全面改 nullable）仍 open，sentinel
-     workaround 仍在；另開 Tier 3 migration change 處理。
-   - TD-015（SSE heartbeat）+ TD-019（SSE reader pattern 抽共用）+ TD-016
-     （isAbortError 抽共用）：SSE 相關技術債，下一條 change（B2 線）合併處理。
-   - TD-026（index.vue vs ConversationHistory owner-fallback 重複 config）：low priority，隨手修。
-
-## 使用者並行 WIP（不屬於本 change）
-
-以下檔案是使用者自己在做的、與本 change 無關（已確認不碰）：
-
-- `scripts/check-staging-gate.mjs`
-- `test/unit/staging-gate.test.ts`
-
-GitHub Actions staging-gate 檢查腳本 + 其測試；由使用者自行決定 commit 時機。
+1. **`spectra-archive code-quality-review-followups`** — 一行指令結案，v0.35.0 已含全部改動
+2. **接續 `auth-redirect-refactor` 實作**：`/spectra-apply auth-redirect-refactor`，tasks 包含 `/login` 新頁、`auth.global.ts` 帶 redirect、`index.vue` 瘦身
+3. **`fix-mcp-streamable-http-session` discuss**：`/spectra-discuss fix-mcp-streamable-http-session`，從 A/B/C 收斂
+4. **Deploy 後 smoke 檢查**：
+   - `/admin/usage` 首次打開確認 503「尚未設定完成」不再出現（依賴 production wrangler secret `CLOUDFLARE_ACCOUNT_ID` / `CLOUDFLARE_API_TOKEN_ANALYTICS` / `NUXT_KNOWLEDGE_AI_GATEWAY_ID`）
+   - staging-gate workflow 實際跑一次（`scripts/check-staging-gate.mjs` 已 ship）
+   - production chat 送訊息確認 TD-025 CSRF fix 生效（`POST /api/chat` 200，不再 403）
+5. **Residual TDs（code-quality-review-followups archive 後的後續 change 候選）**：
+   - TD-009（`user_profiles.email_normalized` 改 nullable）Tier 3 migration
+   - TD-015（SSE heartbeat）+ TD-019（SSE reader pattern 抽共用）+ TD-016（isAbortError 抽共用）SSE 合併處理
+   - TD-026（index.vue vs ConversationHistory owner-fallback 重複 config）low priority
+   - 新發現：`scripts/check-ci-gate.mjs` 與 `scripts/check-staging-gate.mjs` 約 70% 結構重複（`fetchWorkflowRuns` / `waitFor*Gate` / `main`）可抽 `scripts/_github-gate-helpers.mjs`；要修時記得補 TD entry
+6. **日期格式 smoke（遺留自上上輪 refactor）**：`/account/settings`、`/admin/documents/:id`、`/admin/members`、`/admin/query-logs` list+detail、`/admin/tokens` 目視確認新格式（`YYYY/M/D HH:mm:ss`）符合預期；若不滿意可調 `app/utils/format-datetime.ts`
