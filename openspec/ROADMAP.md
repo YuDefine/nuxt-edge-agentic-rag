@@ -55,7 +55,7 @@ _(none)_
 
 ## Active Changes
 
-_last synced: 2026-04-24T21:10:27.447Z_
+_last synced: 2026-04-24T21:53:11.946Z_
 
 2 active changes (0 ready · 2 in progress · 0 draft · 0 blocked)
 
@@ -67,7 +67,7 @@ _(none)_
 
 - **upgrade-mcp-to-durable-objects** — 17/27 tasks (63%)
   - Specs: `mcp-knowledge-tools`
-- **wire-do-tool-dispatch** — 17/24 tasks (71%)
+- **wire-do-tool-dispatch** — 18/24 tasks (75%)
   - Specs: `mcp-knowledge-tools`
 
 ### Draft
@@ -87,18 +87,18 @@ _(none)_
 > 即時 ownership 由 `.spectra/claims/*.json` 提供。
 > 接手 handoff / 開始做 change 時，先 claim，再移除 `HANDOFF.md` 對應項目。
 
-1 claim (0 active · 1 stale)
+1 claim (1 active · 0 stale)
 
 ### Live Ownership
 
-_(none)_
+- **wire-do-tool-dispatch** — unknown:charles@charlesdeMac-mini.local (unknown)
+  - Accepted from: manual
+  - Last heartbeat: 2026-04-24T21:40:40.377Z
+  - Note: 接手抓 handler throw stack，v0.43.1 debug instrumentation 已上 production
 
 ### Stale Claims
 
-- **wire-do-tool-dispatch** — unknown:charles@charlesdeMac-mini.local (unknown)
-  - Accepted from: manual
-  - Last heartbeat: 2026-04-24T20:08:10.521Z
-  - Status: stale (last heartbeat 2026-04-24T20:08:10.521Z)
+_(none)_
 
 <!-- SPECTRA-UX:ROADMAP-AUTO:/claims -->
 
