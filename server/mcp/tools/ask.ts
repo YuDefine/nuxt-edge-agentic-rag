@@ -24,7 +24,14 @@ import {
 import type { McpAuthContext } from '#server/utils/mcp-middleware'
 
 const inputShape = {
-  query: z.string().trim().min(1, 'query is required').max(4000, 'query is too long'),
+  query: z
+    .string()
+    .trim()
+    .min(1, 'query is required')
+    .max(4000, 'query is too long')
+    .describe(
+      'Natural-language question to answer from the governed knowledge corpus. Phrase it as a specific question with relevant context or category keywords; maximum 4000 characters.',
+    ),
 }
 
 export default defineMcpTool({
@@ -32,7 +39,17 @@ export default defineMcpTool({
   title: 'Ask the knowledge base',
   description:
     'Answer a natural-language question from the governed knowledge base, returning a grounded response and citations.',
+  annotations: {
+    readOnlyHint: true,
+    destructiveHint: false,
+    openWorldHint: false,
+    idempotentHint: true,
+  },
   inputSchema: inputShape,
+  inputExamples: [
+    { query: 'What changed in the launch readiness plan for the April milestone?' },
+    { query: 'Governance policy: summarize the required review steps before publishing evidence.' },
+  ],
   handler: async (args: { query: string }) => {
     const event = await getCurrentMcpEvent()
     const auth = requireMcpAuth(event)
