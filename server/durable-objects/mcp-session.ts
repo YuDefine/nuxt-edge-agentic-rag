@@ -236,39 +236,6 @@ function resolveTtlMs(env: McpSessionDurableObjectEnv): number {
   return parsePositiveInteger(env.NUXT_KNOWLEDGE_MCP_SESSION_TTL_MS, DEFAULT_MCP_SESSION_TTL_MS)
 }
 
-interface McpServerInternal {
-  server?: {
-    _requestHandlers?: Map<string, (request: unknown, extra: unknown) => Promise<unknown>>
-  }
-}
-
-function wrapCallToolHandlerForStackLogging(mcpServer: McpServer): void {
-  const handlers = (mcpServer as unknown as McpServerInternal).server?._requestHandlers
-  if (!handlers) {
-    return
-  }
-  const orig = handlers.get('tools/call')
-  if (typeof orig !== 'function') {
-    return
-  }
-  handlers.set('tools/call', async (request, extra) => {
-    try {
-      return await orig(request, extra)
-    } catch (err) {
-      const asError = err instanceof Error ? err : new Error(String(err))
-      // eslint-disable-next-line no-console -- temporary debug: surface DO tool handler stack in wrangler tail while chasing ownKeys proxy bug
-      console.error(
-        '[mcp-do call-tool throw]',
-        asError.name,
-        '-',
-        asError.message,
-        asError.stack ?? '(no stack)',
-      )
-      throw err
-    }
-  })
-}
-
 export class MCPSessionDurableObject extends DurableObject<McpSessionDurableObjectEnv> {
   private readonly ctx: DurableObjectState
   private readonly env: McpSessionDurableObjectEnv
@@ -457,16 +424,6 @@ export class MCPSessionDurableObject extends DurableObject<McpSessionDurableObje
     const transport = new DoJsonRpcTransport()
     transport.sessionId = sessionId
     await mcpServer.connect(transport)
-
-    // TODO(remove-debug-ownkeys): the SDK's CallTool handler swallows handler
-    // throws into JSON-RPC error responses with only `error.message`. To
-    // surface real stacks on staging while we chase the
-    // "a16.ownKeys is not a function or its return value is not iterable"
-    // runtime bug, wrap the registered handler so any throw is logged to
-    // `console.error` (visible in `wrangler tail`) before re-throwing.
-    // Delete this block + `wrapCallToolHandlerForStackLogging` helper once the
-    // root cause is patched (grep: `TODO(remove-debug-ownkeys)`).
-    wrapCallToolHandlerForStackLogging(mcpServer)
 
     this.mcpServer = mcpServer
     this.transport = transport
