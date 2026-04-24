@@ -1889,6 +1889,56 @@ Admin 先取得一次性 signed URL 與 `uploadId` → 原始檔直傳 R2 staged
 
 上列延後項若屆時仍不可得（如 `CLOUDFLARE_API_TOKEN_ANALYTICS` 審核未通過、Workers AI 候選模型下架），需於交付版之 §5.2「檢討與改進」明列「無法結案之延後項」+「替代證據」+「若本專題延續至後續版本之補做計畫」，不得以靜默空白交付。
 
+### 3.3.3 MCP Tool-Selection 品質量化 Eval
+
+既有自動化覆蓋（§3.3.2.1）只驗「MCP 契約、scope 判定、錯誤碼」等結構式正確性，無法回答一個更實務的問題：**使用者用一句自然語言提問時，LLM client 實際拿到 tools/list metadata 後，會不會選到正確的 knowledge tool？** 這個問題直接決定使用者體驗，但 integration test 無法覆蓋——它需要把真實 LLM 接進來跑。本節說明為此新增的 eval harness，並以首次 baseline 結果作為後續迴歸的比對基準。
+
+#### 3.3.3.1 設計動機與範圍
+
+系統對外暴露 4 個 MCP tool：`askKnowledge`（合成答案）、`searchKnowledge`（回傳原文段落）、`listCategories`（列出分類）、`getDocumentChunk`（依 citation ID 回放原文）。前三者由端使用者以自然語言觸發；`getDocumentChunk` 是 agent-internal 工具，使用者不會自行輸入 citation ID 呼叫——它的觸發情境是 LLM 先呼叫 `askKnowledge` 取得帶引用的答案後，再自行 replay 原文驗證。Eval 因此只覆蓋前 3 個 user-facing tool，`getDocumentChunk` 仍由 `test/integration/mcp-*.test.ts` 的 structural test 單獨驗證。
+
+為避免 LLM 對英文 tool description 的匹配信號被 query 中的英文術語人工拉高，dataset 所有 query 以非技術使用者的中文口語撰寫（例如「我們這個月底要發版，發版前應該先注意哪些風險？」而非「April launch readiness plan risks」）。這個決策也是把 `getDocumentChunk` 從 dataset 移除的原因：真實使用者不會用自然語言輸入 `citation_xxx` 字串。
+
+#### 3.3.3.2 資料集與評分方式
+
+資料集為 12 筆手工撰寫的 ground truth，分佈如表 3-11：
+
+表 3-11 MCP tool-selection eval 資料集覆蓋
+
+| Tool              | 樣本數 | specific-topic | category-flavored | boundary |
+| ----------------- | ------ | -------------- | ----------------- | -------- |
+| `askKnowledge`    | 4      | 2              | 1                 | 1        |
+| `searchKnowledge` | 4      | 2              | 1                 | 1        |
+| `listCategories`  | 4      | 2              | 1                 | 1        |
+
+每筆樣本以 60/40 加權計分：tool-name match 佔 60 分（binary）、arguments shape match 佔 40 分（`inputSchema.parse()` + fixture 自訂關鍵字檢查，binary）。LLM 若選錯 tool 直接 0 分，不再評估 arguments。Overall score 是 12 筆的算術平均。Eval 以 AI SDK 驅動 `claude-sonnet-4-6`（temperature=0）透過 `@ai-sdk/mcp` 的 `experimental_createMCPClient` 對真實 MCP server 發 `tools/list`，用回傳的 metadata 餵給 LLM 做 tool-selection 決策，harness 本身不 import `server/mcp/tools/*`，以確保與真實 client 看到的 payload 一致。
+
+#### 3.3.3.3 首次 Baseline 結果
+
+首次跑 baseline 於 2026-04-24 的 staging 環境取得。整體 overall=83.33%（12 筆中 10 筆滿分、2 筆 0 分）：
+
+表 3-12 v2 baseline 結果
+
+| 指標                     | 值                                            |
+| ------------------------ | --------------------------------------------- |
+| Dataset 版本             | `2026-04-24-v2`                               |
+| 模型                     | `claude-sonnet-4-6`                           |
+| MCP server               | `https://agentic-staging.yudefine.com.tw/mcp` |
+| Overall score            | 83.33%                                        |
+| `askKnowledge` 得分率    | 3/4 = 75%（1 筆 boundary 誤選）               |
+| `searchKnowledge` 得分率 | 3/4 = 75%（1 筆 category 誤選）               |
+| `listCategories` 得分率  | 4/4 = 100%                                    |
+
+2 筆低分樣本皆由「治理 / 政策 / 類別」等字眼把 LLM 誘導到 `listCategories`——屬 metadata description 的邊界 case，正是 eval 設計上刻意挑戰的 category-flavored / boundary pattern。此結果不代表 metadata 劣化；反而為後續 `enhance-mcp-tool-metadata` change 提供明確的可改善目標（提高 askKnowledge / searchKnowledge 對「類別字眼但意圖非列表」query 的可辨識度）。整體 >70% 警戒門檻、無 tool 完全掉分，因此採為 v2 baseline；後續 eval 若 overall < baseline − 5pp（即 < 78.33%）視為迴歸，由 harness 在 stderr 列出掉分 sample 與新分數，供人工審查。
+
+#### 3.3.3.4 Infra 限制與 Follow-up
+
+Eval 設計上應在 local dev server 跑，但 apply 過程發現 NuxtHub local dev 的 KV binding 並未注入 `event.context.cloudflare.env`，導致 MCP middleware 在 rate-limit 查 KV 時一律回 503（TD-042 已登記於 `docs/tech-debt.md`）。Baseline 因此改連 staging MCP server——staging 在真 Cloudflare Workers runtime，KV binding 正常；staging 的 tools/list metadata 在 rollout 流程上與 production 保持一致，訊號與 local 同等有效。待 TD-042 補上 local KV bridge（nitro plugin 將 `hubKV()` wrap 成 KVNamespace 注入 `cloudflare.env`）後，baseline 會在 local 重跑一次驗證兩環境差異 ≤ 5pp，再把 `EVAL_MCP_URL` 預設切回 local。
+
+另一個限制是 evalite 0.19 的 `afterAll` 會吃掉 `process.exit(1)` 與 `throw`（TD-043），導致迴歸時 `pnpm eval` 仍以 exit 0 結束；不過 stderr 會印出 `Eval regression: overall X% is more than 5pp below baseline Y% ...` 與掉分樣本清單，nightly / manual runner 仍可 grep 此 banner 抓迴歸訊號。此限制屬 evalite 框架層級，已登記為 follow-up，不阻擋本批 eval 交付。
+
+Eval 不納入 `pnpm check` / CI 必經 gate——LLM API 有金錢成本、回應非 deterministic，放進 PR 閘門會污染訊號並造成不穩定的 CI 失敗。它屬於 manual / nightly 補充層的品質量化工具，與 §3.3.2.1 的結構式自動化測試互補：structural test 保證 MCP 契約行為正確、eval 保證端使用者提問時的 tool-selection 準確度。
+
 ---
 
 # 第四章 結論

@@ -4,7 +4,7 @@
 
 ## Current State
 
-> 狀態（2026-04-24 更新）：目前 branch `main`，`v0.41.0` tag 已推送；production deploy + docs production 仍待最終驗收。Open tech debt 現況：無 blocking 項，但 MCP Durable Object rollout 仍需依 feature flag 分階段驗證。
+> 狀態（2026-04-24 更新）：目前 branch `main`，`v0.42.0` tag 已推送；staging 與 production deploy / docs / smoke / notify 皆已綠燈。Open tech debt 現況：無 blocking 項，但 MCP Durable Object rollout 仍需依 feature flag 分階段驗證。
 >
 > **最新進度**（2026-04-24）：
 >
@@ -18,7 +18,8 @@
 > - **docs custom domain / app canary 人工判定缺口** 已補齊：2026-04-24 以外部網路直接檢查 `agentic.yudefine.com.tw`、`agentic-staging.yudefine.com.tw`、`agentic-docs.yudefine.com.tw`、`agentic-docs-staging.yudefine.com.tw`，四個 custom domain 皆回 `HTTP 200`，確認 GitHub runner 上的 `403` 屬 Cloudflare WAF / Bot protection 誤擋，而非站點異常。
 > - **Delete account Google reauth 修復**已完成 archive：Google reauth 跨 redirect resume、passkey-only regression、直接輸入 `?open-delete=1` bypass 防護與 OAuth cancel case 皆已完成驗證。
 > - **MCP Durable Object 工作線已拆分完成**：`upgrade-mcp-to-durable-objects` 保留 session lifecycle scope；`wire-do-tool-dispatch` 已從 parked 進入 active，負責 DO 內 tool dispatch、auth context HMAC forward 與 production flag rollout。
-> - **`add-mcp-tool-selection-evals`** 已進入收尾：eval harness、dataset、scorer 與文件骨架已落地；剩 dev token CLI / bearer-token client wiring、首次 baseline 與 regression fail 驗證。
+> - **`add-mcp-tool-selection-evals`** 已進入收尾：eval harness、dataset、scorer、文件骨架、dev token CLI 與 bearer-token client wiring 已落地；剩首次 baseline 與 regression fail-path 驗證。
+> - **`v0.42.0` release** 已完成：main push run `24898590937` staging 綠燈；tag run `24898814022` production 綠燈。Production `NUXT_KNOWLEDGE_FEATURE_MCP_SESSION` 仍維持 false，等待 `wire-do-tool-dispatch` soak 完成後再 flip。
 > - **Workers AI 回答層 / web chat 真串流** 已完成 archive：相關 tasks 皆已完成，後續焦點轉往 MCP session/tool dispatch 與 eval baseline。
 
 ## Next Moves
@@ -26,12 +27,12 @@
 進行中：
 
 - **`upgrade-mcp-to-durable-objects`** 17/27 tasks (63%)，**Phase 4 scope 縮為 session lifecycle only** — tool dispatch 改由 `wire-do-tool-dispatch` 接手（見 TD-041）；production flag 維持 false 直到 wire-do-tool-dispatch archive
-- **`wire-do-tool-dispatch`** 17/24 tasks (71%)，DO 內 McpServer lazy init + 4 tool dispatch + auth context forward 已完成；剩 staging / production rollout 與人工檢查
-- **`add-mcp-tool-selection-evals`** 13/23 tasks (57%)，eval harness 已落地；剩 local dev bearer token 串接、baseline 建立與 fail-path 驗證
+- **`wire-do-tool-dispatch`** 17/24 tasks (71%)，DO 內 McpServer lazy init + 4 tool dispatch + auth context forward 已完成並隨 `v0.42.0` 部署；剩 staging / production rollout 與人工檢查
+- **`add-mcp-tool-selection-evals`** 23/28 tasks (82%)，eval harness、dataset、dev token CLI 與 bearer-token client wiring 已落地；剩 baseline 建立與 fail-path 驗證
 
 ### 已 propose，待 apply（見 AUTO Parked Changes 區塊）
 
-- [high] **`enhance-mcp-tool-metadata`** — 10/14 tasks (71%)，**parked pending production deploy**（implementation 已 commit `ece9c12`；剩 3.3 MCP Inspector 實測 + 4.1-4.3 人工 review 等 production MCP client metadata 真實呈現後 batch 驗）
+_(none)_
 
 ### 近期（尚未 propose，可與 DO change 並行）
 
@@ -56,7 +57,7 @@
 
 ## Active Changes
 
-_last synced: 2026-04-24T15:46:57.481Z_
+_last synced: 2026-04-24T15:57:36.673Z_
 
 3 active changes (0 ready · 3 in progress · 0 draft · 0 blocked)
 
@@ -66,7 +67,7 @@ _(none)_
 
 ### In progress
 
-- **add-mcp-tool-selection-evals** — 19/23 tasks (83%)
+- **add-mcp-tool-selection-evals** — 23/28 tasks (82%)
 - **upgrade-mcp-to-durable-objects** — 17/27 tasks (63%)
   - Specs: `mcp-knowledge-tools`
 - **wire-do-tool-dispatch** — 17/24 tasks (71%)

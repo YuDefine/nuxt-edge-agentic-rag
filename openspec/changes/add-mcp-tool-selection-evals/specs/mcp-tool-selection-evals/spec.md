@@ -2,11 +2,12 @@
 
 ### Requirement: Tool-Selection Eval Coverage
 
-The project SHALL maintain an LLM-based tool-selection eval harness under `test/evals/` that exercises the published MCP tool surface and produces a score against a hand-curated ground-truth dataset. Coverage SHALL include:
+The project SHALL maintain an LLM-based tool-selection eval harness under `test/evals/` that exercises the **user-facing** MCP tool surface and produces a score against a hand-curated ground-truth dataset. Coverage SHALL include:
 
-- All four knowledge tools: `askKnowledge`, `searchKnowledge`, `getDocumentChunk`, `listCategories`.
-- At least three query patterns per tool: a specific-topic natural-language query, a category-flavored query, and at least one boundary case (e.g., empty / overly generic query or citation-id replay).
-- A minimum of 12 ground-truth samples spanning the four tools.
+- All three user-facing knowledge tools: `askKnowledge`, `searchKnowledge`, `listCategories`.
+- At least four query samples per tool, distributed as: at least two specific-topic natural-language queries, at least one category-flavored query, and at least one boundary case (e.g., empty / overly generic query).
+- A minimum of 12 ground-truth samples spanning the three tools.
+- `getDocumentChunk` is EXCLUDED from dataset coverage because it is an agent-internal citation-replay tool that end users do not invoke via natural-language query (they do not know citation IDs or the chunk concept). Structural coverage for `getDocumentChunk` remains in `test/integration/mcp-*.test.ts`.
 
 The harness SHALL execute against a running MCP server (dev server or equivalent local instance) over the same transport path used by real clients; it SHALL NOT bypass middleware, auth, or tool registration by importing tool modules directly.
 
@@ -18,12 +19,13 @@ The harness SHALL execute against a running MCP server (dev server or equivalent
 - **AND** the harness does not import `server/mcp/tools/*` modules to reconstruct tool descriptions
 - **AND** the harness does not bypass the MCP middleware's Bearer-token enforcement
 
-#### Scenario: Dataset covers all four tools with multiple patterns
+#### Scenario: Dataset covers the three user-facing tools with multiple patterns
 
 - **WHEN** the eval dataset file is loaded
-- **THEN** every one of the four tool names appears as the expected tool in at least one sample
-- **AND** each tool has at least three samples, of which at least one represents a specific-topic query and at least one represents a category-flavored or boundary query
+- **THEN** every one of the three user-facing tool names (`askKnowledge`, `searchKnowledge`, `listCategories`) appears as the expected tool in at least one sample
+- **AND** each tool has at least four samples, of which at least two represent specific-topic queries, at least one represents a category-flavored query, and at least one represents a boundary case
 - **AND** the total sample count is at least 12
+- **AND** the dataset does NOT include `getDocumentChunk` samples (agent-internal tool, excluded by Coverage requirement)
 
 ### Requirement: Non-Blocking Eval Execution
 
