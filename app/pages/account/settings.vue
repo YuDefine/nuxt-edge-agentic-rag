@@ -10,6 +10,7 @@
     isLinkGoogleForPasskeyFirstErrorCode,
   } from '#shared/utils/link-google-for-passkey-first'
   import { getUiPageState } from '#shared/utils/ui-state'
+  import { consumePendingDeleteReauth } from '~/utils/auth-return-to'
 
   /**
    * passkey-authentication §11 — Account settings page.
@@ -56,6 +57,7 @@
   // lives on the authClient itself (`client.passkey.addPasskey`).
   const { client } = useUserSession()
   const route = useRoute()
+  const router = useRouter()
   const toast = useToast()
   const passkeyFeatureEnabled = computed<boolean>(
     () => useRuntimeConfig().public?.knowledge?.features?.passkey === true,
@@ -88,6 +90,7 @@
   const linkGoogleLoading = ref(false)
   const linkGoogleFeedback = ref<LinkGoogleFeedbackState | null>(null)
   const deleteDialogOpen = ref(false)
+  const deleteDialogResume = ref(false)
   const deletingPasskeyId = ref<string | null>(null)
   const linkGoogleFeedbackHandling = ref(false)
 
@@ -283,6 +286,17 @@
     }
   }
 
+  async function handleDeleteDialogResume(): Promise<void> {
+    if (route.query['open-delete'] !== '1') return
+
+    if (consumePendingDeleteReauth()) {
+      deleteDialogResume.value = true
+      deleteDialogOpen.value = true
+    }
+
+    await router.replace({ query: {} })
+  }
+
   watch(
     () => [
       route.query[LINK_GOOGLE_FOR_PASSKEY_FIRST_SUCCESS_KEY],
@@ -293,6 +307,16 @@
     },
     { immediate: true },
   )
+
+  watch(deleteDialogOpen, (open) => {
+    if (!open) {
+      deleteDialogResume.value = false
+    }
+  })
+
+  onMounted(() => {
+    void handleDeleteDialogResume()
+  })
 </script>
 
 <template>
@@ -535,6 +559,7 @@
       v-model:open="deleteDialogOpen"
       :has-passkey="credentials.passkeys.length > 0"
       :has-google="credentials.hasGoogle"
+      :initial-reauth-complete="deleteDialogResume"
     />
 
     <!-- Passkey naming dialog -->
