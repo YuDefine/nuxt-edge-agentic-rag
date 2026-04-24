@@ -9,6 +9,7 @@
     "NUXT_KNOWLEDGE_AI_SEARCH_INDEX": "agentic-rag-staging",
     "NUXT_KNOWLEDGE_ENVIRONMENT": "staging",
     "NUXT_KNOWLEDGE_FEATURE_PASSKEY": "true",
+    "NUXT_KNOWLEDGE_FEATURE_MCP_SESSION": "true",
     "NUXT_PASSKEY_RP_ID": "yudefine.com.tw",
     "NUXT_PASSKEY_RP_NAME": "知識問答系統",
     "NUXT_KNOWLEDGE_AI_GATEWAY_ID": "agentic-rag-staging",

@@ -15,6 +15,7 @@ import {
   McpRateLimitExceededError,
 } from '#server/utils/mcp-rate-limit'
 import { setMcpAuthorizationChallenge } from '#server/utils/mcp-oauth-metadata'
+import { signAuthContext } from '#server/utils/mcp-auth-context-codec'
 import {
   createDefaultUserRoleLookup,
   gateMcpToolAccess,
@@ -44,6 +45,7 @@ export interface UserRoleLookupLike {
 }
 
 export interface RunMcpMiddlewareDeps {
+  authSigningKey?: string
   environment: string
   extractToolNames: (event: H3Event) => Promise<string[]>
   kvBindingName: string
@@ -77,6 +79,7 @@ interface McpEventLike {
   context: Record<string, unknown> & {
     cloudflare?: { env?: Record<string, unknown> }
     mcpAuth?: McpAuthContext
+    mcpAuthEnvelope?: string
     mcpSessionId?: string | null
   }
   headers: Headers
@@ -160,6 +163,9 @@ export async function runMcpMiddleware(
   }
 
   event.context.mcpAuth = auth
+  if (deps.authSigningKey) {
+    event.context.mcpAuthEnvelope = await signAuthContext(auth, deps.authSigningKey, deps.now)
+  }
 
   const toolNames = await deps.extractToolNames(event as unknown as H3Event)
   const preset = resolveRateLimitPreset(toolNames[0])
