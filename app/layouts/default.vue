@@ -1,6 +1,7 @@
 <script setup lang="ts">
-  const { user, signOut } = useUserSession()
+  const { user } = useUserSession()
   const { links } = useAppNavigation()
+  const { signOutAndRedirect } = useSignOutRedirect()
 
   const drawer = useLayoutDrawer('main')
 
@@ -20,33 +21,13 @@
       {
         label: '登出',
         icon: 'i-lucide-log-out',
-        onSelect: () => handleSignOut(),
+        onSelect: () => signOutAndRedirect(),
       },
     ],
   ])
 
   function handleDrawerLinkClick() {
     drawer.close()
-  }
-
-  /**
-   * Sign out flow — `useUserSession().signOut` clears our local state but
-   * `@onmax/nuxt-better-auth` reads from a nanostore atom that lags a tick
-   * behind. Navigate to `/` explicitly so the page unmounts and re-evaluates
-   * the `!loggedIn` branch cleanly, instead of racing the watcher.
-   */
-  async function handleSignOut() {
-    try {
-      await signOut({
-        onSuccess: async () => {
-          await navigateTo('/', { replace: true })
-        },
-      })
-    } catch {
-      // Even if server-side sign-out throws (network blip), the local session
-      // atom has been cleared — redirect so the user sees the logged-out UI.
-      await navigateTo('/', { replace: true })
-    }
   }
 </script>
 
