@@ -6,13 +6,17 @@
 ## 2. Phase 1 Diag Spike
 
 - [x] 2.1 `server/utils/mcp-agents-compat.ts` 在 `transport.handleRequest(request)` 回傳前加 `[MCP-DIAG]` log（method / url / 選定 headers / cloned request body / cloned response body，status ≥ 400 only）（執行 Decision：Phase 1 diag spike：patch shim log 400 response body）
-- [ ] 2.2 `/commit` → deploy diag patch 到 production → Claude.ai 任一 tool call 重現 re-init 循環 → `wrangler tail` 抓 `[MCP-DIAG]` JSON 至少 5 筆
-- [ ] 2.3 將 `resBody.error.code` + `resBody.error.message` 對照 SDK 400 路徑 decision rule（`-32700 Invalid JSON` / `-32700 Invalid JSON-RPC message` / `-32600 Server already initialized`），記錄到 `docs/solutions/mcp-streamable-http-session-durable-objects.md` 草稿；revert diag patch 並獨立 `/commit`（diagnostic code 不留 main）
+- [x] 2.2 `/commit` → deploy diag patch 到 production → Claude.ai 任一 tool call 重現 re-init 循環 → `wrangler tail` 抓 `[MCP-DIAG]` JSON 至少 5 筆
+- [x] 2.3 將 `resBody.error.code` + `resBody.error.message` 對照 SDK 400 路徑 decision rule（`-32700 Invalid JSON` / `-32700 Invalid JSON-RPC message` / `-32600 Server already initialized`），記錄到 `docs/solutions/mcp-streamable-http-session-durable-objects.md` 草稿；revert diag patch 並獨立 `/commit`（diagnostic code 不留 main）
 
-## 3. Phase 2 Transport PoC
+## 3. Phase 2 Pivot Decision（2026-04-24 ingest 後新增）
 
-- [ ] 3.1 建最小 PoC DO class 搭 `agents/mcp` `McpAgent`，跑一個 dummy `tools/call`，記錄是否仍觸發 Cloudflare proxy `ownKeys` error、cold start 延遲、code size（執行 Decision：Phase 2 PoC：評估 McpAgent on DO 取代自寫 transport）
-- [ ] 3.2 根據 PoC 結果決定最終 transport 實作：若 `McpAgent` on DO 規避 `ownKeys` 且維護成本可接受則改用 `McpAgent`，否則維持自寫 DO-backed transport（對齊 Decision：預設採用自寫 DO-backed transport）；決定記入 `docs/solutions` 草稿並更新 `design.md` Decisions 段
+Phase 1 spike 實證真因是 SDK 碰 Cloudflare env proxy `Reflect.ownKeys` TypeError，DO 架構本身不解決。**進 Core Implementation 前必須先選 Pivot A / B / C**（詳見 design.md Phase 2 Pivot decision 段 + `docs/solutions/mcp-streamable-http-session-durable-objects.md`）。
+
+- [ ] 3.1 Pivot A 評估：grep SDK dist 找出 `a16` 對應的 env access pattern（例如 `Object.keys(env)` / `Reflect.ownKeys(env)` / `for (const k in env)`），列出所有位置，估算加強 `installEnumerableSafeEnv` 的覆蓋難度（執行 Decision：Phase 2 Pivot decision required before DO implementation）
+- [ ] 3.2 Pivot B 評估：檢視 SDK `Reflect.ownKeys` / `Object.keys(env)` 散布範圍，評估 fork 或 monkey-patch 的 maintenance 成本（涵蓋原 Phase 2 PoC：評估 McpAgent on DO 取代自寫 transport 的 transport 相容性疑慮——實證結果使該 PoC 已無獨立意義）
+- [ ] 3.3 Pivot C 評估：列出 MCP Streamable HTTP 的 minimum viable surface（僅 handshake + tool call），對照 SDK 當前實作行數，估算自寫成本與完整度風險
+- [ ] 3.4 Pivot decision log：三選一寫入 `docs/solutions/mcp-streamable-http-session-durable-objects.md` 並更新 `design.md` Decisions 段（對齊 Decision：預設採用自寫 DO-backed transport — 依 Pivot 結果可能保留或調整）
 
 ## 4. Core Implementation
 
