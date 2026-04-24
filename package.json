@@ -23,7 +23,7 @@
     "mint:dev-mcp-token": "node --env-file=.env scripts/mint-dev-mcp-token.mts",
     "postprepare": "node scripts/patch-hub-db-dev.mjs && node scripts/patch-better-call-status-text.mjs",
     "prebuild": "node scripts/patch-better-call-status-text.mjs",
-    "predev": "node scripts/patch-hub-db-dev.mjs && node scripts/patch-better-call-status-text.mjs",
+    "predev": "node scripts/check-dev-bootstrap-health.mjs && node scripts/patch-hub-db-dev.mjs && node scripts/patch-better-call-status-text.mjs",
     "prepare": "husky && nuxt prepare",
     "preview": "nuxt preview",
     "skills:install": "bash ./scripts/install-skills.sh",
