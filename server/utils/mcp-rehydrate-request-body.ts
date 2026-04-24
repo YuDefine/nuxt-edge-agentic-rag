@@ -25,8 +25,8 @@ interface WebRequestEventShape {
  * earlier reads — it does NOT re-drain the original stream.
  */
 export async function rehydrateMcpRequestBody(event: H3Event): Promise<void> {
-  const web = (event as unknown as WebRequestEventShape).web
-  const original = web?.request
+  const eventShape = event as unknown as WebRequestEventShape
+  const original = eventShape.web?.request ?? eventShape.req
   if (!original) return
   if (original.method === 'GET' || original.method === 'HEAD') return
 
@@ -51,7 +51,8 @@ export async function rehydrateMcpRequestBody(event: H3Event): Promise<void> {
     duplex: 'half',
   } as RequestInit)
 
-  const target = event as unknown as { req?: Request; web: { request: Request } }
+  const target = event as unknown as { req?: Request; web?: { request?: Request } }
   target.req = replay
+  target.web ??= {}
   target.web.request = replay
 }
