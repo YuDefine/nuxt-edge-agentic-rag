@@ -50,6 +50,23 @@ type NitroBuildPlugin = {
   ): { code: string; map: null } | null
 }
 
+type NitroModuleInfo = {
+  modules?: Record<string, unknown>
+}
+
+type NitroBundleChunk = NitroModuleInfo & {
+  type?: 'chunk' | 'asset'
+  fileName: string
+  code?: string
+  isEntry?: boolean
+  moduleIds?: string[]
+}
+
+type NitroExportInjectionPlugin = {
+  name: string
+  generateBundle(this: unknown, _options: unknown, bundle: Record<string, NitroBundleChunk>): void
+}
+
 function shouldIgnoreUpstreamCircularDependencyWarning(warning: BuildWarning): boolean {
   if (warning.code !== 'CIRCULAR_DEPENDENCY') {
     return false
@@ -109,9 +126,57 @@ function patchOpenTelemetryProxyTracer(): NitroBuildPlugin {
   }
 }
 
+function injectMcpSessionDurableObjectExport(): NitroExportInjectionPlugin {
+  const durableObjectModuleSuffix = 'server/durable-objects/mcp-session.ts'
+
+  return {
+    name: 'export-mcp-session-durable-object',
+    generateBundle(_options, bundle) {
+      const entry = Object.values(bundle).find(
+        (chunk) => chunk.type === 'chunk' && chunk.isEntry && chunk.fileName === 'index.mjs',
+      )
+      if (!entry || typeof entry.code !== 'string') {
+        return
+      }
+
+      const doChunk = Object.values(bundle).find((chunk) => {
+        if (chunk.type !== 'chunk') return false
+        const modulesMap = chunk.modules as Record<string, unknown> | undefined
+        const moduleIds = modulesMap ? Object.keys(modulesMap) : (chunk.moduleIds ?? [])
+        return moduleIds.some((id) => id.replaceAll('\\', '/').endsWith(durableObjectModuleSuffix))
+      })
+
+      if (!doChunk) {
+        throw new Error(
+          `[export-mcp-session-durable-object] could not locate chunk containing ${durableObjectModuleSuffix}.`,
+        )
+      }
+
+      if (
+        typeof doChunk.code === 'string' &&
+        !/export\s*\{\s*MCPSessionDurableObject/.test(doChunk.code)
+      ) {
+        const sourcemapComment = /\n?\/\/# sourceMappingURL=[^\n]*\n?$/
+        const match = doChunk.code.match(sourcemapComment)
+        const injection = '\nexport { MCPSessionDurableObject };\n'
+        doChunk.code = match
+          ? doChunk.code.replace(sourcemapComment, `${injection}${match[0]}`)
+          : `${doChunk.code}${injection}`
+      }
+
+      const relativePath = `./${doChunk.fileName}`
+      const exportStatement = `export { MCPSessionDurableObject } from '${relativePath}';\n`
+      if (entry.code.includes(exportStatement)) {
+        return
+      }
+      entry.code = `${entry.code}\n${exportStatement}`
+    },
+  }
+}
+
 export function createNitroRollupConfig() {
   return {
-    plugins: [patchOpenTelemetryProxyTracer()],
+    plugins: [patchOpenTelemetryProxyTracer(), injectMcpSessionDurableObjectExport()],
     output: {
       banner: nitroServerBanner,
     },

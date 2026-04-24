@@ -20,18 +20,18 @@ Phase 1 spike 實證真因是 SDK 碰 Cloudflare env proxy `Reflect.ownKeys` Typ
 
 ## 4. Core Implementation（Pivot C 路線 — 自寫 minimal transport）
 
-- [ ] 4.1 新增 `server/mcp/do-transport.ts`：`DoJsonRpcTransport` class 符合 SDK `Transport` interface（`start / send / close + onmessage` callback）；`send(msg)` 存入 per-request resolver，由 DO fetch handler 收集；~30 行（對齊 Decision：採用自寫 minimal `DoJsonRpcTransport`（Pivot C 實作））
-- [ ] 4.2 新增 `server/mcp/durable-object.ts`：`MCPSessionDurableObject` class、`this.state.storage` schema（`sessionId` / `protocolVersion` / `capabilities` / `createdAt` / `lastSeenAt` / `initializedServer`）、`alarm()` handler 在 `lastSeenAt + TTL` 清空 storage（對齊 Decision：Session TTL 30 分鐘 idle 並由 DO alarm 驅動 GC；Requirement: MCP Session Durable Object Binding）
-- [ ] 4.3 DO 內實作 `fetch()`：parse request body → `transport.onmessage(msg, { authInfo, requestInfo })` → await resolver → 回 HTTP JSON response；lazy init `McpServer` + `server.connect(transport)`；首次 `initialize` 用 `crypto.randomUUID()` 生成 session id 並在 response header 帶 `Mcp-Session-Id`（對齊 Decision：Session ID 由 server 在首次 initialize 生成並回傳 Mcp-Session-Id header；Requirement: MCP Session Initialization Issues Mcp-Session-Id；Requirement: MCP Session Has Idle TTL With Request-Triggered Renewal — 實作 request 觸發 lastSeenAt 續命與 alarm 排程）
-- [ ] 4.4 改 `server/mcp/index.ts`：依 `features.mcpSession` flag 分支——flag=true 時抽/生成 session id 並 `env.MCP_SESSION.idFromName(sessionId).fetch(request.clone())` 轉交 DO；flag=false 保留現行 stateless shim path（對齊 Decision：Stateless fallback 保留為 kill-switch；Requirement: Feature Flag Controls MCP Session Path）
-- [ ] 4.5 `wrangler.jsonc` 新增 `durable_objects.bindings` 條目 `{ name: "MCP_SESSION", class_name: "MCPSessionDurableObject" }` + migration tag `v1`，驗證 `wrangler deploy --dry-run` 通過（對齊 Decision：採用獨立 Durable Object class MCPSessionDurableObject 搭配 binding MCP_SESSION；取代原 Task 1.1——該 task 的 dry-run gate 要等 class 存在，故合併到此）
-- [ ] [P] 4.6 `server/utils/mcp-middleware.ts`：加過期/撤銷 session 回 `404` 路徑（非 401）；token revoke 時同時清 session DO（對齊 Decision：Middleware 擴充：rate-limit 仍以 token 為主 session 生命週期綁 token；Requirement: Stateless MCP Authentication 的 expired session scenario）
+- [x] 4.1 新增 `server/mcp/do-transport.ts`：`DoJsonRpcTransport` class 符合 SDK `Transport` interface（`start / send / close + onmessage` callback）；`send(msg)` 存入 per-request resolver，由 DO fetch handler 收集；~30 行（對齊 Decision：採用自寫 minimal `DoJsonRpcTransport`（Pivot C 實作））
+- [x] 4.2 新增 `server/mcp/durable-object.ts`：`MCPSessionDurableObject` class、`this.state.storage` schema（`sessionId` / `protocolVersion` / `capabilities` / `createdAt` / `lastSeenAt` / `initializedServer`）、`alarm()` handler 在 `lastSeenAt + TTL` 清空 storage（對齊 Decision：Session TTL 30 分鐘 idle 並由 DO alarm 驅動 GC；Requirement: MCP Session Durable Object Binding）
+- [x] 4.3 DO 內實作 `fetch()`：parse request body → `transport.onmessage(msg, { authInfo, requestInfo })` → await resolver → 回 HTTP JSON response；lazy init `McpServer` + `server.connect(transport)`；首次 `initialize` 用 `crypto.randomUUID()` 生成 session id 並在 response header 帶 `Mcp-Session-Id`（對齊 Decision：Session ID 由 server 在首次 initialize 生成並回傳 Mcp-Session-Id header；Requirement: MCP Session Initialization Issues Mcp-Session-Id；Requirement: MCP Session Has Idle TTL With Request-Triggered Renewal — 實作 request 觸發 lastSeenAt 續命與 alarm 排程）
+- [x] 4.4 改 `server/mcp/index.ts`：依 `features.mcpSession` flag 分支——flag=true 時抽/生成 session id 並 `env.MCP_SESSION.idFromName(sessionId).fetch(request.clone())` 轉交 DO；flag=false 保留現行 stateless shim path（對齊 Decision：Stateless fallback 保留為 kill-switch；Requirement: Feature Flag Controls MCP Session Path）
+- [x] 4.5 `wrangler.jsonc` 新增 `durable_objects.bindings` 條目 `{ name: "MCP_SESSION", class_name: "MCPSessionDurableObject" }` + migration tag `v1`，驗證 `wrangler deploy --dry-run` 通過（對齊 Decision：採用獨立 Durable Object class MCPSessionDurableObject 搭配 binding MCP_SESSION；取代原 Task 1.1——該 task 的 dry-run gate 要等 class 存在，故合併到此）
+- [x] [P] 4.6 `server/utils/mcp-middleware.ts`：加過期/撤銷 session 回 `404` 路徑（非 401）；token revoke 時同時清 session DO（對齊 Decision：Middleware 擴充：rate-limit 仍以 token 為主 session 生命週期綁 token；Requirement: Stateless MCP Authentication 的 expired session scenario）**@followup[TD-040]** 主動 token-revoke → session 清理需 token→sessionId 索引，本 change 交給 DO idle TTL alarm 自然回收。
 
 ## 5. Test Coverage
 
-- [ ] [P] 5.1 新增 `test/integration/mcp-session-durable-object.spec.ts`：DO session lifecycle 覆蓋 create / touch `lastSeenAt` / alarm GC / expired 404（Requirement: MCP Session Has Idle TTL With Request-Triggered Renewal）
-- [ ] [P] 5.2 新增 `test/integration/mcp-session-handshake.spec.ts`：stub DO，驗 handshake + tool call full flow，flag=true / flag=false 兩路徑皆綠
-- [ ] [P] 5.3 確認既有 `test/integration/mcp-agents-compat.spec.ts` + `test/integration/mcp-streamable-http.spec.ts` 在 flag=false 分支仍綠，regression clean
+- [x] [P] 5.1 新增 `test/integration/mcp-session-durable-object.spec.ts`：DO session lifecycle 覆蓋 create / touch `lastSeenAt` / alarm GC / expired 404（Requirement: MCP Session Has Idle TTL With Request-Triggered Renewal）
+- [x] [P] 5.2 新增 `test/integration/mcp-session-handshake.spec.ts`：stub DO，驗 handshake + tool call full flow，flag=true / flag=false 兩路徑皆綠
+- [x] [P] 5.3 確認既有 `test/integration/mcp-agents-compat.spec.ts` + `test/integration/mcp-streamable-http.spec.ts` 在 flag=false 分支仍綠，regression clean
 
 ## 6. Rollout
 
@@ -41,7 +41,7 @@ Phase 1 spike 實證真因是 SDK 碰 Cloudflare env proxy `Reflect.ownKeys` Typ
 
 ## 7. Cleanup
 
-- [ ] [P] 7.1 `docs/solutions/mcp-streamable-http-session-durable-objects.md` 定稿：整合 Phase 1 diag + Phase 2 PoC 結論、DO state schema、transport 選擇理由、TTL 策略、rollout timeline
+- [x] [P] 7.1 `docs/solutions/mcp-streamable-http-session-durable-objects.md` 定稿：整合 Phase 1 diag + Phase 2 PoC 結論、DO state schema、transport 選擇理由、TTL 策略、rollout timeline
 - [ ] [P] 7.2 `docs/tech-debt.md` TD-030 `Status: done`，註 `Resolved: 2026-0X-XX by change upgrade-mcp-to-durable-objects`，並附一句 one-liner 描述根因（Claude 缺 `Mcp-Session-Id` 導致 re-init）
 - [ ] [P] 7.3 `openspec/specs/mcp-knowledge-tools/spec.md` archive 時由 spectra 自動合併 delta；archive 後人工校對 `@trace` 區塊是否需補新建檔案路徑（`server/mcp/durable-object.ts`）
 
