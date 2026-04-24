@@ -20,9 +20,29 @@
 
 ## Next Moves
 
-1. 目前沒有 active、parked 或 handoff 中的 Spectra change 需要繼續實作。
-2. 下一輪工作若涉及產品行為變更，先走 `spectra-propose` / `spectra-apply`，避免直接在已封存 change 上追加需求。
-3. 若準備發布目前工作樹，先完成對應測試、人工驗證與 commit 分組。
+進行中：**`upgrade-mcp-to-durable-objects`** 14/26 tasks (54%)，claim 持有者 `charles@charlesdeMac-mini.local`（詳見 `HANDOFF.md`）。
+
+### 近期（可與 DO change 並行）
+
+- [high] **`enhance-mcp-tool-metadata`** — 4 個 MCP tool 補 `.describe()` / `annotations` / `inputExamples`（Tier 1 純 metadata，無 behavior change）— 獨立，不動 `server/mcp/index.ts`，避免撞 DO change
+- [mid] **`add-mcp-tool-selection-evals`** — 引入 `evalite` + `@ai-sdk/mcp`，建 `test/evals/mcp-tool-selection.eval.ts`（Tier 2，覆蓋自然語言 → 正確 tool + 正確參數對照表）— 獨立
+- [mid] **`integrate-mcp-logger-notifications`** — 4 tool retrieval 進度用 `useMcpLogger().notify.*` 推 client channel（Tier 1 observability）— 獨立，依賴：需先確認 `@nuxtjs/mcp-toolkit@0.14.0` 暴露 `useMcpLogger`
+- [mid] **TD-028** DeleteAccountDialog Google reauth callbackURL — 獨立 change 候選
+- [low] **`assert-never` util 收斂** — `app/utils/assert-never.ts` 與 `shared/utils/assert-never.ts` 重複，typecheck 有 WARN — 獨立
+- [low] **TD-009** `user_profiles.email_normalized` nullable migration — 獨立
+- [low] **TD-026** conversation owner-fallback 重複 config 收斂 — 獨立
+- [low] **日期格式 smoke（遺留）** — `/account/settings`、`/admin/documents/:id`、`/admin/members`、`/admin/query-logs` list+detail、`/admin/tokens` 目視確認
+
+### 中期（合併評估）
+
+- [mid] **TD-015 + TD-019 + TD-016 SSE 合併處理**
+
+### 長期（等 DO change archive 後）
+
+- [high] **TD-027** MCP connector first-time auth — 依賴：`upgrade-mcp-to-durable-objects` 完成後一併實測
+- [mid] **`discuss-mcp-resource-layer`** — 依賴：DO archive；避免 `server/mcp/` 結構兩邊動
+- [low] **`discuss-mcp-elicitation-for-ask`** — 互斥：DO change Non-Goals 明確排除 prompt/elicitation/sampling，MUST 等 archive 後才能 propose
+- [low] **`discuss-mcp-async-context-refactor`** — 依賴：DO archive + production flag 全開一個 sprint；Tier 3 高風險，discuss 階段需驗證 asyncContext 與 CF Workers runtime 相容性
 
 <!-- SPECTRA-UX:ROADMAP-MANUAL:END -->
 
@@ -30,7 +50,7 @@
 
 ## Active Changes
 
-_last synced: 2026-04-24T12:38:42.620Z_
+_last synced: 2026-04-24T13:41:09.708Z_
 
 1 active change (0 ready · 1 in progress · 0 draft · 0 blocked)
 
@@ -40,7 +60,7 @@ _(none)_
 
 ### In progress
 
-- **upgrade-mcp-to-durable-objects** — 6/26 tasks (23%)
+- **upgrade-mcp-to-durable-objects** — 16/26 tasks (62%)
   - Specs: `mcp-knowledge-tools`
 
 ### Draft
@@ -66,7 +86,7 @@ _(none)_
 
 - **upgrade-mcp-to-durable-objects** — unknown:charles@charlesdeMac-mini.local (unknown)
   - Accepted from: manual
-  - Last heartbeat: 2026-04-24T12:20:58.418Z
+  - Last heartbeat: 2026-04-24T12:52:04.357Z
 
 ### Stale Claims
 
@@ -101,7 +121,12 @@ _(none)_
 > 已 `spectra park` 的 changes。檔案暫時從 `openspec/changes/` 移出，
 > metadata 保留在 `.spectra/spectra.db`。`spectra unpark <name>` 可取回。
 
-_No parked changes._
+2 parked changes
+
+- **add-mcp-tool-selection-evals** — 0/19 tasks (0%)
+  - Summary: 本專案是 Agentic RAG，MCP client（Cl…
+- **enhance-mcp-tool-metadata** — 0/14 tasks (0%)
+  - Summary: 本專案是 Agentic RAG，MCP client（Cl…
 
 <!-- SPECTRA-UX:ROADMAP-AUTO:/parked -->
 

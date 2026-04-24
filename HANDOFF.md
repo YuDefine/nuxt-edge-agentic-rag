@@ -34,3 +34,61 @@
    - TD-015 + TD-019 + TD-016 SSE 合併處理
    - TD-026 conversation owner-fallback 重複 config
 4. **日期格式 smoke（遺留）** — `/account/settings`、`/admin/documents/:id`、`/admin/members`、`/admin/query-logs` list+detail、`/admin/tokens` 目視確認
+
+## MCP Toolkit Review Follow-ups（2026-04-24 待建檔）
+
+來源：`npx skills add https://mcp-toolkit.nuxt.dev`（`.claude/skills/manage-mcp/`）安裝後對照 `server/mcp/` 現況 review 找出的落差。全部選 D 範圍展開；拆多個 discuss/propose 以降低單一 change 風險。
+
+依建議推進順序列出（括號內標示與 `upgrade-mcp-to-durable-objects` 的依賴 / 互斥關係）：
+
+### Propose 候選（可獨立推進、不撞 DO change）
+
+1. **`enhance-mcp-tool-metadata`**（P0，低風險，獨立）
+   - Scope：4 個 tool（`ask.ts` / `search.ts` / `get-document-chunk.ts` / `categories.ts`）補 `.describe()` on Zod fields、`annotations`（`readOnlyHint` / `destructiveHint` / `openWorldHint`）、`inputExamples`
+   - Why：本專案是 Agentic RAG，MCP client（Claude / Cursor / ChatGPT）tool-selection 精準度直接決定回答品質；現況 `query` / `citationId` 連 `.describe()` 都沒有
+   - 檔案：`server/mcp/tools/*.ts`（4 檔，不動 `index.ts` 避免撞 DO change）
+   - Tier：1；無 behavior change，純 metadata
+
+2. **`add-mcp-tool-selection-evals`**（P1，中成本，獨立）
+   - Scope：引入 `evalite` + `@ai-sdk/mcp`，建 `test/evals/mcp-tool-selection.eval.ts`，覆蓋自然語言 → 正確 tool + 正確參數的對照表
+   - Why：Agentic RAG 的品質回歸測試目前是零；當前 11 個 `test/integration/mcp-*.test.ts` 只測 protocol / auth / DO lifecycle，不測 LLM 選 tool 行為
+   - 檔案：`package.json`（eval scripts + devDeps）、`test/evals/**`、可能 `.env.example`
+   - Tier：2；不擋 CI（獨立 cmd）
+   - 備註：評估是否要升級 `@nuxtjs/mcp-toolkit` 與 `@ai-sdk/mcp` 版本匹配
+
+3. **`integrate-mcp-logger-notifications`**（P1，中成本，獨立）
+   - Scope：4 個 tool 的 retrieval 進度用 `useMcpLogger().notify.*` 推 client channel；server wide event 仍保留現有 evlog query log / audit log
+   - Why：`askKnowledge` / `searchKnowledge` retrieval 時間數秒；client-side 有 live progress UX 會大幅改善；toolkit 自帶 `mcp.tool` / `mcp.session_id` tag 省自訂
+   - 檔案：`server/mcp/tools/*.ts`（4 檔）
+   - Tier：1；純 observability 層新增，不動業務邏輯
+   - 依賴：要先確認 `@nuxtjs/mcp-toolkit@0.14.0` 是否已暴露 `useMcpLogger`（discuss 階段驗證）
+
+### Discuss 候選（scope 不明、需產品 / 架構判斷）
+
+4. **`discuss-mcp-resource-layer`**（P2-5，feature 擴張）
+   - 題目：是否新增 `server/mcp/resources/`，暴露 `resource://governance-snapshot` / `resource://category-taxonomy` 等 read-only 快照？
+   - 益處：client 一次 fetch 政策 / 分類樹，不用每請求經 tool；降低 LLM context token
+   - 風險：governance policy 變動時的 cache invalidation 策略要想清楚
+   - 依賴：無技術依賴，但建議等 DO change archive 後再 propose，避免 `server/mcp/` 結構兩邊動
+
+5. **`discuss-mcp-elicitation-for-ask`**（P2-6，**被 parallel change Non-Goals 排除**）
+   - 題目：`askKnowledge` 在 query 過於模糊時，用 `useMcpElicitation` 追問「哪個類別 / 哪個課程 / 哪個學期」？
+   - **Blocker**：`upgrade-mcp-to-durable-objects` Non-Goals 明確寫「不引入 MCP prompt / elicitation / sampling 能力」
+   - **Gate**：**MUST** 等 DO change archive 後才能 propose，否則違反 parallel change 的 Non-Goals
+
+6. **`discuss-mcp-async-context-refactor`**（P2-7，Tier 3，高風險）
+   - 題目：是否在 `nuxt.config.ts` 加 `nitro.experimental.asyncContext: true`，並把 4 個 tool 從自訂 `getCurrentMcpEvent()` 切換到官方 `useEvent()` / `useMcpSession()`？
+   - 益處：省掉 `server/utils/current-mcp-event.ts` 自訂 util；對齊 toolkit 官方 API
+   - 風險：與 `rehydrateMcpRequestBody` / DO transport 的互動未知；DO change 仍在 rollout 階段，不宜同時動 event helper 層
+   - **Gate**：**MUST** 等 DO change archive + production flag 全開至少一個 sprint 後再 propose；discuss 階段先驗證 asyncContext 是否與 Cloudflare Workers runtime 相容（過去踩過 `Reflect.ownKeys` bug，async context 走同一層 proxy）
+
+### 推薦推進順序
+
+1. 立刻可做：1 → 2 → 3（皆不撞 DO change）
+2. DO change archive 後：4 → 5
+3. 5 完成 + 觀察一個 sprint：6
+
+### 安裝紀錄
+
+- 2026-04-24：`npx skills add https://mcp-toolkit.nuxt.dev --agent claude-code -y` 安裝 `manage-mcp` skill 到 `.claude/skills/`
+- **未**加入 `scripts/install-skills.sh`；下次需要重裝時手動補 `npx skills add https://mcp-toolkit.nuxt.dev --agent claude-code -y`（或加到 install script 的第 7 個章節）
