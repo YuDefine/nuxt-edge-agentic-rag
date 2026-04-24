@@ -10,6 +10,30 @@ $ARGUMENTS
 
 政策、禁止事項、commit 類型表見 `.claude/rules/commit.md`。本檔只定義執行流程。
 
+## Step 0-Lock: 單一 session 防呆（**必做第一步**）
+
+```bash
+node .claude/scripts/commit-lock.mjs acquire
+```
+
+失敗（exit 1）代表另一個 session 正在跑 `/commit` → **停下**，向使用者回報鎖資訊，**不要**自行 `rm` 清鎖或重試。
+
+成功後此 session 取得獨占權，直到 Step 7 釋放。**中斷處理**：若 `/commit` 流程中途失敗 / 使用者中斷，仍**必須**在終止前呼叫 `node .claude/scripts/commit-lock.mjs release`；漏釋放的鎖會在 30 分鐘後被下次 acquire 自動清除（可用 `COMMIT_LOCK_STALE_MINUTES` 調整）。
+
+## Step 0-Scope: WIP 預設全部納入
+
+**預設行為**：所有 `git status` 顯示的 uncommitted 變更（含與本次工作無關、其他 session 並行的 WIP）**一律**列入本次 `/commit` 流程，在 Step 2 依功能自然分組成不同 commit。
+
+**理由**：`/commit` 已付出 0-A / 0-B / 0-C 閘門的完整成本。把 WIP 排除在外等於下次 `/commit` 要重跑一次，浪費時間與 token，還會讓 WIP 長期積著。
+
+**排除條件（唯一）**：使用者在 `$ARGUMENTS` 中**明確**指名要排除的檔案 / 路徑 / scope，例如：
+
+- 「排除 `.env.local`」
+- 「不要動 `reports/`」
+- 「只 commit `app/` 底下」
+
+**NEVER** 自行判定「這個不在我 scope」而排除。若看到不認得的變更 → 走 `scope-discipline.md` 的「意外發現」流程：`git diff` 確認內容合理 → 納入流程讓 Step 2 分組。**NEVER** `git restore --staged` 或 `git checkout --` 清場。
+
 ## Step 0: 品質檢查
 
 ### 0-A. 程式碼審查（平行）
@@ -66,6 +90,8 @@ git diff --stat
 
 ## Step 2: 分析變更並分組
 
+**分組前提**：Step 0-Scope 已宣告所有 uncommitted 變更都納入流程。這裡的任務是**分類到正確的 commit group**，不是二次過濾要不要納入。
+
 依功能/目的分組並輸出：
 
 ```text
@@ -74,6 +100,15 @@ git diff --stat
 檔案:
 - path/to/file.ts
 ```
+
+**典型分組模式**（供參考，不強制）：
+
+- 與本次主要工作直接相關 → 一組（主 commit）
+- 其他 session 並行編輯的獨立工作（如 `.claude/` 規範、文件、設定檔） → 獨立一組，類型照實（通常 📝 docs / 🔨 refactor / 🧹 chore）
+- Formatter / lint 自動修復副作用 → 併入最相關的 group
+- 純 rename / 移動 → 獨立一組標 🔨 refactor
+
+若分組完發現某個 group 與主 commit 完全無關且無法合理歸類，**先停下回報使用者**，不要硬塞或默默排除。
 
 ## Step 3: 逐一執行 Commit
 
@@ -248,3 +283,17 @@ pnpm spectra:roadmap
 ✅ ROADMAP 已同步
 （或：無可延續工作，HANDOFF.md 已清空 / 未建立）
 ```
+
+## Step 7: 釋放 /commit lock（**必做最後一步**）
+
+```bash
+node .claude/scripts/commit-lock.mjs release
+```
+
+**必須執行**，即使前面任何 step 失敗：
+
+- ✅ 正常完成 → 於 Step 6 後釋放
+- ⚠️ 中途失敗（0-A / 0-B / 0-C 修不動、staging 出問題、deploy workflow 紅燈）→ 回報使用者後**仍要**釋放 lock，再等使用者指示
+- ⛔ 使用者明確中止 → 釋放 lock
+
+**NEVER** 讓鎖長期遺留；stale lock 雖然 30 分鐘後會自動清，但中間其他 session 要跑 /commit 會被卡住。
