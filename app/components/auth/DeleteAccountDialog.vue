@@ -88,10 +88,8 @@
         provider: 'google',
         callbackURL: '/auth/callback',
       })
-      // Google OAuth performs a full-page redirect, so control rarely
-      // returns here. If it does (e.g. provider cancellation), the
-      // session hasn't rotated.
-      reauthComplete.value = true
+      // Google OAuth completion is only trusted after `/auth/callback`
+      // returns to settings and `initialReauthComplete` reopens the dialog.
     } catch (error) {
       errorMessage.value = getErrorMessage(error, 'Google 重新驗證失敗')
     } finally {
