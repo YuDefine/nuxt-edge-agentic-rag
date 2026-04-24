@@ -14,10 +14,10 @@ interface McpHandlerOptions {
 }
 
 interface McpSessionNamespaceLike {
-  idFromName(name: string): {
-    toString?: () => string
+  get(id: { toString?: () => string }): {
     fetch: (request: Request) => Promise<Response>
   }
+  idFromName(name: string): { toString?: () => string }
 }
 
 type CloudflareEnv = Record<string, unknown>
@@ -134,7 +134,8 @@ export function createMcpHandler(server: McpConnectableServer, options: McpHandl
       if (namespace) {
         const sessionId = request.headers.get('Mcp-Session-Id') ?? crypto.randomUUID()
         const forwarded = cloneRequestWithSessionHeader(request, sessionId)
-        const stub = namespace.idFromName(sessionId)
+        const id = namespace.idFromName(sessionId)
+        const stub = namespace.get(id)
         const response = await stub.fetch(forwarded)
         return ensureSessionHeader(response, sessionId)
       }
@@ -169,6 +170,7 @@ function resolveMcpSessionNamespace(env?: CloudflareEnv): McpSessionNamespaceLik
   if (!candidate || typeof candidate !== 'object') return null
   const namespace = candidate as McpSessionNamespaceLike
   if (typeof namespace.idFromName !== 'function') return null
+  if (typeof namespace.get !== 'function') return null
   return namespace
 }
 
