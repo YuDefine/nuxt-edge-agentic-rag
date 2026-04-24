@@ -65,10 +65,10 @@
 
 ## 10. 人工檢查
 
-- [ ] 10.1 跨午夜情境實測：開首頁保留 tab、用 devtools 改系統時間或 mock `useNow` 跨過午夜，確認 23:50 的對話自動從 Today 重分到 Yesterday，且 Network tab 沒有新 `/api/conversations` 請求
-- [ ] 10.2 aria-expanded 實測：瀏覽器開 devtools a11y tree（或 axe DevTools），點 bucket toggle，確認 `aria-expanded` 隨 toggle 由 false→true→false 更新，且 VoiceOver / NVDA 可聽到「已展開」「已收合」
+- [x] 10.1 跨午夜情境實測：開首頁保留 tab、用 devtools 改系統時間或 mock `useNow` 跨過午夜，確認 23:50 的對話自動從 Today 重分到 Yesterday，且 Network tab 沒有新 `/api/conversations` 請求
+- [x] 10.2 aria-expanded 實測：瀏覽器開 devtools a11y tree（或 axe DevTools），點 bucket toggle，確認 `aria-expanded` 隨 toggle 由 false→true→false 更新，且 VoiceOver / NVDA 可聽到「已展開」「已收合」
 - [x] 10.3 fetch dedup 實測：登出後重新登入進首頁，Network tab 過濾 `/api/conversations`，確認首次渲染只一筆 GET 請求
-- [ ] 10.4 classifyError 行為人工驗：觸發 401 / 404 / 429 / 500 / 網路中斷五種錯誤，確認 chat container 顯示的 error kind（unauthorized / not-found / rate-limit / server-error / network）與 refactor 前一致
-- [ ] 10.5 AI binding 503 人工驗：在 dev 環境暫時 unset `AI` binding（或 mock 為空物件），呼叫 `/api/chat`，確認 response 503 + message 正確
-- [ ] 10.6 OAuth regex 實測：用 `/connector/oauth/foo.bar`、`/connector/oauth/漢字id`、`/connector/oauth/` + 65 字元 segment 三種 payload 嘗試 connector authorization，確認被 reject；用合法 `/connector/oauth/connector-abc_123` 確認仍通過
-- [ ] 10.7 Regression smoke：首頁未登入 / 登入、/account/settings、/admin/\* 主要頁各開一次，確認 Lazy 元件與本次 refactor 沒有破壞 chat 以外頁面
+- [x] 10.4 classifyError 行為人工驗：觸發 401 / 404 / 429 / 500 / 網路中斷五種錯誤，確認 chat container 顯示的 error kind（unauthorized / not-found / rate-limit / server-error / network）與 refactor 前一致
+- [x] 10.5 AI binding 503 人工驗：在 dev 環境暫時 unset `AI` binding（或 mock 為空物件），呼叫 `/api/chat`，確認 response 503 + message 正確
+- [x] 10.6 OAuth regex 實測：用 `/connector/oauth/foo.bar`、`/connector/oauth/漢字id`、`/connector/oauth/` + 65 字元 segment 三種 payload 嘗試 connector authorization，確認被 reject；用合法 `/connector/oauth/connector-abc_123` 確認仍通過
+- [x] 10.7 Regression smoke：首頁未登入 / 登入、/account/settings、/admin/\* 主要頁各開一次，確認 Lazy 元件與本次 refactor 沒有破壞 chat 以外頁面
