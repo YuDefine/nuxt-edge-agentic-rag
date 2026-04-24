@@ -2,15 +2,15 @@
 
 ## In Progress
 
-### `upgrade-mcp-to-durable-objects`（Pivot C 實作完成 Phase 4-7.1，待 rollout）
+### `upgrade-mcp-to-durable-objects`（Pivot C scope trim 2026-04-24，session lifecycle only）
 
-- Claim: `claude-code:opus-4-7`（accepted from handoff，2026-04-24 v0.40.0 部署後）
-- Progress: 16/26 tasks（62%）
-  - ✅ Phase 4 Core Implementation 4.1-4.6（DO class / transport / shim 路由 / wrangler binding / build pipeline / middleware contract）
-  - ✅ Phase 5 Test Coverage 5.1-5.3（DO lifecycle / handshake 兩路徑 / regression）
-  - ✅ Phase 7.1 docs/solutions/mcp-streamable-http-session-durable-objects.md 定稿
-- 程式碼已隨 v0.40.0 部署到 staging（`gh run watch 24893099340` 全綠），production tag 已 push（gate 等 staging soak）
-- TD-040 follow-up 已登記：token revoke 未同步清 DO session（Task 4.6 emit）
+- Claim: `charles@charlesdeMac-mini.local`（2026-04-24 release 回給使用者，Phase 4 scope trim 後續 rollout 由人工決策）
+- Progress: 17/27 tasks（63%，新增 Task 4.3.1 之後）
+  - ✅ Phase 4 Core Implementation — **scope 縮 2026-04-24**：4.1 `DoJsonRpcTransport` class / 4.2 `MCPSessionDurableObject` + storage schema + alarm GC / 4.3 `fetch()` session lifecycle（initialize → Mcp-Session-Id / 續命 / alarm GC / 404 on missing）/ 4.3.1（新增）non-initialize path 回 HTTP 501 + JSON-RPC `-32601 TD-041` explicit error / 4.4 shim 層 flag 分支（`server/utils/mcp-agents-compat.ts`）/ 4.5 wrangler binding + migration tag / 4.6 middleware (token revoke 同步清 DO 已列 TD-040)
+  - ✅ Phase 5 Test Coverage — 5.1 DO lifecycle spec 擴充 TD-041 assertion / 5.2 handshake spec（flag=true/false 兩路徑，**但不驗 tool call**，tool dispatch 由 wire-do-tool-dispatch change 接手）/ 5.3 stateless fallback regression clean
+  - ✅ Phase 7.1 `docs/solutions/mcp-streamable-http-session-durable-objects.md` 定稿
+- **新登記**：TD-041（DO tool dispatch 未 wire up，flag=true non-initialize 回假 ack → 已改為 explicit 501 error），觸發開新 change `wire-do-tool-dispatch`
+- **Pivot C 縮 scope 決策記錄**：DO 內 `McpServer` lazy init + `DoJsonRpcTransport.dispatch` + auth/env plumbing 牽涉三個非 trivial 架構決策（event shim、auth context HMAC forward、`Reflect.ownKeys` workaround 是否重現於 DO），本 change 先交付 session lifecycle 證明 Pivot C 方向可行；tool dispatch 獨立 change 接手
 
 ## Blocked
 
@@ -18,39 +18,42 @@
 
 ## Next Steps
 
-1. **Phase 6 Rollout — staging T1 flag flip**
-   - 在 staging Cloudflare 環境設 `NUXT_KNOWLEDGE_FEATURE_MCP_SESSION=true`
-   - `wrangler tail` 觀察 Claude.ai 連 3 次 askKnowledge：應無 re-init loop、無 `Reflect.ownKeys(env)` 錯誤、`Mcp-Session-Id` 在 response header 出現
-   - 失敗 → flag flip 回 false（無需 redeploy），重新 diag
-2. **T2 staging soak 3 天**（含 workday + 週末低峰），無異常後進 T3
-3. **T3 production flag flip**（Cloudflare Pages env）→ tail 24h
-4. **T4 production soak 7 天 → archive change** + tasks 7.2 (TD-030 status: done) + 7.3（spec archive 校對 `@trace`）
-5. **平行 propose**（不撞 DO rollout）：
-   - `enhance-mcp-tool-metadata`（已 parked，`/spectra-apply` 自動 unpark）
-   - `add-mcp-tool-selection-evals`（已 propose，draft only，可立即 apply）
-   - `fix-delete-account-dialog-google-reauth`（已 parked，TD-028 auth-critical）
-6. **`assert-never` util 收斂** — `app/utils/assert-never.ts` 與 `shared/utils/assert-never.ts` 重複，nuxt typecheck WARN，獨立 change 候選
-7. **長期 TD**（見 `docs/tech-debt.md` + `openspec/ROADMAP.md` Next Moves）
-   - TD-027 MCP connector first-time auth — 等 DO change archive 後一併實測
+1. **Phase 6 Rollout — session lifecycle only**
+   - Staging 設 `NUXT_KNOWLEDGE_FEATURE_MCP_SESSION=true`、`NUXT_KNOWLEDGE_MCP_SESSION_TTL_MS=1800000`
+   - `wrangler tail` 觀察 Claude.ai `initialize` → 200 + `Mcp-Session-Id` header；任何 `tools/call` 或 `tools/list` 會被 DO 回 **501 JSON-RPC `-32601 TD-041`**（這是預期行為，不是 bug）
+   - Production **維持 flag=false**（task 6.3 已更新），直到 `wire-do-tool-dispatch` archive
+   - 本 change archive 時 TD-030 維持 `open`（尚未解決），等 `wire-do-tool-dispatch` archive 才一併 done
+2. **`wire-do-tool-dispatch`**（parked）— Phase 4 剩下的 tool dispatch 工作全部進此 change
+   - Scope：DO 內 McpServer lazy init + 4 tool registration + `DoJsonRpcTransport.dispatch`
+   - Scope：Auth context HMAC 簽章 forward（Nuxt → DO）
+   - Scope：DO-aware H3Event shim（讓 tool handler 不動介面）
+   - Rollout：staging flag=true soak 3 天 → production flag=true
+   - Gate：可獨立於 DO change archive 前 apply（兩 change 同 spec `mcp-knowledge-tools` 會 mutex，但 DO change archive 前 apply 也 OK，scope 清楚不衝突）；實際排程由使用者決定
+3. **平行可推進（與 DO / wire-do-tool-dispatch 皆獨立）**
+   - `enhance-mcp-tool-metadata`（parked，Tier 1 純 metadata，`/spectra-apply` 自動 unpark）
+   - `add-mcp-tool-selection-evals`（parked，eval harness，non-CI-blocking）
+   - `fix-delete-account-dialog-google-reauth`（parked，TD-028 auth-critical Tier 2）
+4. **`assert-never` util 收斂**（獨立，低優先）— `app/utils/assert-never.ts` 與 `shared/utils/assert-never.ts` 重複，nuxt typecheck WARN
+5. **長期 TD**（見 `docs/tech-debt.md` + `openspec/ROADMAP.md` Next Moves）
+   - TD-027 MCP connector first-time auth — 等 DO + wire-do-tool-dispatch 雙完成後實測
+   - TD-030 Claude.ai re-init 循環 — 等 `wire-do-tool-dispatch` archive 才能標 done
    - TD-040 Token revoke 同步清 MCP session DO — 需 token→sessionId 索引（low priority）
+   - TD-041 DO tool dispatch 未 wire up — 等 `wire-do-tool-dispatch` archive 才能標 done
    - TD-009 / TD-015+TD-019+TD-016 / TD-026 / 日期格式 smoke
 
-## MCP Toolkit Review Backlog（已收進 ROADMAP Next Moves）
+## MCP Toolkit Review Backlog（ROADMAP Next Moves 長期區塊）
 
-完整 backlog 與 supersedes 關係見 `openspec/ROADMAP.md` MANUAL `## Next Moves`：
+完整 backlog 與 supersedes 關係見 `openspec/ROADMAP.md`：
 
 - **`discuss-mcp-resource-layer`**（長期，等 DO archive）
 - **`discuss-mcp-elicitation-for-ask`**（長期，互斥 DO Non-Goals）
-- **`discuss-mcp-async-context-refactor`**（長期，supersedes 原 `integrate-mcp-logger-notifications` — 後者實證需要 asyncContext 才能用 toolkit 的 `useMcpLogger` / `useMcpServer`，故併入此 discuss 統一決策）
+- **`discuss-mcp-async-context-refactor`**（長期，supersedes 原 `integrate-mcp-logger-notifications` — 後者實證需要 asyncContext 才能用 toolkit 的 `useMcpLogger` / `useMcpServer`）
 
 ## 範圍外發現（待使用者裁定）
 
-- `test/integration/mcp-tool-metadata.spec.ts` — 在本次 /commit Step 6 unpark/park cycle 後出現的 untracked 測試檔，內容是 `enhance-mcp-tool-metadata`（parked）change 的驗收測試。**目前 import 的 `defineMcpTool` API 尚未引入**，include 會破 0-C `pnpm test`，故 v0.40.0 commit 不含此檔，留 untracked 等使用者：
-  - 選項 A：等 `enhance-mcp-tool-metadata` 解 park 進 apply 階段時一併 commit（推薦）
-  - 選項 B：刪除此檔（若是誤產出）
-  - 選項 C：先 commit 並 `.skip` 標註，等 API 引入後再啟用（不推薦，違反「NEVER skip tests」規則）
+- `test/integration/mcp-tool-metadata.spec.ts` — untracked 測試檔（之前 /commit Step 6 unpark/park cycle 產生），內容是 `enhance-mcp-tool-metadata` change 的驗收測試，現在該 change 已 parked 且 tasks.md 有明確對應項。建議：解 park 該 change 進 apply 時由 tasks 2.x 建立乾淨版本，目前 untracked 檔可刪。
 
 ## 安裝紀錄
 
 - 2026-04-24：`npx skills add https://mcp-toolkit.nuxt.dev --agent claude-code -y` 安裝 `manage-mcp` skill 到 `.claude/skills/`
-- **未**加入 `scripts/install-skills.sh`；下次需要重裝時手動補同樣指令（或加到 install script 的第 7 個章節）
+- **未**加入 `scripts/install-skills.sh`；下次需要重裝時手動補同樣指令

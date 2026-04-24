@@ -44,6 +44,8 @@ Claude.ai 在任何 tool call 前會先自發 re-initialize（推測是 session 
 - 不升級 `@nuxtjs/mcp-toolkit` major version（若衝突另開 change）
 - 不處理 ChatGPT Remote MCP 差異（先聚焦 Claude.ai，symptom 收斂後再驗 ChatGPT）
 - 不引入 MCP prompt / elicitation / sampling 能力（DO 具備 server-initiated push 能力，但本 change 仍聚焦 knowledge tools 4 個方法的穩定性）
+- **不實作 tool dispatch via DO**（scope 縮 — C-path 2026-04-24，**@followup[TD-041]**）：`DoJsonRpcTransport` class 存在但不被 DO `fetch()` 呼叫；lazy init `McpServer` + `server.connect(transport)` + 4 個 tool 在 DO 內 register + auth/env plumbing 皆屬獨立 change `wire-do-tool-dispatch`。本 change 的 DO 對 non-initialize request 回 HTTP 501 + JSON-RPC `-32601` 明確指向 TD-041，避免 flag=true 誤 flip 時 silent degradation
+- **不在 production flag flip true**：本 change 僅做 staging lifecycle 驗證（initialize handshake + lastSeenAt 續命 + alarm GC + 404 on missing）；production tool call 切換等 `wire-do-tool-dispatch` archive
 
 ## Capabilities
 
