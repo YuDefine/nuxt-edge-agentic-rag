@@ -12,6 +12,12 @@ import { consumeMcpConnectorReturnTo } from './mcp-connector-return-to'
 
 const GENERIC_RETURN_TO_KEY = 'auth:return-to'
 const MAX_REDIRECT_LENGTH = 2048
+export const PENDING_DELETE_REAUTH_KEY = 'auth:pending-delete-reauth'
+export const DELETE_REAUTH_WINDOW_MS = 5 * 60 * 1000
+
+interface PendingDeleteReauthSignal {
+  timestamp: number
+}
 
 function hasSessionStorage(): boolean {
   return typeof sessionStorage !== 'undefined'
@@ -116,6 +122,30 @@ export function consumeGenericReturnTo(): string | null {
 /** Explicit clear. Rarely needed because `consume` is destructive. */
 export function clearGenericReturnTo(): void {
   clearReturnTo(GENERIC_RETURN_TO_KEY)
+}
+
+export function setPendingDeleteReauth(): void {
+  if (!hasSessionStorage()) return
+  const signal: PendingDeleteReauthSignal = { timestamp: Date.now() }
+  sessionStorage.setItem(PENDING_DELETE_REAUTH_KEY, JSON.stringify(signal))
+}
+
+export function consumePendingDeleteReauth(): boolean {
+  if (!hasSessionStorage()) return false
+
+  const value = sessionStorage.getItem(PENDING_DELETE_REAUTH_KEY)
+  sessionStorage.removeItem(PENDING_DELETE_REAUTH_KEY)
+  if (!value) return false
+
+  try {
+    const signal = JSON.parse(value) as Partial<PendingDeleteReauthSignal>
+    if (typeof signal.timestamp !== 'number') return false
+
+    const elapsed = Date.now() - signal.timestamp
+    return elapsed >= 0 && elapsed < DELETE_REAUTH_WINDOW_MS
+  } catch {
+    return false
+  }
 }
 
 /**
