@@ -35,7 +35,7 @@
 
 ## 7. Rollout
 
-- [ ] 7.1 Staging: `NUXT_KNOWLEDGE_FEATURE_MCP_SESSION=true`，連續 3 天 Claude.ai 實測 `AskKnowledge` / `SearchKnowledge` 各 2+ 次；tail 無 `ownKeys` error / 無 re-init loop / 無 501（對齊 Decision 4: Rollout = staging flag=true soak 3 次 → production flag=true）
+- [ ] 7.1 Staging: `NUXT_KNOWLEDGE_FEATURE_MCP_SESSION=true` 後立即驗證 `AskKnowledge` / `SearchKnowledge` 各 2+ 次；確認 response 非 501、非 re-init loop，且 staging custom domain 可達（HTTP 200）。若可用 `wrangler tail`，同步確認無 `ownKeys` error / 401 auth context failure；若本機無 Cloudflare token，需以 GitHub deploy evidence + protocol response 記錄替代 tail（對齊 Decision 4: Rollout = staging flag=true immediate verification → production flag=true）
 - [ ] 7.2 Production `NUXT_KNOWLEDGE_FEATURE_MCP_SESSION=true` flip；24 小時 wrangler tail 密集監控；任一 anomaly 立刻 flag=false（無需 redeploy）
 - [ ] 7.3 Production 正常運作 7 天後 `docs/tech-debt.md` 把 TD-030 + TD-041 Status 標 `done`，各附一句 one-liner
 
