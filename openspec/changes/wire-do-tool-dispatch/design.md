@@ -79,11 +79,12 @@ DO change 的 non-initialize path 目前刻意回 HTTP 501 + `TD-041` error payl
 - **Per-request McpServer**：每個 tool call 都重建 server，浪費
 - **Global singleton**：跨 session 共享 state 不乾淨
 
-### Decision 4: Rollout = staging flag=true soak 3 次 → production flag=true
+### Decision 4: Rollout = staging flag=true immediate verification → production flag=true
 
 **Choice**:
 
-- Staging：`NUXT_KNOWLEDGE_FEATURE_MCP_SESSION=true`，連續 3 天 Claude.ai 實測 `AskKnowledge` / `SearchKnowledge` 各至少 2 次，tail 無 `ownKeys` error + 無 re-init loop
+- Staging：`NUXT_KNOWLEDGE_FEATURE_MCP_SESSION=true` 後立即做 MCP protocol 驗證：`initialize` / `tools/list` / `tools/call`，並讓 `AskKnowledge` / `SearchKnowledge` 各至少 2 次通過；確認 response 非 501、非 re-init loop，且 staging custom domain 可達（HTTP 200）
+- Staging tail：若本機具備 Cloudflare token，補 `wrangler tail` 確認無 `ownKeys` error / 401 auth context failure；若本機無 token，改以 GitHub deploy evidence + protocol response 記錄替代 tail
 - Production：staging 通過後 flag flip true，24 小時 wrangler tail 密切監控；任一異常即 flag false（不需 redeploy）
 
 **Rationale**:
@@ -107,7 +108,7 @@ DO change 的 non-initialize path 目前刻意回 HTTP 501 + `TD-041` error payl
 4. DO non-initialize path 從 501 改為 `transport.dispatch`
 5. Integration test（DO 內 tool dispatch end-to-end）
 6. `pnpm check` 全綠
-7. Staging deploy + flag true + soak 3 天
+7. Staging deploy + flag true + immediate MCP protocol verification
 8. Production flag true + 24 小時監控
 9. Archive change + TD-041 / TD-030 標 done
 
