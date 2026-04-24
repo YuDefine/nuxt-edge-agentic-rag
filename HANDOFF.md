@@ -30,9 +30,9 @@
    - Rollout：staging flag=true soak 3 天 → production flag=true
    - Gate：可獨立於 DO change archive 前 apply（兩 change 同 spec `mcp-knowledge-tools` 會 mutex，但 DO change archive 前 apply 也 OK，scope 清楚不衝突）；實際排程由使用者決定
 3. **平行可推進（與 DO / wire-do-tool-dispatch 皆獨立）**
-   - `enhance-mcp-tool-metadata`（parked，Tier 1 純 metadata，`/spectra-apply` 自動 unpark）
-   - `add-mcp-tool-selection-evals`（parked，eval harness，non-CI-blocking）
-   - `fix-delete-account-dialog-google-reauth`（parked，TD-028 auth-critical Tier 2）
+   - `enhance-mcp-tool-metadata` — **10/14 (71%) parked pending production deploy**（implementation commit `ece9c12` 已在 branch，Tasks 1.1-2.4 / 3.1-3.2 完成 + `mcp-tool-metadata.spec.ts` 4/4 pass；剩 3.3 MCP Inspector 實測 + 4.1/4.2/4.3 使用者 review `.describe()` / `inputExamples` / `annotations`，全部等下次 production deploy 後以真實 MCP client metadata 為準再一次驗）
+   - `add-mcp-tool-selection-evals` — 12/19 (63%) in progress（eval harness 實作中）
+   - `fix-delete-account-dialog-google-reauth` — 10/15 (67%) in progress（TD-028 auth-critical Tier 2）
 4. **`assert-never` util 收斂**（獨立，低優先）— `app/utils/assert-never.ts` 與 `shared/utils/assert-never.ts` 重複，nuxt typecheck WARN
 5. **長期 TD**（見 `docs/tech-debt.md` + `openspec/ROADMAP.md` Next Moves）
    - TD-027 MCP connector first-time auth — 等 DO + wire-do-tool-dispatch 雙完成後實測
