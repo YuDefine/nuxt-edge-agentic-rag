@@ -1,13 +1,10 @@
 <script setup lang="ts">
   import { inject, toRef } from 'vue'
 
-  import type { ChatConversationSummary, ChatMessage } from '~/types/chat'
-  import {
-    ChatConversationHistoryInjectionKey,
-    useChatConversationHistory,
-  } from '~/composables/useChatConversationHistory'
+  import type { ChatMessage } from '~/types/chat'
+  import { createChatConversationHistory } from '~/composables/create-chat-conversation-history'
+  import { ChatConversationHistoryInjectionKey } from '~/composables/useChatConversationHistory'
   import type { ConversationRecencyBucket } from '~/utils/conversation-grouping'
-  import { loadChatConversationDetail } from '~/utils/chat-conversation-loader'
   import { groupConversationsByRecency } from '~/utils/conversation-grouping'
   import { formatShortDateTime } from '~/utils/format-datetime'
 
@@ -44,69 +41,25 @@
   // Prefer a history instance provided by an ancestor (see app/pages/index.vue)
   // so that multiple surfaces — inline sidebar and off-canvas drawer — share
   // one instance and only issue one `/api/conversations` GET per page entry.
-  // If no ancestor provides one, fall back to a self-owned instance to keep
-  // the component usable in isolation (tests, Storybook).
+  // If no ancestor provides one, fall back to a self-owned instance so the
+  // component stays usable in isolation (tests, Storybook). Both branches go
+  // through `createChatConversationHistory` so the refresh → exist-check →
+  // detail fallback → cleared notification order is maintained in one place.
   const injectedHistory = inject(ChatConversationHistoryInjectionKey, null)
   const isOwner = injectedHistory === null
 
-  const ownedHistory = isOwner
-    ? useChatConversationHistory({
-        deleteConversation: async (conversationId) => {
-          await $csrfFetch(`/api/conversations/${conversationId}`, { method: 'DELETE' })
-        },
-        listConversations: async () => {
-          const response = await $csrfFetch<{ data: ChatConversationSummary[] }>(
-            '/api/conversations',
-          )
-          return response.data
-        },
-        loadConversation: (conversationId) =>
-          loadChatConversationDetail($csrfFetch, conversationId),
+  const ownedInstance = isOwner
+    ? createChatConversationHistory($csrfFetch, toast, {
         onConversationCleared: () => emit('conversation-cleared'),
-        onHistoryError: ({ action }) => {
-          toast.add({
-            title: action === 'delete' ? '無法刪除對話' : '無法更新對話列表',
-            description: '請稍後再試。',
-            color: 'error',
-            icon: 'i-lucide-alert-circle',
-          })
-        },
-        onConversationLoadError: () => {
-          toast.add({
-            title: '無法載入對話',
-            description: '請稍後再試。',
-            color: 'error',
-            icon: 'i-lucide-alert-circle',
-          })
-        },
         onConversationSelected: (payload) => emit('conversation-selected', payload),
         selectedConversationId: toRef(props, 'selectedConversationId'),
       })
     : null
 
-  const history = injectedHistory ?? ownedHistory!
+  const history = injectedHistory ?? ownedInstance!.api
 
   async function refreshHistory(): Promise<void> {
-    const didRefresh = await history.refresh()
-    if (!didRefresh) {
-      return
-    }
-
-    if (!props.selectedConversationId) {
-      return
-    }
-
-    const exists = history.conversations.value.some(
-      (conversation) => conversation.id === props.selectedConversationId,
-    )
-    if (exists) {
-      return
-    }
-
-    const detailResult = await loadChatConversationDetail($csrfFetch, props.selectedConversationId)
-    if (detailResult.status === 'missing') {
-      emit('conversation-cleared')
-    }
+    await ownedInstance!.refreshAndReconcile(props.selectedConversationId ?? null)
   }
 
   function formatUpdatedAt(value: string): string {

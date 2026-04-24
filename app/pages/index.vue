@@ -1,10 +1,8 @@
 <script setup lang="ts">
-  import type { ChatConversationSummary, ChatMessage } from '~/types/chat'
+  import type { ChatMessage } from '~/types/chat'
 
-  import {
-    ChatConversationHistoryInjectionKey,
-    useChatConversationHistory,
-  } from '~/composables/useChatConversationHistory'
+  import { createChatConversationHistory } from '~/composables/create-chat-conversation-history'
+  import { ChatConversationHistoryInjectionKey } from '~/composables/useChatConversationHistory'
   import { useChatConversationSession } from '~/composables/useChatConversationSession'
   import { loadChatConversationDetail } from '~/utils/chat-conversation-loader'
 
@@ -45,66 +43,18 @@
   // Hoist the conversation history composable once at the page level so both
   // the inline sidebar (lg+) and the off-canvas drawer (< lg) read from one
   // state instance and only trigger a single GET /api/conversations on entry.
-  const conversationHistory = useChatConversationHistory({
-    deleteConversation: async (conversationId) => {
-      await $csrfFetch(`/api/conversations/${conversationId}`, { method: 'DELETE' })
-    },
-    listConversations: async () => {
-      const response = await $csrfFetch<{ data: ChatConversationSummary[] }>('/api/conversations')
-      return response.data
-    },
-    loadConversation: (conversationId) => loadChatConversationDetail($csrfFetch, conversationId),
+  const conversationHistory = createChatConversationHistory($csrfFetch, toast, {
     onConversationCleared: () => handleConversationCleared(),
-    onConversationLoadError: () => {
-      toast.add({
-        title: '無法載入對話',
-        description: '請稍後再試。',
-        color: 'error',
-        icon: 'i-lucide-alert-circle',
-      })
-    },
     onConversationSelected: (payload) => handleConversationSelected(payload),
-    onHistoryError: ({ action }) => {
-      toast.add({
-        title: action === 'delete' ? '無法刪除對話' : '無法更新對話列表',
-        description: '請稍後再試。',
-        color: 'error',
-        icon: 'i-lucide-alert-circle',
-      })
-    },
     selectedConversationId: activeConversationId,
   })
 
-  provide(ChatConversationHistoryInjectionKey, conversationHistory)
-
-  async function refreshConversationHistory(): Promise<void> {
-    const didRefresh = await conversationHistory.refresh()
-    if (!didRefresh) {
-      return
-    }
-
-    const selectedId = activeConversationId.value
-    if (!selectedId) {
-      return
-    }
-
-    const exists = conversationHistory.conversations.value.some(
-      (conversation) => conversation.id === selectedId,
-    )
-    if (exists) {
-      return
-    }
-
-    const detailResult = await loadChatConversationDetail($csrfFetch, selectedId)
-    if (detailResult.status === 'missing') {
-      handleConversationCleared()
-    }
-  }
+  provide(ChatConversationHistoryInjectionKey, conversationHistory.api)
 
   watch(
     historyRefreshKey,
     async () => {
-      await refreshConversationHistory()
+      await conversationHistory.refreshAndReconcile(activeConversationId.value)
     },
     { immediate: true },
   )
