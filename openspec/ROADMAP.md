@@ -22,12 +22,14 @@
 
 進行中：**`upgrade-mcp-to-durable-objects`** 14/26 tasks (54%)，claim 持有者 `charles@charlesdeMac-mini.local`（詳見 `HANDOFF.md`）。
 
-### 近期（可與 DO change 並行）
+### 已 propose，待 apply（見 AUTO Parked Changes 區塊）
 
-- [high] **`enhance-mcp-tool-metadata`** — 4 個 MCP tool 補 `.describe()` / `annotations` / `inputExamples`（Tier 1 純 metadata，無 behavior change）— 獨立，不動 `server/mcp/index.ts`，避免撞 DO change
-- [mid] **`add-mcp-tool-selection-evals`** — 引入 `evalite` + `@ai-sdk/mcp`，建 `test/evals/mcp-tool-selection.eval.ts`（Tier 2，覆蓋自然語言 → 正確 tool + 正確參數對照表）— 獨立
-- [mid] **`integrate-mcp-logger-notifications`** — 4 tool retrieval 進度用 `useMcpLogger().notify.*` 推 client channel（Tier 1 observability）— 獨立，依賴：需先確認 `@nuxtjs/mcp-toolkit@0.14.0` 暴露 `useMcpLogger`
-- [mid] **TD-028** DeleteAccountDialog Google reauth callbackURL — 獨立 change 候選
+- [high] **`enhance-mcp-tool-metadata`** — 4 MCP tool 的 `.describe()` / `annotations` / `inputExamples`（Tier 1）；`/spectra-apply` 會自動 unpark
+- [mid] **`add-mcp-tool-selection-evals`** — `evalite` + `@ai-sdk/mcp` tool-selection eval harness（Tier 2，non-CI-blocking）
+- [mid] **`fix-delete-account-dialog-google-reauth`** — TD-028 Google reauth callbackURL + session bridge resume（Tier 2，auth-critical）
+
+### 近期（尚未 propose，可與 DO change 並行）
+
 - [low] **`assert-never` util 收斂** — `app/utils/assert-never.ts` 與 `shared/utils/assert-never.ts` 重複，typecheck 有 WARN — 獨立
 - [low] **TD-009** `user_profiles.email_normalized` nullable migration — 獨立
 - [low] **TD-026** conversation owner-fallback 重複 config 收斂 — 獨立
@@ -42,7 +44,7 @@
 - [high] **TD-027** MCP connector first-time auth — 依賴：`upgrade-mcp-to-durable-objects` 完成後一併實測
 - [mid] **`discuss-mcp-resource-layer`** — 依賴：DO archive；避免 `server/mcp/` 結構兩邊動
 - [low] **`discuss-mcp-elicitation-for-ask`** — 互斥：DO change Non-Goals 明確排除 prompt/elicitation/sampling，MUST 等 archive 後才能 propose
-- [low] **`discuss-mcp-async-context-refactor`** — 依賴：DO archive + production flag 全開一個 sprint；Tier 3 高風險，discuss 階段需驗證 asyncContext 與 CF Workers runtime 相容性
+- [low] **`discuss-mcp-async-context-refactor`** — 依賴：DO archive + production flag 全開一個 sprint；Tier 3 高風險，discuss 階段需驗證 asyncContext 與 CF Workers runtime 相容性；**supersedes** `integrate-mcp-logger-notifications`（原本 HANDOFF 標「獨立」誤判；實證 `@nuxtjs/mcp-toolkit@0.14.0` 的 `useMcpLogger` + `useMcpServer` 皆硬性要求 `nitro.experimental.asyncContext: true`，`logger.js` 以 `useEvent()` 取 request、`useMcpServer()` 取 SDK server handle，本專案目前走自寫 `getCurrentMcpEvent()` 繞過 asyncContext，不相容）；若要保 notify channel 便利性但不動 asyncContext，另一路是改用 SDK 原生 `extra.sendNotification()` 手寫 tag，但失去 toolkit 自帶 `mcp.tool` / `mcp.session_id` 聚合
 
 <!-- SPECTRA-UX:ROADMAP-MANUAL:END -->
 
@@ -50,9 +52,9 @@
 
 ## Active Changes
 
-_last synced: 2026-04-24T13:41:09.708Z_
+_last synced: 2026-04-24T13:58:47.372Z_
 
-1 active change (0 ready · 1 in progress · 0 draft · 0 blocked)
+2 active changes (0 ready · 1 in progress · 1 draft · 0 blocked)
 
 ### Ready to apply
 
@@ -65,7 +67,7 @@ _(none)_
 
 ### Draft
 
-_(none)_
+- **add-mcp-tool-selection-evals** — 0/19 tasks (0%)
 
 ### Blocked
 
@@ -86,7 +88,8 @@ _(none)_
 
 - **upgrade-mcp-to-durable-objects** — unknown:charles@charlesdeMac-mini.local (unknown)
   - Accepted from: manual
-  - Last heartbeat: 2026-04-24T12:52:04.357Z
+  - Last heartbeat: 2026-04-24T13:58:43.439Z
+  - Note: session handoff — continue Phase 4 Core Implementation per HANDOFF.md
 
 ### Stale Claims
 
@@ -102,6 +105,7 @@ _(none)_
 
 ### Independent (can run in parallel)
 
+- `add-mcp-tool-selection-evals`
 - `upgrade-mcp-to-durable-objects`
 
 ### Mutex (same spec touched)
@@ -123,10 +127,10 @@ _(none)_
 
 2 parked changes
 
-- **add-mcp-tool-selection-evals** — 0/19 tasks (0%)
-  - Summary: 本專案是 Agentic RAG，MCP client（Cl…
 - **enhance-mcp-tool-metadata** — 0/14 tasks (0%)
   - Summary: 本專案是 Agentic RAG，MCP client（Cl…
+- **fix-delete-account-dialog-google-reauth** — 0/15 tasks (0%)
+  - Summary: `app/components/auth/DeleteAcc…
 
 <!-- SPECTRA-UX:ROADMAP-AUTO:/parked -->
 
