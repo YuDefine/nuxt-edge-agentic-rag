@@ -24,7 +24,24 @@
  * relies on no runtime Cloudflare platform features beyond what we stub.
  */
 
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
+
 import { DEFAULT_MCP_SESSION_TTL_MS, parsePositiveInteger } from '#shared/schemas/knowledge-runtime'
+import { DoJsonRpcTransport } from '#server/durable-objects/mcp-do-transport'
+import {
+  createDoMcpEventShim,
+  getActiveDoMcpEventShim,
+  installEnumerableSafeDoEnv,
+  runWithDoMcpEventShim,
+} from '#server/durable-objects/mcp-event-shim'
+import {
+  MCP_AUTH_CONTEXT_HEADER,
+  resolveMcpAuthSigningKey,
+  verifyAuthContextEnvelope,
+} from '#server/utils/mcp-auth-context-codec'
+
+import type { JSONRPCMessage } from '@modelcontextprotocol/sdk/types.js'
+import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
 
 export interface McpSessionState {
   sessionId: string
@@ -50,6 +67,19 @@ interface JsonRpcEnvelope {
   params?: unknown
 }
 
+interface McpToolDefinition {
+  _meta?: Record<string, unknown>
+  annotations?: Record<string, unknown>
+  description?: string
+  handler: (...args: never[]) => unknown
+  inputExamples?: unknown[]
+  inputSchema?: Record<string, unknown>
+  name: string
+  outputSchema?: Record<string, unknown>
+  tags?: string[]
+  title?: string
+}
+
 const STORAGE_KEY_SESSION = 'session'
 const METHOD_NOT_ALLOWED_HEADERS = {
   'Content-Type': 'application/json',
@@ -57,7 +87,10 @@ const METHOD_NOT_ALLOWED_HEADERS = {
 } as const
 const JSON_RPC_METHOD_NOT_ALLOWED_CODE = -32000
 const JSON_RPC_INVALID_REQUEST_CODE = -32600
-const JSON_RPC_METHOD_NOT_FOUND_CODE = -32601
+const JSON_RPC_AUTH_CONTEXT_CODE = -32001
+const JSON_RPC_INTERNAL_ERROR_CODE = -32603
+const TOOL_EXECUTION_FAILED_MESSAGE = 'Tool execution failed. Please retry later.'
+const DO_DISPATCH_FAILED_MESSAGE = 'MCP request failed. Please retry later.'
 
 function buildMethodNotAllowedBody(): string {
   return JSON.stringify({
@@ -82,6 +115,122 @@ function buildSessionExpiredBody(message: string, requestId: unknown): string {
   })
 }
 
+function buildJsonRpcErrorBody(code: number, message: string, requestId: unknown): string {
+  return JSON.stringify({
+    jsonrpc: '2.0',
+    error: {
+      code,
+      message,
+    },
+    id: requestId ?? null,
+  })
+}
+
+function isCallToolResult(value: Record<string, unknown>): boolean {
+  return (
+    ('content' in value && Array.isArray(value.content)) ||
+    'structuredContent' in value ||
+    'isError' in value
+  )
+}
+
+function normalizeToolResult(result: unknown): CallToolResult {
+  if (typeof result === 'string') {
+    return { content: [{ type: 'text', text: result }] }
+  }
+
+  if (typeof result === 'number' || typeof result === 'boolean') {
+    return { content: [{ type: 'text', text: String(result) }] }
+  }
+
+  if (typeof result === 'object' && result !== null && !isCallToolResult(result as never)) {
+    return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] }
+  }
+
+  const callResult = result as CallToolResult
+  if (callResult.isError && !callResult.content?.length) {
+    const fallbackText = callResult.structuredContent
+      ? JSON.stringify(callResult.structuredContent)
+      : 'Tool execution failed'
+    return { ...callResult, content: [{ type: 'text', text: fallbackText }] }
+  }
+
+  if (callResult.structuredContent && !callResult.content?.length) {
+    return {
+      ...callResult,
+      content: [{ type: 'text', text: JSON.stringify(callResult.structuredContent) }],
+    }
+  }
+
+  return callResult
+}
+
+function normalizeErrorToResult(error: unknown): CallToolResult {
+  logDoError(error, 'mcp-do-tool-handler')
+
+  return { content: [{ type: 'text', text: TOOL_EXECUTION_FAILED_MESSAGE }], isError: true }
+}
+
+function logDoError(error: unknown, step: string): void {
+  const log = getActiveDoMcpEventShim()?.context?.log as
+    | { error?: (error: Error, fields?: Record<string, unknown>) => void }
+    | undefined
+  if (!log?.error) {
+    return
+  }
+
+  log.error(error instanceof Error ? error : new Error(String(error)), { step })
+}
+
+function registerToolFromDefinition(server: McpServer, tool: McpToolDefinition): void {
+  server.registerTool(
+    tool.name,
+    {
+      title: tool.title,
+      description: tool.description,
+      inputSchema: tool.inputSchema as never,
+      outputSchema: tool.outputSchema as never,
+      annotations: tool.annotations as never,
+      _meta: {
+        ...tool._meta,
+        ...(tool.inputExamples ? { inputExamples: tool.inputExamples } : {}),
+        ...(tool.tags?.length ? { tags: tool.tags } : {}),
+      },
+    },
+    async (...args: never[]) => {
+      try {
+        return normalizeToolResult(await tool.handler(...args))
+      } catch (error) {
+        return normalizeErrorToResult(error)
+      }
+    },
+  )
+}
+
+function ensureDefineMcpToolGlobal(): void {
+  const globals = globalThis as typeof globalThis & {
+    defineMcpTool?: (definition: McpToolDefinition) => McpToolDefinition
+  }
+  globals.defineMcpTool ??= (definition) => definition
+}
+
+async function loadKnowledgeToolDefinitions(): Promise<McpToolDefinition[]> {
+  ensureDefineMcpToolGlobal()
+  const [askKnowledge, searchKnowledge, getDocumentChunk, listCategories] = await Promise.all([
+    import('#server/mcp/tools/ask'),
+    import('#server/mcp/tools/search'),
+    import('#server/mcp/tools/get-document-chunk'),
+    import('#server/mcp/tools/categories'),
+  ])
+
+  return [
+    askKnowledge.default,
+    searchKnowledge.default,
+    getDocumentChunk.default,
+    listCategories.default,
+  ] as McpToolDefinition[]
+}
+
 function resolveTtlMs(env: McpSessionDurableObjectEnv): number {
   return parsePositiveInteger(env.NUXT_KNOWLEDGE_MCP_SESSION_TTL_MS, DEFAULT_MCP_SESSION_TTL_MS)
 }
@@ -90,6 +239,8 @@ export class MCPSessionDurableObject {
   private readonly ctx: DurableObjectState
   private readonly env: McpSessionDurableObjectEnv
   private readonly now: () => number
+  private mcpServer: McpServer | null = null
+  private transport: DoJsonRpcTransport | null = null
 
   constructor(
     ctx: DurableObjectState,
@@ -152,51 +303,137 @@ export class MCPSessionDurableObject {
       )
     }
 
+    const authResult = await this.verifyForwardedAuthContext(request, requestId, now)
+    if (!authResult.ok) {
+      return authResult.response
+    }
+
     const renewed: McpSessionState = { ...existing, lastSeenAt: now }
     await this.ctx.storage.put<McpSessionState>(STORAGE_KEY_SESSION, renewed)
     await this.ctx.storage.setAlarm(now + ttlMs)
 
-    // @followup[TD-041] — Tool dispatch via DoJsonRpcTransport is out of scope
-    // for `upgrade-mcp-to-durable-objects` (C-path scope trim 2026-04-24). This
-    // change delivers session lifecycle only (create / touch / alarm GC / 404
-    // on missing). Wire-up of `McpServer` + `server.connect(transport)` +
-    // auth/env plumbing lands in the follow-up change `wire-do-tool-dispatch`.
-    //
-    // Until then any non-initialize request returns an explicit JSON-RPC
-    // `-32601 Method not found` so an accidental `NUXT_KNOWLEDGE_FEATURE_MCP_SESSION=true`
-    // flip in production fails loudly (Claude.ai surfaces "Error occurred
-    // during tool execution") instead of silently returning a synthetic ack
-    // that would masquerade as success.
-    return new Response(
-      JSON.stringify({
-        jsonrpc: '2.0',
-        id: requestId ?? null,
-        error: {
-          code: JSON_RPC_METHOD_NOT_FOUND_CODE,
-          message:
-            'Tool dispatch via MCP Session Durable Object is not yet implemented. ' +
-            'Set NUXT_KNOWLEDGE_FEATURE_MCP_SESSION=false to fall back to the stateless ' +
-            'MCP handler while the wire-do-tool-dispatch change is pending.',
-          data: {
-            method,
-            followup: 'TD-041',
-            sessionLifecycle: 'ok',
-            toolDispatch: 'not_implemented',
-          },
-        },
-      }),
-      {
-        status: 501,
+    try {
+      const transport = await this.getOrCreateTransport(renewed.sessionId)
+      const shimEvent = createDoMcpEventShim({
+        auth: authResult.auth,
+        doEnv: this.env,
+        request,
+      })
+      const responseMessage = await runWithDoMcpEventShim(shimEvent, () =>
+        transport.dispatch(
+          envelope as JSONRPCMessage,
+          {
+            authInfo: authResult.auth,
+            requestInfo: {
+              headers: Object.fromEntries(request.headers.entries()),
+            },
+          } as never,
+        ),
+      )
+
+      return new Response(JSON.stringify(responseMessage), {
+        status: 200,
         headers: {
           'Content-Type': 'application/json',
           'Mcp-Session-Id': renewed.sessionId,
         },
-      },
-    )
+      })
+    } catch (error) {
+      logDoError(error, 'mcp-do-dispatch')
+
+      return new Response(
+        buildJsonRpcErrorBody(JSON_RPC_INTERNAL_ERROR_CODE, DO_DISPATCH_FAILED_MESSAGE, requestId),
+        {
+          status: 500,
+          headers: {
+            'Content-Type': 'application/json',
+            'Mcp-Session-Id': renewed.sessionId,
+          },
+        },
+      )
+    }
   }
 
   async alarm(): Promise<void> {
+    const session = await this.ctx.storage.get<McpSessionState>(STORAGE_KEY_SESSION)
+    if (!session) {
+      return
+    }
+
+    const expiresAt = session.lastSeenAt + resolveTtlMs(this.env)
+    if (this.now() < expiresAt) {
+      await this.ctx.storage.setAlarm(expiresAt)
+      return
+    }
+
+    await this.closeTransport()
     await this.ctx.storage.deleteAll()
+  }
+
+  private async verifyForwardedAuthContext(
+    request: Request,
+    requestId: unknown,
+    now: number,
+  ): Promise<
+    | { auth: NonNullable<Awaited<ReturnType<typeof verifyAuthContextEnvelope>>['auth']>; ok: true }
+    | { ok: false; response: Response }
+  > {
+    const signingKey = resolveMcpAuthSigningKey(this.env.NUXT_MCP_AUTH_SIGNING_KEY)
+    const header = request.headers.get(MCP_AUTH_CONTEXT_HEADER)
+    const result = await verifyAuthContextEnvelope(header, signingKey, now)
+    if (result.ok) {
+      return { auth: result.auth, ok: true }
+    }
+
+    const status =
+      result.reason === 'missing_header' || result.reason === 'malformed_envelope' ? 400 : 401
+    const message =
+      result.reason === 'expired'
+        ? 'MCP auth context envelope expired'
+        : `MCP auth context envelope verification failed: ${result.reason}`
+
+    return {
+      ok: false,
+      response: new Response(
+        buildJsonRpcErrorBody(JSON_RPC_AUTH_CONTEXT_CODE, message, requestId),
+        {
+          status,
+          headers: { 'Content-Type': 'application/json' },
+        },
+      ),
+    }
+  }
+
+  private async getOrCreateTransport(sessionId: string): Promise<DoJsonRpcTransport> {
+    if (this.transport) {
+      return this.transport
+    }
+
+    installEnumerableSafeDoEnv(this.env)
+
+    const mcpServer = new McpServer({
+      name: 'nuxt-edge-agentic-rag',
+      version: '0.0.0',
+    })
+    for (const tool of await loadKnowledgeToolDefinitions()) {
+      registerToolFromDefinition(mcpServer, tool)
+    }
+
+    const transport = new DoJsonRpcTransport()
+    transport.sessionId = sessionId
+    await mcpServer.connect(transport)
+
+    this.mcpServer = mcpServer
+    this.transport = transport
+
+    return transport
+  }
+
+  private async closeTransport(): Promise<void> {
+    await this.transport?.close()
+    await this.mcpServer?.close()
+    this.transport = null
+    this.mcpServer = null
   }
 
   private buildInitializedSession(

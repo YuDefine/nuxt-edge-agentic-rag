@@ -1,6 +1,7 @@
 import type { H3Event } from 'h3'
 
 import { getKnowledgeRuntimeConfig } from '#server/utils/knowledge-runtime'
+import { getMcpAuthSigningKey } from '#server/utils/mcp-auth-context-codec'
 import { runMcpMiddleware } from '#server/utils/mcp-middleware'
 import { rehydrateMcpRequestBody } from '#server/utils/mcp-rehydrate-request-body'
 import { createMcpTokenStore } from '#server/utils/mcp-token-store'
@@ -31,6 +32,7 @@ export default defineMcpHandler({
     const runtimeConfig = getKnowledgeRuntimeConfig()
 
     await runMcpMiddleware(event, {
+      authSigningKey: getMcpAuthSigningKey(event as unknown as H3Event),
       environment: runtimeConfig.environment,
       extractToolNames,
       kvBindingName: runtimeConfig.bindings.rateLimitKv,

@@ -1,7 +1,12 @@
 import type { H3Event } from 'h3'
 import { readBody } from 'h3'
 
+import { MCP_AUTH_CONTEXT_HEADER } from '#server/utils/mcp-auth-context-codec'
+
 interface WebRequestEventShape {
+  context?: {
+    mcpAuthEnvelope?: string
+  }
   web?: {
     request?: Request
   }
@@ -32,9 +37,15 @@ export async function rehydrateMcpRequestBody(event: H3Event): Promise<void> {
         ? parsed
         : JSON.stringify(parsed)
 
+  const headers = new Headers(original.headers)
+  const envelope = (event as unknown as WebRequestEventShape).context?.mcpAuthEnvelope
+  if (envelope) {
+    headers.set(MCP_AUTH_CONTEXT_HEADER, envelope)
+  }
+
   const replay = new Request(original.url, {
     method: original.method,
-    headers: original.headers,
+    headers,
     body: bodyText,
     duplex: 'half',
   } as RequestInit)
