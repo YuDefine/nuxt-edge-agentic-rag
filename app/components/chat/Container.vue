@@ -344,9 +344,9 @@
 </script>
 
 <template>
-  <div class="flex h-full flex-col">
+  <div class="flex h-full min-h-0 flex-col">
     <!-- Messages area -->
-    <div ref="messagesContainer" class="flex-1 overflow-y-auto p-4">
+    <div ref="messagesContainer" class="min-h-0 flex-1 overflow-y-auto p-4">
       <ChatMessageList
         :messages="messages"
         @citation-click="handleCitationClick"
@@ -395,7 +395,7 @@
     </div>
 
     <!-- Input area -->
-    <div class="border-t border-default p-4">
+    <div class="shrink-0 border-t border-default p-4">
       <ChatMessageInput
         ref="messageInputRef"
         :disabled="props.disabled || isSubmitting || rateLimitCountdown > 0"
