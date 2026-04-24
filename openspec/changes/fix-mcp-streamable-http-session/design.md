@@ -177,6 +177,38 @@ export function createMcpHandler(server: McpConnectableServer, options: McpHandl
 
 備案不在本 change scope；本 change 交付 B 方向，fallback 成立才另開 change。
 
+## Post-deploy Observation (2026-04-24 Asia/Taipei, v0.37.0)
+
+Deploy 後實測 Claude.ai Remote MCP，結果混合：
+
+**本 change 的修正項目 — 確認生效：**
+
+- `GET /mcp` → `405 Allow: POST`，duration ~390ms（30s hang 消失，Cloudflare runtime 不再 cancel）
+- 首次 handshake 全綠：`POST initialize 200 → notifications/initialized 202 → tools/list 200`
+- Claude.ai UI 顯示 "Loaded 4 Nuxt Edge Agentic RAG tools"，tool 清單正確
+
+**Fallback Plan 觸發條件成立 — Claude.ai 仍不接受純 stateless：**
+
+- 使用者按 `AskKnowledge` / `SearchKnowledge` / `ListCategories`，UI 一律顯示 "Error occurred during tool execution"
+- `wrangler tail` 中**完全沒有** `tools/call` method log
+- 使用者按 tool 後的實際 pattern：`POST initialize 400` → `GET /mcp 405` → 每 3 秒循環，tools/call 從未送達
+- Claude 顯然將 `GET 405` 視為「stream 不可用 → 必須重建 session」，每次 tool call 前自發 re-initialize，但第二次 initialize 被 MCP SDK 判為 invalid（wrangler tail 只有 status 400 無 error body；推測為 Zod JSON-RPC schema parse fail 或 `Server already initialized` 類 guard，具體 error code 留到 fallback change 的 `/spectra-discuss` 階段 spike 驗證）→ 400 → 放棄 tool call
+
+因此本 change 交付的 B 方向**部分成功**：
+
+- 解決了 30s Worker hang 造成的 runtime cancel（GET 路徑）
+- **未解決**使用者原始痛點（tool call 成功率 = 0%）
+
+**已知限制 → fallback 採取行動：**
+
+符合 `tasks.md 6.4` 與本 design Fallback Plan #3 的條件：
+
+- 登記 **TD-030**（`docs/tech-debt.md`），`high` priority，open
+- 開新 change `upgrade-mcp-to-durable-objects` 走方向 A（Durable Objects + SSE，Tier 3 重工）
+- `NUXT_KNOWLEDGE_FEATURE_MCP_SESSION` flag 保留作為 DO path 漸進啟用開關
+- 本 change archive 時保留 GET 405 + `enableJsonResponse: true` — 它不是回歸（原本就 30s hang），而是 forward progress 的一部分
+- tasks.md 5.2–5.5 / 6.1 / 6.2 不勾，6.3 勾（rehydrate regression 仍綠），6.4 按其定義不勾（405 異常反應成立）
+
 ## Artifact Sync
 
 本 change archive 時應同步：
