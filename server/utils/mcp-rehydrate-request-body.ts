@@ -57,10 +57,7 @@ export async function rehydrateMcpRequestBody(event: H3Event): Promise<void> {
     duplex: 'half',
   } as RequestInit)
 
-  const target = event as unknown as { req?: Request; web?: { request?: Request } }
-  target.req = replay
-  target.web ??= {}
-  target.web.request = replay
+  installReplayRequest(event, replay)
 }
 
 function resolveReplayUrl(url: string, event: H3Event): string {
@@ -83,4 +80,22 @@ function resolveRequestOrigin(event: H3Event): string {
     const protocol = headers?.get('x-forwarded-proto') ?? 'https'
     return `${protocol}://${host}`
   }
+}
+
+function installReplayRequest(event: H3Event, replay: Request): void {
+  const target = event as unknown as { req?: Request; web?: { request?: Request } }
+
+  try {
+    target.req = replay
+  } catch {
+    Object.defineProperty(target, 'req', {
+      configurable: true,
+      enumerable: true,
+      value: replay,
+      writable: true,
+    })
+  }
+
+  target.web ??= {}
+  target.web.request = replay
 }
