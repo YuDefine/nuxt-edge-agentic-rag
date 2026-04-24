@@ -55,7 +55,7 @@ _(none)_
 
 ## Active Changes
 
-_last synced: 2026-04-24T19:18:58.122Z_
+_last synced: 2026-04-24T21:10:27.447Z_
 
 2 active changes (0 ready · 2 in progress · 0 draft · 0 blocked)
 
@@ -87,9 +87,18 @@ _(none)_
 > 即時 ownership 由 `.spectra/claims/*.json` 提供。
 > 接手 handoff / 開始做 change 時，先 claim，再移除 `HANDOFF.md` 對應項目。
 
-_No active claims._
+1 claim (0 active · 1 stale)
 
-> 若你要開始做上面的 active change，先跑 `spectra:claim -- <change>`。
+### Live Ownership
+
+_(none)_
+
+### Stale Claims
+
+- **wire-do-tool-dispatch** — unknown:charles@charlesdeMac-mini.local (unknown)
+  - Accepted from: manual
+  - Last heartbeat: 2026-04-24T20:08:10.521Z
+  - Status: stale (last heartbeat 2026-04-24T20:08:10.521Z)
 
 <!-- SPECTRA-UX:ROADMAP-AUTO:/claims -->
 
