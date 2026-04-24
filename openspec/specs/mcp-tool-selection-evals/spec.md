@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change 'add-mcp-tool-selection-evals'. Update Purpose after archive.
+Define the developer-facing eval harness that measures whether an LLM chooses the correct MCP knowledge tool from the real `tools/list` surface, using curated end-user query samples, explicit scoring, and a documented baseline that remains outside default CI gates.
 
 ## Requirements
 
@@ -37,7 +37,11 @@ The harness SHALL execute against a running MCP server (dev server or equivalent
 source: add-mcp-tool-selection-evals
 updated: 2026-04-25
 code:
+  - test/evals/mcp-tool-selection.eval.ts
+  - test/evals/fixtures/mcp-tool-selection-dataset.ts
+  - test/evals/helpers/mcp-client.ts
   - docs/evals/mcp-tool-selection.md
+  - package.json
   - .env.example
 -->
 
@@ -62,7 +66,10 @@ The eval harness SHALL run as a developer- or nightly-initiated command and SHAL
 source: add-mcp-tool-selection-evals
 updated: 2026-04-25
 code:
+  - test/evals/mcp-tool-selection.eval.ts
+  - test/evals/helpers/mcp-client.ts
   - docs/evals/mcp-tool-selection.md
+  - package.json
   - .env.example
 -->
 
@@ -94,7 +101,9 @@ The eval harness SHALL compare each run against a recorded baseline score stored
 source: add-mcp-tool-selection-evals
 updated: 2026-04-25
 code:
+  - test/evals/mcp-tool-selection.eval.ts
   - docs/evals/mcp-tool-selection.md
+  - package.json
   - .env.example
 -->
 
@@ -132,6 +141,7 @@ Per-sample scores SHALL be aggregated into an overall score as an unweighted mea
 source: add-mcp-tool-selection-evals
 updated: 2026-04-25
 code:
+  - test/evals/helpers/scorer.ts
+  - test/unit/evals-scorer.test.ts
   - docs/evals/mcp-tool-selection.md
-  - .env.example
 -->
