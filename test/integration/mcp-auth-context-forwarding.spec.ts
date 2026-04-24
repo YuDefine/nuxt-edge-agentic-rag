@@ -191,6 +191,12 @@ function makeEvent(body: unknown): H3Event {
   } as unknown as H3Event
 }
 
+function makeReqOnlyEvent(body: unknown): H3Event {
+  const event = makeEvent(body) as unknown as H3Event & { web?: { request?: Request } }
+  delete event.web
+  return event
+}
+
 function makeEnv(namespace: FakeMcpSessionNamespace) {
   return {
     KV: createKv(),
@@ -348,6 +354,32 @@ describe('MCP auth context forwarding through middleware, compat shim, and sessi
       'listCategories',
       'searchKnowledge',
     ])
+  })
+
+  it('rehydrates the preferred request when the Worker event only exposes req', async () => {
+    const event = makeReqOnlyEvent(createBody('tools/list', 1))
+    await runMcpMiddleware(event as never, {
+      authSigningKey,
+      environment: 'local',
+      extractToolNames: async () => [],
+      kvBindingName: 'KV',
+      now,
+      tokenStore: {
+        findUsableTokenByHash: vi.fn().mockResolvedValue(createTokenRecord()),
+        touchLastUsedAt: vi.fn().mockResolvedValue(undefined),
+      },
+      userRoleLookup: {
+        lookupRoleByUserId: vi.fn().mockResolvedValue('admin'),
+      },
+    })
+
+    await rehydrateMcpRequestBody(event)
+
+    const envelope = (event as unknown as { context: { mcpAuthEnvelope?: string } }).context
+      .mcpAuthEnvelope
+    const request = (event as unknown as { req?: Request }).req
+    expect(request?.headers.get(MCP_AUTH_CONTEXT_HEADER)).toBe(envelope)
+    expect((event as unknown as { web?: { request?: Request } }).web?.request).toBe(request)
   })
 
   it('returns 401 from the DO when the forwarded auth context header is tampered', async () => {
