@@ -27,6 +27,7 @@ node .codex/scripts/commit-lock.mjs acquire
 **理由**：`/commit` 已付出 0-A / 0-B / 0-C 閘門的完整成本。把 WIP 排除在外等於下次 `/commit` 要重跑一次，浪費時間與 token，還會讓 WIP 長期積著。
 
 **排除條件（唯一）**：使用者在 `$ARGUMENTS` 中**明確**指名要排除的檔案 / 路徑 / scope，例如：
+
 - 「排除 `.env.local`」
 - 「不要動 `reports/`」
 - 「只 commit `app/` 底下」

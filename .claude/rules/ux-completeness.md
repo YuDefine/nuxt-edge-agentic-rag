@@ -199,7 +199,7 @@ function getBindingIcon(cardType: NfcCardType): string {
 
 - **`proactive-skills.md` Design Gate**：本規則**擴充**而非取代。Design Gate 檢查 UI 視覺品質；UX Completeness 檢查 UI 功能覆蓋
 - **`development.md` UI Reuse**：本規則**補充**。Reuse 檢查「是否重複寫了」；UX Completeness 檢查「是否漏改了既有的」
-- **`migration.md`**：本規則**串聯**。migration 只是起點，後面還有 types + API + UI + navigation 四層
+- **專案自訂的 database / migration 規則**：本規則**串聯**。migration 只是起點，後面還有 types + API + UI + navigation 四層
 
 ## 違反時的回報方式
 
