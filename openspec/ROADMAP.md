@@ -30,7 +30,7 @@
 
 ## Active Changes
 
-_last synced: 2026-04-24T11:09:49.055Z_
+_last synced: 2026-04-24T12:12:00.987Z_
 
 1 active change (0 ready · 1 in progress · 0 draft · 0 blocked)
 
@@ -40,7 +40,7 @@ _(none)_
 
 ### In progress
 
-- **upgrade-mcp-to-durable-objects** — 2/25 tasks (8%)
+- **upgrade-mcp-to-durable-objects** — 4/27 tasks (15%)
   - Specs: `mcp-knowledge-tools`
 
 ### Draft
@@ -60,17 +60,18 @@ _(none)_
 > 即時 ownership 由 `.spectra/claims/*.json` 提供。
 > 接手 handoff / 開始做 change 時，先 claim，再移除 `HANDOFF.md` 對應項目。
 
-1 claim (1 active · 0 stale)
+1 claim (0 active · 1 stale)
 
 ### Live Ownership
+
+_(none)_
+
+### Stale Claims
 
 - **upgrade-mcp-to-durable-objects** — unknown:charles@charlesdeMac-mini.local (unknown)
   - Accepted from: manual
   - Last heartbeat: 2026-04-24T10:53:09.467Z
-
-### Stale Claims
-
-_(none)_
+  - Status: stale (last heartbeat 2026-04-24T10:53:09.467Z)
 
 <!-- SPECTRA-UX:ROADMAP-AUTO:/claims -->
 
