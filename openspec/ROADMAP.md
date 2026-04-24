@@ -4,30 +4,33 @@
 
 ## Current State
 
-> 狀態（2026-04-24 更新）：目前 branch `main`，`v0.42.0` tag 已推送；staging 與 production deploy / docs / smoke / notify 皆已綠燈。Open tech debt 現況：無 blocking 項，但 MCP Durable Object rollout 仍需依 feature flag 分階段驗證。
+> 狀態（2026-04-25 更新）：目前 branch `main`，`v0.43.3` tag 已推送；v0.43.0 / v0.43.1 / v0.43.2 / v0.43.3 connected to staging + production deploy / docs / smoke / notify 全綠。Production `NUXT_KNOWLEDGE_FEATURE_MCP_SESSION` 已翻為 `true`（commit `bc85403`），`wire-do-tool-dispatch` 進入 production soak 階段。Open tech debt 現況：無 build/deploy blocker，但 wire-do-tool-dispatch rollout 仍有 TD-030 / TD-041 / TD-050 三項需在 archive 前驗證。
 >
-> **最新進度**（2026-04-24）：
+> **最新進度**（2026-04-25）：
 >
-> - **Spectra / Claude workflow orchestration** 已完成一輪基礎設施刷新：新增 `.agent/skills/*` 與 `scripts/spectra-ux/*` claim / release / design-gate / reminder 流程，並同步更新 `AGENTS.md`、`CLAUDE.md`、`GEMINI.md`、commit / handoff / roadmap / screenshot 規則。
-> - **web chat persistence** 已完成 archive：conversation history refresh race、last-click-wins、stale restore、in-flight request 汙染等問題已修掉，並補齊 unit + Playwright evidence（`docs/verify/WEB_CHAT_PERSISTENCE_VERIFICATION.md`）。
-> - **`passkey-first-link-google-custom-endpoint`** 已完成 archive：custom GET initiator / callback、`/account/settings` UI、spec sync、design-review、ui-audit 與 local / production 人工驗證皆已完成。
-> - **`multi-format-document-ingestion`** 已完成 archive：Upload Wizard tier disclosure、canonical snapshot extractor、local upload fallback、rich-format validation 與對應測試皆已落地，並已建立 `v0.31.0` release tag。
-> - **`standardize-chart-surfaces-on-nuxt-charts`** 已完成 archive：`/admin/usage` timeline 與 `/admin/debug/latency` outcome breakdown 已統一改為 `nuxt-charts` surface，`admin-usage-dashboard` / `latency-and-outcome-observability` specs 已同步，unit + Playwright + typecheck 與 local screenshot review evidence 皆已補齊。
-> - **local auth storage drift** 已處理：`.data/db/sqlite.db` 與 local wrangler D1 已重建，`user_new` / `query_logs_new` 殘留 FK refs 已排除，`/_dev/login` 與 Google linking local flow 已恢復。
-> - **`TD-014` integration test logger 初始化缺口** 已收斂：2026-04-24 本地重跑 `pnpm test:integration` 為 `72 files passed / 364 tests passed / 1 skipped`，目前不再阻擋 roadmap 清空。
-> - **docs custom domain / app canary 人工判定缺口** 已補齊：2026-04-24 以外部網路直接檢查 `agentic.yudefine.com.tw`、`agentic-staging.yudefine.com.tw`、`agentic-docs.yudefine.com.tw`、`agentic-docs-staging.yudefine.com.tw`，四個 custom domain 皆回 `HTTP 200`，確認 GitHub runner 上的 `403` 屬 Cloudflare WAF / Bot protection 誤擋，而非站點異常。
-> - **Delete account Google reauth 修復**已完成 archive：Google reauth 跨 redirect resume、passkey-only regression、直接輸入 `?open-delete=1` bypass 防護與 OAuth cancel case 皆已完成驗證。
-> - **MCP Durable Object 工作線已拆分完成**：`upgrade-mcp-to-durable-objects` 保留 session lifecycle scope；`wire-do-tool-dispatch` 已從 parked 進入 active，負責 DO 內 tool dispatch、auth context HMAC forward 與 production flag rollout。
+> - **`consolidate-conversation-history-config`** 已完成 archive：抽出 `createChatConversationHistory` factory，把 `index.vue` + `ConversationHistory` 的雙份 config / refresh 邏輯收斂；`/api/chat` 路徑修復連串本地 bootstrap 斷點（TD-046 done — staging AutoRAG index 已建立）。人工檢查中發現 TD-044 / TD-045 / TD-047 / TD-048 / TD-050 並登記在 register。
+> - **v0.43.0 → v0.43.3 連續 release**：v0.43.0 收 wire-do-tool-dispatch staging protocol 驗證 + DO debug instrumentation；v0.43.1 補 docs vitepress yaml escape；v0.43.2 修 `reflect-metadata` polyfill 洩漏 Nitro bundle module scope；v0.43.3 把 production MCP session flag 翻 true 並收尾 TD-045 narrow scope（`predev` bootstrap health check）。
+> - **`wire-do-tool-dispatch` §7.1 已收斂**：staging v0.42.2 protocol 驗證完成，DO debug instrumentation 已回滾。剩 production soak（flag=true 後）+ Claude.ai 端到端實測（TD-030）+ DO tool dispatch flag=true 假 ack（TD-041）+ staging R2 RAG seed（TD-050）。
 > - **`add-mcp-tool-selection-evals`** 已於 2026-04-25 完成 archive：eval harness、dataset、scorer、文件、dev token CLI、bearer-token client wiring、baseline 與 manual review 皆已落地；`mcp-tool-selection-evals` spec 已同步到主規格。
-> - **`v0.42.0` release** 已完成：main push run `24898590937` staging 綠燈；tag run `24898814022` production 綠燈。Production `NUXT_KNOWLEDGE_FEATURE_MCP_SESSION` 仍維持 false，等待 `wire-do-tool-dispatch` soak 完成後再 flip。
-> - **Workers AI 回答層 / web chat 真串流** 已完成 archive：相關 tasks 皆已完成，後續焦點轉往 MCP session/tool dispatch 與 eval baseline。
+>
+> **2026-04-24 收斂項目（保留歷史視野）**：
+>
+> - **Spectra / Claude workflow orchestration**：新增 `.agent/skills/*` 與 `scripts/spectra-ux/*` claim / release / design-gate / reminder 流程，同步 `AGENTS.md`、`CLAUDE.md`、`GEMINI.md`、commit / handoff / roadmap / screenshot 規則。
+> - **web chat persistence** archive：conversation history refresh race、last-click-wins、stale restore、in-flight request 汙染等已修，補齊 unit + Playwright evidence（`docs/verify/WEB_CHAT_PERSISTENCE_VERIFICATION.md`）。
+> - **`passkey-first-link-google-custom-endpoint`** archive：custom GET initiator / callback、`/account/settings` UI、spec sync、design-review、ui-audit 與 local / production 人工驗證皆完成。
+> - **`multi-format-document-ingestion`** archive：Upload Wizard tier disclosure、canonical snapshot extractor、local upload fallback、rich-format validation 已落地（v0.31.0）。
+> - **`standardize-chart-surfaces-on-nuxt-charts`** archive：`/admin/usage` timeline 與 `/admin/debug/latency` outcome breakdown 統一改為 `nuxt-charts` surface。
+> - **`TD-014` integration test logger 初始化缺口** 收斂：本地重跑 `pnpm test:integration` 為 `72 files / 364 tests / 1 skipped`。
+> - **Delete account Google reauth 修復** archive：Google reauth 跨 redirect resume、passkey-only regression、`?open-delete=1` bypass 防護與 OAuth cancel case 已驗證。
+> - **MCP Durable Object 工作線拆分**：`upgrade-mcp-to-durable-objects` 保留 session lifecycle scope；`wire-do-tool-dispatch` 從 parked 進入 active，負責 DO 內 tool dispatch、auth context HMAC forward 與 production flag rollout。
+> - **Workers AI 回答層 / web chat 真串流** archive。
 
 ## Next Moves
 
 進行中：
 
-- **`upgrade-mcp-to-durable-objects`** 17/27 tasks (63%)，**Phase 4 scope 縮為 session lifecycle only** — tool dispatch 改由 `wire-do-tool-dispatch` 接手（見 TD-041）；production flag 維持 false 直到 wire-do-tool-dispatch archive
-- **`wire-do-tool-dispatch`** 17/24 tasks (71%)，DO 內 McpServer lazy init + 4 tool dispatch + auth context forward 已完成並隨 `v0.42.0` 部署；剩 staging / production rollout 與人工檢查
+- **`upgrade-mcp-to-durable-objects`** 17/27 tasks (63%)，**Phase 4 scope 縮為 session lifecycle only** — tool dispatch 改由 `wire-do-tool-dispatch` 接手（見 TD-041）；production flag 已翻 true（v0.43.3），剩 session lifecycle 收尾與 archive gate
+- **`wire-do-tool-dispatch`** 18/24 tasks (75%) — 依賴：archive 前必須處理 TD-030（Claude.ai re-init 循環）、TD-041（DO tool dispatch flag=true 假 ack）、TD-050（staging R2 RAG content seed）；§7.1 staging protocol 驗證已完成，剩 production soak + Claude.ai 端到端實測 + 人工檢查
 
 ### 已 propose，待 apply（見 AUTO Parked Changes 區塊）
 
@@ -35,6 +38,11 @@ _(none)_
 
 ### 近期（尚未 propose，可與 DO change 並行）
 
+- [high] **TD-048** 聊天 UI 缺顯式「新對話」入口 — 使用者反映「找不到新對話按鈕、reload 始終停在同個對話」，影響日常 chat UX；獨立、scope 小
+- [mid] **TD-050** Staging R2 (`agentic-rag-documents-staging`) 為空，缺 RAG content seed / sync schedule — 依賴：與 `wire-do-tool-dispatch` archive 一併處理（驗證 4 個 tool call `citations:[] / results:[]` empty 是否因 R2 缺資料導致）
+- [mid] **TD-049** Cloudflare Pages deploy API 拒絕 git HEAD commit message — in-progress（CI 已加 workaround `5ce334c`），持續觀察是否仍有 deploy 中斷
+- [mid] **TD-044** `session.create.before` 靜默吞 user_profiles UNIQUE 衝突 → better-auth user id 與 user_profiles.id 可能漂移 — 獨立
+- [mid] **TD-047** `/api/chat` SSE `ready` 後階段 error 時 Container 未 emit `conversation-persisted` — 獨立、scope 小
 - [mid] **TD-009** `user_profiles.email_normalized` nullable migration — 獨立（scope 非小：rebuild `user_profiles` + 4 FK children，約 700+ 行 SQL + data migration）
 - [low] **日期格式 smoke（遺留）** — `/account/settings`、`/admin/documents/:id`、`/admin/members`、`/admin/query-logs` list+detail、`/admin/tokens` 目視確認
 
