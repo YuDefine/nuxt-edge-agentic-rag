@@ -8,47 +8,48 @@
 
 ## Index
 
-| ID     | Title                                                                                                                                  | Priority | Status | Discovered                                                       | Owner |
-| ------ | -------------------------------------------------------------------------------------------------------------------------------------- | -------- | ------ | ---------------------------------------------------------------- | ----- |
-| TD-001 | mcp-token-store libsql 不相容                                                                                                          | low      | done   | 2026-04-20 B16 #10                                               | —     |
-| TD-002 | guest_policy DB-direct UPDATE 造成 cache drift                                                                                         | mid      | done   | 2026-04-20 B16 #7                                                | —     |
-| TD-003 | text-dimmed 對比度不足（cross-change residual）                                                                                        | mid      | done   | 2026-04-20 B17 C#11.9                                            | —     |
-| TD-004 | 首頁 Google login button 高度 36px < WCAG 40px                                                                                         | high     | done   | B17 viewport-baseline.spec.ts                                    | —     |
-| TD-005 | Admin 頁面 a11y violations 批次（@nuxt/a11y 首輪掃描）                                                                                 | high     | done   | 2026-04-21 RAF @nuxt/a11y                                        | —     |
-| TD-006 | Nuxt UI subtle variant tonal badge 對比度不足                                                                                          | mid      | done   | 2026-04-20 TD-003 e2e exclude                                    | —     |
-| TD-007 | 裝飾 icon tonal color 低於 WCAG 1.4.11 non-text AA                                                                                     | low      | done   | 2026-04-20 TD-006 review                                         | —     |
-| TD-008 | acceptance-tc-0x MCP 整合測試在 TD-001 修後破損                                                                                        | mid      | done   | 2026-04-20 add-ai-gateway                                        | —     |
-| TD-009 | user_profiles.email_normalized 全面改 nullable                                                                                         | mid      | open   | 2026-04-21 passkey-authentication                                | —     |
-| TD-010 | credentials / admin-members endpoint libsql 不相容                                                                                     | mid      | done   | 2026-04-21 passkey §16 DR                                        | —     |
-| TD-011 | migration 0009 FK cascade 設計不符 self-delete / audit                                                                                 | high     | done   | 2026-04-21 passkey §17.8                                         | —     |
-| TD-012 | passkey-first → link Google 被 better-auth email 檢驗擋住                                                                              | high     | done   | 2026-04-21 passkey §17.3                                         | —     |
-| TD-013 | /account/settings 新增 passkey 缺 naming dialog                                                                                        | low      | done   | 2026-04-21 passkey §17.2                                         | —     |
-| TD-014 | error-sanitizer 後 12 test 抛 evlog Logger not init                                                                                    | mid      | done   | 2026-04-21 drizzle-refactor apply                                | —     |
-| TD-015 | SSE 長連線缺 heartbeat，30s proxy timeout 風險                                                                                         | mid      | open   | 2026-04-24 /commit review                                        | —     |
-| TD-016 | isAbortError / createAbortError 在四處重複實作                                                                                         | low      | open   | 2026-04-24 /commit review                                        | —     |
-| TD-017 | chat.post.ts 兩個 AI binding getter 可合併                                                                                             | low      | done   | 2026-04-24 /commit review                                        | —     |
-| TD-018 | Container.vue classifyError 巢狀條件抽 lookup table                                                                                    | low      | done   | 2026-04-24 /commit review                                        | —     |
-| TD-019 | SSE reader pattern 在 client/server 雷同可抽共用                                                                                       | low      | open   | 2026-04-24 /commit review                                        | —     |
-| TD-020 | CHATGPT_CONNECTOR_OAUTH_PATH_PATTERN 可收緊字元集                                                                                      | low      | done   | 2026-04-24 /commit review                                        | —     |
-| TD-021 | ConversationHistory bucket toggle 缺 aria-expanded 等                                                                                  | low      | done   | 2026-04-24 /commit review                                        | —     |
-| TD-022 | groupedConversations computed 不跨 midnight 重新分組                                                                                   | low      | done   | 2026-04-24 /commit review                                        | —     |
-| TD-023 | index.vue 雙 LazyChatConversationHistory 產生重複 fetch                                                                                | low      | done   | 2026-04-24 /commit review                                        | —     |
-| TD-024 | chat-history-sidebar test suite 品質（string contract/resolves）                                                                       | low      | done   | 2026-04-24 /commit review                                        | —     |
-| TD-025 | Container.vue `$csrfFetch.native` 跳過 CSRF header 造成 /api/chat 403                                                                  | high     | done   | 2026-04-24 code-quality-review-followups 人工檢查 10.x           | —     |
-| TD-026 | index.vue 與 ConversationHistory fallback 重複 config + refresh 邏輯                                                                   | low      | done   | 2026-04-24 code-quality-review-followups /commit 0-A             | —     |
-| TD-027 | MCP connector first-time authorization journey 實測待部署後驗證                                                                        | mid      | open   | 2026-04-24 auth-redirect-refactor 人工檢查 7.4                   | —     |
-| TD-028 | DeleteAccountDialog Google reauth 無 callbackURL，dialog 會 unmount                                                                    | mid      | done   | 2026-04-25 fix-delete-account-dialog-google-reauth 人工驗證      | —     |
-| TD-029 | mcp-toolkit alias fragility — shim 可能被 bypass                                                                                       | mid      | open   | 2026-04-24 fix-mcp-streamable-http-session review MI-2           | —     |
-| TD-030 | Claude.ai re-init 循環阻擋 tools/call（stateless 不足）                                                                                | high     | open   | 2026-04-24 fix-mcp-streamable-http-session post-deploy           | —     |
-| TD-040 | Token revoke 未同步清 MCP session DO                                                                                                   | low      | open   | 2026-04-24 upgrade-mcp-to-durable-objects Task 4.6               | —     |
-| TD-041 | DO tool dispatch 未 wire up，flag=true non-initialize 回假 ack                                                                         | high     | open   | 2026-04-24 upgrade-mcp-to-durable-objects Phase 4 trim           | —     |
-| TD-042 | Local NuxtHub dev KV binding 未注入 `cloudflare.env` → `/mcp` 503                                                                      | mid      | open   | 2026-04-24 add-mcp-tool-selection-evals 5.2 apply                | —     |
-| TD-043 | Evalite afterAll 的 `process.exit` / throw 不 propagate 到 `pnpm eval`                                                                 | low      | open   | 2026-04-24 add-mcp-tool-selection-evals 6.5 verify               | —     |
-| TD-044 | `session.create.before` 靜默吞 user_profiles UNIQUE 衝突 → better-auth user id 與 user_profiles.id 可能漂移                            | mid      | open   | 2026-04-25 consolidate-conversation-history-config §7.4 人工檢查 | —     |
-| TD-045 | Local dev bootstrap 連串斷點（NuxtHub 不 auto-apply migrations、sqlite3 CLI rename 留 stale `*_new` FK refs、`.env` 空值擋 /api/chat） | high     | open   | 2026-04-25 consolidate-conversation-history-config §7.4 人工檢查 | —     |
-| TD-046 | `agentic-rag-staging` AutoRAG index 在 CF 帳號中不存在（wrangler / Notion / deploy.yml 皆引用，CF API 僅有 `agentic-rag`）             | high     | open   | 2026-04-25 consolidate-conversation-history-config §7.4 人工檢查 | —     |
-| TD-047 | `/api/chat` SSE `ready` 後階段 error 時 Container 未 emit `conversation-persisted` → DB 已建 conv 但 UI 不更新                         | mid      | open   | 2026-04-25 consolidate-conversation-history-config §7.4 人工檢查 | —     |
-| TD-048 | 聊天 UI 缺顯式「新對話」入口 — sessionStorage 記住 active id 後只能靠刪除或 DevTools 清才能開新對話                                    | mid      | open   | 2026-04-25 consolidate-conversation-history-config §7.2 人工檢查 | —     |
+| ID     | Title                                                                                                                                  | Priority | Status      | Discovered                                                       | Owner |
+| ------ | -------------------------------------------------------------------------------------------------------------------------------------- | -------- | ----------- | ---------------------------------------------------------------- | ----- |
+| TD-001 | mcp-token-store libsql 不相容                                                                                                          | low      | done        | 2026-04-20 B16 #10                                               | —     |
+| TD-002 | guest_policy DB-direct UPDATE 造成 cache drift                                                                                         | mid      | done        | 2026-04-20 B16 #7                                                | —     |
+| TD-003 | text-dimmed 對比度不足（cross-change residual）                                                                                        | mid      | done        | 2026-04-20 B17 C#11.9                                            | —     |
+| TD-004 | 首頁 Google login button 高度 36px < WCAG 40px                                                                                         | high     | done        | B17 viewport-baseline.spec.ts                                    | —     |
+| TD-005 | Admin 頁面 a11y violations 批次（@nuxt/a11y 首輪掃描）                                                                                 | high     | done        | 2026-04-21 RAF @nuxt/a11y                                        | —     |
+| TD-006 | Nuxt UI subtle variant tonal badge 對比度不足                                                                                          | mid      | done        | 2026-04-20 TD-003 e2e exclude                                    | —     |
+| TD-007 | 裝飾 icon tonal color 低於 WCAG 1.4.11 non-text AA                                                                                     | low      | done        | 2026-04-20 TD-006 review                                         | —     |
+| TD-008 | acceptance-tc-0x MCP 整合測試在 TD-001 修後破損                                                                                        | mid      | done        | 2026-04-20 add-ai-gateway                                        | —     |
+| TD-009 | user_profiles.email_normalized 全面改 nullable                                                                                         | mid      | open        | 2026-04-21 passkey-authentication                                | —     |
+| TD-010 | credentials / admin-members endpoint libsql 不相容                                                                                     | mid      | done        | 2026-04-21 passkey §16 DR                                        | —     |
+| TD-011 | migration 0009 FK cascade 設計不符 self-delete / audit                                                                                 | high     | done        | 2026-04-21 passkey §17.8                                         | —     |
+| TD-012 | passkey-first → link Google 被 better-auth email 檢驗擋住                                                                              | high     | done        | 2026-04-21 passkey §17.3                                         | —     |
+| TD-013 | /account/settings 新增 passkey 缺 naming dialog                                                                                        | low      | done        | 2026-04-21 passkey §17.2                                         | —     |
+| TD-014 | error-sanitizer 後 12 test 抛 evlog Logger not init                                                                                    | mid      | done        | 2026-04-21 drizzle-refactor apply                                | —     |
+| TD-015 | SSE 長連線缺 heartbeat，30s proxy timeout 風險                                                                                         | mid      | open        | 2026-04-24 /commit review                                        | —     |
+| TD-016 | isAbortError / createAbortError 在四處重複實作                                                                                         | low      | open        | 2026-04-24 /commit review                                        | —     |
+| TD-017 | chat.post.ts 兩個 AI binding getter 可合併                                                                                             | low      | done        | 2026-04-24 /commit review                                        | —     |
+| TD-018 | Container.vue classifyError 巢狀條件抽 lookup table                                                                                    | low      | done        | 2026-04-24 /commit review                                        | —     |
+| TD-019 | SSE reader pattern 在 client/server 雷同可抽共用                                                                                       | low      | open        | 2026-04-24 /commit review                                        | —     |
+| TD-020 | CHATGPT_CONNECTOR_OAUTH_PATH_PATTERN 可收緊字元集                                                                                      | low      | done        | 2026-04-24 /commit review                                        | —     |
+| TD-021 | ConversationHistory bucket toggle 缺 aria-expanded 等                                                                                  | low      | done        | 2026-04-24 /commit review                                        | —     |
+| TD-022 | groupedConversations computed 不跨 midnight 重新分組                                                                                   | low      | done        | 2026-04-24 /commit review                                        | —     |
+| TD-023 | index.vue 雙 LazyChatConversationHistory 產生重複 fetch                                                                                | low      | done        | 2026-04-24 /commit review                                        | —     |
+| TD-024 | chat-history-sidebar test suite 品質（string contract/resolves）                                                                       | low      | done        | 2026-04-24 /commit review                                        | —     |
+| TD-025 | Container.vue `$csrfFetch.native` 跳過 CSRF header 造成 /api/chat 403                                                                  | high     | done        | 2026-04-24 code-quality-review-followups 人工檢查 10.x           | —     |
+| TD-026 | index.vue 與 ConversationHistory fallback 重複 config + refresh 邏輯                                                                   | low      | done        | 2026-04-24 code-quality-review-followups /commit 0-A             | —     |
+| TD-027 | MCP connector first-time authorization journey 實測待部署後驗證                                                                        | mid      | open        | 2026-04-24 auth-redirect-refactor 人工檢查 7.4                   | —     |
+| TD-028 | DeleteAccountDialog Google reauth 無 callbackURL，dialog 會 unmount                                                                    | mid      | done        | 2026-04-25 fix-delete-account-dialog-google-reauth 人工驗證      | —     |
+| TD-029 | mcp-toolkit alias fragility — shim 可能被 bypass                                                                                       | mid      | open        | 2026-04-24 fix-mcp-streamable-http-session review MI-2           | —     |
+| TD-030 | Claude.ai re-init 循環阻擋 tools/call（stateless 不足）                                                                                | high     | open        | 2026-04-24 fix-mcp-streamable-http-session post-deploy           | —     |
+| TD-040 | Token revoke 未同步清 MCP session DO                                                                                                   | low      | open        | 2026-04-24 upgrade-mcp-to-durable-objects Task 4.6               | —     |
+| TD-041 | DO tool dispatch 未 wire up，flag=true non-initialize 回假 ack                                                                         | high     | open        | 2026-04-24 upgrade-mcp-to-durable-objects Phase 4 trim           | —     |
+| TD-042 | Local NuxtHub dev KV binding 未注入 `cloudflare.env` → `/mcp` 503                                                                      | mid      | open        | 2026-04-24 add-mcp-tool-selection-evals 5.2 apply                | —     |
+| TD-043 | Evalite afterAll 的 `process.exit` / throw 不 propagate 到 `pnpm eval`                                                                 | low      | open        | 2026-04-24 add-mcp-tool-selection-evals 6.5 verify               | —     |
+| TD-044 | `session.create.before` 靜默吞 user_profiles UNIQUE 衝突 → better-auth user id 與 user_profiles.id 可能漂移                            | mid      | open        | 2026-04-25 consolidate-conversation-history-config §7.4 人工檢查 | —     |
+| TD-045 | Local dev bootstrap 連串斷點（NuxtHub 不 auto-apply migrations、sqlite3 CLI rename 留 stale `*_new` FK refs、`.env` 空值擋 /api/chat） | high     | open        | 2026-04-25 consolidate-conversation-history-config §7.4 人工檢查 | —     |
+| TD-046 | `agentic-rag-staging` AutoRAG index 在 CF 帳號中不存在（wrangler / Notion / deploy.yml 皆引用，CF API 僅有 `agentic-rag`）             | high     | open        | 2026-04-25 consolidate-conversation-history-config §7.4 人工檢查 | —     |
+| TD-047 | `/api/chat` SSE `ready` 後階段 error 時 Container 未 emit `conversation-persisted` → DB 已建 conv 但 UI 不更新                         | mid      | open        | 2026-04-25 consolidate-conversation-history-config §7.4 人工檢查 | —     |
+| TD-048 | 聊天 UI 缺顯式「新對話」入口 — sessionStorage 記住 active id 後只能靠刪除或 DevTools 清才能開新對話                                    | mid      | open        | 2026-04-25 consolidate-conversation-history-config §7.2 人工檢查 | —     |
+| TD-049 | Cloudflare Pages deploy API 拒絕 git HEAD commit message（`Invalid commit message UTF-8 string [8000111]`）                            | mid      | in-progress | 2026-04-25 v0.43.0 deploy run 24908303837                        | —     |
 
 ---
 
@@ -1590,3 +1591,64 @@ Chat UI 沒有任何顯式的「新對話 / New chat」按鈕或 menu item：
 - 按下後主面板回到 hero empty state、sidebar active 高亮消失、sessionStorage 內 `web-chat:active-conversation:<userId>` 被刪
 - reload 後不會把剛開新對話的狀態覆寫回舊的
 - 新增 E2E / unit test 覆蓋「建 conv A → 按新對話 → 建 conv B，兩筆各自獨立」
+
+---
+
+## TD-049 — Cloudflare Pages deploy API 拒絕 git HEAD commit message
+
+**Status**: in-progress
+**Priority**: mid
+**Discovered**: 2026-04-25 — v0.43.0 release deploy run [24908303837](https://github.com/YuDefine/nuxt-edge-agentic-rag/actions/runs/24908303837)
+**Location**: `.github/workflows/deploy.yml` `deploy-docs-production` / `deploy-docs-staging` 的 `Deploy docs to Cloudflare Pages` step
+**Related markers**: search `@followup[TD-049]` in repo
+
+### Problem
+
+`wrangler pages deploy` 在不顯式傳 `--commit-message` 時會把 git HEAD commit subject + body 附到 Cloudflare Pages API 的 deployment record。對某些 commit message，Cloudflare API 會回：
+
+```
+✘ [ERROR] A request to the Cloudflare API (/accounts/.../pages/projects/.../deployments) failed.
+  Invalid commit message, it must be a valid UTF-8 string. [code: 8000111]
+```
+
+導致 `deploy-docs-production` / `deploy-docs-staging` 失敗，docs 站（`agentic-docs.yudefine.com.tw`）停留在前一版。**app worker deploy 不受影響**（走 `wrangler deploy --config server/wrangler.staging.json`，不經 Pages API）。
+
+#### 重現條件（2026-04-25 觀察）
+
+| Commit                 | Type      | Docs Pages deploy | 特徵                                          |
+| ---------------------- | --------- | ----------------- | --------------------------------------------- |
+| `5a47a63` v0.43.0 tag  | tag push  | ❌ 8000111        | emoji + 繁中 + 全形括號 + 頓號 + `TD-044~048` |
+| `a0e2426` 更新 HANDOFF | main push | ✅                | 也是 emoji + 繁中 + 全形標點 + 美式引號       |
+
+兩個 commit message 經 `git log --format='%s%n%b' <sha> \| xxd` 檢驗皆為**合法 UTF-8**，所以 Cloudflare `Invalid UTF-8 string` 的錯誤訊息本身不精確——非 wrangler 4.84.1 全面漂移，也不是本機 encoding 問題。觸發條件疑為 CF API 某個未文件化的 validator，可能針對：
+
+- 特定字元組合（例如 `TD-044~048` 的 ASCII tilde + 全形括號）
+- body 的特定格式（換行 + 前導空白 + list marker 的組合）
+- body 長度或某個 byte sequence
+
+### Fix approach
+
+**Short-term (this TD)** — `.github/workflows/deploy.yml` 的兩個 `deploy-docs-*` step 顯式傳：
+
+```yaml
+run: pnpm exec wrangler pages deploy docs/.vitepress/dist \
+  --project-name "$DOCS_CF_PAGES_PROJECT_NAME" \
+  --branch "$DOCS_CF_PAGES_*_BRANCH" \
+  --commit-hash "${{ github.sha }}" \
+  --commit-message "Deploy ${{ github.sha }}"
+```
+
+避開 git HEAD commit message 直接作為 CF API 輸入。`--commit-hash` 仍保留 SHA 供 CF dashboard 顯示。
+
+**Long-term** — 若此問題在其他專案重現、或未來要恢復用 git commit message（保留 dashboard 可讀性），整理：
+
+- `5a47a63` 完整 body bytes（已在 `docs/solutions/tooling/2026-04-25-cloudflare-pages-utf8-commit-message.md`）
+- 一個最小 repro（4 個字元的 commit message 還會觸發嗎？）
+- 開 issue 於 [`cloudflare/workers-sdk`](https://github.com/cloudflare/workers-sdk/issues) 或 CF Pages support
+
+### Acceptance
+
+- [ ] `.github/workflows/deploy.yml` 兩個 `deploy-docs-*` job 的 `wrangler pages deploy` 帶 `--commit-message` + `--commit-hash`
+- [ ] 重跑 v0.43.0 docs production deploy（`gh workflow run deploy.yml --ref v0.43.0 -f target=production` 或在 v0.43.0 tag 上 manual workflow_dispatch），確認 `agentic-docs.yudefine.com.tw` 顯示 v0.43.0 內容
+- [ ] 後續 3 次 main push / tag 發版，`deploy-docs-*` 皆綠（驗證 workaround 穩定）
+- [ ] （Optional）保存 `5a47a63` 完整 bytes + 最小 repro，供未來向 workers-sdk / CF 回報

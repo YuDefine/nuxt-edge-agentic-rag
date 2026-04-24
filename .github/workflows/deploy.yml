@@ -312,7 +312,7 @@ jobs:
         run: pnpm docs:build
 
       - name: Deploy docs to Cloudflare Pages (production)
-        run: pnpm exec wrangler pages deploy docs/.vitepress/dist --project-name "$DOCS_CF_PAGES_PROJECT_NAME" --branch "$DOCS_CF_PAGES_PRODUCTION_BRANCH"
+        run: pnpm exec wrangler pages deploy docs/.vitepress/dist --project-name "$DOCS_CF_PAGES_PROJECT_NAME" --branch "$DOCS_CF_PAGES_PRODUCTION_BRANCH" --commit-hash "${{ github.sha }}" --commit-message "Deploy ${{ github.sha }}"
 
       - name: Sync production docs custom domain
         if: env.DOCS_PRODUCTION_URL != ''
@@ -370,7 +370,7 @@ jobs:
         run: pnpm docs:build
 
       - name: Deploy docs to Cloudflare Pages (staging)
-        run: pnpm exec wrangler pages deploy docs/.vitepress/dist --project-name "$DOCS_CF_PAGES_PROJECT_NAME" --branch "$DOCS_CF_PAGES_STAGING_BRANCH"
+        run: pnpm exec wrangler pages deploy docs/.vitepress/dist --project-name "$DOCS_CF_PAGES_PROJECT_NAME" --branch "$DOCS_CF_PAGES_STAGING_BRANCH" --commit-hash "${{ github.sha }}" --commit-message "Deploy ${{ github.sha }}"
 
       - name: Sync staging docs custom domain
         if: env.DOCS_STAGING_URL != ''
