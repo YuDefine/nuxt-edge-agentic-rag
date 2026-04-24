@@ -128,6 +128,8 @@ function patchOpenTelemetryProxyTracer(): NitroBuildPlugin {
 
 function injectMcpSessionDurableObjectExport(): NitroExportInjectionPlugin {
   const durableObjectModuleSuffix = 'server/durable-objects/mcp-session.ts'
+  const durableObjectExportPattern =
+    /export\s+(?:\{[^}]*\bMCPSessionDurableObject\b[^}]*\}|(?:class|const|let|var|function)\s+MCPSessionDurableObject\b)/
 
   return {
     name: 'export-mcp-session-durable-object',
@@ -152,16 +154,17 @@ function injectMcpSessionDurableObjectExport(): NitroExportInjectionPlugin {
         )
       }
 
-      if (
-        typeof doChunk.code === 'string' &&
-        !/export\s*\{\s*MCPSessionDurableObject/.test(doChunk.code)
-      ) {
+      if (typeof doChunk.code === 'string' && !durableObjectExportPattern.test(doChunk.code)) {
         const sourcemapComment = /\n?\/\/# sourceMappingURL=[^\n]*\n?$/
         const match = doChunk.code.match(sourcemapComment)
         const injection = '\nexport { MCPSessionDurableObject };\n'
         doChunk.code = match
           ? doChunk.code.replace(sourcemapComment, `${injection}${match[0]}`)
           : `${doChunk.code}${injection}`
+      }
+
+      if (doChunk.fileName === entry.fileName) {
+        return
       }
 
       const relativePath = `./${doChunk.fileName}`
