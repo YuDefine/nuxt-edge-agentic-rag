@@ -20,7 +20,10 @@ const inputShape = {
     .string()
     .trim()
     .min(1, 'query is required')
-    .max(2000, 'query must be 2000 characters or fewer'),
+    .max(2000, 'query must be 2000 characters or fewer')
+    .describe(
+      'Natural-language search query for ranked passages from the governed knowledge corpus. Use when you need source snippets rather than a synthesized answer; maximum 2000 characters.',
+    ),
 }
 
 export default defineMcpTool({
@@ -28,7 +31,17 @@ export default defineMcpTool({
   title: 'Search the knowledge base',
   description:
     'Search governed knowledge sources for the most relevant passages given a natural-language query.',
+  annotations: {
+    readOnlyHint: true,
+    destructiveHint: false,
+    openWorldHint: false,
+    idempotentHint: true,
+  },
   inputSchema: inputShape,
+  inputExamples: [
+    { query: 'April launch readiness risks' },
+    { query: 'Governance policy evidence publishing requirements' },
+  ],
   handler: async (args: { query: string }) => {
     const event = await getCurrentMcpEvent()
     const auth = requireMcpAuth(event)

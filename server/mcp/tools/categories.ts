@@ -13,7 +13,9 @@ const inputShape = {
     .boolean()
     .optional()
     .default(false)
-    .describe('Include document counts per category when true.'),
+    .describe(
+      'Whether to include document counts for each visible knowledge category. Defaults to false; counts are limited to categories the caller is allowed to see.',
+    ),
 }
 
 export default defineMcpTool({
@@ -21,6 +23,12 @@ export default defineMcpTool({
   title: 'List knowledge categories',
   description:
     'List the knowledge categories visible to the caller, optionally including document counts per category.',
+  annotations: {
+    readOnlyHint: true,
+    destructiveHint: false,
+    openWorldHint: false,
+    idempotentHint: true,
+  },
   inputSchema: inputShape,
   handler: async (args: { includeCounts?: boolean }) => {
     const event = await getCurrentMcpEvent()
