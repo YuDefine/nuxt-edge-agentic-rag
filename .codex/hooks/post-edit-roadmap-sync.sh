@@ -8,7 +8,7 @@
 #      - the edited path is under openspec/changes/, or
 #      - a claim heartbeat was refreshed.
 #
-# Note: external runtimes outside Claude's native hook loop won't trigger it — that's
+# Note: external runtimes (Codex CLI, Copilot CLI) won't trigger it — that's
 # what SessionStart and the manual `pnpm spectra:roadmap` /
 # `pnpm spectra:claims` calls after /assign are for.
 #
