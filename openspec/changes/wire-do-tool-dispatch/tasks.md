@@ -35,12 +35,26 @@
 
 ## 7. Rollout
 
-- [ ] 7.1 Staging: `NUXT_KNOWLEDGE_FEATURE_MCP_SESSION=true` 後立即驗證 `AskKnowledge` / `SearchKnowledge` 各 2+ 次；確認 response 非 501、非 re-init loop，且 staging custom domain 可達（HTTP 200）。若可用 `wrangler tail`，同步確認無 `ownKeys` error / 401 auth context failure；若本機無 Cloudflare token，需以 GitHub deploy evidence + protocol response 記錄替代 tail（對齊 Decision 4: Rollout = staging flag=true immediate verification → production flag=true）
+- [x] 7.1 Staging: `NUXT_KNOWLEDGE_FEATURE_MCP_SESSION=true` 後立即驗證 `AskKnowledge` / `SearchKnowledge` 各 2+ 次；確認 response 非 501、非 re-init loop，且 staging custom domain 可達（HTTP 200）。若可用 `wrangler tail`，同步確認無 `ownKeys` error / 401 auth context failure；若本機無 Cloudflare token，需以 GitHub deploy evidence + protocol response 記錄替代 tail（對齊 Decision 4: Rollout = staging flag=true immediate verification → production flag=true）
   - **Staging v0.42.2 (2026-04-25, Deploy run 24905096791)** protocol-layer 驗證通過：
     - `initialize`、`notifications/initialized`、`tools/list` 皆 HTTP 200；`Mcp-Session-Id` 正確傳回
     - `askKnowledge` x2、`searchKnowledge` x2 皆 HTTP 200
     - 無 JSON-RPC `-32603 a16.ownKeys`（ownKeys root cause 已在 `ef6d59c` 修復：`build/nitro/rollup.ts` 把 `reflect-metadata/Reflect.js` polyfill 包進 IIFE）、無 501、無 `TD-041`、無 `Server already initialized` re-init loop；`agentic-staging.yudefine.com.tw` 可達
-  - **Caveat（7.1 checkbox 尚未勾選）**：4 個 tool call body 都是 `{"result":{"content":[{"type":"text","text":"Tool execution failed. Please retry later."}],"isError":true}}` — tool handler 內部仍 throw（非 SDK parse 層），由 `normalizeErrorToResult` fallback 成 isError result。真正的 handler error stack 被 DO `createDoNoopLogger` 吞掉；需要再一輪 debug patch 抓 handler error 並修根因才能勾選 7.1、flip production flag。見 `HANDOFF.md` wire-do-tool-dispatch 區塊的「下一步」。
+  - **Tool-handler fallback root cause (2026-04-25, v0.43.1 debug instrumentation)**: 4 個 tool call 一開始都回 `{"text":"Tool execution failed. Please retry later.","isError":true}` fallback。`c20971e` debug patch 把 DO `createDoNoopLogger` 改 `console.*` + 在 `normalizeErrorToResult` 前 dump stack。Wrangler tail (`nuxt-edge-agentic-rag-staging`, 2026-04-25T21:46) 抓到所有 4 條 throw 都同源：
+    ```
+    AutoRAGNotFoundError: AutoRAG not found
+        at parseError (cloudflare-internal:autorag-api:32:16)
+        at async AutoRAG.search (cloudflare-internal:autorag-api:74:23)
+        at async retrieveVerifiedEvidence (...) / answerKnowledgeQuery (...)
+        at async McpServer.executeToolHandler (...)
+        at async wrappedHandler (...)
+    ```
+    Root cause = TD-046（staging Cloudflare 帳號內未建 `agentic-rag-staging` AutoRAG instance），非 wire-do-tool-dispatch bug。DO dispatch chain 已全綠 — auth context、DO instance、McpServer lazy init、tool registration、handler 全部運作至 binding 層。
+  - **Resolution (2026-04-25, post-v0.43.1)**: 透過 CF API 建 staging `agentic-rag-staging` AutoRAG instance（複製 production config，source = `agentic-rag-documents-staging`，AI Gateway = `agentic-rag-staging`，embedding = `@cf/qwen/qwen3-embedding-0.6b`）+ AI Gateway。重跑 4 個 tool call 全部 `isError: false`：
+    - `askKnowledge` x2 → `{"citations":[],"refused":true}`（staging R2 空，無 evidence 而 refused 是正確行為）
+    - `searchKnowledge` x2 → `{"results":[]}`（empty index，正確 empty response）
+    - SID `e9dcb3b4-224e-47ef-8120-8323b5fdf3e5`，無 throw、無 fallback、無 `Server already initialized`
+  - **Standalone follow-up @followup[TD-050]**: staging R2 仍為空 / 無 sync schedule active；TD-046 binding 層已修，但 staging 真實 RAG content 取得（seed sample docs 或 daily sync from production）拆 TD-050 處理，不阻擋本 change archive。
 - [ ] 7.2 Production `NUXT_KNOWLEDGE_FEATURE_MCP_SESSION=true` flip；24 小時 wrangler tail 密集監控；任一 anomaly 立刻 flag=false（無需 redeploy）
 - [ ] 7.3 Production 正常運作 7 天後 `docs/tech-debt.md` 把 TD-030 + TD-041 Status 標 `done`，各附一句 one-liner
 

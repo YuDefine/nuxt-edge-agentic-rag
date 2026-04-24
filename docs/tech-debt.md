@@ -46,10 +46,11 @@
 | TD-043 | Evalite afterAll 的 `process.exit` / throw 不 propagate 到 `pnpm eval`                                                                 | low      | open        | 2026-04-24 add-mcp-tool-selection-evals 6.5 verify               | —     |
 | TD-044 | `session.create.before` 靜默吞 user_profiles UNIQUE 衝突 → better-auth user id 與 user_profiles.id 可能漂移                            | mid      | open        | 2026-04-25 consolidate-conversation-history-config §7.4 人工檢查 | —     |
 | TD-045 | Local dev bootstrap 連串斷點（NuxtHub 不 auto-apply migrations、sqlite3 CLI rename 留 stale `*_new` FK refs、`.env` 空值擋 /api/chat） | high     | open        | 2026-04-25 consolidate-conversation-history-config §7.4 人工檢查 | —     |
-| TD-046 | `agentic-rag-staging` AutoRAG index 在 CF 帳號中不存在（wrangler / Notion / deploy.yml 皆引用，CF API 僅有 `agentic-rag`）             | high     | open        | 2026-04-25 consolidate-conversation-history-config §7.4 人工檢查 | —     |
+| TD-046 | `agentic-rag-staging` AutoRAG index 在 CF 帳號中不存在（wrangler / Notion / deploy.yml 皆引用，CF API 僅有 `agentic-rag`）             | high     | done        | 2026-04-25 consolidate-conversation-history-config §7.4 人工檢查 | —     |
 | TD-047 | `/api/chat` SSE `ready` 後階段 error 時 Container 未 emit `conversation-persisted` → DB 已建 conv 但 UI 不更新                         | mid      | open        | 2026-04-25 consolidate-conversation-history-config §7.4 人工檢查 | —     |
 | TD-048 | 聊天 UI 缺顯式「新對話」入口 — sessionStorage 記住 active id 後只能靠刪除或 DevTools 清才能開新對話                                    | mid      | open        | 2026-04-25 consolidate-conversation-history-config §7.2 人工檢查 | —     |
 | TD-049 | Cloudflare Pages deploy API 拒絕 git HEAD commit message（`Invalid commit message UTF-8 string [8000111]`）                            | mid      | in-progress | 2026-04-25 v0.43.0 deploy run 24908303837                        | —     |
+| TD-050 | Staging R2 (`agentic-rag-documents-staging`) 為空 — staging RAG content 缺 seed / 無 sync schedule                                     | mid      | open        | 2026-04-25 wire-do-tool-dispatch §7.1 post-fix observation       | —     |
 
 ---
 
@@ -1464,7 +1465,8 @@ Cleanroom 新裝或 local DB rebuild 後，要跑起 `/api/chat` 必須連過以
 
 ## TD-046 — `agentic-rag-staging` AutoRAG index 在 CF 帳號中不存在
 
-**Status**: open
+**Status**: done
+**Resolved**: 2026-04-25 — 透過 CF API 建 `agentic-rag-staging` AutoRAG（複製 production config，source `agentic-rag-documents-staging`，embedding `@cf/qwen/qwen3-embedding-0.6b`，sync_interval 21600s）+ 同名 AI Gateway。`wire-do-tool-dispatch` §7.1 4 個 tool call (`askKnowledge` x2 / `searchKnowledge` x2) 全部回 `isError: false`（empty results / refused 為 staging R2 空所致正常行為）。Staging R2 seed sample docs / production sync 屬於後續 RAG content 議題，不在本 TD scope 內，需要時另開 TD。
 **Priority**: high
 **Discovered**: 2026-04-25 — `consolidate-conversation-history-config` §7.4 人工檢查（local /api/chat 503 AutoRAG not found；CF API 驗證）
 **Location**: `wrangler.staging.jsonc`、`.github/workflows/deploy.yml:238`、Notion Secret 頁、`agentic-rag-staging` binding consumer
@@ -1656,3 +1658,44 @@ run: pnpm exec wrangler pages deploy docs/.vitepress/dist \
 - [ ] 重跑 v0.43.0 docs production deploy（`gh workflow run deploy.yml --ref v0.43.0 -f target=production` 或在 v0.43.0 tag 上 manual workflow_dispatch），確認 `agentic-docs.yudefine.com.tw` 顯示 v0.43.0 內容
 - [ ] 後續 3 次 main push / tag 發版，`deploy-docs-*` 皆綠（驗證 workaround 穩定）
 - [ ] （Optional）保存 `5a47a63` 完整 bytes + 最小 repro，供未來向 workers-sdk / CF 回報
+
+---
+
+## TD-050 — Staging R2 (`agentic-rag-documents-staging`) 為空，缺 RAG content seed / sync schedule
+
+**Status**: open
+**Priority**: mid
+**Discovered**: 2026-04-25 — `wire-do-tool-dispatch` §7.1 post-fix observation（TD-046 修復後 4 個 tool call `isError: false` 但 `citations:[] / results:[]` empty）
+**Location**: R2 bucket `agentic-rag-documents-staging`（CF account `0eac599c12df10586d97a78179b9f11f`）、`agentic-rag-staging` AutoRAG instance
+**Related markers**: search `@followup[TD-050]` in repo
+
+### Problem
+
+TD-046 修復後 staging `agentic-rag-staging` AutoRAG binding 已可正常呼叫，但因 `agentic-rag-documents-staging` R2 bucket **完全為空**（CF API 確認 `result: []`），所有 staging RAG retrieval 都回 empty / refused：
+
+- `askKnowledge` → `{"citations":[],"refused":true}`（無 evidence ⇒ refused，符合 retrieve-then-answer 設計）
+- `searchKnowledge` → `{"results":[]}`（empty index ⇒ empty hits）
+
+對於 `wire-do-tool-dispatch` §7.1 immediate validation 而言，這仍滿足「非 501 / 非 re-init / `isError: false`」門檻，**不阻擋 archive**；但若使用者：
+
+1. 走 staging 做端到端 chat 體驗測試
+2. 從 local dev 指向 staging 跑 `pnpm eval`
+3. 想用 staging 重現 production RAG 行為
+
+都會發現實質上「拿不到答案」。
+
+### Fix approach
+
+兩條路徑，需 trade-off：
+
+1. **Seed sample docs（手動）** — 上傳 5–10 個 staging-only sample docs 到 `agentic-rag-documents-staging`（例如 production 文件的子集或特意造的 fixture）；觸發 AutoRAG indexing job；待 indexing 完成驗證 retrieval 回真實 results。優點：staging 與 production 可隔離，不污染 production cache。缺點：需要維護 sample docs，與 production 內容會漂移。
+2. **Daily sync from production**（自動） — 寫一個 cron / Worker scheduled trigger，每天從 `agentic-rag-documents` 同步到 `agentic-rag-documents-staging`（或子集；視 staging 規模 / 成本）。優點：與 production 內容對齊。缺點：staging 非真正獨立資料集；需評估 PII / 隱私風險。
+
+建議走 1 + 文檔化「staging seed = static fixture」，待 staging 真實使用情境出現再評估升級到 2。
+
+### Acceptance
+
+- [ ] `agentic-rag-documents-staging` R2 bucket 至少含 5 個可索引文件
+- [ ] AutoRAG `agentic-rag-staging` indexing job 完成（CF dashboard 顯示文件數 > 0）
+- [ ] `wire-do-tool-dispatch` §7.1 4 tool call 重跑 → `askKnowledge` 回 `citations: [...]` 含至少 1 筆、`searchKnowledge` 回 `results: [...]` 含至少 1 筆
+- [ ] Notion Secret 頁 staging 區塊紀錄 seed 來源 + 維護週期（手動 / cron）

@@ -168,26 +168,6 @@ function normalizeToolResult(result: unknown): CallToolResult {
 
 function normalizeErrorToResult(error: unknown): CallToolResult {
   logDoError(error, 'mcp-do-tool-handler')
-
-  // TODO(remove-debug-do-tool-handler-throw): the registered tool wrapper here
-  // catches the throw before it can reach the SDK's tools/call dispatcher (the
-  // earlier `wrapCallToolHandlerForStackLogging` debug helper from fa95128
-  // never sees it), so wire-do-tool-dispatch immediate validation cannot tell
-  // whether the throw came from the handler body, a binding helper, or a Zod
-  // parse. Emit the full name/message/stack to wrangler tail directly so the
-  // staging trace pinpoints the throw site. Remove once handler root cause is
-  // fixed and isError=false responses are restored. See HANDOFF.md →
-  // wire-do-tool-dispatch.
-  const asError = error instanceof Error ? error : new Error(String(error))
-  // eslint-disable-next-line no-console -- TODO(remove-debug-do-tool-handler-throw)
-  console.error(
-    '[mcp-do tool-handler throw]',
-    asError.name,
-    '-',
-    asError.message,
-    asError.stack ?? '(no stack)',
-  )
-
   return { content: [{ type: 'text', text: TOOL_EXECUTION_FAILED_MESSAGE }], isError: true }
 }
 
