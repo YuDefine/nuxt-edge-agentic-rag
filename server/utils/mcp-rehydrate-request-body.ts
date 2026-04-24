@@ -1,5 +1,5 @@
 import type { H3Event } from 'h3'
-import { readBody } from 'h3'
+import { getRequestURL, readBody } from 'h3'
 
 import { MCP_AUTH_CONTEXT_HEADER } from '#server/utils/mcp-auth-context-codec'
 
@@ -7,10 +7,16 @@ interface WebRequestEventShape {
   context?: {
     mcpAuthEnvelope?: string
   }
-  req?: Request
+  req?: RequestLike
   web?: {
-    request?: Request
+    request?: RequestLike
   }
+}
+
+interface RequestLike {
+  headers: HeadersInit
+  method: string
+  url: string
 }
 
 /**
@@ -44,7 +50,7 @@ export async function rehydrateMcpRequestBody(event: H3Event): Promise<void> {
     headers.set(MCP_AUTH_CONTEXT_HEADER, envelope)
   }
 
-  const replay = new Request(original.url, {
+  const replay = new Request(resolveReplayUrl(original.url, event), {
     method: original.method,
     headers,
     body: bodyText,
@@ -55,4 +61,26 @@ export async function rehydrateMcpRequestBody(event: H3Event): Promise<void> {
   target.req = replay
   target.web ??= {}
   target.web.request = replay
+}
+
+function resolveReplayUrl(url: string, event: H3Event): string {
+  try {
+    return new URL(url).href
+  } catch {
+    return new URL(url, resolveRequestOrigin(event)).href
+  }
+}
+
+function resolveRequestOrigin(event: H3Event): string {
+  try {
+    return getRequestURL(event).origin
+  } catch {
+    const headers = (event as unknown as { headers?: Headers }).headers
+    const host = headers?.get('host')
+    if (!host) {
+      throw new Error('Cannot resolve MCP replay request origin')
+    }
+    const protocol = headers?.get('x-forwarded-proto') ?? 'https'
+    return `${protocol}://${host}`
+  }
 }
