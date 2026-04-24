@@ -147,7 +147,7 @@ if [ "${#SIGNALS[@]}" -gt 0 ]; then
       echo "  · $s"
     done
     echo ""
-    echo "若此為預期外漂移 → 依決策規則（見 proactive-skills-section.md → Ingest Triggers）："
+    echo "若此為預期外漂移 → 依決策規則（見 proactive-skills.md → Ingest Triggers）："
     echo "  · 信號明確 → 直接跑 \`spectra-ingest\` 並口頭告知"
     echo "  · 信號模糊 → 先詢問使用者要 ingest 還是當前 tasks 微調"
     echo "若 proposal 已涵蓋但用字不同 → 可忽略此警告"
