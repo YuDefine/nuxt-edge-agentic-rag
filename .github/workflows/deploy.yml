@@ -484,7 +484,7 @@ jobs:
         if: env.WEBHOOK_URL != ''
         env:
           WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-          TARGET: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.target || 'production' }}
+          TARGET: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.target || (startsWith(github.ref, 'refs/tags/v') && 'production' || 'staging') }}
           CI_RESULT: ${{ needs.verify-ci-gate.result }}
           PROD_DEPLOY_RESULT: ${{ needs.deploy-production.result }}
           PROD_SMOKE_RESULT: ${{ needs.smoke-test.result }}
