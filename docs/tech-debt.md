@@ -41,6 +41,7 @@
 | TD-029 | mcp-toolkit alias fragility — shim 可能被 bypass                      | mid      | open   | 2026-04-24 fix-mcp-streamable-http-session review MI-2 | —     |
 | TD-030 | Claude.ai re-init 循環阻擋 tools/call（stateless 不足）               | high     | open   | 2026-04-24 fix-mcp-streamable-http-session post-deploy | —     |
 | TD-040 | Token revoke 未同步清 MCP session DO                                  | low      | open   | 2026-04-24 upgrade-mcp-to-durable-objects Task 4.6     | —     |
+| TD-041 | DO tool dispatch 未 wire up，flag=true non-initialize 回假 ack        | high     | open   | 2026-04-24 upgrade-mcp-to-durable-objects Phase 4 trim | —     |
 
 ---
 
@@ -1216,3 +1217,55 @@ Revoke endpoint 讀出 list → 迭代呼叫 `env.MCP_SESSION.idFromName(session
 - Admin UI revoke token 後 `wrangler tail` 觀察：對應 sessionId 的 DO 立即 `deleteAll`（或在 5 秒內）
 - 既有 DO TTL alarm 仍保留為 safety net
 - Integration test：`token revoke → 同一 sessionId 的後續 request → 404`
+
+## TD-041 — DO tool dispatch 未 wire up，flag=true 時 non-initialize 回假 ack
+
+**Status**: open
+**Priority**: high
+**Discovered**: 2026-04-24 — `upgrade-mcp-to-durable-objects` Phase 4 C-path scope trim（pre-rollout review 發現 tasks 4.3 `[x]` 與實作不一致）
+**Location**: `server/durable-objects/mcp-session.ts:158-181`（假 ack path）；`server/durable-objects/mcp-do-transport.ts`（`DoJsonRpcTransport` 已實作但未被 DO 呼叫）
+**Related markers**: `@followup[TD-041]` 於 `openspec/changes/upgrade-mcp-to-durable-objects/tasks.md` Task 4.3 / 4.3.1 / 5.2；由新 change `wire-do-tool-dispatch` 全面接手
+
+### Problem
+
+`upgrade-mcp-to-durable-objects` Phase 4（Pivot C）完成 `DoJsonRpcTransport` class + `MCPSessionDurableObject` session lifecycle（create / touch `lastSeenAt` / alarm GC / 404 on missing），但 DO `fetch()` 對 **non-initialize request**（`tools/list` / `tools/call` / `notifications/*` 等所有 JSON-RPC methods）**並未**：
+
+1. 呼叫 `DoJsonRpcTransport.dispatch(envelope, extra)` 把 message 丟給 SDK
+2. Lazy init `McpServer` + `server.connect(transport)` 讓 SDK 處理 tool 派遣
+3. 從 Nuxt 層序列化 auth context (`event.context.mcpAuth`) 並在 DO 內重建
+4. 從 DO env 取 Cloudflare bindings（D1 / KV / AI / BLOB）並注入 tool handler（目前 tool handler 透過 `getCurrentMcpEvent()` = Nitro `useEvent()` 取得 `event.context.cloudflare.env`，DO 內沒有 Nuxt H3Event）
+
+Instead，non-initialize 目前回一個 `{ jsonrpc: '2.0', id, result: { session: { sessionId, lastSeenAt } } }` 的假 ack。這意味著若 `NUXT_KNOWLEDGE_FEATURE_MCP_SESSION=true` 在 production flip 為 true，Claude.ai 對每個 `tools/call` 會看到 `HTTP 200` 但 response body 與實際 tool 無關 — **silent degradation，比 tool 直接 fail 更難察覺**。
+
+原 comment（`server/durable-objects/mcp-session.ts:158-161`）明確標示此為 follow-up：
+
+> Post-Phase 2 Pivot C: tool dispatch via `DoJsonRpcTransport` lands in a follow-up task (context plumbing to `getCurrentMcpEvent`). For now the session renewal path returns a minimal JSON-RPC acknowledgement so session lifecycle is observable end-to-end.
+
+### Fix approach
+
+兩段處理：
+
+**短期（本 DO change 完成前必做，避免 rollout 隱患）**：把假 ack 改為**明確的 JSON-RPC error**（code `-32601 Method not found` 或 `-32603 Internal error`），訊息指出「tool dispatch via DO 尚未實作，請設 `NUXT_KNOWLEDGE_FEATURE_MCP_SESSION=false` 走 stateless fallback」。production flag 永不 flip 為 true 直到長期方案落地；staging 用來驗 session lifecycle。
+
+**長期（新 change `wire-do-tool-dispatch` 接手）**：
+
+1. DO 內 lazy init `McpServer` 並 register 4 個 tool（複製 `server/mcp/tools/*.ts` 的 definition 或重構為可注入 context 的 pure function）
+2. Auth plumbing：Nuxt `/mcp` middleware 驗完 bearer token 後，將 `McpAuthContext` 序列化為特殊 header（例如 `X-Mcp-Auth-Context`，經 HMAC 簽章避免偽造）forward 到 DO；DO 內 parse + 重建 context
+3. Env plumbing：DO env 已有 D1 / KV / AI / BLOB binding（同 worker 共用），但 tool handler 的 `getCurrentMcpEvent()` 依賴 Nitro `useEvent()`；需 fork tool handler 為 `(args, context: { env, auth, ... }) => ...` 形式，或在 DO 內建 shim event 滿足 `event.context.cloudflare.env` / `event.context.mcpAuth` 介面
+4. `Reflect.ownKeys(env)` workaround：shim 層的 `installEnumerableSafeEnv` 要同步在 DO runtime 套用（DO 的 env proxy 是否重現同 bug 需實測）
+5. Integration test：完整 e2e `tools/call → DO → McpServer → tool handler → retrieval → JSON-RPC response` 綠燈
+
+### Acceptance
+
+**短期 acceptance（本 DO change archive 前）**：
+
+- [ ] `server/durable-objects/mcp-session.ts` non-initialize path 回 JSON-RPC error（`error.code = -32601` 或 `-32603`），body 包含「tool dispatch via DO not yet implemented」提示
+- [ ] `test/integration/mcp-session-durable-object.spec.ts` 新增 assertion：non-initialize 時 DO 回 `error.code` 非 null
+- [ ] Production `NUXT_KNOWLEDGE_FEATURE_MCP_SESSION` 維持 `false`；staging 僅用於 session lifecycle 驗證
+
+**長期 acceptance（`wire-do-tool-dispatch` change archive）**：
+
+- [ ] DO 內 `tools/call` 可完整執行 4 個 tool（askKnowledge / searchKnowledge / getDocumentChunk / listCategories）並回真實結果
+- [ ] Auth context 從 Nuxt 安全傳到 DO（帶簽章、不被偽造）
+- [ ] `wrangler tail` production 3 次 tool call 無 `ownKeys` error、無 re-init loop、回應帶正確 content
+- [ ] `NUXT_KNOWLEDGE_FEATURE_MCP_SESSION=true` 在 production flip 成功

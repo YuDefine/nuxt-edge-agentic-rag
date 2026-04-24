@@ -20,13 +20,16 @@
 
 ## Next Moves
 
-進行中：**`upgrade-mcp-to-durable-objects`** 14/26 tasks (54%)，claim 持有者 `charles@charlesdeMac-mini.local`（詳見 `HANDOFF.md`）。
+進行中：
+
+- **`upgrade-mcp-to-durable-objects`** 17/27 tasks (63%)，**Phase 4 scope 縮為 session lifecycle only** — tool dispatch 改由 `wire-do-tool-dispatch` 接手（見 TD-041）；production flag 維持 false 直到 wire-do-tool-dispatch archive
+- **`fix-delete-account-dialog-google-reauth`** 6/15 tasks (40%)，實作已啟動但尚未 archive
+- **`add-mcp-tool-selection-evals`** 4/19 tasks (21%)，eval harness 實作已啟動但尚未 archive
 
 ### 已 propose，待 apply（見 AUTO Parked Changes 區塊）
 
 - [high] **`enhance-mcp-tool-metadata`** — 4 MCP tool 的 `.describe()` / `annotations` / `inputExamples`（Tier 1）；`/spectra-apply` 會自動 unpark
-- [mid] **`add-mcp-tool-selection-evals`** — `evalite` + `@ai-sdk/mcp` tool-selection eval harness（Tier 2，non-CI-blocking）
-- [mid] **`fix-delete-account-dialog-google-reauth`** — TD-028 Google reauth callbackURL + session bridge resume（Tier 2，auth-critical）
+- [high] **`wire-do-tool-dispatch`** — DO 內 McpServer lazy init + `DoJsonRpcTransport.dispatch` + auth context HMAC forward（Tier 3，@followup[TD-041]）；依賴 `upgrade-mcp-to-durable-objects` session lifecycle 層；解決 TD-030 剩餘部分；production flag flip true 屬此 change rollout 範圍
 
 ### 近期（尚未 propose，可與 DO change 並行）
 
@@ -52,9 +55,9 @@
 
 ## Active Changes
 
-_last synced: 2026-04-24T14:01:42.338Z_
+_last synced: 2026-04-24T14:17:52.090Z_
 
-2 active changes (0 ready · 1 in progress · 1 draft · 0 blocked)
+3 active changes (0 ready · 3 in progress · 0 draft · 0 blocked)
 
 ### Ready to apply
 
@@ -62,12 +65,15 @@ _(none)_
 
 ### In progress
 
-- **upgrade-mcp-to-durable-objects** — 16/26 tasks (62%)
+- **add-mcp-tool-selection-evals** — 4/19 tasks (21%)
+- **fix-delete-account-dialog-google-reauth** — 6/15 tasks (40%)
+  - Specs: `passkey-authentication`
+- **upgrade-mcp-to-durable-objects** — 17/27 tasks (63%)
   - Specs: `mcp-knowledge-tools`
 
 ### Draft
 
-- **add-mcp-tool-selection-evals** — 0/19 tasks (0%)
+_(none)_
 
 ### Blocked
 
@@ -82,18 +88,9 @@ _(none)_
 > 即時 ownership 由 `.spectra/claims/*.json` 提供。
 > 接手 handoff / 開始做 change 時，先 claim，再移除 `HANDOFF.md` 對應項目。
 
-1 claim (1 active · 0 stale)
+_No active claims._
 
-### Live Ownership
-
-- **upgrade-mcp-to-durable-objects** — claude-code:opus-4-7 (claude-code)
-  - Accepted from: handoff
-  - Last heartbeat: 2026-04-24T14:00:15.148Z
-  - Note: User delegated Phase 4 Core Implementation (Pivot C) to Claude Code session
-
-### Stale Claims
-
-_(none)_
+> 若你要開始做上面的 active change，先跑 `spectra:claim -- <change>`。
 
 <!-- SPECTRA-UX:ROADMAP-AUTO:/claims -->
 
@@ -106,6 +103,7 @@ _(none)_
 ### Independent (can run in parallel)
 
 - `add-mcp-tool-selection-evals`
+- `fix-delete-account-dialog-google-reauth`
 - `upgrade-mcp-to-durable-objects`
 
 ### Mutex (same spec touched)
@@ -129,8 +127,8 @@ _(none)_
 
 - **enhance-mcp-tool-metadata** — 0/14 tasks (0%)
   - Summary: 本專案是 Agentic RAG，MCP client（Cl…
-- **fix-delete-account-dialog-google-reauth** — 0/15 tasks (0%)
-  - Summary: `app/components/auth/DeleteAcc…
+- **wire-do-tool-dispatch** — 0/24 tasks (0%)
+  - Summary: `upgrade-mcp-to-durable-object…
 
 <!-- SPECTRA-UX:ROADMAP-AUTO:/parked -->
 

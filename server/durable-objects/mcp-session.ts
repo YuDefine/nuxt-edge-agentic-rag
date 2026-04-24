@@ -57,6 +57,7 @@ const METHOD_NOT_ALLOWED_HEADERS = {
 } as const
 const JSON_RPC_METHOD_NOT_ALLOWED_CODE = -32000
 const JSON_RPC_INVALID_REQUEST_CODE = -32600
+const JSON_RPC_METHOD_NOT_FOUND_CODE = -32601
 
 function buildMethodNotAllowedBody(): string {
   return JSON.stringify({
@@ -155,23 +156,37 @@ export class MCPSessionDurableObject {
     await this.ctx.storage.put<McpSessionState>(STORAGE_KEY_SESSION, renewed)
     await this.ctx.storage.setAlarm(now + ttlMs)
 
-    // Post-Phase 2 Pivot C: tool dispatch via `DoJsonRpcTransport` lands in a
-    // follow-up task (context plumbing to `getCurrentMcpEvent`). For now the
-    // session renewal path returns a minimal JSON-RPC acknowledgement so
-    // session lifecycle is observable end-to-end.
+    // @followup[TD-041] — Tool dispatch via DoJsonRpcTransport is out of scope
+    // for `upgrade-mcp-to-durable-objects` (C-path scope trim 2026-04-24). This
+    // change delivers session lifecycle only (create / touch / alarm GC / 404
+    // on missing). Wire-up of `McpServer` + `server.connect(transport)` +
+    // auth/env plumbing lands in the follow-up change `wire-do-tool-dispatch`.
+    //
+    // Until then any non-initialize request returns an explicit JSON-RPC
+    // `-32601 Method not found` so an accidental `NUXT_KNOWLEDGE_FEATURE_MCP_SESSION=true`
+    // flip in production fails loudly (Claude.ai surfaces "Error occurred
+    // during tool execution") instead of silently returning a synthetic ack
+    // that would masquerade as success.
     return new Response(
       JSON.stringify({
         jsonrpc: '2.0',
         id: requestId ?? null,
-        result: {
-          session: {
-            sessionId: renewed.sessionId,
-            lastSeenAt: renewed.lastSeenAt,
+        error: {
+          code: JSON_RPC_METHOD_NOT_FOUND_CODE,
+          message:
+            'Tool dispatch via MCP Session Durable Object is not yet implemented. ' +
+            'Set NUXT_KNOWLEDGE_FEATURE_MCP_SESSION=false to fall back to the stateless ' +
+            'MCP handler while the wire-do-tool-dispatch change is pending.',
+          data: {
+            method,
+            followup: 'TD-041',
+            sessionLifecycle: 'ok',
+            toolDispatch: 'not_implemented',
           },
         },
       }),
       {
-        status: 200,
+        status: 501,
         headers: {
           'Content-Type': 'application/json',
           'Mcp-Session-Id': renewed.sessionId,
