@@ -12,7 +12,13 @@ import { createMcpReplayStore, getDocumentChunk, McpReplayError } from '#server/
 import type { McpAuthContext } from '#server/utils/mcp-middleware'
 
 const inputShape = {
-  citationId: z.string().trim().min(1, 'citationId is required'),
+  citationId: z
+    .string()
+    .trim()
+    .min(1, 'citationId is required')
+    .describe(
+      'Citation id returned by askKnowledge or searchKnowledge. Only pass ids from prior tool results; restricted citations require the appropriate token scope and may return 403, while missing citations return 404.',
+    ),
 }
 
 export default defineMcpTool({
@@ -20,7 +26,14 @@ export default defineMcpTool({
   title: 'Retrieve a stored citation chunk',
   description:
     'Fetch the original chunk text for a citation id previously returned by askKnowledge / searchKnowledge.',
+  annotations: {
+    readOnlyHint: true,
+    destructiveHint: false,
+    openWorldHint: false,
+    idempotentHint: true,
+  },
   inputSchema: inputShape,
+  inputExamples: [{ citationId: 'citation_01HZXAMPLE0000000000000000' }],
   handler: async (args: { citationId: string }) => {
     const event = await getCurrentMcpEvent()
     const auth = requireMcpAuth(event)
