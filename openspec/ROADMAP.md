@@ -57,7 +57,7 @@ _(none)_
 
 ## Active Changes
 
-_last synced: 2026-04-24T15:57:36.673Z_
+_last synced: 2026-04-24T16:05:42.712Z_
 
 3 active changes (0 ready · 3 in progress · 0 draft · 0 blocked)
 
@@ -67,7 +67,7 @@ _(none)_
 
 ### In progress
 
-- **add-mcp-tool-selection-evals** — 23/28 tasks (82%)
+- **add-mcp-tool-selection-evals** — 25/28 tasks (89%)
 - **upgrade-mcp-to-durable-objects** — 17/27 tasks (63%)
   - Specs: `mcp-knowledge-tools`
 - **wire-do-tool-dispatch** — 17/24 tasks (71%)
