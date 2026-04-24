@@ -2,11 +2,11 @@
 
 ### Requirement: Login Route Is Independent And Publicly Accessible
 
-The system SHALL expose a dedicated `/login` page that acts as the sole login surface for general web flows. The page SHALL NOT require authentication. The page SHALL host Google OAuth login, Passkey login (when enabled by feature flag), and Passkey registration entry. The home route `/` SHALL NOT render login UI.
+The system SHALL expose a dedicated `/auth/login` page that acts as the sole login surface for general web flows. The page SHALL NOT require authentication. The page SHALL host Google OAuth login, Passkey login (when enabled by feature flag), and Passkey registration entry. The home route `/` SHALL NOT render login UI.
 
 #### Scenario: Unauthenticated visitor lands on login page
 
-- **WHEN** an unauthenticated user navigates to `/login`
+- **WHEN** an unauthenticated user navigates to `/auth/login`
 - **THEN** the page renders with Google login button always visible
 - **AND** Passkey buttons render only if `runtimeConfig.public.knowledge.features.passkey === true`
 - **AND** the page does not redirect the visitor elsewhere
@@ -21,21 +21,21 @@ The system SHALL expose a dedicated `/login` page that acts as the sole login su
 
 ### Requirement: Global Auth Middleware Captures Origin Path
 
-The global authentication middleware SHALL redirect unauthenticated users attempting to access pages with `meta.auth !== false` to `/login`. When the origin path is not `/`, the middleware SHALL append a `redirect` query parameter containing the URL-encoded `to.fullPath`. The middleware SHALL NOT append a `redirect` query parameter when the origin path is `/` itself. The middleware SHALL NOT redirect when the origin path is already `/login` to prevent redirect loops.
+The global authentication middleware SHALL redirect unauthenticated users attempting to access pages with `meta.auth !== false` to `/auth/login`. When the origin path is not `/`, the middleware SHALL append a `redirect` query parameter containing the URL-encoded `to.fullPath`. The middleware SHALL NOT append a `redirect` query parameter when the origin path is `/` itself. The middleware SHALL NOT redirect when the origin path is already `/auth/login` to prevent redirect loops.
 
 #### Scenario: Unauthenticated access to admin page captures redirect
 
 - **WHEN** an unauthenticated user navigates to `/admin/documents`
-- **THEN** the middleware redirects to `/login?redirect=%2Fadmin%2Fdocuments`
+- **THEN** the middleware redirects to `/auth/login?redirect=%2Fadmin%2Fdocuments`
 
 #### Scenario: Unauthenticated access to root does not append redirect
 
 - **WHEN** an unauthenticated user navigates to `/`
-- **THEN** the middleware redirects to `/login` without any query parameters
+- **THEN** the middleware redirects to `/auth/login` without any query parameters
 
 #### Scenario: Unauthenticated access to login page does not loop
 
-- **WHEN** an unauthenticated user navigates directly to `/login`
+- **WHEN** an unauthenticated user navigates directly to `/auth/login`
 - **THEN** the middleware does not redirect
 - **AND** the login page renders normally
 
@@ -47,24 +47,24 @@ The global authentication middleware SHALL redirect unauthenticated users attemp
 
 ##### Example: encoded redirect paths
 
-| Origin path             | Resulting login URL                             |
-| ----------------------- | ----------------------------------------------- |
-| `/admin/documents`      | `/login?redirect=%2Fadmin%2Fdocuments`          |
-| `/account/settings`     | `/login?redirect=%2Faccount%2Fsettings`         |
-| `/admin/usage?filter=x` | `/login?redirect=%2Fadmin%2Fusage%3Ffilter%3Dx` |
-| `/`                     | `/login`                                        |
-| `/login`                | (no redirect)                                   |
+| Origin path             | Resulting login URL                                  |
+| ----------------------- | ---------------------------------------------------- |
+| `/admin/documents`      | `/auth/login?redirect=%2Fadmin%2Fdocuments`          |
+| `/account/settings`     | `/auth/login?redirect=%2Faccount%2Fsettings`         |
+| `/admin/usage?filter=x` | `/auth/login?redirect=%2Fadmin%2Fusage%3Ffilter%3Dx` |
+| `/`                     | `/auth/login`                                        |
+| `/auth/login`           | (no redirect)                                        |
 
 ---
 
 ### Requirement: Admin Middleware Unauthenticated Branch Mirrors Global Behavior
 
-When `admin.ts` middleware detects an unauthenticated user, the middleware SHALL redirect to `/login?redirect=<fullPath>` using the same URL composition rules as the global middleware. The unauthorized branch (user is authenticated but lacks admin role) SHALL remain unchanged and is outside the scope of this capability.
+When `admin.ts` middleware detects an unauthenticated user, the middleware SHALL redirect to `/auth/login?redirect=<fullPath>` using the same URL composition rules as the global middleware. The unauthorized branch (user is authenticated but lacks admin role) SHALL remain unchanged and is outside the scope of this capability.
 
 #### Scenario: Unauthenticated user hitting admin page gets redirect
 
 - **WHEN** an unauthenticated user navigates to any page protected by `admin` middleware
-- **THEN** the middleware redirects to `/login?redirect=<encoded fullPath>`
+- **THEN** the middleware redirects to `/auth/login?redirect=<encoded fullPath>`
 - **AND** the behavior matches the global middleware for non-admin pages
 
 ---
@@ -110,7 +110,7 @@ The system SHALL provide `saveGenericReturnTo(path: string): void`, `consumeGene
 
 #### Scenario: Google OAuth login preserves origin path
 
-- **WHEN** an unauthenticated user clicks "Login with Google" on `/login?redirect=/admin/documents`
+- **WHEN** an unauthenticated user clicks "Login with Google" on `/auth/login?redirect=/admin/documents`
 - **AND** before the OAuth redirect the page calls `saveGenericReturnTo('/admin/documents')`
 - **AND** Google returns the user to `/auth/callback`
 - **THEN** the callback page reads `consumeGenericReturnTo()` and receives `'/admin/documents'`
@@ -151,14 +151,14 @@ The MCP consume MUST occur first to preserve the existing connector double-hands
 
 ### Requirement: Passkey Same-Origin Flow Reads Redirect From Query
 
-On `/login`, when Passkey authentication succeeds (no cross-domain hop occurs), the page SHALL read `route.query.redirect`, validate via `parseSafeRedirect`, and navigate with `{ replace: true }` to the validated path or `/` when validation returns `null`. The page SHALL NOT write the redirect value to `sessionStorage` during Passkey flow.
+On `/auth/login`, when Passkey authentication succeeds (no cross-domain hop occurs), the page SHALL read `route.query.redirect`, validate via `parseSafeRedirect`, and navigate with `{ replace: true }` to the validated path or `/` when validation returns `null`. The page SHALL NOT write the redirect value to `sessionStorage` during Passkey flow.
 
 #### Scenario: Passkey login honors query redirect
 
-- **WHEN** a user completes Passkey login on `/login?redirect=/account/settings`
+- **WHEN** a user completes Passkey login on `/auth/login?redirect=/account/settings`
 - **THEN** the page navigates to `/account/settings` with `replace: true`
 
 #### Scenario: Passkey login with unsafe redirect falls back
 
-- **WHEN** a user completes Passkey login on `/login?redirect=//evil.com`
+- **WHEN** a user completes Passkey login on `/auth/login?redirect=//evil.com`
 - **THEN** the page navigates to `/` with `replace: true`

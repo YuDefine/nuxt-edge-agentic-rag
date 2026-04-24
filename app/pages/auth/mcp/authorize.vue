@@ -43,7 +43,10 @@
     saveMcpConnectorReturnTo(route.fullPath)
 
     try {
-      await signIn.social({ provider: 'google' })
+      // Route the OAuth return through `/auth/callback` so the
+      // sessionStorage bridge (`mcp-connector:return-to`) saved above is
+      // consumed by `resolveReturnToPath()`.
+      await signIn.social({ provider: 'google', callbackURL: '/auth/callback' })
     } catch (error) {
       loginError.value = parseAuthError(error)
       googleLoading.value = false
