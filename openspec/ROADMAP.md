@@ -23,12 +23,12 @@
 進行中：
 
 - **`upgrade-mcp-to-durable-objects`** 17/27 tasks (63%)，**Phase 4 scope 縮為 session lifecycle only** — tool dispatch 改由 `wire-do-tool-dispatch` 接手（見 TD-041）；production flag 維持 false 直到 wire-do-tool-dispatch archive
-- **`fix-delete-account-dialog-google-reauth`** 6/15 tasks (40%)，實作已啟動但尚未 archive
-- **`add-mcp-tool-selection-evals`** 4/19 tasks (21%)，eval harness 實作已啟動但尚未 archive
+- **`fix-delete-account-dialog-google-reauth`** 10/15 tasks (67%)，TD-028 auth-critical Tier 2，實作推進中
+- **`add-mcp-tool-selection-evals`** 12/19 tasks (63%)，eval harness 實作推進中
 
 ### 已 propose，待 apply（見 AUTO Parked Changes 區塊）
 
-- [high] **`enhance-mcp-tool-metadata`** — 4 MCP tool 的 `.describe()` / `annotations` / `inputExamples`（Tier 1）；`/spectra-apply` 會自動 unpark
+- [high] **`enhance-mcp-tool-metadata`** — 10/14 tasks (71%)，**parked pending production deploy**（implementation 已 commit `ece9c12`；剩 3.3 MCP Inspector 實測 + 4.1-4.3 人工 review 等 production MCP client metadata 真實呈現後 batch 驗）
 - [high] **`wire-do-tool-dispatch`** — DO 內 McpServer lazy init + `DoJsonRpcTransport.dispatch` + auth context HMAC forward（Tier 3，@followup[TD-041]）；依賴 `upgrade-mcp-to-durable-objects` session lifecycle 層；解決 TD-030 剩餘部分；production flag flip true 屬此 change rollout 範圍
 
 ### 近期（尚未 propose，可與 DO change 並行）
@@ -55,7 +55,7 @@
 
 ## Active Changes
 
-_last synced: 2026-04-24T14:17:52.090Z_
+_last synced: 2026-04-24T14:27:43.656Z_
 
 3 active changes (0 ready · 3 in progress · 0 draft · 0 blocked)
 
@@ -65,8 +65,8 @@ _(none)_
 
 ### In progress
 
-- **add-mcp-tool-selection-evals** — 4/19 tasks (21%)
-- **fix-delete-account-dialog-google-reauth** — 6/15 tasks (40%)
+- **add-mcp-tool-selection-evals** — 12/19 tasks (63%)
+- **fix-delete-account-dialog-google-reauth** — 10/15 tasks (67%)
   - Specs: `passkey-authentication`
 - **upgrade-mcp-to-durable-objects** — 17/27 tasks (63%)
   - Specs: `mcp-knowledge-tools`
@@ -125,7 +125,7 @@ _(none)_
 
 2 parked changes
 
-- **enhance-mcp-tool-metadata** — 0/14 tasks (0%)
+- **enhance-mcp-tool-metadata** — 10/14 tasks (71%)
   - Summary: 本專案是 Agentic RAG，MCP client（Cl…
 - **wire-do-tool-dispatch** — 0/24 tasks (0%)
   - Summary: `upgrade-mcp-to-durable-object…
