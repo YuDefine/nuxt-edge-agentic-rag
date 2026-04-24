@@ -111,6 +111,11 @@
       "sourceType": "github",
       "computedHash": "6b5fd49587616ca1e594e9c6b11bc1cef5eb0b2d137c307de54a8a650770f4ce"
     },
+    "manage-mcp": {
+      "source": "mcp-toolkit.nuxt.dev",
+      "sourceType": "well-known",
+      "computedHash": "ded8535a57ecf0c64f69afc939d4c8dd9d33649c05fbcafc94a2cf33cefc96ee"
+    },
     "motion": {
       "source": "onmax/nuxt-skills",
       "sourceType": "github",
