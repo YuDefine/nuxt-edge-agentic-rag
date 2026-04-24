@@ -164,7 +164,9 @@ function makeEvent(body: unknown): H3Event {
     authorization: 'Bearer valid-token',
     'content-type': 'application/json',
     accept: 'application/json, text/event-stream',
+    host: 'worker.test',
     'Mcp-Session-Id': sessionId,
+    'x-forwarded-proto': 'https',
   })
 
   const request = new Request('https://worker.test/mcp', {
@@ -192,7 +194,15 @@ function makeEvent(body: unknown): H3Event {
 }
 
 function makeReqOnlyEvent(body: unknown): H3Event {
-  const event = makeEvent(body) as unknown as H3Event & { web?: { request?: Request } }
+  const event = makeEvent(body) as unknown as H3Event & {
+    req?: { headers: Headers; method: string; url: string }
+    web?: { request?: Request }
+  }
+  event.req = {
+    headers: event.headers,
+    method: 'POST',
+    url: '/mcp',
+  }
   delete event.web
   return event
 }
