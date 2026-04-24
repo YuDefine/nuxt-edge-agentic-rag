@@ -173,4 +173,19 @@ describe('DeleteAccountDialog initial reauth state', () => {
     })
     expect(consumePendingDeleteReauth()).toBe(true)
   })
+
+  it('does not show reauth as complete before the Google OAuth callback resumes the dialog', async () => {
+    socialSignIn.mockResolvedValue({})
+    const wrapper = await mountDeleteAccountDialog({
+      open: true,
+      hasGoogle: true,
+      hasPasskey: false,
+    })
+
+    await wrapper.get('button:not([disabled])').trigger('click')
+
+    expect(wrapper.text()).not.toContain('重新驗證身分 （已完成）')
+    expect(wrapper.text()).toContain('使用 Google 重新驗證')
+    expect(findConfirmButton(wrapper).attributes('disabled')).toBeDefined()
+  })
 })

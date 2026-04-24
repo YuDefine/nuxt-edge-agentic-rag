@@ -25,6 +25,7 @@
 
   const socialLoading = shallowRef(false)
   const passkeyLoginLoading = shallowRef(false)
+  const authTransitionLoading = shallowRef(false)
   const errorMessage = shallowRef('')
   const registerDialogOpen = ref(false)
 
@@ -95,6 +96,11 @@
 
   async function handlePasskeyRegistered() {
     errorMessage.value = ''
+    authTransitionLoading.value = true
+    registerDialogOpen.value = false
+    await nextTick()
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+
     // The dialog already ran `fetchSession({ force: true })` after
     // registration, so mirror `handlePasskeyLogin`'s post-success nav:
     // honour `?redirect=` when safe, otherwise land on `/`.
@@ -104,7 +110,18 @@
 </script>
 
 <template>
-  <LazyUCard class="w-full">
+  <LazyUCard v-if="authTransitionLoading" class="w-full">
+    <h1 class="sr-only">登入處理中</h1>
+    <div class="flex flex-col items-center justify-center gap-4 py-8" aria-live="polite">
+      <UIcon
+        name="i-lucide-loader-2"
+        class="size-8 animate-spin text-muted motion-reduce:animate-none"
+      />
+      <p class="text-muted">正在處理登入...</p>
+    </div>
+  </LazyUCard>
+
+  <LazyUCard v-else class="w-full">
     <template #header>
       <div class="text-center">
         <div class="mx-auto mb-4 flex size-12 items-center justify-center rounded-full bg-muted">
