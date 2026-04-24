@@ -52,6 +52,33 @@ Changes can be parked（暫存）— temporarily moved out of `openspec/changes/
 - 其餘 shared rules：`.claude/rules/`
 - workflow / skills：`.agents/skills/`、`.agents/skills/`
 
+<!-- AUTO-SYNCED-RULE-INDEX:START -->
+
+### All Rules（自動生成，source 在 `.claude/rules/`；請勿手編此區塊）
+
+- `.claude/rules/api-patterns.md`
+- `.claude/rules/commit.md`
+- `.claude/rules/development.md`
+- `.claude/rules/error-handling.md`
+- `.claude/rules/follow-up-register.md`
+- `.claude/rules/handoff.md`
+- `.claude/rules/knowledge-and-decisions.md`
+- `.claude/rules/logging.md`
+- `.claude/rules/manual-review.md`
+- `.claude/rules/mcp-remote.md`
+- `.claude/rules/proactive-skills.md`
+- `.claude/rules/project-report.md`
+- `.claude/rules/review-tiers.md`
+- `.claude/rules/scope-discipline.md`
+- `.claude/rules/screenshot-strategy.md`
+- `.claude/rules/testing-anti-patterns.md`
+- `.claude/rules/truth-layers.md`
+- `.claude/rules/unused-features.md`
+- `.claude/rules/ux-completeness.md`
+- `.claude/rules/work-claims.md`
+
+<!-- AUTO-SYNCED-RULE-INDEX:END -->
+
 ## Codex Projection
 
 - 定期執行 `node ~/.codex/scripts/sync-to-agents.mjs`，讓 Codex surface 與 `.claude/` 保持一致。
