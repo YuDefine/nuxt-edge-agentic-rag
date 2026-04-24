@@ -30,9 +30,9 @@
 
 ## Active Changes
 
-_last synced: 2026-04-24T10:00:27.586Z_
+_last synced: 2026-04-24T10:33:16.297Z_
 
-2 active changes (0 ready · 1 in progress · 1 draft · 0 blocked)
+1 active change (0 ready · 0 in progress · 1 draft · 0 blocked)
 
 ### Ready to apply
 
@@ -40,8 +40,7 @@ _(none)_
 
 ### In progress
 
-- **fix-mcp-streamable-http-session** — 19/27 tasks (70%)
-  - Specs: `mcp-knowledge-tools`
+_(none)_
 
 ### Draft
 
@@ -61,18 +60,9 @@ _(none)_
 > 即時 ownership 由 `.spectra/claims/*.json` 提供。
 > 接手 handoff / 開始做 change 時，先 claim，再移除 `HANDOFF.md` 對應項目。
 
-1 claim (0 active · 1 stale)
+_No active claims._
 
-### Live Ownership
-
-_(none)_
-
-### Stale Claims
-
-- **fix-mcp-streamable-http-session** — unknown:charles@charlesdeMac-mini.local (unknown)
-  - Accepted from: manual
-  - Last heartbeat: 2026-04-24T08:11:16.322Z
-  - Status: stale (last heartbeat 2026-04-24T08:11:16.322Z)
+> 若你要開始做上面的 active change，先跑 `spectra:claim -- <change>`。
 
 <!-- SPECTRA-UX:ROADMAP-AUTO:/claims -->
 
@@ -84,11 +74,11 @@ _(none)_
 
 ### Independent (can run in parallel)
 
-_(none)_
+- `upgrade-mcp-to-durable-objects`
 
 ### Mutex (same spec touched)
 
-- **mcp-knowledge-tools** — conflict between: `fix-mcp-streamable-http-session`, `upgrade-mcp-to-durable-objects`
+_(none)_
 
 ### Blocked by dependency
 
