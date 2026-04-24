@@ -100,6 +100,25 @@ export function createMcpHandler(server: McpConnectableServer, options: McpHandl
     // termination) are rejected immediately. Without this, Cloudflare Workers
     // hang 30s on GET before runtime cancel, triggering Claude re-initialize
     // loops (see fix-mcp-streamable-http-session change).
+    // === MCP-DIAG-ENTRY @followup[TD-030] (Q6 Phase 1 spike — REMOVE AFTER CAPTURE) ===
+    // Logs shim entry BEFORE any early-return / guard so we can verify whether
+    // the singleton `server.transport` guard is the true root cause of the
+    // 400 seen in production tail.
+    // eslint-disable-next-line no-console
+    console.log(
+      '[MCP-DIAG-ENTRY]',
+      JSON.stringify({
+        method: request.method,
+        path: new URL(request.url).pathname,
+        hasExistingTransport: server.transport !== undefined,
+        headers: {
+          'mcp-session-id': request.headers.get('mcp-session-id'),
+          'mcp-protocol-version': request.headers.get('mcp-protocol-version'),
+        },
+      }),
+    )
+    // === MCP-DIAG-ENTRY END ===
+
     if (request.method === 'GET' || request.method === 'DELETE') {
       return new Response(METHOD_NOT_ALLOWED_BODY, {
         status: 405,
