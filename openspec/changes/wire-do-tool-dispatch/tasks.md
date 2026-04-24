@@ -36,6 +36,11 @@
 ## 7. Rollout
 
 - [ ] 7.1 Staging: `NUXT_KNOWLEDGE_FEATURE_MCP_SESSION=true` 後立即驗證 `AskKnowledge` / `SearchKnowledge` 各 2+ 次；確認 response 非 501、非 re-init loop，且 staging custom domain 可達（HTTP 200）。若可用 `wrangler tail`，同步確認無 `ownKeys` error / 401 auth context failure；若本機無 Cloudflare token，需以 GitHub deploy evidence + protocol response 記錄替代 tail（對齊 Decision 4: Rollout = staging flag=true immediate verification → production flag=true）
+  - **Staging v0.42.2 (2026-04-25, Deploy run 24905096791)** protocol-layer 驗證通過：
+    - `initialize`、`notifications/initialized`、`tools/list` 皆 HTTP 200；`Mcp-Session-Id` 正確傳回
+    - `askKnowledge` x2、`searchKnowledge` x2 皆 HTTP 200
+    - 無 JSON-RPC `-32603 a16.ownKeys`（ownKeys root cause 已在 `ef6d59c` 修復：`build/nitro/rollup.ts` 把 `reflect-metadata/Reflect.js` polyfill 包進 IIFE）、無 501、無 `TD-041`、無 `Server already initialized` re-init loop；`agentic-staging.yudefine.com.tw` 可達
+  - **Caveat（7.1 checkbox 尚未勾選）**：4 個 tool call body 都是 `{"result":{"content":[{"type":"text","text":"Tool execution failed. Please retry later."}],"isError":true}}` — tool handler 內部仍 throw（非 SDK parse 層），由 `normalizeErrorToResult` fallback 成 isError result。真正的 handler error stack 被 DO `createDoNoopLogger` 吞掉；需要再一輪 debug patch 抓 handler error 並修根因才能勾選 7.1、flip production flag。見 `HANDOFF.md` wire-do-tool-dispatch 區塊的「下一步」。
 - [ ] 7.2 Production `NUXT_KNOWLEDGE_FEATURE_MCP_SESSION=true` flip；24 小時 wrangler tail 密集監控；任一 anomaly 立刻 flag=false（無需 redeploy）
 - [ ] 7.3 Production 正常運作 7 天後 `docs/tech-debt.md` 把 TD-030 + TD-041 Status 標 `done`，各附一句 one-liner
 
