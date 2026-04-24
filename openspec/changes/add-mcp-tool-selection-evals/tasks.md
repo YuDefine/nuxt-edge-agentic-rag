@@ -13,6 +13,9 @@
 
 - [x] 3.1 [P] `test/evals/helpers/mcp-client.ts`：依 Decision 3 封裝 `experimental_createMCPClient`（AI SDK）連 `EVAL_MCP_URL`（default `http://localhost:3000/mcp`）；啟動前打 readiness probe（最多 retry 5 次、每次 sleep 500ms）；readiness 失敗時 throw 清楚訊息「請先 `pnpm dev`」；harness **不得** 直接 import `server/mcp/tools/*.ts`（本 helper 以 protocol 方式取得 tool 描述）
 - [x] 3.2 [P] `test/evals/fixtures/mcp-tool-selection-dataset.ts`：宣告 `DATASET: EvalSample[]`，每筆含 `{ id, query, expectedTool, expectedArgsCheck(args): boolean, notes? }`；依 spec 要求覆蓋 4 個 tool、每個 tool ≥ 3 樣本、至少 1 specific-topic + 1 category-flavored + 1 boundary，總樣本數 ≥ 12；在 dataset 檔頂部 export `DATASET_VERSION` 字串（對應 docs baseline）
+- [x] 3.3 建立 `scripts/mint-dev-mcp-token.mts` dev-only CLI（Decision 7，@ingest 2026-04-24）：runtime guard `NUXT_KNOWLEDGE_ENVIRONMENT==='local'`（非 local exit 1）；呼叫 `createToken()` 寫 30-day dev token 到本地 D1，scope 包含 `knowledge.ask` / `knowledge.search` / `knowledge.category.list` / `knowledge.citation.read`；stdout 僅印 token 字串（便於 shell pipe）；`package.json` 加 script `mint:dev-mcp-token`
+- [x] 3.4 修 `test/evals/helpers/mcp-client.ts`（Decision 7）：`DEFAULT_MCP_URL` 改 `http://localhost:3010/mcp`；新增 `getEvalBearerToken()` 讀 `EVAL_MCP_BEARER_TOKEN` env；`createEvalMcpClient` 的 `experimental_createMCPClient` transport 加 `headers: { Authorization: 'Bearer ${token}' }`；token 缺失時 throw「請先跑 `pnpm mint:dev-mcp-token` 並填 `.env`」；readiness probe 也帶 token（避免 500 被誤判 ready）
+- [x] 3.5 修 `.env.example`：加 `EVAL_MCP_BEARER_TOKEN=` 與註解（取得方式指向 `pnpm mint:dev-mcp-token`；runtime 不讀取；local-only；`NUXT_MCP_AUTH_SIGNING_KEY` 輪替後需重 mint）；備註 `NUXT_MCP_AUTH_SIGNING_KEY` prerequisite 由 `wire-do-tool-dispatch` 擁有
 
 ## 4. Eval harness 主檔（Non-Blocking Eval Execution、Regression Threshold Based On Baseline、Decision 5: Threshold = 初次跑建立 baseline + 後續 regression = –5% 才算 fail）
 
@@ -22,15 +25,16 @@
 ## 5. 文件與 baseline
 
 - [x] 5.1 新增 `docs/evals/mcp-tool-selection.md`：說明 eval 目的、前置（啟動 dev server、設定 `ANTHROPIC_API_KEY`）、跑法、每個 sample 格式、baseline 更新流程、「**NEVER** 讓 eval 加入 CI 必經 gate」規則；附上 design Non-Goals 摘要（不含 retrieval quality eval、不含 multi-turn、不自動擴資料集）避免日後 scope drift
-- [ ] 5.2 第一次 local `pnpm eval` 執行：記錄 overall score、per-sample 結果、model 版本、dataset 版本到 `docs/evals/mcp-tool-selection.md` 的「Baseline」章節，作為後續 regression 比較基線（對應 Regression Threshold Based On Baseline — Baseline update requires explicit edit）
+- [x] 5.2 第一次 `pnpm eval` 執行（**@followup[TD-042]** @ingest 2026-04-24 v2：因 local NuxtHub KV binding 未 bridge → `/mcp` 503，**暫時** 走 staging URL；待 TD-042 解完後 rebaseline）。前置：`EVAL_MCP_URL=https://agentic-staging.yudefine.com.tw/mcp`、staging `/admin/tokens` UI mint 過一個 eval 用 token 已填 `.env` 的 `EVAL_MCP_BEARER_TOKEN`、`ANTHROPIC_API_KEY` 已設。記錄 overall score、per-sample 結果、model 版本、dataset 版本到 `docs/evals/mcp-tool-selection.md` 的「Baseline」章節（Note: environment=staging）
+- [x] 5.3 更新 `docs/evals/mcp-tool-selection.md` Prerequisites（@ingest 2026-04-24）：(1) `NUXT_MCP_AUTH_SIGNING_KEY` 已設（由 `wire-do-tool-dispatch` 引入，32+ bytes）；(2) **Staging fallback**（目前預設）：staging `/admin/tokens` UI mint token + `EVAL_MCP_URL=https://...staging.../mcp`；(3) **Local** 暫不可用（@followup[TD-042] local KV bridge infra fix 後才能走）：`pnpm mint:dev-mcp-token` + `EVAL_MCP_URL=http://localhost:3010/mcp`；(4) 兩條路 token 都填 `.env` 的 `EVAL_MCP_BEARER_TOKEN`；(5) signing key 輪替或 token 過期需重 mint
 
 ## 6. 驗證與品質閘門
 
 - [ ] 6.1 `pnpm check`（format + lint + typecheck + test）全綠；確認 `pnpm check` 完全沒有觸發 eval / 沒有 LLM API call（Non-Blocking Eval Execution — Eval is excluded from default quality gates）
 - [x] 6.2 `pnpm test` 單獨跑 scorer unit test（`test/unit/evals-scorer.test.ts`）全綠
-- [ ] 6.3 `pnpm spectra:followups` / `pnpm audit:ux-drift` 無新 drift
+- [x] 6.3 `pnpm spectra:followups` / `pnpm audit:ux-drift` 無新 drift
 - [x] 6.4 CI workflow 檢視（`.github/workflows/**` 或對應設定）：確認沒有任何 job 呼叫 `pnpm eval` / `evalite`；如有疑似項，明確排除並註明
-- [ ] 6.5 以修改某一筆 dataset sample 的 `expectedTool` 為錯誤 tool 方式臨時讓 eval fail，確認 harness exit code 1 且 stdout 指出哪些 sample 掉分（Regression Threshold Based On Baseline — Run below tolerance is reported as regression）；驗證後還原 dataset
+- [x] 6.5 以修改某一筆 dataset sample 的 `expectedTool` 為錯誤 tool 方式臨時讓 eval fail（**@followup[TD-043]**）。驗證結果：stderr / stdout **有** 印出 `Eval regression: overall 83.33% is more than 5pp below baseline 91.67% (delta=-8.34pp)` + `lowSamples=ask-specific-launch-readiness ... ask-category-governance-review ...` signal 生效；但 `pnpm eval` 最終 exit code = 0（evalite / vitest afterAll 吃掉 `process.exit` 與 `throw`；三種寫法皆試過）。Decision 5 的 stdout 信號 acceptance 通過、exit code propagation 部分歸 TD-043。已還原 dataset（驗證後 `pnpm eval` 重跑回到 overall=91.67、delta=-0.00）
 
 ## 7. 人工檢查
 

@@ -15,7 +15,8 @@
 
 ## Non-Goals
 
-- **NEVER** 改動 production MCP server（`server/mcp/**`）的任何行為、metadata、或 handler 邏輯 — 本 change 僅新增 eval harness 與資料集
+- **NEVER** 改動 production MCP server（`server/mcp/**`）的任何行為、metadata、或 handler 邏輯 — 本 change 僅新增 eval harness 與資料集；eval 的 dev auth 走獨立 dev-only CLI（`scripts/mint-dev-mcp-token.mts`），**NEVER** 在 middleware 加 dev-mode bypass
+- **NEVER** 在 eval harness 內自動寫 MCP token store — 必須透過 dev CLI 明確步驟，避免把 token 生成副作用藏進 test helper
 - **NEVER** 把 eval 併入 `pnpm check` / `pnpm test` / CI mandatory gate — eval 需要 LLM API key、有金錢成本、且 LLM 回應非 deterministic，不適合 block PR；僅作為 manual / nightly run
 - **NEVER** 引入 OpenEval / Promptfoo / DeepEval / Braintrust 等其他 eval 框架 — 決定用 `evalite`（與 vitest 生態近）後堅守一家，避免兩套 harness 維護負擔
 - **NEVER** 在本 change 涵蓋 retrieval 品質 eval（relevance / groundedness）— 另行規劃 change；本 change 專注於 **tool-selection** 行為
@@ -62,6 +63,7 @@
     - test/evals/helpers/scorer.ts (tool-selection scoring logic)
     - test/unit/evals-scorer.test.ts (scoring logic unit test)
     - docs/evals/mcp-tool-selection.md
+    - scripts/mint-dev-mcp-token.mts (dev-only CLI，mint 長效 dev MCP token；@ingest 2026-04-24 因應 MCP middleware Bearer token 強制)
     - openspec/specs/mcp-tool-selection-evals/spec.md (由 spec delta 落地後產生)
   - Modified:
     - package.json (devDependencies + scripts)
