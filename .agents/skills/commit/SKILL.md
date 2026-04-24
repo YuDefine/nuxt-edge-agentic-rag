@@ -13,12 +13,12 @@ $ARGUMENTS
 ## Step 0-Lock: 單一 session 防呆（**必做第一步**）
 
 ```bash
-node .codex/scripts/commit-lock.mjs acquire
+node .claude/scripts/commit-lock.mjs acquire
 ```
 
 失敗（exit 1）代表另一個 session 正在跑 `/commit` → **停下**，向使用者回報鎖資訊，**不要**自行 `rm` 清鎖或重試。
 
-成功後此 session 取得獨占權，直到 Step 7 釋放。**中斷處理**：若 `/commit` 流程中途失敗 / 使用者中斷，仍**必須**在終止前呼叫 `node .codex/scripts/commit-lock.mjs release`；漏釋放的鎖會在 30 分鐘後被下次 acquire 自動清除（可用 `COMMIT_LOCK_STALE_MINUTES` 調整）。
+成功後此 session 取得獨占權，直到 Step 7 釋放。**中斷處理**：若 `/commit` 流程中途失敗 / 使用者中斷，仍**必須**在終止前呼叫 `node .claude/scripts/commit-lock.mjs release`；漏釋放的鎖會在 30 分鐘後被下次 acquire 自動清除（可用 `COMMIT_LOCK_STALE_MINUTES` 調整）。
 
 ## Step 0-Scope: WIP 預設全部納入
 
@@ -287,7 +287,7 @@ pnpm spectra:roadmap
 ## Step 7: 釋放 /commit lock（**必做最後一步**）
 
 ```bash
-node .codex/scripts/commit-lock.mjs release
+node .claude/scripts/commit-lock.mjs release
 ```
 
 **必須執行**，即使前面任何 step 失敗：
