@@ -31,7 +31,7 @@
     <h1 class="sr-only">{{ error ? '登入失敗' : '登入處理中' }}</h1>
     <div class="flex flex-col items-center justify-center gap-4 py-8" aria-live="polite">
       <template v-if="error">
-        <UAlert color="error" variant="subtle" :title="error" class="w-full" />
+        <LazyUAlert color="error" variant="subtle" :title="error" class="w-full" />
         <NuxtLink
           to="/"
           class="text-sm font-medium text-highlighted hover:underline focus:underline focus:outline-none"
