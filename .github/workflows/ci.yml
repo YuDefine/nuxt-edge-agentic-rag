@@ -25,29 +25,10 @@ on:
       - 'tsconfig*.json'
       - '.github/workflows/ci.yml'
       - '.github/workflows/deploy.yml'
+  # 刻意不加 paths filter：deploy.yml 的 verify-ci-gate 要求每個 main SHA
+  # 必須有對應成功的 CI run，加回 paths 會讓 docs/openspec-only commit 撐爆 gate。
   push:
     branches: [main]
-    paths:
-      - 'app/**'
-      - 'server/**'
-      - 'shared/**'
-      - 'layers/**'
-      - 'build/**'
-      - 'nuxt.config.ts'
-      - 'package.json'
-      - 'pnpm-lock.yaml'
-      - 'scripts/check-ci-gate.mjs'
-      - 'scripts/check-deploy-health.mjs'
-      - 'scripts/render-staging-wrangler.mjs'
-      - 'server/database/migrations/**'
-      - 'test/unit/ci-gate.test.ts'
-      - 'test/unit/deploy-health-check.test.ts'
-      - 'test/integration/migration-stack-fresh-db.spec.ts'
-      - 'r2-cors.json'
-      - 'wrangler.staging.jsonc'
-      - 'tsconfig*.json'
-      - '.github/workflows/ci.yml'
-      - '.github/workflows/deploy.yml'
   workflow_dispatch:
 
 permissions:
