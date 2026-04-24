@@ -22,9 +22,6 @@ const inputSchemas = {
   searchKnowledge: z.object({
     query: z.string().trim().min(1).max(2000),
   }),
-  getDocumentChunk: z.object({
-    citationId: z.string().trim().min(1),
-  }),
   listCategories: z.object({
     includeCounts: z.boolean().optional().default(false),
   }),

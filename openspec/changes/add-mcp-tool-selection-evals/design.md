@@ -9,7 +9,7 @@
 ### Goals
 
 - 提供單一指令 `pnpm eval` 就能跑 MCP tool-selection eval，輸出可讀報告與分數
-- 覆蓋 4 個 tool（`askKnowledge` / `searchKnowledge` / `getDocumentChunk` / `listCategories`）× 至少 3 類典型 query pattern = 最少 12 筆 ground truth
+- 覆蓋 3 個 user-facing tool（`askKnowledge` / `searchKnowledge` / `listCategories`）× 每 tool 4 筆（specific×2、category×1、boundary×1）= 最少 12 筆 ground truth；`getDocumentChunk` 為 agent-internal citation replay 工具，**不**納入 eval dataset（end user 不會用自然語言觸發；structural coverage 維持在 `test/integration/mcp-*.test.ts`）
 - Harness swap provider 容易（今天用 Anthropic，未來換 Workers AI 只改 1 行 adapter）
 - 評分輸出可重跑 + 可比較（保留 run id、model 版本、dataset 版本、分數分佈）
 
@@ -19,6 +19,7 @@
 - 不覆蓋多輪對話（multi-turn tool use）— 初版僅單輪 query → 單次 tool-selection
 - 不自動化資料集擴充 — 新增樣本仍手動維護
 - 不嘗試達到「100% 正確率」— 門檻依 baseline 調整
+- 不覆蓋 `getDocumentChunk`（agent-internal citation replay tool；end user 無法用自然語言直接觸發）— @ingest 2026-04-24 v3，Decision 8
 
 ## Decisions
 
@@ -148,6 +149,30 @@
 - `NUXT_MCP_AUTH_SIGNING_KEY` 由 `wire-do-tool-dispatch` 引入，本 change docs 只 _引用_ prerequisite 不 _擁有_ 該 env；若 `wire-do-tool-dispatch` archive 前輪替 signing key，舊 dev token 失效需重 mint
 - CLI guard 以 `NUXT_KNOWLEDGE_ENVIRONMENT` 檢查；**NEVER** 在 staging / production 跑（避免意外寫入實環境 D1）
 - **@ingest 2026-04-24 v2**: Staging fallback（見 Decision 3 v2 補充）下，此 CLI **不**涵蓋 staging token。使用者需在 staging `/admin/tokens` UI 手動 mint 並把 token 貼到 `.env` 的 `EVAL_MCP_BEARER_TOKEN`。Mint CLI 擴充支援 staging 會放大 blast radius（能對 staging D1 寫 token），與「單步驟、explicit」原則衝突；保持 local-only
+
+### Decision 8: Dataset persona = 非工程 end-user 中文口吻 + 移除 getDocumentChunk（@ingest 2026-04-24 v3）
+
+**Choice**: 所有 dataset query 以**非技術使用者自然中文口語**撰寫；英文技術名詞（JSON key / pnpm 指令 / citation ID / "chunk" 等）**不**出現於 query。`getDocumentChunk` 因無法用非技術口吻觸發（tool 本質是 citation replay，使用者不知道 chunk / citation ID 概念）而整體移除 dataset；spec 明列排除。Dataset 版本升到 `2026-04-24-v2`。
+
+**Rationale**（apply v3 中使用者 feedback 迭代）:
+
+- MCP server primary audience 是 Claude.ai / ChatGPT connector 背後的 end user；他們不會使用英文技術術語提問
+- 用英文 / 技術語氣寫 query 會人工拉高 LLM 對 tool schema description（本身多英文）的匹配信號 → inflate baseline、失去 metadata 品質的真實信號
+- `getDocumentChunk` 若保留必須塞 citation ID 在 query，與 persona 原則衝突；且端使用者本來就不會直接觸發此 tool（由 LLM agent 從 askKnowledge 回應的 citation 自動觸發）— 整體移除
+- `askKnowledge` / `searchKnowledge` / `listCategories` 的 end-user query 區別仍明顯（「怎麼做 / 是什麼」vs「原文貼給我」vs「有哪些分類」），3-tool × 4 筆覆蓋充足
+
+**Alternatives considered**:
+
+- **保留 getDocumentChunk 標 persona=llm-agent-internal**：dataset 混兩種 persona，弱化「eval 量化 end-user 體驗」的信號純度 — 否決
+- **每 query 寫雙版本（英文 + 中文）**：dataset 維護成本倍增，且原英文版實際上更貼近 LLM 自己會產的 query（biased）— 否決
+- **保留原英文 query**：原版混雜英文術語 + 技術語氣，不符 MCP server 面向的 connector end-user 分佈 — 否決
+
+**Risks / 落地細節**:
+
+- Dataset 改版觸發 `DATASET_VERSION` 升到 `2026-04-24-v2` + baseline re-run；舊 baseline（91.67%, v1）作廢
+- `inputSchemas`（eval harness）移除 `getDocumentChunk` entry；scorer unit test 無需改（generic 邏輯）
+- spec 的 "four tools" coverage 同步改為 "three user-facing tools"；`getDocumentChunk` 明列排除
+- `test/integration/mcp-*.test.ts` 的 `getDocumentChunk` structural coverage **不受影響**（本 change 不碰 integration test）
 
 ## Risks / Trade-offs
 

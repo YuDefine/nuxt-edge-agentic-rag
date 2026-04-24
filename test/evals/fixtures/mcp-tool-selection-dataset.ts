@@ -1,10 +1,6 @@
-export const DATASET_VERSION = '2026-04-24-v1'
+export const DATASET_VERSION = '2026-04-24-v2'
 
-export type KnowledgeToolName =
-  | 'askKnowledge'
-  | 'searchKnowledge'
-  | 'getDocumentChunk'
-  | 'listCategories'
+export type KnowledgeToolName = 'askKnowledge' | 'searchKnowledge' | 'listCategories'
 
 export type QueryPattern = 'specific-topic' | 'category-flavored' | 'boundary'
 
@@ -21,91 +17,92 @@ function includesText(value: unknown, expected: string): boolean {
   return typeof value === 'string' && value.toLowerCase().includes(expected.toLowerCase())
 }
 
-function citationIdEquals(args: Record<string, unknown>, citationId: string): boolean {
-  return args.citationId === citationId
-}
-
 export const DATASET: EvalSample[] = [
+  // --- askKnowledge ×4：要合成答案、問「怎麼做 / 是什麼 / 為什麼」 ---
   {
-    id: 'ask-specific-launch-readiness',
-    query: '請根據知識庫回答：四月里程碑發布前，launch readiness plan 要先確認哪些風險？',
+    id: 'ask-specific-launch-risk',
+    query: '我們這個月底要發版，發版前應該先注意哪些風險？',
     expectedTool: 'askKnowledge',
-    expectedArgsCheck: (args) => includesText(args.query, 'launch readiness'),
+    expectedArgsCheck: (args) => includesText(args.query, '發版'),
     pattern: 'specific-topic',
   },
   {
-    id: 'ask-category-governance-review',
-    query: '治理政策分類裡，發布 evidence 前需要哪些審查步驟？請整理成可直接引用的答案。',
+    id: 'ask-specific-incident-report',
+    query: '產品上線後如果出問題要怎麼通報？有沒有標準流程？',
     expectedTool: 'askKnowledge',
-    expectedArgsCheck: (args) => includesText(args.query, 'evidence'),
+    expectedArgsCheck: (args) => includesText(args.query, '通報'),
+    pattern: 'specific-topic',
+  },
+  {
+    id: 'ask-category-review-steps',
+    query: '文件要公開給大家看之前，通常要經過哪些審查步驟？',
+    expectedTool: 'askKnowledge',
+    expectedArgsCheck: (args) => includesText(args.query, '審查'),
     pattern: 'category-flavored',
   },
   {
-    id: 'ask-boundary-broad-summary',
-    query: '我不確定文件名稱，只想問知識庫：目前專題報告治理流程的重點是什麼？',
+    id: 'ask-boundary-onboarding-overview',
+    query: '我剛加入團隊，想知道我們文件治理的重點流程是什麼？',
     expectedTool: 'askKnowledge',
     expectedArgsCheck: (args) => includesText(args.query, '治理'),
     pattern: 'boundary',
   },
+
+  // --- searchKnowledge ×4：要原文段落、強調「不整理」「看原文」 ---
   {
-    id: 'search-specific-launch-risks',
-    query: '幫我找出提到 April launch readiness risks 的來源片段，不要先幫我總結。',
+    id: 'search-specific-launch-risk-passage',
+    query: '幫我找文件裡有提到「發版風險」的原始段落，不用先整理。',
     expectedTool: 'searchKnowledge',
-    expectedArgsCheck: (args) => includesText(args.query, 'launch readiness'),
+    expectedArgsCheck: (args) => includesText(args.query, '發版'),
+    pattern: 'specific-topic',
+  },
+  {
+    id: 'search-specific-acceptance-passage',
+    query: '文件裡有哪幾段講到「驗收標準」？原文貼給我看就好。',
+    expectedTool: 'searchKnowledge',
+    expectedArgsCheck: (args) => includesText(args.query, '驗收'),
     pattern: 'specific-topic',
   },
   {
     id: 'search-category-evidence-publishing',
-    query: '在 governance policy 類別中搜尋 evidence publishing requirements 相關段落。',
+    query: '治理政策這一類裡，有提到證據發布條件的段落嗎？原文貼給我。',
     expectedTool: 'searchKnowledge',
-    expectedArgsCheck: (args) => includesText(args.query, 'evidence publishing'),
+    expectedArgsCheck: (args) => includesText(args.query, '證據'),
     pattern: 'category-flavored',
   },
   {
-    id: 'search-boundary-keywords-only',
-    query: '只搜尋關鍵字：retention cleanup audit trail。',
+    id: 'search-boundary-audit-keywords',
+    query: '搜「稽核紀錄清理」這幾個字看有沒有跳出什麼段落。',
     expectedTool: 'searchKnowledge',
-    expectedArgsCheck: (args) => includesText(args.query, 'retention'),
+    expectedArgsCheck: (args) => includesText(args.query, '稽核'),
     pattern: 'boundary',
   },
-  {
-    id: 'chunk-specific-citation',
-    query: '請打開 citation_01HZXAMPLE0000000000000000 的原始 chunk 文字。',
-    expectedTool: 'getDocumentChunk',
-    expectedArgsCheck: (args) => citationIdEquals(args, 'citation_01HZXAMPLE0000000000000000'),
-    pattern: 'specific-topic',
-  },
-  {
-    id: 'chunk-category-citation-from-governance',
-    query: '治理政策答案裡引用的 citation_01HZXAMPLE0000000000000001，幫我重播原文。',
-    expectedTool: 'getDocumentChunk',
-    expectedArgsCheck: (args) => citationIdEquals(args, 'citation_01HZXAMPLE0000000000000001'),
-    pattern: 'category-flavored',
-  },
-  {
-    id: 'chunk-boundary-replay-only',
-    query: '不要搜尋也不要摘要，只取回 citation_01HZXAMPLE0000000000000002。',
-    expectedTool: 'getDocumentChunk',
-    expectedArgsCheck: (args) => citationIdEquals(args, 'citation_01HZXAMPLE0000000000000002'),
-    pattern: 'boundary',
-  },
+
+  // --- listCategories ×4：問分類 / 清單 ---
   {
     id: 'categories-specific-visible-list',
-    query: '目前我可以看到哪些知識分類？',
+    query: '我現在可以看到哪些分類？',
     expectedTool: 'listCategories',
     expectedArgsCheck: (args) => args.includeCounts === undefined || args.includeCounts === false,
     pattern: 'specific-topic',
   },
   {
-    id: 'categories-category-counts',
-    query: '請列出 governance 和 project report 相關分類，最好包含每個分類的文件數。',
+    id: 'categories-specific-topic-areas',
+    query: '網站上有哪幾個主題區？',
+    expectedTool: 'listCategories',
+    expectedArgsCheck: (args) => args.includeCounts === undefined || args.includeCounts === false,
+    pattern: 'specific-topic',
+  },
+  {
+    id: 'categories-category-with-counts',
+    query: '可以列出所有分類嗎？順便告訴我每個分類有幾份文件。',
     expectedTool: 'listCategories',
     expectedArgsCheck: (args) => args.includeCounts === true,
     pattern: 'category-flavored',
   },
   {
-    id: 'categories-boundary-empty-inventory',
-    query: '先不要查文件內容，只盤點分類清單。',
+    id: 'categories-boundary-inventory-only',
+    query: '先不用查內容，只想知道分類清單有什麼。',
     expectedTool: 'listCategories',
     expectedArgsCheck: (args) =>
       args.includeCounts === undefined || typeof args.includeCounts === 'boolean',
