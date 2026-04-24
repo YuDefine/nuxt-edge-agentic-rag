@@ -35,8 +35,7 @@ _(none)_
 
 ### 近期（尚未 propose，可與 DO change 並行）
 
-- [low] **TD-009** `user_profiles.email_normalized` nullable migration — 獨立
-- [low] **TD-026** conversation owner-fallback 重複 config 收斂 — 獨立
+- [mid] **TD-009** `user_profiles.email_normalized` nullable migration — 獨立（scope 非小：rebuild `user_profiles` + 4 FK children，約 700+ 行 SQL + data migration）
 - [low] **日期格式 smoke（遺留）** — `/account/settings`、`/admin/documents/:id`、`/admin/members`、`/admin/query-logs` list+detail、`/admin/tokens` 目視確認
 
 ### 中期（合併評估）
@@ -56,7 +55,7 @@ _(none)_
 
 ## Active Changes
 
-_last synced: 2026-04-24T16:11:18.344Z_
+_last synced: 2026-04-24T19:18:58.122Z_
 
 2 active changes (0 ready · 2 in progress · 0 draft · 0 blocked)
 

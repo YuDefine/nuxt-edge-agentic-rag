@@ -8,42 +8,47 @@
 
 ## Index
 
-| ID     | Title                                                                  | Priority | Status | Discovered                                                  | Owner |
-| ------ | ---------------------------------------------------------------------- | -------- | ------ | ----------------------------------------------------------- | ----- |
-| TD-001 | mcp-token-store libsql 不相容                                          | low      | done   | 2026-04-20 B16 #10                                          | —     |
-| TD-002 | guest_policy DB-direct UPDATE 造成 cache drift                         | mid      | done   | 2026-04-20 B16 #7                                           | —     |
-| TD-003 | text-dimmed 對比度不足（cross-change residual）                        | mid      | done   | 2026-04-20 B17 C#11.9                                       | —     |
-| TD-004 | 首頁 Google login button 高度 36px < WCAG 40px                         | high     | done   | B17 viewport-baseline.spec.ts                               | —     |
-| TD-005 | Admin 頁面 a11y violations 批次（@nuxt/a11y 首輪掃描）                 | high     | done   | 2026-04-21 RAF @nuxt/a11y                                   | —     |
-| TD-006 | Nuxt UI subtle variant tonal badge 對比度不足                          | mid      | done   | 2026-04-20 TD-003 e2e exclude                               | —     |
-| TD-007 | 裝飾 icon tonal color 低於 WCAG 1.4.11 non-text AA                     | low      | done   | 2026-04-20 TD-006 review                                    | —     |
-| TD-008 | acceptance-tc-0x MCP 整合測試在 TD-001 修後破損                        | mid      | done   | 2026-04-20 add-ai-gateway                                   | —     |
-| TD-009 | user_profiles.email_normalized 全面改 nullable                         | mid      | open   | 2026-04-21 passkey-authentication                           | —     |
-| TD-010 | credentials / admin-members endpoint libsql 不相容                     | mid      | done   | 2026-04-21 passkey §16 DR                                   | —     |
-| TD-011 | migration 0009 FK cascade 設計不符 self-delete / audit                 | high     | done   | 2026-04-21 passkey §17.8                                    | —     |
-| TD-012 | passkey-first → link Google 被 better-auth email 檢驗擋住              | high     | done   | 2026-04-21 passkey §17.3                                    | —     |
-| TD-013 | /account/settings 新增 passkey 缺 naming dialog                        | low      | done   | 2026-04-21 passkey §17.2                                    | —     |
-| TD-014 | error-sanitizer 後 12 test 抛 evlog Logger not init                    | mid      | done   | 2026-04-21 drizzle-refactor apply                           | —     |
-| TD-015 | SSE 長連線缺 heartbeat，30s proxy timeout 風險                         | mid      | open   | 2026-04-24 /commit review                                   | —     |
-| TD-016 | isAbortError / createAbortError 在四處重複實作                         | low      | open   | 2026-04-24 /commit review                                   | —     |
-| TD-017 | chat.post.ts 兩個 AI binding getter 可合併                             | low      | done   | 2026-04-24 /commit review                                   | —     |
-| TD-018 | Container.vue classifyError 巢狀條件抽 lookup table                    | low      | done   | 2026-04-24 /commit review                                   | —     |
-| TD-019 | SSE reader pattern 在 client/server 雷同可抽共用                       | low      | open   | 2026-04-24 /commit review                                   | —     |
-| TD-020 | CHATGPT_CONNECTOR_OAUTH_PATH_PATTERN 可收緊字元集                      | low      | done   | 2026-04-24 /commit review                                   | —     |
-| TD-021 | ConversationHistory bucket toggle 缺 aria-expanded 等                  | low      | done   | 2026-04-24 /commit review                                   | —     |
-| TD-022 | groupedConversations computed 不跨 midnight 重新分組                   | low      | done   | 2026-04-24 /commit review                                   | —     |
-| TD-023 | index.vue 雙 LazyChatConversationHistory 產生重複 fetch                | low      | done   | 2026-04-24 /commit review                                   | —     |
-| TD-024 | chat-history-sidebar test suite 品質（string contract/resolves）       | low      | done   | 2026-04-24 /commit review                                   | —     |
-| TD-025 | Container.vue `$csrfFetch.native` 跳過 CSRF header 造成 /api/chat 403  | high     | done   | 2026-04-24 code-quality-review-followups 人工檢查 10.x      | —     |
-| TD-026 | index.vue 與 ConversationHistory fallback 重複 config + refresh 邏輯   | low      | open   | 2026-04-24 code-quality-review-followups /commit 0-A        | —     |
-| TD-027 | MCP connector first-time authorization journey 實測待部署後驗證        | mid      | open   | 2026-04-24 auth-redirect-refactor 人工檢查 7.4              | —     |
-| TD-028 | DeleteAccountDialog Google reauth 無 callbackURL，dialog 會 unmount    | mid      | done   | 2026-04-25 fix-delete-account-dialog-google-reauth 人工驗證 | —     |
-| TD-029 | mcp-toolkit alias fragility — shim 可能被 bypass                       | mid      | open   | 2026-04-24 fix-mcp-streamable-http-session review MI-2      | —     |
-| TD-030 | Claude.ai re-init 循環阻擋 tools/call（stateless 不足）                | high     | open   | 2026-04-24 fix-mcp-streamable-http-session post-deploy      | —     |
-| TD-040 | Token revoke 未同步清 MCP session DO                                   | low      | open   | 2026-04-24 upgrade-mcp-to-durable-objects Task 4.6          | —     |
-| TD-041 | DO tool dispatch 未 wire up，flag=true non-initialize 回假 ack         | high     | open   | 2026-04-24 upgrade-mcp-to-durable-objects Phase 4 trim      | —     |
-| TD-042 | Local NuxtHub dev KV binding 未注入 `cloudflare.env` → `/mcp` 503      | mid      | open   | 2026-04-24 add-mcp-tool-selection-evals 5.2 apply           | —     |
-| TD-043 | Evalite afterAll 的 `process.exit` / throw 不 propagate 到 `pnpm eval` | low      | open   | 2026-04-24 add-mcp-tool-selection-evals 6.5 verify          | —     |
+| ID     | Title                                                                                                                                  | Priority | Status | Discovered                                                       | Owner |
+| ------ | -------------------------------------------------------------------------------------------------------------------------------------- | -------- | ------ | ---------------------------------------------------------------- | ----- |
+| TD-001 | mcp-token-store libsql 不相容                                                                                                          | low      | done   | 2026-04-20 B16 #10                                               | —     |
+| TD-002 | guest_policy DB-direct UPDATE 造成 cache drift                                                                                         | mid      | done   | 2026-04-20 B16 #7                                                | —     |
+| TD-003 | text-dimmed 對比度不足（cross-change residual）                                                                                        | mid      | done   | 2026-04-20 B17 C#11.9                                            | —     |
+| TD-004 | 首頁 Google login button 高度 36px < WCAG 40px                                                                                         | high     | done   | B17 viewport-baseline.spec.ts                                    | —     |
+| TD-005 | Admin 頁面 a11y violations 批次（@nuxt/a11y 首輪掃描）                                                                                 | high     | done   | 2026-04-21 RAF @nuxt/a11y                                        | —     |
+| TD-006 | Nuxt UI subtle variant tonal badge 對比度不足                                                                                          | mid      | done   | 2026-04-20 TD-003 e2e exclude                                    | —     |
+| TD-007 | 裝飾 icon tonal color 低於 WCAG 1.4.11 non-text AA                                                                                     | low      | done   | 2026-04-20 TD-006 review                                         | —     |
+| TD-008 | acceptance-tc-0x MCP 整合測試在 TD-001 修後破損                                                                                        | mid      | done   | 2026-04-20 add-ai-gateway                                        | —     |
+| TD-009 | user_profiles.email_normalized 全面改 nullable                                                                                         | mid      | open   | 2026-04-21 passkey-authentication                                | —     |
+| TD-010 | credentials / admin-members endpoint libsql 不相容                                                                                     | mid      | done   | 2026-04-21 passkey §16 DR                                        | —     |
+| TD-011 | migration 0009 FK cascade 設計不符 self-delete / audit                                                                                 | high     | done   | 2026-04-21 passkey §17.8                                         | —     |
+| TD-012 | passkey-first → link Google 被 better-auth email 檢驗擋住                                                                              | high     | done   | 2026-04-21 passkey §17.3                                         | —     |
+| TD-013 | /account/settings 新增 passkey 缺 naming dialog                                                                                        | low      | done   | 2026-04-21 passkey §17.2                                         | —     |
+| TD-014 | error-sanitizer 後 12 test 抛 evlog Logger not init                                                                                    | mid      | done   | 2026-04-21 drizzle-refactor apply                                | —     |
+| TD-015 | SSE 長連線缺 heartbeat，30s proxy timeout 風險                                                                                         | mid      | open   | 2026-04-24 /commit review                                        | —     |
+| TD-016 | isAbortError / createAbortError 在四處重複實作                                                                                         | low      | open   | 2026-04-24 /commit review                                        | —     |
+| TD-017 | chat.post.ts 兩個 AI binding getter 可合併                                                                                             | low      | done   | 2026-04-24 /commit review                                        | —     |
+| TD-018 | Container.vue classifyError 巢狀條件抽 lookup table                                                                                    | low      | done   | 2026-04-24 /commit review                                        | —     |
+| TD-019 | SSE reader pattern 在 client/server 雷同可抽共用                                                                                       | low      | open   | 2026-04-24 /commit review                                        | —     |
+| TD-020 | CHATGPT_CONNECTOR_OAUTH_PATH_PATTERN 可收緊字元集                                                                                      | low      | done   | 2026-04-24 /commit review                                        | —     |
+| TD-021 | ConversationHistory bucket toggle 缺 aria-expanded 等                                                                                  | low      | done   | 2026-04-24 /commit review                                        | —     |
+| TD-022 | groupedConversations computed 不跨 midnight 重新分組                                                                                   | low      | done   | 2026-04-24 /commit review                                        | —     |
+| TD-023 | index.vue 雙 LazyChatConversationHistory 產生重複 fetch                                                                                | low      | done   | 2026-04-24 /commit review                                        | —     |
+| TD-024 | chat-history-sidebar test suite 品質（string contract/resolves）                                                                       | low      | done   | 2026-04-24 /commit review                                        | —     |
+| TD-025 | Container.vue `$csrfFetch.native` 跳過 CSRF header 造成 /api/chat 403                                                                  | high     | done   | 2026-04-24 code-quality-review-followups 人工檢查 10.x           | —     |
+| TD-026 | index.vue 與 ConversationHistory fallback 重複 config + refresh 邏輯                                                                   | low      | done   | 2026-04-24 code-quality-review-followups /commit 0-A             | —     |
+| TD-027 | MCP connector first-time authorization journey 實測待部署後驗證                                                                        | mid      | open   | 2026-04-24 auth-redirect-refactor 人工檢查 7.4                   | —     |
+| TD-028 | DeleteAccountDialog Google reauth 無 callbackURL，dialog 會 unmount                                                                    | mid      | done   | 2026-04-25 fix-delete-account-dialog-google-reauth 人工驗證      | —     |
+| TD-029 | mcp-toolkit alias fragility — shim 可能被 bypass                                                                                       | mid      | open   | 2026-04-24 fix-mcp-streamable-http-session review MI-2           | —     |
+| TD-030 | Claude.ai re-init 循環阻擋 tools/call（stateless 不足）                                                                                | high     | open   | 2026-04-24 fix-mcp-streamable-http-session post-deploy           | —     |
+| TD-040 | Token revoke 未同步清 MCP session DO                                                                                                   | low      | open   | 2026-04-24 upgrade-mcp-to-durable-objects Task 4.6               | —     |
+| TD-041 | DO tool dispatch 未 wire up，flag=true non-initialize 回假 ack                                                                         | high     | open   | 2026-04-24 upgrade-mcp-to-durable-objects Phase 4 trim           | —     |
+| TD-042 | Local NuxtHub dev KV binding 未注入 `cloudflare.env` → `/mcp` 503                                                                      | mid      | open   | 2026-04-24 add-mcp-tool-selection-evals 5.2 apply                | —     |
+| TD-043 | Evalite afterAll 的 `process.exit` / throw 不 propagate 到 `pnpm eval`                                                                 | low      | open   | 2026-04-24 add-mcp-tool-selection-evals 6.5 verify               | —     |
+| TD-044 | `session.create.before` 靜默吞 user_profiles UNIQUE 衝突 → better-auth user id 與 user_profiles.id 可能漂移                            | mid      | open   | 2026-04-25 consolidate-conversation-history-config §7.4 人工檢查 | —     |
+| TD-045 | Local dev bootstrap 連串斷點（NuxtHub 不 auto-apply migrations、sqlite3 CLI rename 留 stale `*_new` FK refs、`.env` 空值擋 /api/chat） | high     | open   | 2026-04-25 consolidate-conversation-history-config §7.4 人工檢查 | —     |
+| TD-046 | `agentic-rag-staging` AutoRAG index 在 CF 帳號中不存在（wrangler / Notion / deploy.yml 皆引用，CF API 僅有 `agentic-rag`）             | high     | open   | 2026-04-25 consolidate-conversation-history-config §7.4 人工檢查 | —     |
+| TD-047 | `/api/chat` SSE `ready` 後階段 error 時 Container 未 emit `conversation-persisted` → DB 已建 conv 但 UI 不更新                         | mid      | open   | 2026-04-25 consolidate-conversation-history-config §7.4 人工檢查 | —     |
+| TD-048 | 聊天 UI 缺顯式「新對話」入口 — sessionStorage 記住 active id 後只能靠刪除或 DevTools 清才能開新對話                                    | mid      | open   | 2026-04-25 consolidate-conversation-history-config §7.2 人工檢查 | —     |
 
 ---
 
@@ -989,11 +994,16 @@ const response = await $csrfFetch.native('/api/chat', { method: 'POST', body, he
 
 ## TD-026 — index.vue 與 ConversationHistory fallback 重複 config + refresh 邏輯
 
-**Status**: open
+**Status**: done
+**Resolved**: 2026-04-25 — `consolidate-conversation-history-config` change 抽出 `createChatConversationHistory` factory 集中管理兩處 config 與 refresh reconcile 順序。
 **Priority**: low
 **Discovered**: 2026-04-24 — `code-quality-review-followups` `/commit` 0-A simplify review
-**Location**: `app/pages/index.vue` (~L63-117) + `app/components/chat/ConversationHistory.vue` (~L52-110)
-**Related markers**: search `@followup[TD-026]` in repo
+**Location**: `app/pages/index.vue` (~L44-60) + `app/components/chat/ConversationHistory.vue` (~L40-60)
+**Related markers**: search `@followup[TD-026]` in repo（archived change `code-quality-review-followups` 保留歷史 marker）
+
+### Resolution
+
+`app/composables/create-chat-conversation-history.ts` 封裝 `useChatConversationHistory` config 組裝與 `refreshAndReconcile(selectedId)` 實作；`app/pages/index.vue` 與 `app/components/chat/ConversationHistory.vue` 兩處分別以 parent-provide 與 owner-fallback 方式呼叫同一 factory，toast / callback 文案集中維護。新增 `test/unit/create-chat-conversation-history.spec.ts` 覆蓋 refresh reconcile 四條路徑（still present / missing but loadable / missing + detail missing / no active id）+ 預設 toast fallback 兩條測試；spec `web-chat-ui` 新增「Conversation History Refresh Reconciliation」requirement 將 reconcile 順序正式化。
 
 ### Problem
 
@@ -1353,4 +1363,230 @@ Design Decision 5 要求 overall score < baseline − 5pp 時 `pnpm eval` 以 no
 
 - 故意改壞 dataset（overall < baseline − 5pp）後 `pnpm eval; echo $?` 印 **非 0**
 - 正常 dataset（overall ≈ baseline）後 `pnpm eval; echo $?` 印 **0**
-- 新增 `test/unit/` 或 `scripts/` 單元測試覆蓋 wrapper / threshold 判斷邏輯（不 spawn 真 eval）
+
+---
+
+## TD-044 — `session.create.before` 靜默吞 user_profiles UNIQUE 衝突 → better-auth user id 與 user_profiles.id 可能漂移
+
+**Status**: open
+**Priority**: mid
+**Discovered**: 2026-04-25 — `consolidate-conversation-history-config` §7.4 人工檢查（local dev 發訊息 → `/api/chat` 500 `FOREIGN KEY constraint failed: SQLITE_CONSTRAINT_FOREIGNKEY`）
+**Location**: `server/auth.config.ts:487-513` (`session.create.before` hook 的 user_profiles sync try/catch)
+**Related markers**: search `@followup[TD-044]` in repo
+
+### Problem
+
+better-auth 在 `session.create.before` hook 內 upsert `user_profiles` row（見 `server/auth.config.ts:492`）：
+
+```typescript
+try {
+  await hubDb
+    .insert(schema.userProfiles)
+    .values({
+      id: session.userId,
+      emailNormalized,
+      roleSnapshot: finalRole,
+      adminSource,
+    })
+    .onConflictDoUpdate({...})
+} catch (error) {
+  authLog.error('user_profiles sync failed', {...})
+  // 繼續，不 rethrow
+}
+```
+
+`user_profiles.email_normalized` 有 `NOT NULL UNIQUE`（見 migration `0001_bootstrap_v1_core.sql`），但 `onConflictDoUpdate` 的 target 是 PRIMARY KEY (`id`)，不是 `email_normalized`。若資料庫中已有同 email_normalized 但不同 id 的 stale `user_profiles` row（通常因 better-auth `user` 表曾被手動刪 + 重建產生新 id），hook 會撞 UNIQUE(email_normalized) conflict → catch 吞掉 → **新 better-auth user 的 id 在 `user_profiles` 裡根本沒對應 row**。
+
+後果：任何依 `conversations.user_profile_id` / `query_logs.user_profile_id` / `messages.user_profile_id` FK 的寫入都會 500：
+
+```
+D1_ERROR: FOREIGN KEY constraint failed: SQLITE_CONSTRAINT_FOREIGNKEY
+at Object.createForUser (conversationStore)
+at Object.chatHandler
+```
+
+Production Cloudflare D1 若沒發生過 user 刪除重建不會中鏢，但 local dev（多次 `_dev/login` / 手動 reset DB）很容易卡到 stale row，螢幕是詭異的「明明登入成功但 /api/chat 一直 500」。**人工檢查 / screenshot review / 任何依 `/api/chat` 的 E2E 都會隨機失敗**，且錯誤訊息「Chat failed」沒揭露 FK 真因。
+
+### Fix approach
+
+三個選項（建議 1 + 3 雙保險）：
+
+1. **改 `onConflictDoUpdate` 的 conflict target**：從 id → email_normalized，配合 `SET id = excluded.id`。這會讓 UNIQUE 衝突時改成「更新既有 row 的 id 指到新 user」，自然把 stale 接管。但要注意 children FK（conversations / messages / query_logs）需要 ON UPDATE CASCADE 才跟著動，否則變孤兒。
+2. **或先查後寫**：插入前 `SELECT id FROM user_profiles WHERE email_normalized = ?`，有 stale → 決定是 update id（+ cascade children）還是 delete stale 再 insert；無則直接 insert。邏輯多但可控。
+3. **讓 catch 重新 throw（至少 in non-production）**：`if (process.env.NODE_ENV !== 'production') throw`。local 立刻 fail fast，生產保留現有保守行為。搭配 1/2 後這條幾乎不會炸，但若未來再有 drift 會立即暴露。
+
+同時補：
+
+- log.error 輸出後加個 **actionable hint**（「可能是 user_profiles 有 stale row 指向舊 better-auth user；檢查 email_normalized = X 的既有 row」），省下次 debug 的時間。
+- migration 層面的 TD-009（`email_normalized` 改 nullable）不直接修本 bug，但配合 unique index 若加上 partial index (`WHERE email_normalized IS NOT NULL`) 可同時化解 passkey-only user 佔位衝突。
+
+### Acceptance
+
+- Local `rm .data/db/sqlite.db && rm -rf .wrangler/state/v3/d1/...` rebuild 後首次 `/_dev/login` + 發訊息 /api/chat 200
+- 手動 `DELETE FROM user; INSERT INTO user (id, email, ...) VALUES ('new-id', same-email, ...)`（或等同 better-auth 刪重建）後再登入 + 發訊息 /api/chat 200（不再 500）
+- 新增 unit 覆蓋：stub `hubDb.insert` 模擬 UNIQUE email_normalized 衝突，hook 走「改 id 路徑」把 user_profiles row 指到新 id，後續 conversations insert 不 FK fail
+- auth.config.ts 的 catch 在 non-production 改為 rethrow（或至少：error.log 有明確「stale user_profiles row 可能在 email=X」的 actionable hint）
+
+---
+
+## TD-045 — Local dev bootstrap 連串斷點
+
+**Status**: open
+**Priority**: high
+**Discovered**: 2026-04-25 — `consolidate-conversation-history-config` §7.4 人工檢查（新 session `pnpm dev` 後 /api/chat 一路從 500 FK error → 503 binding 未設 → 503 AutoRAG not found，共三關）
+**Location**: `.data/db/sqlite.db` bootstrap + `server/database/migrations/0007,0009.sql` + `.env.example`
+**Related markers**: search `@followup[TD-045]` in repo
+
+### Problem
+
+Cleanroom 新裝或 local DB rebuild 後，要跑起 `/api/chat` 必須連過以下坑，每一個都沒有自動化保護：
+
+1. **NuxtHub 不 auto-apply migrations** — 刪掉 `.data/db/sqlite.db` 後 dev server 啟動只建 `_hub_migrations` 表，不會套用 `server/database/migrations/*.sql`。
+2. **手動 `sqlite3 < migration.sql` 留下 stale `*_new` FK refs** — migrations `0007` / `0009` 用 `CREATE *_new → INSERT → DROP → RENAME` rebuild pattern，預期 SQLite 在 RENAME 時 rewrite 相鄰 FK references（PRAGMA `legacy_alter_table` OFF 的行為）。但透過 sqlite3 CLI 套用時（無論是手動 < 或自動化），部分環境下 RENAME 不會 rewrite 兄弟表 DDL 的 FK 目標字串；結果 `account`/`session`/`passkey`/`conversations` 的 `userId REFERENCES user_new(id)` 不被更新為 `REFERENCES "user"(id)`，後續任何 INSERT/UPDATE 都踩 FK violation（更糟：better-auth 在 `POST /api/auth/callback/google` 時拋 `no such table: account`）。
+3. **`.env.example` 預設 `NUXT_KNOWLEDGE_AI_SEARCH_INDEX=` 空值** — chat handler 立刻回 503 `Knowledge AI Search index is not configured`；Notion Secret 頁雖有指引要指 staging，但指引沒被檢查脚本 / dev server startup 驗證，新人會直接撞牆。
+
+### Fix approach
+
+三層並用：
+
+1. **`predev` hook 補 migration**：新增 `scripts/apply-migrations-local.mjs`，在 `pnpm dev` 啟動前檢查 `.data/db/sqlite.db` 是否存在或缺表，若缺則依序 apply `server/database/migrations/*.sql`。完成後跑 `PRAGMA foreign_key_check;` 攔截 FK 不一致。
+2. **Migration 0010 補收尾 step**：在 migration 末尾顯式跑 `PRAGMA writable_schema=1; UPDATE sqlite_master SET sql=REPLACE(sql, 'user_new(id)', '"user"(id)') ...; PRAGMA writable_schema=0; VACUUM;`，確保無論透過哪種 runner 都會把 stale refs 收乾淨。或改寫 rebuild pattern 為「CREATE TABLE foo_tmp AS SELECT ... → DROP foo → ALTER foo_tmp RENAME TO foo」，避免 `*_new` 命名污染。
+3. **`.env.example` 加註解 + `predev` 檢查**：若 `NUXT_KNOWLEDGE_AI_SEARCH_INDEX` 為空且 `NUXT_KNOWLEDGE_ENVIRONMENT=local`，`predev` 印警告並提示「參考 Notion Secret 頁的 Local chat / AutoRAG 驗證指引」。
+
+### Acceptance
+
+- `rm -rf .data/db .wrangler/state/v3/d1/miniflare-D1DatabaseObject && pnpm dev` 後首次 `POST /_dev/login` + `/api/chat` 直接 200（不需任何手動 sqlite3 步驟）
+- `sqlite3 .data/db/sqlite.db "SELECT count(*) FROM sqlite_master WHERE sql LIKE '%_new(%'"` 回 0
+- 若 `.env` 未設 `NUXT_KNOWLEDGE_AI_SEARCH_INDEX`，`pnpm dev` 終端機清楚提示下一步該做什麼
+
+---
+
+## TD-046 — `agentic-rag-staging` AutoRAG index 在 CF 帳號中不存在
+
+**Status**: open
+**Priority**: high
+**Discovered**: 2026-04-25 — `consolidate-conversation-history-config` §7.4 人工檢查（local /api/chat 503 AutoRAG not found；CF API 驗證）
+**Location**: `wrangler.staging.jsonc`、`.github/workflows/deploy.yml:238`、Notion Secret 頁、`agentic-rag-staging` binding consumer
+**Related markers**: search `@followup[TD-046]` in repo
+
+### Problem
+
+多個 config source 都宣稱 staging 環境用 `agentic-rag-staging` AutoRAG index：
+
+- `wrangler.staging.jsonc` `NUXT_KNOWLEDGE_AI_SEARCH_INDEX=agentic-rag-staging`
+- `.github/workflows/deploy.yml:238` `NUXT_KNOWLEDGE_AI_SEARCH_INDEX: agentic-rag-staging`
+- Notion Secret 頁「環境總覽」staging row `Search index: agentic-rag-staging`
+- `wire-do-tool-dispatch` / `upgrade-mcp-to-durable-objects` 之 immediate validation 都假設 staging AutoRAG 能用
+
+但 Cloudflare API `GET /accounts/{account_id}/autorag/rags` 實際只回**一筆**：`agentic-rag`（production）。`agentic-rag-staging` 在 Dashboard / API 皆不存在。
+
+可能原因：
+
+1. 規劃時寫入 config 但忘了在 CF 建
+2. 曾經有、後來刪但 config 沒清
+3. 建 staging AutoRAG 成本 / 資料 ingest 門檻讓團隊暫緩，但沒 flag 出來
+
+影響：
+
+- Staging deployed worker 一旦被 end-to-end 測（真正 call /api/chat），會在 AutoRAG search step 503「AutoRAG not found」
+- MCP `askKnowledge` / `searchKnowledge` 在 staging 也會踩同樣錯
+- Local dev 若照 Notion 指引指向 staging，同樣被擋
+- `wire-do-tool-dispatch` 的 staging immediate validation（HANDOFF Next Steps 2-3）可能也 partial pass only — `tools/list` 過了但真 `askKnowledge` tool call 會死在 AutoRAG
+
+### Fix approach
+
+兩個方向擇一：
+
+1. **建 `agentic-rag-staging` AutoRAG index**：到 CF Dashboard → AI → AutoRAG → 建 RAG，source `agentic-rag-documents-staging`（R2 bucket 已存在）、embedding / chunk size 與 production 對齊、AI Gateway 指 `agentic-rag-staging`（若 gateway 也沒建則同步建）。完成後執行 ingest（staging 資料集可以是 production 的子集）。
+2. **放棄 staging AutoRAG，把 staging 指向 production index**：修 `wrangler.staging.jsonc` / deploy.yml / Notion 讓 `NUXT_KNOWLEDGE_AI_SEARCH_INDEX=agentic-rag`。風險：staging 讀到真實客戶資料，cache 命中 / 額度共用 production；需 risk review 是否 acceptable。
+
+建議走 1（正確做法），時間壓力下走 2 並明確記錄。
+
+### Acceptance
+
+- CF API `GET /accounts/{acc}/autorag/rags` 回傳包含 `agentic-rag-staging`（若走方向 1）
+- 或 staging worker 部署後 `curl -X POST .../api/chat` 不再 503 AutoRAG not found
+- `wire-do-tool-dispatch` 的 immediate validation（HANDOFF §2.3）`askKnowledge` / `searchKnowledge` tool call 真的拿到 citation 不是 error
+
+---
+
+## TD-047 — `/api/chat` SSE `ready` 後階段 error 時 Container 未 emit `conversation-persisted`
+
+**Status**: open
+**Priority**: mid
+**Discovered**: 2026-04-25 — `consolidate-conversation-history-config` §7.4 debug
+**Location**: `app/components/chat/Container.vue:228`（try block emit 路徑）、`app/utils/chat-stream.ts:146`（ready event discard）
+**Related markers**: search `@followup[TD-047]` in repo
+
+### Problem
+
+`/api/chat` 的 SSE 流程：
+
+1. Server 先把 conversation **insert 到 DB**（`conversationStore.createForUser`）
+2. 回傳 `event: ready data: {conversationCreated: true, conversationId: ...}`
+3. 接著跑 `chatWithKnowledge`（AutoRAG search、Workers AI 生成、judge…）
+4. 若 step 3 任何環節 throw → enqueue `event: error`
+
+目前 Container.vue 的 client 實作：
+
+- `readChatStream` 的 `ready` case `return null`（discard）
+- `complete` / `refusal` case `return event` → Container 從 `terminalEvent.data.conversationId` 讀 id 並 `emit('conversation-persisted', ...)`
+- `error` case `throw new ChatStreamError` → Container 走 catch block，**不 emit**
+
+結果：**DB 已經建了 conversation**，但 UI 不知道；active conversation id 保持 null、sidebar `historyRefreshKey` 不 bump、使用者下一次發訊息又被當新對話 → DB 出現孤兒 conversation，user 只能 reload 才看得到。TD-046 的 staging AutoRAG 問題直接暴露這條 UX 缺口。
+
+### Fix approach
+
+兩個層次一起修：
+
+1. **`chat-stream.ts`**：`ready` event 不要 discard，把 `conversationCreated` / `conversationId` 存進一個 handler ref。讓 `readChatStream` signature 多一個 `onReady?: (data) => void` callback 或在 return type 加 `earlyReady: {...}` 欄位。
+2. **`Container.vue`**：
+   - onReady callback 時先存 `pendingConversation = {id, created}`
+   - 成功路徑繼續照舊 emit（拿 terminalEvent 的值）
+   - catch block 裡若 `pendingConversation` 非空，用它 emit `conversation-persisted`（標記 message 為 error placeholder），讓 page / history 至少能 refresh active + sidebar
+3. 或者更簡單：**server side** 把 conversation create 從 handler 搬到 `execute()` 成功之後，避免孤兒 conversation。但這會失去 "streaming starts before DB write" 的 latency 優勢，需要 trade-off review。
+
+### Acceptance
+
+- 故意把 AutoRAG search 拔掉（例如 env AI_SEARCH_INDEX 指不存在的 index），發訊息後：
+  - Sidebar 立刻出現新 conversation（或 Container 明確呼叫 DELETE /api/conversations/{id} 清 orphan）
+  - 下一次發訊息會帶 conversationId 而不是建新 conv
+- Unit test：stub `readChatStream` 模擬 ready-then-error，驗證 Container emit `conversation-persisted` 且帶正確 id
+
+---
+
+## TD-048 — 聊天 UI 缺顯式「新對話」入口
+
+**Status**: open
+**Priority**: mid
+**Discovered**: 2026-04-25 — `consolidate-conversation-history-config` §7.2 人工檢查（使用者反映「找不到新對話按鈕」、「reload 始終停在同個對話」）
+**Location**: `app/pages/index.vue`（無明顯 CTA）、`app/components/chat/ConversationHistory.vue:129` 的 `+` icon 實際只 `requestExpand`、`app/layouts/chat.vue` header 也無新對話按鈕
+**Related markers**: search `@followup[TD-048]` in repo
+
+### Problem
+
+Chat UI 沒有任何顯式的「新對話 / New chat」按鈕或 menu item：
+
+- ConversationHistory.vue L129 的 `i-lucide-plus` 按鈕 aria-label `"新增對話"` 只在**收合的 sidebar** 出現，`@click="requestExpand"` 只做展開 sidebar 的事，不真的重置 active（容易誤會）
+- 展開狀態 sidebar 沒有 + 按鈕
+- 頂部 nav 的「問答」link `to="/"` 在已有 active 的狀況下 navigate 到 `/` 不會清掉 sessionStorage 裡的 active id，`restoreActiveConversation` 會把它讀回來
+- 使用者唯一的「開新對話」路徑是：刪除當前 active conversation，或手動清 `sessionStorage['web-chat:active-conversation:<userId>']` 後 reload
+
+人工檢查時使用者反映「我找不到新對話按鈕」、「整頁重整始終在同個對話」— 屬於正當 UX 需求被封死。這不只阻擋 review flow，也會讓真實使用者卡住（想新開一個主題的對話就做不到）。
+
+### Fix approach
+
+三個層次擇一 / 並用：
+
+1. **明顯的 CTA**：在展開 sidebar 的 header 右側加 `UButton icon="i-lucide-plus" aria-label="新對話"`，click → 呼叫 `handleConversationCleared()`（index.vue 已有這 handler，做的事就是 `setActiveConversation({conversationId: null, messages: []})`）。成本最低、語意最清楚。
+2. **Header-level 入口**：chat layout header 加一個「新對話」按鈕，mobile / desktop 都能看見；click 路徑同上。
+3. **「問答」nav link 行為修正**：若 active 非 null 且 click `/`，視為清空 active 的 intent（也要清 sessionStorage）。比較隱晦，不建議單用，但可作為輔助。
+
+額外 UX 考量：clear 的 confirm flow — 若使用者誤點要不要有 undo / 雙層確認？目前 active 被切換時就 drop 使用者剛打字未送出的 input；需補一層 dialog 或改 setActiveConversation 不清 draft。
+
+### Acceptance
+
+- 展開 sidebar 可見「新對話」按鈕（desktop + mobile drawer 都有）
+- 按下後主面板回到 hero empty state、sidebar active 高亮消失、sessionStorage 內 `web-chat:active-conversation:<userId>` 被刪
+- reload 後不會把剛開新對話的狀態覆寫回舊的
+- 新增 E2E / unit test 覆蓋「建 conv A → 按新對話 → 建 conv B，兩筆各自獨立」
