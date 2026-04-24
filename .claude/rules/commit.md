@@ -2,6 +2,10 @@
 
 所有 commit **MUST** 透過 `/commit` command 執行。**NEVER** 直接 `git commit`（例外見下）。
 
+`git add` 也是 `/commit` 流程的一部分：**任何 `git add` 都 MUST 在 `/commit` 流程中執行**，在 0-A / 0-B / 0-C 品質閘門跑過之後、`git commit` 之前那步。**NEVER** 在 `/commit` 流程外獨立 `git add`（例外見下）。
+
+**`/spectra-commit` 一律禁用**。本專案統一走 `/commit`，不接受以 spectra-commit 繞過閘門。如需只 commit 某個 change 的相關檔，在 `/commit` 流程的 Step 2 分組階段自行限定檔案範圍即可。
+
 ## 理由
 
 `/commit` 封裝了品質閘門，繞過等於讓壞 code / 壞版本號 / 壞 tag 進 repo：
@@ -18,16 +22,19 @@
 - **NEVER** `git commit` / `git commit -m` — 繞過 0-A / 0-B 品質閘門
 - **NEVER** `git commit --amend` 修改已 push 的 commit — 會破壞遠端 history
 - **NEVER** `git commit --no-verify` — 繞過 pre-commit hook
+- **NEVER** 在 `/commit` 流程外獨立 `git add`（含 `git add -p`、`git add .`、`git add <file>`）— 會讓「看起來還沒進入 commit 流程」的變更偷偷堆 staging
+- **NEVER** 呼叫 `/spectra-commit`（或對應 skill）— 本專案一律走 `/commit`
 - **NEVER** 以「變更很小」「只是 typo」「趕時間」為由跳過 `/commit`
-- **NEVER** 讓 agent / subagent 自主執行 `git commit` — commit 必須在主線經過使用者確認分組
+- **NEVER** 讓 subagent 自主執行 `git commit` / `git add` — 主線 agent 在 `/commit` 流程內執行即可，不需要再經使用者逐一確認分組
 
 ## 例外（極少）
 
-以下情境允許直接 `git commit`，**MUST** 在 commit message 註明理由：
+以下情境允許直接 `git commit` / `git add`，**MUST** 在 commit message 註明理由：
 
 1. **`/commit` 本身壞掉** — command 檔被改壞、依賴的 agent 不可用時的救火
-2. **Merge commit / rebase resolution** — `git merge` / `git rebase --continue` 的自動 commit
+2. **Merge commit / rebase resolution** — `git merge` / `git rebase --continue` 的自動 commit 與其前置 `git add`
 3. **`git revert`** — 還原既有 commit，無需重跑品質檢查
+4. **`git reset` / `git restore --staged`** — **只**用於把錯誤 staged 的檔案移出 staging，不是 `git add` 的替代
 
 例外情境外，一律走 `/commit`。
 
