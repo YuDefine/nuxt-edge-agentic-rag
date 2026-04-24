@@ -35,7 +35,7 @@
 
 ## 6. 驗證與品質閘門
 
-- [ ] 6.1 `pnpm check`（format + lint + typecheck + test）全綠；確認 `pnpm check` 完全沒有觸發 eval / 沒有 LLM API call（Non-Blocking Eval Execution — Eval is excluded from default quality gates）
+- [x] 6.1 `pnpm check`（format + lint + typecheck + test）全綠；確認 `pnpm check` 完全沒有觸發 eval / 沒有 LLM API call（Non-Blocking Eval Execution — Eval is excluded from default quality gates）
 - [x] 6.2 `pnpm test` 單獨跑 scorer unit test（`test/unit/evals-scorer.test.ts`）全綠
 - [x] 6.3 `pnpm spectra:followups` / `pnpm audit:ux-drift` 無新 drift
 - [x] 6.4 CI workflow 檢視（`.github/workflows/**` 或對應設定）：確認沒有任何 job 呼叫 `pnpm eval` / `evalite`；如有疑似項，明確排除並註明
