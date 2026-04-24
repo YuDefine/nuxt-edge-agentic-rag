@@ -77,7 +77,58 @@ describe('knowledge runtime bootstrap', () => {
         },
         clients: [],
       },
+      mcp: {
+        sessionTtlMs: 1800000,
+      },
     })
+  })
+})
+
+describe('knowledge runtime mcp session', () => {
+  it('defaults sessionTtlMs to 30 minutes (1_800_000 ms)', () => {
+    const config = createKnowledgeRuntimeConfig()
+
+    expect(config.mcp.sessionTtlMs).toBe(1_800_000)
+  })
+
+  it('accepts explicit sessionTtlMs number within bounds', () => {
+    const config = createKnowledgeRuntimeConfig({
+      mcp: { sessionTtlMs: 60_000 },
+    })
+
+    expect(config.mcp.sessionTtlMs).toBe(60_000)
+  })
+
+  it('parses sessionTtlMs numeric string from env', () => {
+    const config = createKnowledgeRuntimeConfig({
+      mcp: { sessionTtlMs: '60000' },
+    })
+
+    expect(config.mcp.sessionTtlMs).toBe(60_000)
+  })
+
+  it('falls back to default when sessionTtlMs is non-numeric string', () => {
+    const config = createKnowledgeRuntimeConfig({
+      mcp: { sessionTtlMs: 'not-a-number' },
+    })
+
+    expect(config.mcp.sessionTtlMs).toBe(1_800_000)
+  })
+
+  it('falls back to default when sessionTtlMs is zero or negative', () => {
+    const zeroed = createKnowledgeRuntimeConfig({ mcp: { sessionTtlMs: 0 } })
+    const negative = createKnowledgeRuntimeConfig({ mcp: { sessionTtlMs: -1 } })
+
+    expect(zeroed.mcp.sessionTtlMs).toBe(1_800_000)
+    expect(negative.mcp.sessionTtlMs).toBe(1_800_000)
+  })
+
+  it('rejects sessionTtlMs below the 1 second minimum', () => {
+    expect(() => createKnowledgeRuntimeConfig({ mcp: { sessionTtlMs: 999 } })).toThrow()
+  })
+
+  it('rejects sessionTtlMs above the 24 hour maximum', () => {
+    expect(() => createKnowledgeRuntimeConfig({ mcp: { sessionTtlMs: 86_400_001 } })).toThrow()
   })
 })
 

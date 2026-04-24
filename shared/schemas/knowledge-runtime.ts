@@ -97,6 +97,10 @@ export interface KnowledgeMcpConnectorsConfig {
   clients: McpConnectorClientConfig[]
 }
 
+export interface KnowledgeMcpConfig {
+  sessionTtlMs: number
+}
+
 export interface KnowledgeRuntimeConfig {
   adminEmailAllowlist: string[]
   aiGateway: KnowledgeAiGatewayConfig
@@ -105,6 +109,7 @@ export interface KnowledgeRuntimeConfig {
   environment: KnowledgeEnvironment
   features: KnowledgeFeatureFlags
   governance: KnowledgeGovernanceConfig
+  mcp: KnowledgeMcpConfig
   mcpConnectors: KnowledgeMcpConnectorsConfig
   uploads: KnowledgeUploadsConfig
 }
@@ -129,6 +134,9 @@ export interface KnowledgeRuntimeConfigInput {
     Record<(typeof KNOWLEDGE_FEATURE_FLAG_VALUES)[number], boolean | string | undefined>
   >
   governance?: KnowledgeGovernanceInput
+  mcp?: {
+    sessionTtlMs?: number | string
+  }
   mcpConnectors?: {
     oauth?: {
       accessTokenTtlSeconds?: number | string
@@ -203,6 +211,9 @@ const knowledgeRuntimeConfigSchema = z.object({
       judgeMin: z.number().min(0).max(1),
     }),
   }),
+  mcp: z.object({
+    sessionTtlMs: z.number().int().min(1000).max(86_400_000),
+  }),
   mcpConnectors: z.object({
     oauth: z.object({
       accessTokenTtlSeconds: z.number().int().min(1).max(86400),
@@ -252,6 +263,8 @@ export const DEFAULT_KNOWLEDGE_MODEL_ROLES: Readonly<KnowledgeModelRoles> = Obje
   agentJudge: 'agentJudge',
   defaultAnswer: 'defaultAnswer',
 })
+
+export const DEFAULT_MCP_SESSION_TTL_MS = 1_800_000
 
 function parseBooleanFlag(value: boolean | string | undefined, fallback = false): boolean {
   if (typeof value === 'boolean') {
@@ -448,6 +461,9 @@ export function createKnowledgeRuntimeConfig(
       features,
       governance: input.governance,
     }),
+    mcp: {
+      sessionTtlMs: parsePositiveInteger(input.mcp?.sessionTtlMs, DEFAULT_MCP_SESSION_TTL_MS),
+    },
     mcpConnectors: {
       oauth: {
         accessTokenTtlSeconds: parsePositiveInteger(
