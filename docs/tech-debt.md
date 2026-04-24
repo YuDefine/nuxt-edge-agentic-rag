@@ -40,6 +40,7 @@
 | TD-028 | DeleteAccountDialog Google reauth 無 callbackURL，dialog 會 unmount   | mid      | open   | 2026-04-24 auth-redirect-refactor code-review OBS-1    | —     |
 | TD-029 | mcp-toolkit alias fragility — shim 可能被 bypass                      | mid      | open   | 2026-04-24 fix-mcp-streamable-http-session review MI-2 | —     |
 | TD-030 | Claude.ai re-init 循環阻擋 tools/call（stateless 不足）               | high     | open   | 2026-04-24 fix-mcp-streamable-http-session post-deploy | —     |
+| TD-040 | Token revoke 未同步清 MCP session DO                                  | low      | open   | 2026-04-24 upgrade-mcp-to-durable-objects Task 4.6     | —     |
 
 ---
 
@@ -1182,3 +1183,36 @@ Claude 顯然把 `GET 405` 視為「stream 不可用 → 必須重建 session」
 - wrangler tail 5 分鐘觀察：`tools/call` method 正常出現，無 `POST initialize 400` 循環
 - `GET /mcp` 回 `200 Content-Type: text/event-stream`（DO 承載 SSE）或保留 405 — 具體策略隨 DO 設計決定
 - ChatGPT Remote MCP（若實測）同樣穩定
+
+## TD-040 — Token revoke 未同步清 MCP session Durable Object
+
+**Status**: open
+**Priority**: low
+**Discovered**: 2026-04-24 — `upgrade-mcp-to-durable-objects` Task 4.6
+**Location**: `server/api/admin/mcp-tokens/[id].delete.ts`（revoke endpoint）＋ `server/durable-objects/mcp-session.ts`（DO）
+**Related markers**: 本 change 完成後，tasks.md Task 4.6 保留 `@followup[TD-040]`
+
+### Problem
+
+當管理員 revoke 一組 MCP token 時，該 token 已建立的 `MCPSessionDurableObject` session 不會被立即清除——僅依賴 DO 的 idle TTL `alarm()` 自然回收（預設 30 分鐘）。
+
+影響：
+
+- Token revoke 後 token holder 若已有 live session，仍可在 TTL 剩餘時間內繼續以舊 session 呼叫 tools（雖然 middleware 會攔 token，但 DO session 認同 `Mcp-Session-Id` 而放行）
+- 稽核紀錄 revoke 時間與實際「停機」時間有差
+- Low priority：實務上 revoke 後 middleware 的 bearer-token 驗證會 401 擋下（token hash 對不上），所以 session 實際無法觸發 tool call
+
+### Fix approach
+
+需要 **token → sessionId 索引**（目前不存在）。兩種方案：
+
+1. `mcp_tokens` 表加 `active_session_ids TEXT[]`，issue token 時清空，每次 DO `initialize` 透過 admin API 把新 sessionId upsert 進來
+2. KV 以 `mcp:session-by-token:<tokenId>` 記錄 sessionId list，DO `initialize` 時寫入
+
+Revoke endpoint 讀出 list → 迭代呼叫 `env.MCP_SESSION.idFromName(sessionId).fetch(new Request('...', { method: 'DELETE' }))` 讓 DO 清 storage。**注意**：目前 DO 把 `DELETE` 短路成 `405`，實作時要加一條 bypass（例如特定 `X-MCP-Internal: invalidate` header）或改用 `POST /mcp/__invalidate`。
+
+### Acceptance
+
+- Admin UI revoke token 後 `wrangler tail` 觀察：對應 sessionId 的 DO 立即 `deleteAll`（或在 5 秒內）
+- 既有 DO TTL alarm 仍保留為 safety net
+- Integration test：`token revoke → 同一 sessionId 的後續 request → 404`
