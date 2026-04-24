@@ -206,7 +206,8 @@ function createFakeMcpSessionBinding(env: McpSessionDurableObjectEnv, now: () =>
   const objects = new Map<string, MCPSessionDurableObject>()
 
   return {
-    idFromName: (sessionId: string) => {
+    get: (id: { toString?: () => string }) => {
+      const sessionId = id.toString?.() ?? ''
       if (!objects.has(sessionId)) {
         objects.set(
           sessionId,
@@ -215,10 +216,12 @@ function createFakeMcpSessionBinding(env: McpSessionDurableObjectEnv, now: () =>
       }
 
       return {
-        toString: () => sessionId,
         fetch: (request: Request) => objects.get(sessionId)!.fetch(request),
       }
     },
+    idFromName: (sessionId: string) => ({
+      toString: () => sessionId,
+    }),
   }
 }
 
