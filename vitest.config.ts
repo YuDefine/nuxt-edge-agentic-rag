@@ -83,6 +83,16 @@ function getNuxtUnitFiles(): string[] {
 }
 
 export default defineConfig(async () => {
+  if (process.env.EVALITE_REPORT_TRACES === 'true') {
+    return {
+      ...nodeProjectConfig,
+      test: {
+        environment: 'node',
+        include: ['test/evals/**/*.eval.ts'],
+      },
+    }
+  }
+
   const appRoot = fileURLToPath(new URL('./app', import.meta.url))
   const nuxtTestRoot = fileURLToPath(new URL('./test/nuxt', import.meta.url))
   const nuxtUnitFiles = getNuxtUnitFiles()
