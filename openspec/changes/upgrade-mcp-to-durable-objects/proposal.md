@@ -85,10 +85,34 @@ _(本 change 無 DB entity / enum / shared type 改動。新增 Durable Object b
 - **Q3（Rollout）**：Staging-first + feature flag 雙控；**不做 per-request canary**（專案無 traffic-splitting 基建）。順序：staging flag=true → production flag=false（stateless shim path）→ staging soak 3 天 → production flag flip → 一週後 stateless fallback 降級為 kill-switch。
 - **Q5（ChatGPT Remote MCP）**：**不在本 change scope 內驗**；Claude.ai 收斂後另起觀察 task，若 ChatGPT 行為不同再開 follow-up change。
 
-### 🔄 仍 open（進 apply 後解）
+### 🔁 Phase 1 spike 實證（2026-04-24）— 推翻原假設
 
-- Phase 1 spike 的 400 response body 實際 JSON 內容（決定 Phase 2 的修法細節：若是 Parse error，需進一步確認 request body 是否被 rehydrate 漏網）
-- Phase 2 `McpAgent` on DO PoC 結果（決定最終 transport 實作是自寫還是換 `McpAgent`）
+**Round 1 + Round 2 兩次 diag spike 結論**：
+
+- `hasExistingTransport: false` 恆成立 — shim guard `server.transport !== undefined` 從未命中；`server` 不是 singleton，toolkit per-request 給 fresh instance。原 Q6 假設 + Q4 預設路徑都基於錯誤前提。
+- **400 真因**：SDK 回 `-32700 Parse error`，`data` 欄位 = `TypeError: a16.ownKeys is not a function or its return value is not iterable`。
+- 這是 **Cloudflare env binding proxy 在 `Reflect.ownKeys` 的相容性問題**；SDK 在 JSON-RPC parse path 呼叫 `Reflect.ownKeys(env)`，proxy 不支援該 trap → SDK 外層 catch 包成 `-32700 Parse error`。
+- 與 `server/utils/mcp-agents-compat.ts:78-85` 註解記錄的 `agents/mcp` `WorkerTransport` `ownKeys` 問題**同家族**；實證 `WebStandardStreamableHTTPServerTransport` **也爆同樣錯誤**。
+- `installEnumerableSafeEnv` 只在第一次 handshake 有效，第二次以後 SDK 某段繞過 `globalThis.__env__` 直接碰原生 env proxy。
+
+### 🔀 Pivot Required：DO 架構不充分
+
+原 proposal 前提「DO + per-session server 解決 re-init 循環」**被實證推翻**。Re-init 循環不是 session state 問題，是 env proxy 相容性問題。把任何 SDK transport 搬進 DO **不會改變** SDK 碰 env proxy 的事實——每次 initialize 仍會觸發 ownKeys TypeError。
+
+DO 仍可能是終局架構（承載 session state / SSE push），但**必須先修 env proxy 相容問題**。Pivot 選項（進 Phase 2 前評估）：
+
+| 選項 | 方法                                                                                                                          | 成本                                   | 風險                                                          |
+| ---- | ----------------------------------------------------------------------------------------------------------------------------- | -------------------------------------- | ------------------------------------------------------------- |
+| A    | 加強 `installEnumerableSafeEnv`：grep SDK dist 找 `a16` 對應 env access pattern，把那個 access point 也 shim                  | 低；不動 SDK                           | 下次 SDK 升級可能又引入新 `Reflect.ownKeys` 位置，shim 變脆弱 |
+| B    | Fork / monkey-patch SDK：把 SDK 所有 `Reflect.ownKeys` / `Object.keys(env)` 取用改成 safe iteration                           | 中；要 maintain patch 跟 upstream 同步 | 每次 SDK 升版都要重 diff                                      |
+| C    | 自寫 minimal JSON-RPC transport：不用 SDK 的 `WebStandardStreamableHTTPServerTransport`，在 DO 內直接實作 MCP Streamable HTTP | 高；要吃 MCP spec 細節                 | 長期維護成本最低；但 completeness 要逐個手工實作              |
+
+完整 spike 記錄見 [`docs/solutions/mcp-streamable-http-session-durable-objects.md`](../../../docs/solutions/mcp-streamable-http-session-durable-objects.md)。
+
+### 🔄 仍 open（待 Pivot decision 後解）
+
+- **Pivot 選 A / B / C 哪個**（使用者決定；進 Phase 2 前必須收斂）
+- 若選 C，DO 內自寫 transport 的 minimum viable surface（僅 handshake + tool call，或含 notifications?）
 - DO alarm 的 TTL GC 策略具體實作（`alarm()` 驅動 session cleanup vs. lazy cleanup on next access）
 
 ## Implementation Risk Plan
@@ -102,6 +126,7 @@ _(本 change 無 DB entity / enum / shared type 改動。新增 Durable Object b
   - Worker cold start：SSE connection 初次建立延遲需可接受（Claude 超時前完成）
   - Session TTL 到期：close stream + cleanup state，client 收 close event 後 re-init
   - **`agents/mcp` spike 失敗（`ownKeys` error 在 DO context 仍發生）**：退路選項 — (a) 自寫 DO-backed transport 以 `WebStandardStreamableHTTPServerTransport` + DO storage 組合；(b) 若 (a) 成本 > 價值且 Claude bug 有望被 Anthropic 修復，暫停本 change 回到 stateless fallback 並升級 Anthropic bug report 優先級
+  - **Phase 1 實證新增風險（2026-04-24）**：`WebStandardStreamableHTTPServerTransport` 也爆 `ownKeys`（原假設只有 `agents/mcp` `WorkerTransport` 爆）。任何 SDK transport 在 Cloudflare Workers 都有風險。**必須先做 Pivot decision（A/B/C）**才能進 Phase 2+；DO 本身不解決此問題
 - **Test plan**:
   - Unit：DO class 的 session lifecycle（create / validate / expire / cleanup）
   - Integration：選定 transport 的 handshake + tool call 流程（可在 test 中 stub DO）
