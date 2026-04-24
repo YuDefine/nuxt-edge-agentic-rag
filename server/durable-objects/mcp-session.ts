@@ -25,6 +25,7 @@
  */
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
+import { DurableObject } from 'cloudflare:workers'
 
 import { DEFAULT_MCP_SESSION_TTL_MS, parsePositiveInteger } from '#shared/schemas/knowledge-runtime'
 import { DoJsonRpcTransport } from '#server/durable-objects/mcp-do-transport'
@@ -235,7 +236,7 @@ function resolveTtlMs(env: McpSessionDurableObjectEnv): number {
   return parsePositiveInteger(env.NUXT_KNOWLEDGE_MCP_SESSION_TTL_MS, DEFAULT_MCP_SESSION_TTL_MS)
 }
 
-export class MCPSessionDurableObject {
+export class MCPSessionDurableObject extends DurableObject<McpSessionDurableObjectEnv> {
   private readonly ctx: DurableObjectState
   private readonly env: McpSessionDurableObjectEnv
   private readonly now: () => number
@@ -247,6 +248,7 @@ export class MCPSessionDurableObject {
     env: McpSessionDurableObjectEnv,
     now: () => number = Date.now,
   ) {
+    super(ctx, env)
     this.ctx = ctx
     this.env = env
     this.now = now
