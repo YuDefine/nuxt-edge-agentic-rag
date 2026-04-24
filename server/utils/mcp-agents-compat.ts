@@ -12,6 +12,30 @@ interface McpHandlerOptions {
 
 type CloudflareEnv = Record<string, unknown>
 
+// JSON-RPC application-defined error code. `-32000` is within the
+// reserved `-32000..-32099` "server error" band per JSON-RPC 2.0 spec
+// and matches the convention used elsewhere in the MCP ecosystem for
+// transport-level "method not allowed" signals.
+const JSON_RPC_METHOD_NOT_ALLOWED_CODE = -32000
+
+// Precomputed stateless-mode 405 body — GET/DELETE paths reuse it instead of
+// stringifying per request. Safe to share because it contains no per-request
+// state.
+const METHOD_NOT_ALLOWED_BODY = JSON.stringify({
+  jsonrpc: '2.0',
+  error: {
+    code: JSON_RPC_METHOD_NOT_ALLOWED_CODE,
+    message:
+      'Method Not Allowed. This MCP server uses stateless POST-only transport per MCP spec 2025-11-25.',
+  },
+  id: null,
+})
+
+const METHOD_NOT_ALLOWED_HEADERS = {
+  'Content-Type': 'application/json',
+  Allow: 'POST',
+} as const
+
 const SAFE_GLOBAL_ENV_KEYS = [
   'DB',
   'KV',
@@ -69,12 +93,29 @@ export function createMcpHandler(server: McpConnectableServer, options: McpHandl
       }
     }
 
+    // MCP Streamable HTTP spec 2025-11-25 permits stateless servers to decline
+    // SSE stream establishment on GET by returning 405. This server is
+    // stateless (no `Mcp-Session-Id`, no server-initiated events), so both
+    // GET /mcp (SSE stream open) and DELETE /mcp (client-initiated session
+    // termination) are rejected immediately. Without this, Cloudflare Workers
+    // hang 30s on GET before runtime cancel, triggering Claude re-initialize
+    // loops (see fix-mcp-streamable-http-session change).
+    if (request.method === 'GET' || request.method === 'DELETE') {
+      return new Response(METHOD_NOT_ALLOWED_BODY, {
+        status: 405,
+        headers: METHOD_NOT_ALLOWED_HEADERS,
+      })
+    }
+
     if (server.transport !== undefined) {
       throw new Error('Server is already connected to a transport')
     }
 
     const transport = new WebStandardStreamableHTTPServerTransport({
-      enableJsonResponse: options.enableJsonResponse,
+      // Force JSON response over SSE mini-stream so every POST returns a
+      // complete JSON-RPC payload. Without this, Cloudflare Workers can be
+      // forced into SSE paths that exceed the 30s CPU budget.
+      enableJsonResponse: options.enableJsonResponse ?? true,
       sessionIdGenerator: undefined,
     })
 
