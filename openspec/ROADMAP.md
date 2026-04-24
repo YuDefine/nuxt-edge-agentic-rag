@@ -30,14 +30,13 @@
 
 ## Active Changes
 
-_last synced: 2026-04-24T09:02:57.995Z_
+_last synced: 2026-04-24T09:23:32.351Z_
 
-2 active changes (1 ready · 1 in progress · 0 draft · 0 blocked)
+1 active change (0 ready · 1 in progress · 0 draft · 0 blocked)
 
 ### Ready to apply
 
-- **auth-redirect-refactor** — 30/30 tasks (100%)
-  - Specs: `web-chat-ui`
+_(none)_
 
 ### In progress
 
@@ -61,17 +60,18 @@ _(none)_
 > 即時 ownership 由 `.spectra/claims/*.json` 提供。
 > 接手 handoff / 開始做 change 時，先 claim，再移除 `HANDOFF.md` 對應項目。
 
-1 claim (1 active · 0 stale)
+1 claim (0 active · 1 stale)
 
 ### Live Ownership
+
+_(none)_
+
+### Stale Claims
 
 - **fix-mcp-streamable-http-session** — unknown:charles@charlesdeMac-mini.local (unknown)
   - Accepted from: manual
   - Last heartbeat: 2026-04-24T08:11:16.322Z
-
-### Stale Claims
-
-_(none)_
+  - Status: stale (last heartbeat 2026-04-24T08:11:16.322Z)
 
 <!-- SPECTRA-UX:ROADMAP-AUTO:/claims -->
 
