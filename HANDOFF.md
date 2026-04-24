@@ -2,27 +2,21 @@
 
 ## In Progress
 
-### v0.43.0 已發布（2026-04-25）
-
-- main push `5a47a63` → staging deploy run `24908001430`：`deploy-staging` + `smoke-test-staging` ✅；`deploy-docs-staging` ❌（UTF-8 issue，見下）
-- tag `v0.43.0` → production deploy run `24908303837`：`deploy-production` ✅（2m1s）、`smoke-test` ✅；**但 `deploy-docs-production` 也中招 UTF-8 issue ❌**（40s 後 exit 1，Cloudflare API 同一錯誤碼 8000111）
-- 影響：**app production v0.43.0 已實際上線**（Workers / smoke 都綠）；**docs production 仍停在前一版**（`agentic-docs.yudefine.com.tw` 未更新到 v0.43.0）
-- 版本：`0.42.2` → `0.43.0`（minor，含 `web-chat-ui` 新 `Conversation History Refresh Reconciliation` requirement）
-- 後續 main push `a0e2426`（更新 HANDOFF）→ run `24908394088`：`deploy-docs-staging` **反而成功**（49s） — 觸發條件與 commit message 內容相關，非 wrangler/CF API 全面漂移
-
-### `wire-do-tool-dispatch`
+### `wire-do-tool-dispatch`（debug patch 已部署到 production）
 
 - 使用者要求立刻完成 staging MCP protocol 驗證與修復；production 24h / 7d observation window 仍未開始。
 - ownKeys root cause 已修並 tag v0.42.2（`ef6d59c`）：`build/nitro/rollup.ts` 把 `reflect-metadata/Reflect.js` polyfill 包進外層 IIFE，避免 `var Reflect;` 洩到 Nitro server bundle module scope。
 - Staging v0.42.2 protocol-layer 驗證已 ✅（initialize / notifications/initialized / tools/list / askKnowledge x2 / searchKnowledge x2 皆 HTTP 200；無 ownKeys / 501 / TD-041 / Server already initialized）。詳見 `openspec/changes/wire-do-tool-dispatch/tasks.md` §7.1。
-- **但**：4 個 tool call 的 body 都是 `{"result":{"content":[{"type":"text","text":"Tool execution failed. Please retry later."}],"isError":true}}` — 即 `normalizeErrorToResult` fallback message。tool handler 內部仍 throw（不是 SDK parse 層）；DO `createDoNoopLogger` 把 stack 吞掉，wrangler tail 看不到根因。Task §7.1 checkbox 因此尚未勾選。
-- Production flag：仍 `NUXT_KNOWLEDGE_FEATURE_MCP_SESSION=false`（v0.42.2 production build 已 tag / deploy，但 flag off 對 production 流量無影響）。
+- **但**：4 個 tool call 的 body 都是 `{"result":{"content":[{"type":"text","text":"Tool execution failed. Please retry later."}],"isError":true}}` — tool handler 內部仍 throw，DO `createDoNoopLogger` 把 stack 吞掉，wrangler tail 看不到根因。Task §7.1 checkbox 因此尚未勾選。
+- **v0.43.1 debug instrumentation 已上 staging + production**（`c20971e`）：`createDoNoopLogger` 暫改 `console.*`、`normalizeErrorToResult` 前加 `console.error` dump stack。兩處有 `TODO(remove-debug-do-*)` marker 綁 `@followup[TD-041]`。
+- Production flag：仍 `NUXT_KNOWLEDGE_FEATURE_MCP_SESSION=false`（flag off 對 production 流量無影響，tail 看到的會是 staging traffic）。
 - 下一步：
-  1. 推一版 debug patch — 在 tool handler 內 `normalizeErrorToResult` 之前 wrap try/catch，把 `error.stack` + `message` + `status` 用 `console.error` 打到 wrangler tail；或把 `createDoNoopLogger` 換成 minimal `console.*` logger。
-  2. 抓 staging handler error stack，定位是 Workers AI binding / AutoRAG index / D1 / staging seed data / auth scope / 其他。
+  1. ~~推 debug patch~~ → **已完成（v0.43.1 staging + production 已部署）**
+  2. 抓 staging handler error stack（wrangler tail + trigger 4 個 tool call），定位是 Workers AI binding / AutoRAG index / D1 / staging seed data / auth scope / 其他。
   3. 修根因 → 跑 immediate validation（4 個 tool call 回真實 answer、`isError: false`）。
   4. 勾選 §7.1，Notion Secret 頁補 sanitized evidence。
   5. immediate validation 通過後評估 flip production flag 並 24h 密集 tail。
+  6. 根因修好後**回滾 debug patch**（移除 `mcp-event-shim.ts` / `mcp-session.ts` 兩處 `TODO(remove-debug-do-*)` 區段，restore noop logger）。
 
 ### `upgrade-mcp-to-durable-objects`
 
@@ -32,17 +26,22 @@
 ## Blocked
 
 - 截圖審查時 local dev `/api/auth/me/credentials` 曾間歇性回 `500`：`[nuxt-hub] DB binding not found`。詳見 TD-045。
-- ⚠️ **docs deploy UTF-8 commit message issue**（TD-049）：Cloudflare Pages API 拒絕合法 UTF-8 commit message，`5a47a63` v0.43.0 tag 中招、後續 `a0e2426` 不中招 → 非 wrangler 全面漂移。app production 不受影響，但 `agentic-docs.yudefine.com.tw` 停在舊版。已登記 TD-049 + `docs/solutions/tooling/2026-04-25-cloudflare-pages-utf8-commit-message.md`，workaround patch 待人工套到 `.github/workflows/deploy.yml`（Claude guard 保護 workflow，無法代改）。
 
 ## Next Steps
 
-1. ~~追 v0.43.0 production deploy run `24908303837` 結果~~ → **已追完**：app ✅ / docs ❌。
-2. TD-049 docs UTF-8 workaround（in-progress）：
-   - **人工套 workflow patch**（見對話中 diff / TD-049 Fix approach）到 `.github/workflows/deploy.yml` 兩個 `deploy-docs-*` step
-   - 套完回主線跑 `/commit` 封版（TD entry + solutions doc + HANDOFF 更新已完成，workflow 由人工 edit 後自然被 `git status` 撈入同一 commit flow）
-   - merge 後 `gh workflow run deploy.yml --ref v0.43.0 -f target=production`（或在 v0.43.0 tag 上 workflow_dispatch）補 docs production v0.43.0
-   - 觀察後續 3 次發版 `deploy-docs-*` 是否持續綠，更新 TD-049 Acceptance
-3. `wire-do-tool-dispatch`：tool handler 內部 throw debug patch → 抓 stack → 修根因 → immediate validation → 勾選 §7.1 → Notion Secret 頁補 sanitized evidence。
-4. 修好後評估 flip production `NUXT_KNOWLEDGE_FEATURE_MCP_SESSION=true`，24 小時密集 tail。
-5. 7 天 production 穩定後，TD-030 / TD-041 標 done，archive `wire-do-tool-dispatch`，收斂 `upgrade-mcp-to-durable-objects`。
-6. 追 local dev binding 問題（TD-045）：影響 screenshot review 穩定性。
+1. **抓 wire-do-tool-dispatch handler throw stack**（v0.43.1 debug instrumentation 已在 production）：`wrangler tail` → trigger 4 個 tool call（initialize → tools/call askKnowledge / searchKnowledge）→ 觀察 `[mcp-do tool-handler throw]` + `[mcp-do error]` 兩條 log 取得 `error.name / message / stack`。
+2. 定位根因並修復 → immediate validation 4 個 tool call 回 `isError: false`。
+3. `openspec/changes/wire-do-tool-dispatch/tasks.md` §7.1 勾選，Notion Secret 頁補 sanitized evidence。
+4. 評估 flip production `NUXT_KNOWLEDGE_FEATURE_MCP_SESSION=true`，24 小時密集 tail。
+5. 根因修好後回滾 debug patch（`c20971e` 兩處 `TODO(remove-debug-do-*)` 段落）→ tag 下一版。
+6. 7 天 production 穩定後，TD-030 / TD-041 標 done，archive `wire-do-tool-dispatch`，收斂 `upgrade-mcp-to-durable-objects`。
+7. TD-049 Acceptance 收尾：觀察後續 3 次 main push / tag 的 `deploy-docs-*` 皆綠，更新 Acceptance 勾選。
+8. 追 local dev binding 問題（TD-045）：影響 screenshot review 穩定性。
+
+## Recently Completed（2026-04-25）
+
+- **v0.43.1 release**：
+  - 👷 ci `5ce334c`：deploy.yml 兩個 `deploy-docs-*` step 加 `--commit-hash` + `--commit-message "Deploy <sha>"`，規避 Cloudflare Pages API 8000111 bug（TD-049 Fix approach short-term）
+  - 🐛 fix `c20971e`：DO debug instrumentation for wire-do-tool-dispatch handler throw 定位
+  - 🐛 fix `2def87f`：docs 內 yaml block 用 `v-pre` 禁 vitepress Vue 解析，解鎖 docs build
+- **v0.43.1 deploy runs**：staging `24911683359` + production `24911891236` 全綠，`deploy-docs-*` 分別 49s / 55s 通過 → **TD-049 workaround 實證有效**。`agentic-docs.yudefine.com.tw` 已更新到 v0.43.1（覆蓋 v0.43.0 docs 空窗）。
