@@ -23,15 +23,6 @@
 
 - 截圖審查時 local dev `/api/auth/me/credentials` 曾間歇性回 `500`：`[nuxt-hub] DB binding not found`。詳見 TD-045。
 
-## TD-045 後續（已 commit narrow scope，仍待動）
-
-TD-045 narrow scope code 已隨 v0.43.2 一併入庫（`00e5314 🧹 chore: 加 predev bootstrap health check`），sub-session brief 已執行完畢。
-
-仍待動：
-
-- 更新 `docs/tech-debt.md` TD-045 register，把 Problem #1/#2 標為 NuxtHub v0.10.7 已處理（驗證：`_hub_migrations` 表有 11 筆應用記錄、`sqlite_master` 無 `*_new` refs），narrow Fix approach 為只剩 Problem #3。
-- `[nuxt-hub] DB binding not found` 間歇 500 不在本輪 scope（需要可重現的 trace 才能定位）。
-
 ## Next Steps
 
 1. **flip production `NUXT_KNOWLEDGE_FEATURE_MCP_SESSION=true`** — 評估時間後執行，24 小時 wrangler tail 密集監控；任一 anomaly 立刻 flag=false（無需 redeploy，§7.2）。
@@ -39,7 +30,7 @@ TD-045 narrow scope code 已隨 v0.43.2 一併入庫（`00e5314 🧹 chore: 加 
 3. Notion Secret 頁 staging 區塊補 `agentic-rag-staging` AutoRAG / Gateway 已建（人工，有明文 secret 需要本機 mint token 寫入）。
 4. **TD-050**（staging R2 RAG content seed） — 若 staging 真實使用情境出現再做，預計 sample docs 5–10 個或 daily sync from production（拆獨立 spectra change）。
 5. **TD-049** Acceptance #3 已達（v0.43.0 失敗、v0.43.1 + v0.43.2 連續 2 次綠 → 第 3 次發版仍須觀察）；可開始評估標 done 的時機。
-6. **TD-045** local dev binding 後續：narrow scope 已上 v0.43.2，仍待 register status 收斂與 binding 間歇 500 trace（見上方「TD-045 後續」段）。
+6. **TD-045** local dev binding 後續：narrow scope 已上 v0.43.2，剩 `/api/auth/me/credentials` 間歇 500 `[nuxt-hub] DB binding not found` 待 trace 定位（詳見 `docs/tech-debt.md` TD-045 active scope）。
 
 ## Recently Completed（2026-04-25）
 
