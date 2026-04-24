@@ -2,31 +2,29 @@
 
 ## In Progress
 
-### `auth-redirect-refactor`（實作已完 + commit + 人工驗收完，待 archive）
+### `fix-mcp-streamable-http-session`（實作 commit 完，仍未 archive）
 
-- 所有實作已 commit 到 v0.36.0（`495319b` / `a90c49b` / `4da6c5b`）
-- 人工檢查 7.1 / 7.2 / 7.3 / 7.5 / 7.6 全部 PASS
-- 7.4（MCP connector first-time auth）deferred 到 staging/production → **TD-027**
-- **下一步**：`/spectra-archive auth-redirect-refactor`
-
-### `fix-mcp-streamable-http-session`（WIP，非本 session 工作）
-
-有 uncommitted 變更（proposal/design/tasks + server/utils/mcp-agents-compat.ts + 2 個 test spec + solutions 筆記）。**這些由原來做它的 session / 使用者自行處理**，本次 commit 刻意未包含。
+- 實作 + test 已 commit 到 v0.37.0（`962c897` / `2207e17` / `b4e3422`）
+- 仍有 **stale claim**（1h ago）— 接手前先 `pnpm spectra:release` 或直接 takeover
+- tasks §5（部署 + wrangler tail）、§6（Claude.ai 實機驗證）**未完成**
+- `pre-archive-followup-gate.sh` 會因 §5 / §6 未勾擋 archive
+- **下一步**：部署 v0.37.0 → 在 Claude.ai 實測 MCP connector → 勾 §5 / §6 → `/spectra-archive fix-mcp-streamable-http-session`
 
 ## Next Steps
 
-1. **`/spectra-archive auth-redirect-refactor`** — 一行指令結案 v0.36.0 已含全部改動
-2. **TD-027 staging/production 驗證**：部署後跑 7.4 MCP connector first-time authorization journey（claude.ai → `/auth/mcp/authorize` → Google → 回原 URL → 授權 → 回 claude.ai）
-3. **TD-028 處理**：`DeleteAccountDialog.handleGoogleReauth` 加 `callbackURL` + sessionStorage bridge 讓 Google reauth 回到 `/account/settings` 重開 dialog（細節見 `docs/tech-debt.md` TD-028）
-4. **Deploy v0.36.0 後 smoke**：
-   - 未登入打 `/` → `/auth/login`（無 `/api/conversations` 請求）
-   - Google OAuth `redirect=/admin/documents` 回得去
-   - Passkey 註冊完自動進入系統
-   - 登出按鈕 full reload 到 `/auth/login`
-5. **`fix-mcp-streamable-http-session`**：另一個 session 續跑，uncommitted 檔案在 local
-6. **Residual TDs（長期 backlog）**：
+1. **部署 v0.37.0 到 staging / production**
+   - 觀察 `wrangler tail` 確認 `POST /mcp` 回 `Content-Type: application/json`
+   - GET / DELETE 立即回 405（無 30s hang）
+2. **Claude.ai 端實機驗證（同時消化 TD-027）**：
+   - 連接 MCP connector 走完 first-time authorization
+   - 預期回到 `/auth/mcp/authorize?...`（非 `/` 或 `/auth/login`）
+   - 確認連續 3 次工具呼叫無 re-initialize
+   - 全通過後 `/spectra-archive fix-mcp-streamable-http-session` + 更新 TD-027 / TD-029 status
+3. **TD-028 後續處理**（DeleteAccountDialog Google reauth callbackURL）：細節見 `docs/tech-debt.md` TD-028
+4. **TD-029 方案 A**：加 built Nitro smoke test 驗證 MCP production wiring（shim 是否真的被載入）
+5. **Residual TDs（長期 backlog）**：
    - TD-009（`user_profiles.email_normalized` 改 nullable）Tier 3 migration
    - TD-015 + TD-019 + TD-016 SSE 合併處理（heartbeat + reader pattern + isAbortError 抽共用）
    - TD-026（index.vue vs ConversationHistory owner-fallback 重複 config）low priority
-   - `passkeyFeatureEnabled` computed 三處重複（simplify review 發現，未建 TD — 三個檔案觸動即可抽 `useFeatureFlags` composable）
-7. **日期格式 smoke（遺留）**：`/account/settings`、`/admin/documents/:id`、`/admin/members`、`/admin/query-logs` list+detail、`/admin/tokens` 目視確認新格式（`YYYY/M/D HH:mm:ss`）
+   - `passkeyFeatureEnabled` computed 三處重複（`useFeatureFlags` composable 機會）
+6. **日期格式 smoke（遺留）**：`/account/settings`、`/admin/documents/:id`、`/admin/members`、`/admin/query-logs` list+detail、`/admin/tokens` 目視確認新格式
