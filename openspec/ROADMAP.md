@@ -18,7 +18,7 @@
 > - **docs custom domain / app canary 人工判定缺口** 已補齊：2026-04-24 以外部網路直接檢查 `agentic.yudefine.com.tw`、`agentic-staging.yudefine.com.tw`、`agentic-docs.yudefine.com.tw`、`agentic-docs-staging.yudefine.com.tw`，四個 custom domain 皆回 `HTTP 200`，確認 GitHub runner 上的 `403` 屬 Cloudflare WAF / Bot protection 誤擋，而非站點異常。
 > - **Delete account Google reauth 修復**已完成 archive：Google reauth 跨 redirect resume、passkey-only regression、直接輸入 `?open-delete=1` bypass 防護與 OAuth cancel case 皆已完成驗證。
 > - **MCP Durable Object 工作線已拆分完成**：`upgrade-mcp-to-durable-objects` 保留 session lifecycle scope；`wire-do-tool-dispatch` 已從 parked 進入 active，負責 DO 內 tool dispatch、auth context HMAC forward 與 production flag rollout。
-> - **`add-mcp-tool-selection-evals`** 已進入收尾：eval harness、dataset、scorer、文件骨架、dev token CLI 與 bearer-token client wiring 已落地；剩首次 baseline 與 regression fail-path 驗證。
+> - **`add-mcp-tool-selection-evals`** 已於 2026-04-25 完成 archive：eval harness、dataset、scorer、文件、dev token CLI、bearer-token client wiring、baseline 與 manual review 皆已落地；`mcp-tool-selection-evals` spec 已同步到主規格。
 > - **`v0.42.0` release** 已完成：main push run `24898590937` staging 綠燈；tag run `24898814022` production 綠燈。Production `NUXT_KNOWLEDGE_FEATURE_MCP_SESSION` 仍維持 false，等待 `wire-do-tool-dispatch` soak 完成後再 flip。
 > - **Workers AI 回答層 / web chat 真串流** 已完成 archive：相關 tasks 皆已完成，後續焦點轉往 MCP session/tool dispatch 與 eval baseline。
 
@@ -28,7 +28,6 @@
 
 - **`upgrade-mcp-to-durable-objects`** 17/27 tasks (63%)，**Phase 4 scope 縮為 session lifecycle only** — tool dispatch 改由 `wire-do-tool-dispatch` 接手（見 TD-041）；production flag 維持 false 直到 wire-do-tool-dispatch archive
 - **`wire-do-tool-dispatch`** 17/24 tasks (71%)，DO 內 McpServer lazy init + 4 tool dispatch + auth context forward 已完成並隨 `v0.42.0` 部署；剩 staging / production rollout 與人工檢查
-- **`add-mcp-tool-selection-evals`** 23/28 tasks (82%)，eval harness、dataset、dev token CLI 與 bearer-token client wiring 已落地；剩 baseline 建立與 fail-path 驗證
 
 ### 已 propose，待 apply（見 AUTO Parked Changes 區塊）
 
@@ -57,9 +56,9 @@ _(none)_
 
 ## Active Changes
 
-_last synced: 2026-04-24T16:05:42.712Z_
+_last synced: 2026-04-24T16:11:18.344Z_
 
-3 active changes (0 ready · 3 in progress · 0 draft · 0 blocked)
+2 active changes (0 ready · 2 in progress · 0 draft · 0 blocked)
 
 ### Ready to apply
 
@@ -67,7 +66,6 @@ _(none)_
 
 ### In progress
 
-- **add-mcp-tool-selection-evals** — 25/28 tasks (89%)
 - **upgrade-mcp-to-durable-objects** — 17/27 tasks (63%)
   - Specs: `mcp-knowledge-tools`
 - **wire-do-tool-dispatch** — 17/24 tasks (71%)
@@ -104,7 +102,7 @@ _No active claims._
 
 ### Independent (can run in parallel)
 
-- `add-mcp-tool-selection-evals`
+_(none)_
 
 ### Mutex (same spec touched)
 

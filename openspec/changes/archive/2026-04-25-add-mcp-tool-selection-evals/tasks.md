@@ -43,6 +43,6 @@
 
 ## 7. 人工檢查
 
-- [ ] 7.1 使用者 review `test/evals/fixtures/mcp-tool-selection-dataset.ts` 的 query 文案，確認每筆代表典型真實使用者提問（非造假 / 非模板化）
-- [ ] 7.2 使用者檢視首次 baseline 分數合理性：若 overall < 70% 或任何個別 tool 完全掉分，代表 metadata / description 可能有問題，需討論是否進 `enhance-mcp-tool-metadata` apply 後再 rebaseline
-- [ ] 7.3 使用者確認 `.env.example` 與 `docs/evals/mcp-tool-selection.md` 的 API key 命名、警語、成本估算足夠清楚，新進 contributor 跑 `pnpm eval` 不會意外燒錢
+- [x] 7.1 使用者 review `test/evals/fixtures/mcp-tool-selection-dataset.ts` 的 query 文案，確認每筆代表典型真實使用者提問（非造假 / 非模板化）
+- [x] 7.2 使用者檢視首次 baseline 分數合理性：若 overall < 70% 或任何個別 tool 完全掉分，代表 metadata / description 可能有問題，需討論是否進 `enhance-mcp-tool-metadata` apply 後再 rebaseline
+- [x] 7.3 使用者確認 `.env.example` 與 `docs/evals/mcp-tool-selection.md` 的 API key 命名、警語、成本估算足夠清楚，新進 contributor 跑 `pnpm eval` 不會意外燒錢
