@@ -3,9 +3,27 @@ import { createRequire } from 'node:module'
 
 const require = createRequire(import.meta.url)
 const reflectMetadataPolyfill = readFileSync(require.resolve('reflect-metadata/Reflect.js'), 'utf8')
+// `reflect-metadata/Reflect.js` declares `var Reflect;` at its own top-level so that
+// its IIFE can attach metadata methods onto either the native global or a shim. When
+// we inline its source into the Nitro bundle banner, rollup/minifier treats that
+// `var Reflect` as a module-level declaration in `chunks/nitro/nitro.mjs`. The
+// minifier then renames this module-level `Reflect` to a short local (e.g. `a`,
+// `a16`), which **shadows** the native `Reflect` global for **every other module**
+// in the bundle. The polyfill's tail `})(Reflect || (Reflect = {}))` assigns `{}`
+// to that shadowed binding, so any downstream code that still references bare
+// `Reflect.ownKeys(...)` (notably `zod/v4/core/schemas.js` ZodRecord parsing of
+// `z.record(z.string(), z.unknown())`) compiles to `a16.ownKeys(m)` at runtime —
+// `{}.ownKeys` is undefined, yielding `a16.ownKeys is not a function or its return
+// value is not iterable` (see staging tools/call -32603 reproduction).
+//
+// Wrapping the polyfill in an outer IIFE keeps the `var Reflect;` binding scoped
+// to that IIFE — metadata methods still land on `globalThis.Reflect` via the
+// polyfill's own `root.Reflect` exporter, but the module-level shadow is gone.
 const nativeReflectPolyfillPreamble = [
   'const __nativeReflectApply = typeof globalThis.Reflect?.apply === "function" ? globalThis.Reflect.apply : ((target, thisArgument, argumentsList) => Function.prototype.apply.call(target, thisArgument, argumentsList));',
+  '(function () {',
   reflectMetadataPolyfill,
+  '})();',
   'globalThis.Reflect ??= {};',
   'if (typeof globalThis.Reflect.apply !== "function") {',
   '  Object.defineProperty(globalThis.Reflect, "apply", { configurable: true, writable: true, value: __nativeReflectApply });',
