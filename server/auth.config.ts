@@ -389,29 +389,29 @@ export default defineServerAuth(({ db, runtimeConfig }) => {
             if (!existing) return
 
             /**
-             * passkey-authentication: users created by the passkey plugin
-             * may have `email = NULL`. The allowlist is email-keyed, so we
-             * MUST skip allowlist comparison (`isAdminEmailAllowlisted`
+             * passkey-authentication + TD-009: users created by the passkey
+             * plugin may have `email = NULL`. The allowlist is email-keyed,
+             * so we MUST skip allowlist comparison (`isAdminEmailAllowlisted`
              * already returns false for null/empty, but we short-circuit
              * explicitly here to make the intent obvious to readers).
              *
              * NULL-email users still need their `user_profiles` row synced
              * on every session refresh because downstream FKs (conversations
-             * / query_logs / messages) reference `user_profiles.id`. We use
-             * a sentinel value for `email_normalized` so the NOT NULL
-             * UNIQUE constraint holds (see TD-009 for the nullable rebuild
-             * follow-up). The sentinel contains `:` which
-             * `isAdminEmailAllowlisted` / `normalizeEmailAddress` will
-             * never match any real allowlist entry.
+             * / query_logs / messages) reference `user_profiles.id`. Post
+             * migration 0016 the `user_profiles.email_normalized` column is
+             * nullable, so the canonical representation for passkey-only
+             * users is plain NULL — no sentinel string. `syncUserProfile`
+             * accepts `string | null` and falls back to id-first lookup for
+             * the NULL branch.
              */
             const hasEmail = Boolean(existing.email)
             const inAllowlist = hasEmail
               ? isAdminEmailAllowlisted(existing.email, allowlist)
               : false
             const adminSource = inAllowlist ? 'allowlist' : 'none'
-            const emailNormalized = hasEmail
+            const emailNormalized: string | null = hasEmail
               ? normalizeEmailAddress(existing.email as string)
-              : `__passkey__:${session.userId}`
+              : null
             const currentRole = (existing.role ?? 'guest') as string
 
             /**
