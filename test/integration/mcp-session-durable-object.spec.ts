@@ -47,8 +47,33 @@ class FakeStorage {
     this.data.set(key, value as StorageValue)
   }
 
-  async delete(key: string): Promise<boolean> {
+  async delete(key: string | string[]): Promise<boolean | number> {
+    if (Array.isArray(key)) {
+      let deleted = 0
+      for (const k of key) {
+        if (this.data.delete(k)) deleted += 1
+      }
+      return deleted
+    }
     return this.data.delete(key)
+  }
+
+  async list<T>(options?: {
+    prefix?: string
+    start?: string
+    end?: string
+    limit?: number
+  }): Promise<Map<string, T>> {
+    const result = new Map<string, T>()
+    const sortedKeys = [...this.data.keys()].toSorted()
+    for (const key of sortedKeys) {
+      if (options?.prefix && !key.startsWith(options.prefix)) continue
+      if (options?.start && key <= options.start) continue
+      if (options?.end && key >= options.end) continue
+      result.set(key, this.data.get(key) as T)
+      if (options?.limit && result.size >= options.limit) break
+    }
+    return result
   }
 
   async deleteAll(): Promise<void> {
@@ -97,13 +122,17 @@ function createEnv(overrides?: Partial<McpSessionDurableObjectEnv>): McpSessionD
   }
 }
 
-function makeInitializeRequest(sessionId: string) {
+function makeInitializeRequest(sessionId: string, authContextHeader?: string) {
+  const headers = new Headers({
+    'content-type': 'application/json',
+    'Mcp-Session-Id': sessionId,
+  })
+  if (authContextHeader) {
+    headers.set(MCP_AUTH_CONTEXT_HEADER, authContextHeader)
+  }
   return new Request(`https://do.test/mcp?session=${sessionId}`, {
     method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'Mcp-Session-Id': sessionId,
-    },
+    headers,
     body: JSON.stringify({
       jsonrpc: '2.0',
       id: 0,
@@ -192,7 +221,9 @@ describe('MCPSessionDurableObject — session lifecycle', () => {
 
   it('first initialize creates persistent session state with Mcp-Session-Id header', async () => {
     const durableObject = new MCPSessionDurableObject(state as never, env, () => now)
-    const response = await durableObject.fetch(makeInitializeRequest(sessionId))
+    const response = await durableObject.fetch(
+      makeInitializeRequest(sessionId, await makeAuthContextHeader(now)),
+    )
 
     expect(response.status).toBe(200)
     expect(response.headers.get('Mcp-Session-Id')).toBe(sessionId)
@@ -209,7 +240,7 @@ describe('MCPSessionDurableObject — session lifecycle', () => {
   it('subsequent request renews lastSeenAt and reschedules alarm at lastSeenAt + TTL', async () => {
     const durableObject = new MCPSessionDurableObject(state as never, env, () => now)
     // Bootstrap session
-    await durableObject.fetch(makeInitializeRequest(sessionId))
+    await durableObject.fetch(makeInitializeRequest(sessionId, await makeAuthContextHeader(now)))
     const alarmAfterInit = await state.storage.getAlarm()
     expect(alarmAfterInit).toBe(now + 60_000)
 
@@ -226,7 +257,7 @@ describe('MCPSessionDurableObject — session lifecycle', () => {
 
   it('non-initialize on live session dispatches tools/list through McpServer', async () => {
     const durableObject = new MCPSessionDurableObject(state as never, env, () => now)
-    await durableObject.fetch(makeInitializeRequest(sessionId))
+    await durableObject.fetch(makeInitializeRequest(sessionId, await makeAuthContextHeader(now)))
 
     const response = await durableObject.fetch(
       makeToolsListRequest(sessionId, await makeAuthContextHeader(now)),
@@ -251,7 +282,7 @@ describe('MCPSessionDurableObject — session lifecycle', () => {
 
   it('invalid auth context signature returns 401 without renewing lastSeenAt', async () => {
     const durableObject = new MCPSessionDurableObject(state as never, env, () => now)
-    await durableObject.fetch(makeInitializeRequest(sessionId))
+    await durableObject.fetch(makeInitializeRequest(sessionId, await makeAuthContextHeader(now)))
     const storedBefore = await state.storage.get<McpSessionState>('session')
 
     now += 10_000
@@ -266,7 +297,7 @@ describe('MCPSessionDurableObject — session lifecycle', () => {
 
   it('expired auth context header returns 401 with expiry diagnostics', async () => {
     const durableObject = new MCPSessionDurableObject(state as never, env, () => now)
-    await durableObject.fetch(makeInitializeRequest(sessionId))
+    await durableObject.fetch(makeInitializeRequest(sessionId, await makeAuthContextHeader(now)))
     const storedBefore = await state.storage.get<McpSessionState>('session')
 
     const staleHeader = await makeAuthContextHeader(now)
@@ -282,7 +313,7 @@ describe('MCPSessionDurableObject — session lifecycle', () => {
 
   it('missing auth context header returns 400 without renewing lastSeenAt', async () => {
     const durableObject = new MCPSessionDurableObject(state as never, env, () => now)
-    await durableObject.fetch(makeInitializeRequest(sessionId))
+    await durableObject.fetch(makeInitializeRequest(sessionId, await makeAuthContextHeader(now)))
     const storedBefore = await state.storage.get<McpSessionState>('session')
 
     now += 10_000
@@ -295,7 +326,7 @@ describe('MCPSessionDurableObject — session lifecycle', () => {
 
   it('alarm() clears session storage so later requests receive 404', async () => {
     const durableObject = new MCPSessionDurableObject(state as never, env, () => now)
-    await durableObject.fetch(makeInitializeRequest(sessionId))
+    await durableObject.fetch(makeInitializeRequest(sessionId, await makeAuthContextHeader(now)))
 
     now += 60_001
     await durableObject.alarm()
@@ -311,7 +342,7 @@ describe('MCPSessionDurableObject — session lifecycle', () => {
 
   it('alarm() keeps a session that was renewed before the current TTL expires', async () => {
     const durableObject = new MCPSessionDurableObject(state as never, env, () => now)
-    await durableObject.fetch(makeInitializeRequest(sessionId))
+    await durableObject.fetch(makeInitializeRequest(sessionId, await makeAuthContextHeader(now)))
 
     now += 10_000
     await durableObject.fetch(makeToolsListRequest(sessionId, await makeAuthContextHeader(now)))
@@ -331,16 +362,60 @@ describe('MCPSessionDurableObject — session lifecycle', () => {
     expect(response.status).toBe(404)
   })
 
-  it('GET/DELETE return 405 inside DO path (matches stateless shim behaviour)', async () => {
+  it('GET / DELETE without prior session — GET returns 404, DELETE returns 204', async () => {
     const durableObject = new MCPSessionDurableObject(state as never, env, () => now)
 
     const getResp = await durableObject.fetch(new Request('https://do.test/mcp', { method: 'GET' }))
-    expect(getResp.status).toBe(405)
-    expect(getResp.headers.get('Allow')).toBe('POST')
+    expect(getResp.status).toBe(404)
 
     const deleteResp = await durableObject.fetch(
       new Request('https://do.test/mcp', { method: 'DELETE' }),
     )
-    expect(deleteResp.status).toBe(405)
+    expect(deleteResp.status).toBe(204)
+  })
+
+  it('initialize without auth context header returns 400 (DO independently validates)', async () => {
+    const durableObject = new MCPSessionDurableObject(state as never, env, () => now)
+    const response = await durableObject.fetch(makeInitializeRequest(sessionId))
+    expect(response.status).toBe(400)
+    expect(await state.storage.get<McpSessionState>('session')).toBeUndefined()
+  })
+
+  it('non-initialize request from a different principal returns 403 ownership mismatch', async () => {
+    const durableObject = new MCPSessionDurableObject(state as never, env, () => now)
+    await durableObject.fetch(makeInitializeRequest(sessionId, await makeAuthContextHeader(now)))
+
+    now += 1_000
+    const otherUserHeader = await signAuthContext(
+      {
+        principal: { authSource: 'oauth_access_token', userId: 'attacker-user' },
+        scopes: ['knowledge.ask'],
+        tokenId: 'oauth:attacker-token',
+      },
+      '0123456789abcdef0123456789abcdef',
+      now,
+    )
+    const response = await durableObject.fetch(makeToolsListRequest(sessionId, otherUserHeader))
+    expect(response.status).toBe(403)
+    const body = (await response.json()) as { error?: { message?: string } }
+    expect(body.error?.message ?? '').toMatch(/ownership mismatch/i)
+  })
+
+  it('re-initialize attempted by a different principal returns 403 ownership mismatch', async () => {
+    const durableObject = new MCPSessionDurableObject(state as never, env, () => now)
+    await durableObject.fetch(makeInitializeRequest(sessionId, await makeAuthContextHeader(now)))
+
+    now += 1_000
+    const otherUserHeader = await signAuthContext(
+      {
+        principal: { authSource: 'oauth_access_token', userId: 'attacker-user' },
+        scopes: ['knowledge.ask'],
+        tokenId: 'oauth:attacker-token',
+      },
+      '0123456789abcdef0123456789abcdef',
+      now,
+    )
+    const response = await durableObject.fetch(makeInitializeRequest(sessionId, otherUserHeader))
+    expect(response.status).toBe(403)
   })
 })

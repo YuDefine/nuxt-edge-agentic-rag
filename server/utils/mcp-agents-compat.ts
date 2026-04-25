@@ -104,41 +104,59 @@ export function createMcpHandler(server: McpConnectableServer, options: McpHandl
       }
     }
 
+    // Feature flag branch (Pivot C): when the session DO path is enabled and
+    // the MCP_SESSION binding is present, the shim forwards POST requests to
+    // a per-session Durable Object addressed by `Mcp-Session-Id`. GET / DELETE
+    // with a valid `Mcp-Session-Id` are also forwarded so the DO can serve
+    // server-initiated SSE streams (spec 2025-11-25 §Listening for Messages)
+    // and client-initiated session termination. The DO is the only layer that
+    // persists session state, eliminates Claude.ai's re-initialize loop
+    // (TD-030), and bypasses the `Reflect.ownKeys(env)` bug family documented
+    // in Phase 1 spike. When the flag is off, the stateless path below remains
+    // active as the kill-switch fallback.
+    const flagEnabled = isMcpSessionFlagEnabled(env)
+    const namespace = flagEnabled ? resolveMcpSessionNamespace(env) : null
+
+    if (
+      flagEnabled &&
+      namespace &&
+      request.method === 'POST' &&
+      request.headers.has(MCP_AUTH_CONTEXT_HEADER)
+    ) {
+      const sessionId = request.headers.get('Mcp-Session-Id') ?? crypto.randomUUID()
+      const forwarded = cloneRequestWithSessionHeader(request, sessionId)
+      const id = namespace.idFromName(sessionId)
+      const stub = namespace.get(id)
+      const response = await stub.fetch(forwarded)
+      return ensureSessionHeader(response, sessionId)
+    }
+
+    if (
+      flagEnabled &&
+      namespace &&
+      (request.method === 'GET' || request.method === 'DELETE') &&
+      request.headers.has('Mcp-Session-Id') &&
+      request.headers.has(MCP_AUTH_CONTEXT_HEADER)
+    ) {
+      const sessionId = request.headers.get('Mcp-Session-Id') as string
+      const id = namespace.idFromName(sessionId)
+      const stub = namespace.get(id)
+      const response = await stub.fetch(request)
+      return ensureSessionHeader(response, sessionId)
+    }
+
     // MCP Streamable HTTP spec 2025-11-25 permits stateless servers to decline
-    // SSE stream establishment on GET by returning 405. This server is
-    // stateless (no `Mcp-Session-Id`, no server-initiated events), so both
-    // GET /mcp (SSE stream open) and DELETE /mcp (client-initiated session
-    // termination) are rejected immediately. Without this, Cloudflare Workers
-    // hang 30s on GET before runtime cancel, triggering Claude re-initialize
-    // loops (see fix-mcp-streamable-http-session change).
+    // SSE stream establishment on GET by returning 405. The stateless kill-switch
+    // path remains that behavior: no `Mcp-Session-Id`, no server-initiated
+    // events, so both GET /mcp (SSE stream open) and DELETE /mcp (client-
+    // initiated session termination) are rejected immediately. Without this,
+    // Cloudflare Workers hang 30s on GET before runtime cancel, triggering
+    // Claude re-initialize loops (see fix-mcp-streamable-http-session change).
     if (request.method === 'GET' || request.method === 'DELETE') {
       return new Response(METHOD_NOT_ALLOWED_BODY, {
         status: 405,
         headers: METHOD_NOT_ALLOWED_HEADERS,
       })
-    }
-
-    // Feature flag branch (Pivot C): when the session DO path is enabled and
-    // the MCP_SESSION binding is present, the shim forwards POST requests to
-    // a per-session Durable Object addressed by `Mcp-Session-Id`. The DO is
-    // the only layer that persists session state, eliminates Claude.ai's
-    // re-initialize loop (TD-030), and bypasses the `Reflect.ownKeys(env)`
-    // bug family documented in Phase 1 spike. When the flag is off, the
-    // stateless path below remains active as the kill-switch fallback.
-    if (
-      isMcpSessionFlagEnabled(env) &&
-      request.method === 'POST' &&
-      request.headers.has(MCP_AUTH_CONTEXT_HEADER)
-    ) {
-      const namespace = resolveMcpSessionNamespace(env)
-      if (namespace) {
-        const sessionId = request.headers.get('Mcp-Session-Id') ?? crypto.randomUUID()
-        const forwarded = cloneRequestWithSessionHeader(request, sessionId)
-        const id = namespace.idFromName(sessionId)
-        const stub = namespace.get(id)
-        const response = await stub.fetch(forwarded)
-        return ensureSessionHeader(response, sessionId)
-      }
     }
 
     if (server.transport !== undefined) {
