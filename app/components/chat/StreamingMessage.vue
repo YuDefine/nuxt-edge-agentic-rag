@@ -84,10 +84,7 @@
     </div>
 
     <!-- Content display -->
-    <div v-if="showContent" class="text-sm whitespace-pre-wrap text-default">
-      {{ content
-      }}<span v-if="showCursor" class="inline-block h-4 w-0.5 animate-pulse bg-inverted" />
-    </div>
+    <LazyChatMarkdownContent v-if="showContent" :content="content" :streaming="showCursor" />
 
     <!-- Error state -->
     <UAlert

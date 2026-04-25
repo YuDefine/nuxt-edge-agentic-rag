@@ -64,6 +64,12 @@ interface McpAskDependencies {
        * is governed elsewhere.
        */
       refused?: boolean
+      /**
+       * persist-refusal-and-label-new-chat: web-chat refusal reason. MCP
+       * callers always pass `null` — MCP refusal copy is governed
+       * separately.
+       */
+      refusalReason?: string | null
       userProfileId?: string | null
     }): Promise<string>
     createQueryLog(input: {

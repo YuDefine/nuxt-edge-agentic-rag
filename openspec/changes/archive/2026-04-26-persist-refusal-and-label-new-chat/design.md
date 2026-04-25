@@ -12,9 +12,12 @@ UI 即時 render 的 RefusalMessage（前端 SSE `refusal` event 觸發）僅存
 
 **Goals:**
 
-- 讓 messages table 成為 refusal 訊息的 single source of truth：refusal 訊息與正常回答都被持久化，並由 `refused` 欄位區分。
-- 重新載入歷史對話時能完整還原 RefusalMessage UI（含建議下一步、可能原因區塊）。
-- audit-blocked、pipeline_refusal、pipeline_error 三條路徑統一寫入 assistant message。
+- 讓 messages table 成為 refusal 訊息的 single source of truth：refusal 訊息與正常回答都被持久化，並由 `refused` 欄位區分；`refusal_reason` 欄位記錄具體原因供 reload UI 使用。
+- 重新載入歷史對話時能完整還原 RefusalMessage UI（含建議下一步、可能原因區塊），且依 reason 顯示具體文案而非通用模板。
+- audit-blocked、pipeline_refusal、pipeline_error 三條路徑統一寫入 assistant message，並帶上對應的 refusal_reason。
+- audit-block 路徑下對話標題採用固定中文 fallback，避免內部 redaction marker（如 `[BLOCKED:credential]`）外洩到 sidebar / 全頁 UI。
+- SSE refusal event payload 帶 reason，前端即時 render 與重載 render 走同一條 reason 路由。
+- `RefusalMessage.vue` 依 reason 切換具體文案（restricted_scope / no_citation / low_confidence / pipeline_error 各一份）；reason 缺漏時 fallback 通用文案。
 - sidebar 與入口的「新對話」按鈕含可見文字 label，跨 mobile / desktop 都讓使用者馬上看出用途。
 
 **Non-Goals:**
@@ -65,6 +68,43 @@ UI 即時 render 的 RefusalMessage（前端 SSE `refusal` event 觸發）僅存
 - `shared/types` 的 `ChatConversationMessage` 加 `refused: boolean`。
 - `app/utils/chat-conversation-state.ts` `mapConversationDetailToChatMessages` 把 `refused` 從 detail 帶到 ChatMessage，移除舊有可能仰賴字串比對的 fallback。
 
+### Refusal reason 持久化（messages.refusal_reason TEXT NULL，方案 A）
+
+mid-apply 使用者驗收揭露 RefusalMessage 必須按 reason 顯示具體說明，故需要把 reason 從 server 傳到 reload UI。兩個方案：
+
+- 方案 A：messages 加 `refusal_reason TEXT NULL`，與 `refused` 對稱（fact + reason）
+- 方案 B：reload 時 SELECT JOIN `query_logs.refusal_reason`
+
+採用方案 A。
+
+理由：
+
+- 與 `refused` 同形（「是不是拒答」事實層 + 「為什麼拒答」具體層），讀寫對稱、SELECT 簡單。
+- 反正 0013 migration 已經要動 messages，0014 再加一個欄位邊際成本低。
+- query_logs 是觀測層，未來可能 sample / TTL，messages 是會話歷史，不該對齊它的生命週期。
+- 加索引彈性大（雖然 v1.0.0 還不需要）。
+
+替代方案：
+
+- JOIN query_logs — SELECT 變複雜、不同層耦合、未來 query_logs 若有 retention 政策會把訊息層的 reason 一起丟掉，否決。
+
+### Audit-block 對話標題改採固定中文 fallback
+
+`server/api/chat.post.ts` 在新對話時用 `auditKnowledgeText(body.query).redactedText.trim().slice(0, 40)` 當 title。當 audit.shouldBlock = true，redactedText 整段被 marker 覆蓋（例如 `[BLOCKED:credential]`），這個內部 marker 會直接出現在 sidebar 對話標題與全頁 UI——既不是中文、也不是有意義的描述。
+
+修法：在進入 createForUser 前先檢查 audit.shouldBlock；若為 true，採用固定中文 fallback `'無法處理的提問'`（不超過 conversations.title 長度限制），其他路徑維持原 slice 邏輯。
+
+理由：
+
+- redactedText 的設計目的是「把敏感資訊從 audit log 裡擦掉」，並不是「給使用者看的標題」。把它直接當 UI title 是 layering 錯誤。
+- 固定 fallback 雖然不能反映原問題，但本來這條 query 連 raw 都不該存（governance §1.4）；title 用語義化中文反而更貼近使用者預期（「我問了一個敏感的問題，系統幫我建了一個拒答對話」）。
+- 不採取「不建立對話」的方案，因為 messages 仍要寫入持久化（前案 §持久化策略），需要載體。
+
+替代方案：
+
+- 直接不建 conversation — 否決，refusal message 沒地方寫。
+- title 寫使用者原 query 前 40 字 — 否決，等於把敏感字面留在 conversations.title，破壞 audit 的目的。
+
 ### 「新對話」按鈕從純 icon 變成 icon + 文字 label
 
 - 桌機：`<UButton icon="i-lucide-plus" label="新對話" />`，沿用現有 nuxt/ui 樣式 props（color / variant 顯式寫出）。
@@ -87,8 +127,9 @@ UI 即時 render 的 RefusalMessage（前端 SSE `refusal` event 觸發）僅存
 ## Migration Plan
 
 1. 部署 `0013_messages_refused_flag.sql`：`ALTER TABLE messages ADD COLUMN refused INTEGER NOT NULL DEFAULT 0`。
-2. 同 deploy：server code 同步加上 refused 欄位的寫入與讀出。
-3. Verify：
-   - Local：跑 `pnpm test:integration` 含 web-chat persistence refusal path 三條。
-   - Staging（若已啟用）：執行 acceptance script 對 audit-blocked / refusal 兩種輸入確認 messages.refused = 1 寫入。
-4. Rollback：若 server code 回滾但 schema 已遷移，`refused` 欄位仍 default 0；不會破壞舊 server。若連同 schema 一起回滾，需先 backfill schema（D1 SQLite 不支援 DROP COLUMN）— 因此 schema 變更為單向，rollback 只回滾 server code。
+2. 部署 `0014_messages_refusal_reason.sql`：`ALTER TABLE messages ADD COLUMN refusal_reason TEXT`。0013 與 0014 為兩條獨立 migration（不合併）以保持每條 migration 單一職責；0014 雖然可以併入 0013，但分開讓 mid-apply ingest 的 schema 變化更可追溯。
+3. 同 deploy：server code 同步加上 refused / refusal_reason 欄位的寫入與讀出，audit-block path 採固定中文 fallback title，SSE refusal event payload 加 reason，`RefusalMessage.vue` 依 reason 切換具體文案。
+4. Verify：
+   - Local：跑 `pnpm test:integration` 含 web-chat persistence refusal path 四條（audit-block / pipeline_refusal / pipeline_error / accepted）+ migration 0014 schema test + audit-block title fallback test。
+   - Staging（若已啟用）：執行 acceptance script 對 audit-blocked / pipeline 拒答兩種輸入確認 messages.refused = 1、messages.refusal_reason 寫入正確、reload 後 RefusalMessage UI 渲染 reason-specific 文案。
+5. Rollback：若 server code 回滾但 schema 已遷移，`refused` 欄位仍 default 0、`refusal_reason` 仍 NULL；不會破壞舊 server。若連同 schema 一起回滾，需先 backfill schema（D1 SQLite 不支援 DROP COLUMN）— 因此 schema 變更為單向，rollback 只回滾 server code。

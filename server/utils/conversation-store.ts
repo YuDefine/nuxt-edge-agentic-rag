@@ -69,6 +69,12 @@ export interface ConversationMessageSummary {
    * string matching — to render `RefusalMessage.vue`.
    */
   refused: boolean
+  /**
+   * persist-refusal-and-label-new-chat: specific RefusalReason for refusal
+   * rows; `null` for user / system / accepted-assistant rows. Reload UI
+   * uses this to render reason-specific copy in `RefusalMessage.vue`.
+   */
+  refusalReason: string | null
   createdAt: string
 }
 
@@ -205,7 +211,7 @@ export function createConversationStore(database: D1DatabaseLike) {
     const messageRows = await database
       .prepare(
         [
-          'SELECT id, role, content_redacted, content_text, citations_json, refused, created_at',
+          'SELECT id, role, content_redacted, content_text, citations_json, refused, refusal_reason, created_at',
           'FROM messages',
           'WHERE conversation_id = ?',
           'ORDER BY created_at ASC',
@@ -219,6 +225,7 @@ export function createConversationStore(database: D1DatabaseLike) {
         content_text: string | null
         citations_json: string | null
         refused: number | null
+        refusal_reason: string | null
         created_at: string
       }>()
 
@@ -229,6 +236,7 @@ export function createConversationStore(database: D1DatabaseLike) {
       contentText: row.content_text ?? null,
       citationsJson: row.citations_json ?? '[]',
       refused: row.refused === 1,
+      refusalReason: row.refusal_reason ?? null,
       createdAt: row.created_at,
     }))
 

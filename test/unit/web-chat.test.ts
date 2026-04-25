@@ -69,6 +69,7 @@ describe('web chat', () => {
         },
       ],
       refused: false,
+      refusalReason: null,
       retrievalScore: 0.92,
     })
   })
@@ -169,7 +170,8 @@ describe('web chat', () => {
       userProfileId: 'user-3',
     })
     // persist-refusal-and-label-new-chat: audit-blocked path also persists
-    // the assistant refusal turn so reload renders RefusalMessage.vue.
+    // the assistant refusal turn (with refusalReason='restricted_scope')
+    // so reload renders RefusalMessage.vue with credential-leak guidance.
     expect(auditStore.createMessage).toHaveBeenCalledWith({
       channel: 'web',
       content: '抱歉，我無法回答這個問題。',
@@ -177,6 +179,7 @@ describe('web chat', () => {
       queryLogId: 'query-log-blocked',
       role: 'assistant',
       refused: true,
+      refusalReason: 'restricted_scope',
       userProfileId: 'user-3',
     })
     expect(auditStore.createMessage).toHaveBeenCalledTimes(2)
@@ -185,6 +188,7 @@ describe('web chat', () => {
       answer: null,
       citations: [],
       refused: true,
+      refusalReason: 'restricted_scope',
       retrievalScore: 0,
     })
   })
@@ -328,6 +332,7 @@ describe('web chat', () => {
         },
       ],
       refused: false,
+      refusalReason: null,
       retrievalScore: 0.9,
     })
   })
