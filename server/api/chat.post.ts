@@ -27,7 +27,7 @@ import {
   chatWithKnowledge,
   createChatKvRateLimitStore,
 } from '#server/utils/web-chat'
-import { createAbortError, isAbortError } from '#shared/utils/abort'
+import { createSseChatResponse } from '#server/utils/chat-sse-response'
 
 const chatBodySchema = z
   .object({
@@ -35,8 +35,6 @@ const chatBodySchema = z
     conversationId: z.string().uuid().optional(),
   })
   .strict()
-
-const CHAT_STREAM_CONTENT_TYPE = 'text/event-stream; charset=utf-8'
 
 interface ChatLogFields {
   user: {
@@ -190,6 +188,12 @@ export default defineEventHandler(async function chatHandler(event) {
         conversationId: effectiveConversationId,
         execute: runChatRequest,
         log,
+        onResult: (result) =>
+          recordChatResult(log, {
+            conversationCreated: createdConversation,
+            conversationId: effectiveConversationId,
+            result,
+          }),
       })
     }
 
@@ -286,93 +290,6 @@ function isHandledError(error: unknown): error is { statusCode: number } {
 
 function wantsSseResponse(event: { headers?: Headers }): boolean {
   return event.headers?.get('accept')?.includes('text/event-stream') ?? false
-}
-
-function createSseChatResponse(input: {
-  conversationCreated: boolean
-  conversationId: string
-  execute: (stream: {
-    onTextDelta?: (delta: string) => Promise<void> | void
-    signal?: AbortSignal
-  }) => ReturnType<typeof chatWithKnowledge>
-  log: ReturnType<typeof useLogger>
-}): Response {
-  const encoder = new TextEncoder()
-  const abortController = new AbortController()
-
-  const stream = new ReadableStream<Uint8Array>({
-    async start(controller) {
-      let closed = false
-      const close = () => {
-        if (!closed) {
-          controller.close()
-          closed = true
-        }
-      }
-      const enqueue = (event: string, data: Record<string, unknown>) => {
-        if (closed) {
-          return
-        }
-        controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`))
-      }
-
-      try {
-        enqueue('ready', {
-          conversationCreated: input.conversationCreated,
-          conversationId: input.conversationId,
-        })
-
-        const result = await input.execute({
-          onTextDelta: (delta) => {
-            enqueue('delta', { content: delta })
-          },
-          signal: abortController.signal,
-        })
-
-        recordChatResult(input.log, {
-          conversationCreated: input.conversationCreated,
-          conversationId: input.conversationId,
-          result,
-        })
-
-        if (result.refused) {
-          enqueue('refusal', {
-            answer: null,
-            citations: [],
-            conversationCreated: input.conversationCreated,
-            conversationId: input.conversationId,
-            refused: true,
-          })
-        } else {
-          enqueue('complete', {
-            answer: result.answer,
-            citations: result.citations,
-            conversationCreated: input.conversationCreated,
-            conversationId: input.conversationId,
-            refused: false,
-          })
-        }
-      } catch (error) {
-        if (!isAbortError(error)) {
-          input.log.error(error as Error, { operation: 'web-chat-stream' })
-          enqueue('error', { message: '發生錯誤，請稍後再試' })
-        }
-      } finally {
-        close()
-      }
-    },
-    cancel() {
-      abortController.abort(createAbortError())
-    },
-  })
-
-  return new Response(stream, {
-    headers: {
-      'cache-control': 'no-cache, no-transform',
-      connection: 'keep-alive',
-      'content-type': CHAT_STREAM_CONTENT_TYPE,
-    },
-  })
 }
 
 function recordChatResult(
