@@ -87,6 +87,47 @@ describe('chat stream reader', () => {
     ).rejects.toThrow(new ChatStreamError('發生錯誤，請稍後再試'))
   })
 
+  it('invokes onReady callback with conversation metadata before later events resolve', async () => {
+    const onReady = vi.fn()
+    const onTextDelta = vi.fn()
+
+    const result = await readChatStream(
+      createSseResponse([
+        'event: ready\ndata: {"conversationCreated":true,"conversationId":"conv-ready-1"}\n\n',
+        'event: delta\ndata: {"content":"hi"}\n\n',
+        'event: complete\ndata: {"answer":"hi","citations":[],"conversationCreated":true,"conversationId":"conv-ready-1","refused":false}\n\n',
+      ]),
+      { onTextDelta, onReady },
+    )
+
+    expect(onReady).toHaveBeenCalledTimes(1)
+    expect(onReady).toHaveBeenCalledWith({
+      conversationCreated: true,
+      conversationId: 'conv-ready-1',
+    })
+    expect(result.event).toBe('complete')
+  })
+
+  it('still invokes onReady before a later error event throws', async () => {
+    const onReady = vi.fn()
+
+    await expect(
+      readChatStream(
+        createSseResponse([
+          'event: ready\ndata: {"conversationCreated":true,"conversationId":"conv-ready-2"}\n\n',
+          'event: error\ndata: {"message":"AutoRAG 失敗"}\n\n',
+        ]),
+        { onTextDelta: vi.fn(), onReady },
+      ),
+    ).rejects.toThrow(new ChatStreamError('AutoRAG 失敗'))
+
+    expect(onReady).toHaveBeenCalledTimes(1)
+    expect(onReady).toHaveBeenCalledWith({
+      conversationCreated: true,
+      conversationId: 'conv-ready-2',
+    })
+  })
+
   it('parses event blocks even when chunk boundaries split the SSE frame', async () => {
     const onTextDelta = vi.fn()
 
