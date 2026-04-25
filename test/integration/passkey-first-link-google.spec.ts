@@ -38,6 +38,28 @@ const schemaFake = {
     adminSource: { __col: 'admin_source' },
   },
   memberRoleChanges: { __tbl: 'member_role_changes' },
+  // fix-user-profile-id-drift (TD-044) `syncUserProfile` migrate path 走到時，
+  // `tx.update(schema.X).set(...).where(eq(schema.X.userProfileId, staleId))`
+  // 會 access 這四張 child table 上的 column descriptor。本 spec 的 fixture 不
+  // 主動觸發 migrate path（id 相同），但保險起見補完整 stub 避免日後 fixture
+  // 漂移時撞 `Cannot read properties of undefined (reading 'userProfileId')`。
+  // 對應 TD-052。
+  conversations: {
+    __tbl: 'conversations',
+    userProfileId: { __col: 'user_profile_id' },
+  },
+  queryLogs: {
+    __tbl: 'query_logs',
+    userProfileId: { __col: 'user_profile_id' },
+  },
+  messages: {
+    __tbl: 'messages',
+    userProfileId: { __col: 'user_profile_id' },
+  },
+  documents: {
+    __tbl: 'documents',
+    createdByUserId: { __col: 'created_by_user_id' },
+  },
 }
 
 function normalizeTimestampValue(value: unknown) {
@@ -106,9 +128,9 @@ function buildHubDb() {
         prepare: (...args: unknown[]) => mocks.dbPrepare(...args),
       },
       select: () => ({
-        from: () => ({
+        from: (table: { __tbl?: string }) => ({
           where: () => ({
-            limit: async () => mocks.hubDbSelect(),
+            limit: async () => mocks.hubDbSelect(table.__tbl),
           }),
         }),
       }),
@@ -380,14 +402,28 @@ function installD1Mock(options?: {
     await Promise.all(statements.map((statement) => statement.run()))
     return { success: true }
   })
-  mocks.hubDbSelect.mockImplementation(async () => {
+  mocks.hubDbSelect.mockImplementation(async (table?: string) => {
+    // auth.config.ts hook 對兩張表 select：
+    //   - `user`: `select({ id | email | role }).from(user).where(eq(id, X))`
+    //   - `user_profiles`（fix-user-profile-id-drift / TD-044 syncUserProfile）：
+    //     `select({ id }).from(userProfiles).where(eq(emailNormalized, X))`
+    //
+    // mock 依 table 路由：
+    //   - table === 'user' → state.users
+    //   - table === 'user_profiles' → state.profiles
+    //   - undefined / 其他 → fallback state.users（向後相容既有 caller）
     const userId = state.sessionRefreshUserId
     if (!userId) return []
 
+    if (table === 'user_profiles') {
+      const profile = state.profiles.get(userId)
+      if (!profile) return []
+      return [{ id: profile.id }]
+    }
+
     const existing = state.users.get(userId)
     if (!existing) return []
-
-    return [{ email: existing.email, role: existing.role }]
+    return [{ id: userId, email: existing.email, role: existing.role }]
   })
   mocks.hubDbUpdate.mockImplementation(
     async (input: {
@@ -395,6 +431,38 @@ function installD1Mock(options?: {
       patch: Record<string, unknown>
       table?: string
     }) => {
+      // fix-user-profile-id-drift (TD-044) `syncUserProfile` 走「id 相同 →
+      // UPDATE roleSnapshot / adminSource」branch 時，會打到 user_profiles
+      // 表。原 mock 只處理 user table；補 user_profiles upsert 路徑讓 test
+      // 能看到 reconciled profile。對應 TD-052。
+      if (input.table === 'user_profiles') {
+        const profileId =
+          input.condition?.left?.__col === 'id' && typeof input.condition.right === 'string'
+            ? input.condition.right
+            : null
+        if (!profileId) return
+        const existingProfile = state.profiles.get(profileId) ?? {
+          id: profileId,
+          emailNormalized: '',
+          roleSnapshot: '',
+          adminSource: '',
+        }
+        const updated: MockUserProfileRow = {
+          ...existingProfile,
+          ...(typeof input.patch.roleSnapshot === 'string'
+            ? { roleSnapshot: input.patch.roleSnapshot }
+            : {}),
+          ...(typeof input.patch.adminSource === 'string'
+            ? { adminSource: input.patch.adminSource }
+            : {}),
+          ...(typeof input.patch.emailNormalized === 'string'
+            ? { emailNormalized: input.patch.emailNormalized }
+            : {}),
+        }
+        state.profiles.set(profileId, updated)
+        return
+      }
+
       if (input.table && input.table !== 'user') return
 
       const conditionUserId =

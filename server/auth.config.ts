@@ -16,6 +16,7 @@ import { nicknameSchema } from '../shared/schemas/nickname'
 import { createBetterAuthSafeLogger } from './utils/better-auth-safe-logger'
 import { getDrizzleDb } from './utils/database'
 import { recordRoleChange, ROLE_CHANGE_SYSTEM_ACTOR } from './utils/member-role-changes'
+import { syncUserProfile } from './utils/user-profile-sync'
 
 const authLog = consola.withTag('auth')
 
@@ -485,32 +486,20 @@ export default defineServerAuth(({ db, runtimeConfig }) => {
             }
 
             // Backfill / sync user_profiles row (FK target for query_logs etc.)
-            // Wrap in try/catch: profile sync is auxiliary — if it throws (e.g. UNIQUE
-            // conflict on email_normalized when a stale row exists under a different id),
-            // we must not block the user's login. Log and continue.
-            try {
-              await hubDb
-                .insert(schema.userProfiles)
-                .values({
-                  id: session.userId,
-                  emailNormalized,
-                  roleSnapshot: finalRole,
-                  adminSource,
-                })
-                .onConflictDoUpdate({
-                  target: schema.userProfiles.id,
-                  set: {
-                    emailNormalized,
-                    roleSnapshot: finalRole,
-                    adminSource,
-                  },
-                })
-            } catch (error) {
-              authLog.error('user_profiles sync failed', {
+            // See fix-user-profile-id-drift change + TD-044: the synchronizer
+            // performs email_normalized-first lookup, app-level children FK
+            // migration for stale rows, and env-gated rethrow. Production keeps
+            // the conservative "log-and-return" behavior so hook errors never
+            // block the user's login.
+            await syncUserProfile(
+              { db: hubDb, schema, log: authLog },
+              {
                 userId: session.userId,
-                error: error instanceof Error ? error.message : String(error),
-              })
-            }
+                emailNormalized,
+                roleSnapshot: finalRole,
+                adminSource,
+              },
+            )
           },
         },
       },
