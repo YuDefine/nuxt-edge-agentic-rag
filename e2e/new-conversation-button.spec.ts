@@ -113,15 +113,19 @@ async function installAuthenticatedChat(page: Page, conversations = seededConver
 }
 
 async function gotoChatWithStoredActive(page: Page, conversationId: string | null) {
-  if (conversationId) {
-    await page.addInitScript(
-      ({ key, value }) => {
-        sessionStorage.setItem(key, value)
-      },
-      { key: STORAGE_KEY, value: conversationId },
-    )
-  }
+  // 先 navigate 取得 origin 後再 evaluate 設 sessionStorage —— 不可用
+  // `addInitScript`（會在「reload」也重新跑，導致 test (c) 驗證
+  // 「reload 後 sessionStorage 為 null」永遠失敗：reload 時 init script 又把
+  // 值塞回去）。這裡做一次性 setup：goto 後 evaluate 寫入 → 再 reload 取得
+  // hydration（讓 useChatConversationSession.restoreActiveConversation 看到 key）。
   await page.goto('/')
+  if (conversationId) {
+    await page.evaluate(({ key, value }) => sessionStorage.setItem(key, value), {
+      key: STORAGE_KEY,
+      value: conversationId,
+    })
+    await page.reload()
+  }
   await page.waitForLoadState('networkidle')
 }
 
@@ -132,7 +136,11 @@ test.describe('Explicit New Conversation Entry Points', () => {
     await gotoChatWithStoredActive(page, 'conv-a')
 
     // 確認進來時有 conv-a 的歷史 messages（active state restored）
-    await expect(page.getByRole('button', { name: '採購流程' })).toBeVisible()
+    // 用 testid 鎖定 conversation row，避免 `getByRole('button', { name: '採購流程' })`
+    // 同時 match 「conversation-row-button」與「刪除對話 採購流程」兩個 button。
+    await expect(
+      page.getByTestId('conversation-row-button').filter({ hasText: '採購流程' }),
+    ).toBeVisible()
 
     await page.getByTestId('chat-header-new-conversation-button').click()
 
@@ -148,11 +156,16 @@ test.describe('Explicit New Conversation Entry Points', () => {
     await installAuthenticatedChat(page)
     await gotoChatWithStoredActive(page, null)
 
-    // 點 sidebar 中對話 B
-    await page.getByRole('button', { name: 'ERP 報表' }).click()
+    // 點 sidebar 中對話 B（用 testid 鎖定 row 而非 delete 按鈕）
+    await page.getByTestId('conversation-row-button').filter({ hasText: 'ERP 報表' }).click()
 
-    const storedAfterSelect = await page.evaluate((key) => sessionStorage.getItem(key), STORAGE_KEY)
-    expect(storedAfterSelect).toBe('conv-b')
+    // setActiveConversation 是 async（先 fetch messages 再寫 sessionStorage），
+    // 直接 evaluate 會早於 storage write。Poll 直到值出現或 timeout。
+    await expect
+      .poll(async () => page.evaluate((key) => sessionStorage.getItem(key), STORAGE_KEY), {
+        timeout: 5000,
+      })
+      .toBe('conv-b')
   })
 
   test('(c) reload after explicit new conversation does not auto-restore (Persisted Conversation Session Continuity)', async ({
@@ -195,8 +208,9 @@ test.describe('Explicit New Conversation Entry Points', () => {
     await page.getByRole('button', { name: '對話記錄' }).first().click()
 
     // drawer 內 collapsed rail plus 按鈕（在 drawer 內也是 collapsed=false 預設展開模式，
-    // 所以打到 expanded header 的 new-conversation 按鈕；這個 case 改測 expanded 模式新對話按鈕）
-    await page.getByTestId('conversation-history-new-button-expanded').click()
+    // 所以打到 expanded header 的 new-conversation 按鈕；這個 case 改測 expanded 模式新對話按鈕）。
+    // sidebar 與 drawer 兩處都 render 同 testid，scope 到 drawer dialog 才不撞 strict mode。
+    await page.getByRole('dialog').getByTestId('conversation-history-new-button-expanded').click()
 
     const storedAfterClick = await page.evaluate((key) => sessionStorage.getItem(key), STORAGE_KEY)
     expect(storedAfterClick).toBeNull()
