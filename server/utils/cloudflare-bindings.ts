@@ -19,6 +19,7 @@ interface D1DatabaseLike {
 }
 
 export interface KvBindingLike {
+  delete(key: string): Promise<void>
   get(key: string): Promise<string | null>
   put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void>
 }
@@ -109,5 +110,8 @@ export function getRequiredKvBinding(
     })
   }
 
+  // `.delete` is part of the canonical Cloudflare KV namespace surface but
+  // not all callers exercise it. Detection is intentionally lenient so that
+  // pre-existing mocks that only stub `.get` / `.put` continue to work.
   return binding as KvBindingLike
 }

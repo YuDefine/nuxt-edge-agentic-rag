@@ -59,6 +59,16 @@ function isPersistedEntry(value: unknown): value is PersistedKvEntry {
  */
 export function wrapHubKvAsNamespace(storage: UnstorageLike): KvBindingLike {
   return {
+    async delete(key: string): Promise<void> {
+      if (typeof storage.removeItem === 'function') {
+        try {
+          await storage.removeItem(key)
+        } catch {
+          // Best-effort delete — match Cloudflare KV behaviour where missing
+          // keys do not throw.
+        }
+      }
+    },
     async get(key: string): Promise<string | null> {
       const stored = await storage.getItem(key)
 
