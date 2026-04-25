@@ -4,7 +4,7 @@
 
 ## Current State
 
-> 狀態（2026-04-26 更新）：branch `main`，最新 tag `v0.50.0`，production runtime `NUXT_KNOWLEDGE_FEATURE_MCP_SESSION = "true"`。MCP Durable Object 主軸已完整上線（DO tool dispatch + SSE channel + auth context HMAC forward）；v0.49.0 完成 SSE heartbeat + `readSseStream` 統一收尾；v0.50.0 持久化 refusal 訊息 + sidebar 「新對話」label + reason-specific copy + markdown 內容渲染。**TD-055 已修復**（archive `2026-04-26-fix-fk-rebuild-query-logs-chain`：migration 0015 explicit-FK rebuild + spec `auth-storage-consistency` 補 `Live DDL Foreign Key References Match Canonical Table Names` requirement，本機 fresh libsql 從零跑到 0015 後 FK 文字皆 canonical、`PRAGMA foreign_key_check` 乾淨；production D1 為 no-op）。當前無 active change。
+> 狀態（2026-04-26 更新）：branch `main`，最新 tag `v0.50.1`（commit `7868b80`），production runtime `NUXT_KNOWLEDGE_FEATURE_MCP_SESSION = "true"`。MCP Durable Object 主軸已完整上線（DO tool dispatch + SSE channel + auth context HMAC forward）；v0.49.0 完成 SSE heartbeat + `readSseStream` 統一收尾；v0.50.0 持久化 refusal 訊息 + sidebar 「新對話」label + reason-specific copy + markdown 內容渲染；v0.50.1 帶入 migration 0015 explicit-FK rebuild + spec `auth-storage-consistency` 補 `Live DDL Foreign Key References Match Canonical Table Names` requirement（本機真實 libsql 套用 0015 後 FK 文字皆 canonical、`PRAGMA foreign_key_check` 乾淨；production D1 為 no-op，待 deploy 後 wrangler 對照；對應 change 已歸檔，tech-debt entry status 已翻 done）。當前無 active change。
 >
 > 歷史 archive 詳情請見 `openspec/changes/archive/<change>/` 各 change 目錄；tech debt 追蹤請見 `docs/tech-debt.md`。
 
@@ -22,7 +22,7 @@ _(見 AUTO Parked Changes 區塊：add-mcp-token-revoke-do-cleanup、passkey-use
 
 - [mid] **TD-057** evlog wide event lifecycle 警告 — `[evlog] log.error() called after the wide event was emitted` 於 production wrangler tail 出現，影響 SSE stream 真實錯誤可觀察性
 - [low] **TD-056** Workers AI judge 模型 `max_completion_tokens: 200` 上限被截斷 → JSON parse 失敗 → pipeline_error — 特定 query 才觸發、persist-refusal 已 cover UX
-- [low] **TD-015 production 觀察（post-archive follow-up）** — `add-sse-resilience` 已 archive，剩 production 7 天觀察 `chat.error` 計數無顯著上升 + 抽 10 條 chat run 確認 first-token-ts 對應第一個 `delta` event 未被 `: keep-alive` 行誤計。建議 2026-05-03 `/schedule` background agent
+- [low] **TD-015 production 立即驗收（post-archive follow-up）** — `add-sse-resilience` 已 archive，立即驗收方式：(1) `wrangler tail --env production --format json | jq 'select(.outcome=="error" or .level=="error")'` 採樣 10-15 分鐘看 `chat.error` 是否異常；(2) 撈 production D1 最近 24h `query_logs` 抽 10 條 chat run，比對 `first_token_ts - created_at` delta 落在合理區間（< 5s 為健康）。任一異常開新 TD entry，否則直接標 done
 - [low] **v0.50.0 simplify / code-review 留下的 cosmetic 觀察**（不登記 TD，留作 backlog）
   - `conversation-store.ts` / `knowledge-audit.ts` / `web-chat.ts` / `mcp-ask.ts` 的 `refusalReason?: string | null` 可收緊為 `RefusalReason | null`（DB 層沒 enum 約束，靠 application layer enforce）
   - `chat-sse-response.ts` heartbeat catch 不設 `closed = true`（finally 仍兜底，雙保險更乾淨）
