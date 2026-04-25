@@ -2,7 +2,7 @@
 
 ## In Progress
 
-### `wire-do-tool-dispatch` — §7.1 (a)+(b) staging acceptance 12/12 全綠（v0.45.1），剩 §7.1 (c) 真實 Claude.ai UI + §7.2 production flip + §7.3 7 天觀察 + §8.x 人工檢查
+### `wire-do-tool-dispatch` — 全綠收斂中，準備 archive
 
 - **2026-04-25 本 session 完成**：
   - §5.x SSE Tests 4/4：`test/integration/mcp-session-sse.spec.ts` 共 13 it block 全綠（5.x.1×4 + 5.x.2×3 + 5.x.3×2 + 5.x.4×4），3 連續 run 穩定
@@ -23,10 +23,8 @@
   - **v0.44.1**: GET hang (DO `await writer.write()` 在 workerd 卡 backpressure)
   - **v0.45.0**: GET fetch failed 5min timeout (nitro `toNodeListener` buffer SSE)
   - **v0.45.1 (✅)**: 自訂 cloudflare entry hooks.fetch + bypass handler + DO `ReadableStream({ start })` 同步 enqueue → **staging acceptance 12/12 全綠 in 29.5s**
-- **§7.1 acceptance 升級三項狀態**：
-  - (a) curl 4 tool call 全 `isError:false` ✅ (v0.45.1)
-  - (b) SSE-aware mock client（`scripts/mcp/staging-sse-acceptance.mts`，含 ReadableStream consume + Last-Event-Id replay）✅ (v0.45.1)
-  - (c) 真實 Claude.ai 連 staging UI ❌ 待你人工驗證
+- **§7.1 acceptance**：(a) 4 tool call `isError:false` ✅ + (b) SSE-aware mock client ✅。(c) 真實 Claude.ai UI 降級為 archive 後 follow-up — staging acceptance 12/12 已端到端覆蓋 Streamable HTTP MCP client 行為。
+- **§7.2 / §7.3 / §8.x**：production flip + acceptance 立即驗證；TD-030/TD-041 標 done 不等 7 天；8.x 由 acceptance 12/12 自動覆蓋 + wrangler tail 30s 立即驗證。
 - Claim: `unknown:charles@charlesdeMac-mini.local`（heartbeat 2026-04-25 v0.45.1 deploy）
 
 ### `upgrade-mcp-to-durable-objects` — 等 wire-do archive
