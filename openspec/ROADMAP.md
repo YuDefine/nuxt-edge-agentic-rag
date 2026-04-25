@@ -69,7 +69,7 @@ _(none)_
 
 ## Active Changes
 
-_last synced: 2026-04-25T11:09:12.751Z_
+_last synced: 2026-04-25T12:59:46.241Z_
 
 2 active changes (0 ready · 2 in progress · 0 draft · 0 blocked)
 
@@ -81,7 +81,7 @@ _(none)_
 
 - **upgrade-mcp-to-durable-objects** — 17/27 tasks (63%)
   - Specs: `mcp-knowledge-tools`
-- **wire-do-tool-dispatch** — 27/35 tasks (77%)
+- **wire-do-tool-dispatch** — 28/35 tasks (80%)
   - Specs: `mcp-knowledge-tools`
 
 ### Draft
