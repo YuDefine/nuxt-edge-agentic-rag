@@ -5,7 +5,7 @@ const timestampNow = sql`CURRENT_TIMESTAMP`
 
 export const userProfiles = sqliteTable('user_profiles', {
   id: text('id').primaryKey(),
-  emailNormalized: text('email_normalized').notNull().unique(),
+  emailNormalized: text('email_normalized'),
   displayName: text('display_name'),
   roleSnapshot: text('role_snapshot').notNull().default('user'),
   adminSource: text('admin_source').notNull().default('none'),

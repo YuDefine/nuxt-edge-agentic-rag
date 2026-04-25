@@ -4,7 +4,18 @@ import type { DrizzleDbModuleLike } from './database'
 
 export interface UserProfileSyncInput {
   userId: string
-  emailNormalized: string
+  /**
+   * Normalised email for the better-auth user. NULL for passkey-only users
+   * who have no email at all (e.g. registered via passkey-first flow). Both
+   * branches still produce a `user_profiles` row keyed by `userId` so child
+   * FKs (`conversations`, `query_logs`, `messages`, `documents`) can resolve.
+   *
+   * NULL callers skip the email-first lookup that drives the TD-044 drift
+   * recovery (it has no email key to match by); they fall back to id-first
+   * lookup which is correct for passkey-only users since their id never
+   * collides with another user's email.
+   */
+  emailNormalized: string | null
   roleSnapshot: string
   adminSource: string
 }
@@ -40,11 +51,23 @@ export async function syncUserProfile(
   const { userId, emailNormalized, roleSnapshot, adminSource } = input
 
   try {
-    const existing = await db
-      .select({ id: schema.userProfiles.id })
-      .from(schema.userProfiles)
-      .where(eq(schema.userProfiles.emailNormalized, emailNormalized))
-      .limit(1)
+    // For passkey-only users (no email) the email-first lookup that drives
+    // TD-044 drift recovery has no key to match against, so fall back to
+    // id-first. There's no drift case to recover for them either: each
+    // passkey-only `user_profiles` row is keyed solely by `user.id`, and that
+    // id is allocated by better-auth for the lifetime of the user.
+    const existing =
+      emailNormalized === null
+        ? await db
+            .select({ id: schema.userProfiles.id })
+            .from(schema.userProfiles)
+            .where(eq(schema.userProfiles.id, userId))
+            .limit(1)
+        : await db
+            .select({ id: schema.userProfiles.id })
+            .from(schema.userProfiles)
+            .where(eq(schema.userProfiles.emailNormalized, emailNormalized))
+            .limit(1)
     const existingRow = existing[0]
 
     if (!existingRow) {
@@ -101,6 +124,7 @@ export async function syncUserProfile(
   }
 }
 
-function redactEmailNormalized(email: string): string {
+function redactEmailNormalized(email: string | null): string {
+  if (email === null) return '<null>'
   return `${email.slice(0, 3)}***`
 }
