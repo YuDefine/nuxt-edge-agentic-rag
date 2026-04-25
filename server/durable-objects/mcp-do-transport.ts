@@ -26,7 +26,21 @@ interface PendingResolver {
  *   2. SDK 處理完後會呼 `transport.send(response)`，本 class 查 id 並解對應
  *      resolver
  */
+export interface DoJsonRpcTransportOptions {
+  /**
+   * Invoked when the SDK calls `transport.send()` with a server-initiated
+   * notification or request (messages without an `id` correlator). Routes to
+   * the DO's SSE event queue so `useMcpLogger().notify.*` and
+   * `server.sendLoggingMessage()` surface to connected clients via GET /mcp
+   * streams (spec 2025-11-25 §Streamable HTTP > Listening for Messages).
+   * If omitted, notifications are dropped silently (stateless-compatible
+   * fallback).
+   */
+  onServerNotification?: (message: JSONRPCMessage) => Promise<void>
+}
+
 export class DoJsonRpcTransport implements Transport {
+  private readonly options: DoJsonRpcTransportOptions
   private pending = new Map<RequestId, PendingResolver>()
   private _closed = false
 
@@ -34,6 +48,10 @@ export class DoJsonRpcTransport implements Transport {
   onclose?: () => void
   onerror?: (error: Error) => void
   sessionId?: string
+
+  constructor(options: DoJsonRpcTransportOptions = {}) {
+    this.options = options
+  }
 
   async start(): Promise<void> {
     // No-op — transport is request-driven, not stream-driven.
@@ -45,10 +63,12 @@ export class DoJsonRpcTransport implements Transport {
     }
 
     if (!isJsonRpcResponse(message)) {
-      // The SDK only sends responses or notifications via transport.send on
-      // the server side. Notifications have no id to correlate, so drop them
-      // silently (HTTP transport cannot deliver server-initiated notifications
-      // without a streaming channel).
+      // Server-initiated notification/request — route to SSE queue via the
+      // configured hook (set by `mcp-session.ts` to `enqueueSseEvent` +
+      // live push to active SSE writers).
+      if (this.options.onServerNotification) {
+        await this.options.onServerNotification(message)
+      }
       return
     }
 
