@@ -1,5 +1,6 @@
 import type { KnowledgeGovernanceConfig } from '#shared/schemas/knowledge-runtime'
 import type { DecisionPath, RefusalReason } from '#shared/types/observability'
+import { isAbortError } from '#shared/utils/abort'
 import { answerKnowledgeQuery, type KnowledgeAnsweringTelemetry } from './knowledge-answering'
 import { auditKnowledgeText } from './knowledge-audit'
 import { getAllowedAccessLevels } from './knowledge-runtime'
@@ -463,17 +464,4 @@ export async function chatWithKnowledge(
   }
 
   return result
-}
-
-function isAbortError(error: unknown): boolean {
-  if (error instanceof DOMException && error.name === 'AbortError') {
-    return true
-  }
-
-  return (
-    typeof error === 'object' &&
-    error !== null &&
-    'name' in error &&
-    (error as { name?: unknown }).name === 'AbortError'
-  )
 }

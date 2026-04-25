@@ -14,7 +14,7 @@
     "docs:build": "vitepress build docs",
     "docs:dev": "vitepress dev docs --host 0.0.0.0 --port 4173",
     "docs:preview": "vitepress preview docs --host 0.0.0.0 --port 4173",
-    "eval": "evalite run test/evals/mcp-tool-selection.eval.ts",
+    "eval": "node scripts/run-eval-with-exit.mjs",
     "eval:report": "evalite run --outputPath .evalite/mcp-tool-selection.json test/evals/mcp-tool-selection.eval.ts",
     "eval:watch": "evalite watch test/evals/mcp-tool-selection.eval.ts",
     "format": "vp fmt",
