@@ -467,7 +467,19 @@ export class MCPSessionDurableObject extends DurableObject<McpSessionDurableObje
     await this.ctx.storage.setAlarm(now + resolveTtlMs(this.env))
 
     const connectionId = crypto.randomUUID()
-    const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>()
+    // Unbounded readable buffer: SSE notification volume is bounded by
+    // SSE_MAX_EVENTS_PER_SESSION (100) and TTL eviction (5 min), so memory
+    // pressure is negligible. The default readable hwm=0 introduces
+    // backpressure on the very first `writeSseFrame` (initial `: connected`
+    // primer), which deadlocks against the to-be-returned Response in any
+    // host where the runtime does not drain the readable side concurrently
+    // with the fetch handler (Node vitest, generic fetch consumers). Removing
+    // backpressure also defends against slow clients in production.
+    const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>(
+      undefined,
+      { highWaterMark: 1 },
+      { highWaterMark: Number.POSITIVE_INFINITY },
+    )
     const writer = writable.getWriter()
     let resolveLifetime!: () => void
     const lifetime = new Promise<void>((resolve) => {
