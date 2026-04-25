@@ -5,8 +5,8 @@
 - [ ] **add-sse-resilience** apply 階段 4/6 完成（已 ship 至 v0.48.0，
       commit `cd43bf2`）。剩 archive 前的兩個收尾區塊：
   - 5.x spec/doc 同步（`/spectra-archive` 流程自動處理）
-  - 7.x 人工檢查 4 項（local + production tail + 7-day 觀察 + first-token
-    evlog 抽樣）
+  - 7.x 人工檢查 3 項（local tail + production tail + first-token evlog
+    抽樣，皆可立即驗收）
 - 觸動檔案：`shared/utils/sse-parser.ts`、`server/utils/chat-sse-response.ts`、
   `app/utils/chat-stream.ts`、`server/utils/workers-ai.ts`、
   `server/api/chat.post.ts`，皆於 `cd43bf2` 入庫。
@@ -15,9 +15,7 @@
 
 ## Blocked
 
-- TD-015 7.3 需要 production 觀察 7 天才能 close，**最早完成日：2026-05-02**
-  （以 `5084844` deploy 至 production 為起點）。在此之前其餘 archive
-  收尾仍可推進，但 `@followup[TD-015]` marker 對應 tasks 7.3 應留 open。
+- 無
 
 ## Next Steps
 
@@ -27,10 +25,9 @@
 2. production `wrangler tail` 觀察一條真實 chat 請求，確認 keep-alive 行
    有出現（tasks 7.2）。
 3. 從 production 抽 10 條 chat run，確認 first-token-ts 對 first delta
-   event time 一致、未被 keep-alive 行誤計（tasks 7.4）。
-4. 2026-05-02 後評估 TD-015 7.3 觀察期：對照 evlog `chat.error` 計數，
-   無顯著上升 → 跑 `/spectra-archive add-sse-resilience`，archive 流程會
-   自動同步 spec delta 並把 TD-015 / TD-019 標 done。
+   event time 一致、未被 keep-alive 行誤計（tasks 7.3）。
+4. 上述三項驗收完成 → 跑 `/spectra-archive add-sse-resilience`，archive
+   流程會自動同步 spec delta 並把 TD-015 / TD-019 標 done。
 5. **Parked changes**：`add-mcp-token-revoke-do-cleanup` 與
    `passkey-user-profiles-nullable-email` 仍 parked，待使用者決定
    unpark / 重排 / drop。
