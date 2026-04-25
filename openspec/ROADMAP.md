@@ -44,9 +44,9 @@ _(none)_
 
 ## Active Changes
 
-_last synced: 2026-04-25T15:06:00.565Z_
+_last synced: 2026-04-25T15:26:52.617Z_
 
-_No active changes._
+1 active change (0 ready · 1 in progress · 0 draft · 0 blocked)
 
 ### Ready to apply
 
@@ -54,7 +54,8 @@ _(none)_
 
 ### In progress
 
-_(none)_
+- **add-sse-resilience** — 17/23 tasks (74%)
+  - Specs: `web-chat-sse-streaming`
 
 ### Draft
 
@@ -87,7 +88,7 @@ _No active claims._
 
 ### Independent (can run in parallel)
 
-_(none)_
+- `add-sse-resilience`
 
 ### Mutex (same spec touched)
 
@@ -106,10 +107,12 @@ _(none)_
 > 已 `spectra park` 的 changes。檔案暫時從 `openspec/changes/` 移出，
 > metadata 保留在 `.spectra/spectra.db`。`spectra unpark <name>` 可取回。
 
-1 parked change
+2 parked changes
 
-- **add-sse-resilience** — 0/23 tasks (0%)
-  - Summary: Web chat SSE 流目前有兩個獨立但相關的韌性問題：…
+- **add-mcp-token-revoke-do-cleanup** — 0/25 tasks (0%)
+  - Summary: **TD-040** — 當 admin revoke 一組…
+- **passkey-user-profiles-nullable-email** — 0/22 tasks (0%)
+  - Summary: **TD-009** — `passkey-authenti…
 
 <!-- SPECTRA-UX:ROADMAP-AUTO:/parked -->
 
