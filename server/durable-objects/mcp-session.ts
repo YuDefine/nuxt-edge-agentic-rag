@@ -258,7 +258,12 @@ function resolveTtlMs(env: McpSessionDurableObjectEnv): number {
 
 interface SseWriterEntry {
   connectionId: string
-  writer: WritableStreamDefaultWriter<Uint8Array>
+  // Underlying ReadableStream controller. Synchronous `enqueue(chunk)` does
+  // not block on backpressure or interact with the workerd integer-coercion
+  // path that broke the previous TransformStream/writer pattern (v0.44.0
+  // staging trace). The default controller is exposed by `start(controller)`
+  // and survives the closure scope until cleanup.
+  controller: ReadableStreamDefaultController<Uint8Array>
   heartbeatAlive: boolean
   // Settled when this connection ends (write failure / explicit close / session
   // expiry). Used as `ctx.waitUntil(lifetime)` to keep the DO instance alive
@@ -467,69 +472,85 @@ export class MCPSessionDurableObject extends DurableObject<McpSessionDurableObje
     await this.ctx.storage.setAlarm(now + resolveTtlMs(this.env))
 
     const connectionId = crypto.randomUUID()
-    // Effectively unbounded readable buffer: SSE notification volume is
-    // bounded by SSE_MAX_EVENTS_PER_SESSION (100) and TTL eviction (5 min),
-    // so memory pressure is negligible. The default readable hwm=0
-    // introduces backpressure on the very first `writeSseFrame` (initial
-    // `: connected` primer), which deadlocks against the to-be-returned
-    // Response in any host where the runtime does not drain the readable
-    // side concurrently with the fetch handler (Node vitest, generic fetch
-    // consumers). Removing backpressure also defends against slow clients
-    // in production. We use MAX_SAFE_INTEGER instead of POSITIVE_INFINITY
-    // because Cloudflare workerd runtime does an internal integer
-    // conversion on highWaterMark that rejects Infinity with
-    // `TypeError: The value cannot be converted because it is not an integer.`
-    // (Node.js vitest accepts Infinity, hence the unit tests pass while
-    // staging GET /mcp throws 500 — first observed v0.44.0 staging
-    // acceptance probe, 2026-04-25.)
-    const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>(
-      undefined,
-      { highWaterMark: 1 },
-      { highWaterMark: Number.MAX_SAFE_INTEGER },
-    )
-    const writer = writable.getWriter()
     let resolveLifetime!: () => void
     const lifetime = new Promise<void>((resolve) => {
       resolveLifetime = resolve
     })
+
+    // Use a plain ReadableStream with a `start(controller)` callback rather
+    // than a TransformStream + writer.write pair. Reasons:
+    //
+    // 1. `controller.enqueue()` is synchronous — it never awaits backpressure
+    //    or runs through the workerd internal integer-coercion path that
+    //    rejected `TransformStream` highWaterMark=Infinity (v0.44.0 staging
+    //    `TypeError: The value cannot be converted because it is not an integer.`
+    //    cause: { remote: true }`).
+    //
+    // 2. `await writer.write(...)` blocks the fetch handler until the chunk
+    //    is processed; in workerd that path can hang indefinitely waiting
+    //    for the readable side to be drained, but the readable side is
+    //    drained by the HTTP layer only AFTER the fetch handler returns the
+    //    Response. The result is a deadlock observed empirically on
+    //    v0.44.1 staging (5-minute timeout, 0 bytes received).
+    //
+    // 3. This mirrors the SDK reference implementation
+    //    (@modelcontextprotocol/sdk webStandardStreamableHttp.js
+    //    `handleGetRequest`) which has been validated in production
+    //    Cloudflare Worker setups.
+    //
+    // Server-initiated push (`enqueueAndPushServerNotification`) and
+    // heartbeat (`scheduleHeartbeat`) call `writeSseFrame` which now wraps
+    // the synchronous `controller.enqueue()` call.
+    let streamController!: ReadableStreamDefaultController<Uint8Array>
+    const lastEventIdHeader = request.headers.get('Last-Event-Id')
+    const eventsCapture: SseEventRow[] = []
+    const invalidLastEventIdHeader =
+      lastEventIdHeader && decodeEventId(lastEventIdHeader) === null ? lastEventIdHeader : null
+    const lastCounter =
+      lastEventIdHeader && !invalidLastEventIdHeader ? decodeEventId(lastEventIdHeader) : null
+    if (lastCounter !== null) {
+      eventsCapture.push(...(await listEventsAfter(this.ctx.storage, lastCounter)))
+    }
+
+    const readable = new ReadableStream<Uint8Array>({
+      start: (controller) => {
+        streamController = controller
+        // Initial `: connected` comment per spec 2025-11-25 — synchronous
+        // enqueue, no backpressure await, no workerd integer coercion.
+        controller.enqueue(this.encoder.encode(`: connected\nretry: ${SSE_RETRY_HINT_MS}\n\n`))
+        if (invalidLastEventIdHeader) {
+          controller.enqueue(
+            this.encoder.encode(
+              this.formatEventRow({
+                counter: 0,
+                message: {
+                  jsonrpc: '2.0',
+                  method: 'notifications/events_dropped',
+                  params: { reason: 'invalid_last_event_id', header: invalidLastEventIdHeader },
+                },
+                timestamp: now,
+              } as SseEventRow),
+            ),
+          )
+        }
+        for (const row of eventsCapture) {
+          controller.enqueue(this.encoder.encode(this.formatEventRow(row)))
+        }
+      },
+      cancel: () => {
+        this.removeWriter(connectionId)
+      },
+    })
+
     const entry: SseWriterEntry = {
       connectionId,
-      writer,
+      controller: streamController,
       heartbeatAlive: true,
       lifetime,
       resolveLifetime,
     }
     this.writers.set(connectionId, entry)
     this.activeConnectionId = connectionId
-
-    // Prime the client per spec 2025-11-25 (send an initial event id + empty
-    // data + retry hint so the client knows when to reconnect).
-    await this.writeSseFrame(entry, `: connected\nretry: ${SSE_RETRY_HINT_MS}\n\n`)
-
-    // Replay missed events if Last-Event-Id supplied.
-    const lastEventIdHeader = request.headers.get('Last-Event-Id')
-    if (lastEventIdHeader) {
-      const lastCounter = decodeEventId(lastEventIdHeader)
-      if (lastCounter === null) {
-        await this.writeSseFrame(
-          entry,
-          this.formatEventRow({
-            counter: 0,
-            message: {
-              jsonrpc: '2.0',
-              method: 'notifications/events_dropped',
-              params: { reason: 'invalid_last_event_id', header: lastEventIdHeader },
-            },
-            timestamp: now,
-          } as SseEventRow),
-        )
-      } else {
-        const missed = await listEventsAfter(this.ctx.storage, lastCounter)
-        for (const row of missed) {
-          await this.writeSseFrame(entry, this.formatEventRow(row))
-        }
-      }
-    }
 
     this.scheduleHeartbeat(connectionId)
 
@@ -577,10 +598,11 @@ export class MCPSessionDurableObject extends DurableObject<McpSessionDurableObje
     return `id: ${id}\n${eventLine}data: ${data}\n\n`
   }
 
-  private async writeSseFrame(entry: SseWriterEntry, frame: string): Promise<void> {
+  private writeSseFrame(entry: SseWriterEntry, frame: string): void {
     try {
-      await entry.writer.write(this.encoder.encode(frame))
+      entry.controller.enqueue(this.encoder.encode(frame))
     } catch {
+      // Controller throws if already closed/cancelled.
       this.removeWriter(entry.connectionId)
     }
   }
@@ -611,7 +633,7 @@ export class MCPSessionDurableObject extends DurableObject<McpSessionDurableObje
       await new Promise((resolve) => setTimeout(resolve, SSE_HEARTBEAT_INTERVAL_MS))
       const entry = this.writers.get(connectionId)
       if (!entry || !entry.heartbeatAlive) return
-      await this.writeSseFrame(entry, ': heartbeat\n\n')
+      this.writeSseFrame(entry, ': heartbeat\n\n')
       if (this.writers.has(connectionId)) {
         void tick()
       }
@@ -633,10 +655,10 @@ export class MCPSessionDurableObject extends DurableObject<McpSessionDurableObje
     for (const entry of this.writers.values()) {
       entry.heartbeatAlive = false
       try {
-        await entry.writer.write(this.encoder.encode(closeFrame))
-        await entry.writer.close()
+        entry.controller.enqueue(this.encoder.encode(closeFrame))
+        entry.controller.close()
       } catch {
-        // Best-effort close; writer may already be detached.
+        // Best-effort close; controller may already be closed/cancelled.
       } finally {
         entry.resolveLifetime()
       }
@@ -662,7 +684,7 @@ export class MCPSessionDurableObject extends DurableObject<McpSessionDurableObje
       // because clients with multiple streams would silently miss events on
       // the non-newest stream.
       for (const entry of this.writers.values()) {
-        await this.writeSseFrame(entry, frame)
+        this.writeSseFrame(entry, frame)
       }
     } catch (error) {
       logDoError(error, 'sse-enqueue-push')
