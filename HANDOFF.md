@@ -2,7 +2,7 @@
 
 ## In Progress
 
-### `wire-do-tool-dispatch` — §6.4 worker→DO wire-up gap 揭露，§7.1 (b)/(c) 阻擋
+### `wire-do-tool-dispatch` — §7.1 (a)+(b) staging acceptance 12/12 全綠（v0.45.1），剩 §7.1 (c) 真實 Claude.ai UI + §7.2 production flip + §7.3 7 天觀察 + §8.x 人工檢查
 
 - **2026-04-25 本 session 完成**：
   - §5.x SSE Tests 4/4：`test/integration/mcp-session-sse.spec.ts` 共 13 it block 全綠（5.x.1×4 + 5.x.2×3 + 5.x.3×2 + 5.x.4×4），3 連續 run 穩定
@@ -17,12 +17,17 @@
 - **Tasks 狀態**（30/35, 86%）：§1–§4 + §4.x + §5.x + §6.x 全綠；新加 §6.4 [ ]；§7.1 退回 in-progress（升級 acceptance + dep §6.4）；§7.2 / §7.3 / §8.1–§8.4 待做
 - **v0.43.4 stop-gap 已收尾**：`448cf07` deploy v0.43.4，production runtime flag = false 確認；目前不會撞 GET /mcp 405 / OAuth 循環
 - **下次 flip true 前缺**：**§6.4 G1 + G2 wire-up gap 解** + §7.1 升級 acceptance 三項全綠（(a) curl 4 tool call + (b) SSE-aware mock client + (c) 真實 Claude.ai 3 query UI 顯示真實答案）+ §7.2 production flip 重做 + §7.3 7 天觀察 + §8.1–§8.4 人工檢查
-- **v0.44.x staging acceptance 進展**：
+- **v0.44.x → v0.45.1 §6.4 G2 layer-by-layer 修復軌跡**：
   - **v0.43.4**: GET 405（stateless POST-only fallback，envelope 沒注入）
-  - **v0.44.0**: GET 500 — `wrangler tail` 抓到 `TypeError: The value cannot be converted because it is not an integer. cause: { remote: true }`。Root cause = workerd runtime 對 `TransformStream` `highWaterMark` 做 internal integer conversion，拒收 `Number.POSITIVE_INFINITY`。Node.js vitest 接受 Infinity 所以 §5.x 13 it block 全綠但 staging 直接 500。
-  - **v0.44.1 (本 session 收尾 deploy)**: HWM 改 `Number.MAX_SAFE_INTEGER` 後 GET 500 消失，但變成 **hang**（fetch 不返回 status line / 0 byte received），跟 §6.4 G2 描述一致。證實 G2 是 toolkit/nitro/h3 streaming response wrap 層問題，**不在 DO 內部**。
-  - 下一步：trace G2 root cause — 看 `@modelcontextprotocol/sdk/dist/esm/server/webStandardStreamableHttp.js:184 handleGetRequest` 回的 `Response(readable, ...)` 在 nitro / h3 server 怎麼被處理；可能是 `evlog/nuxt` plugin buffer collection、或 toolkit alias 強制 node provider 後 nitro response 對 ReadableStream 的處理。
-- Claim: `unknown:charles@charlesdeMac-mini.local`（heartbeat 2026-04-25 v0.44.1 deploy）
+  - **v0.44.0**: GET 500 (workerd 拒收 `TransformStream` `highWaterMark=Infinity`)
+  - **v0.44.1**: GET hang (DO `await writer.write()` 在 workerd 卡 backpressure)
+  - **v0.45.0**: GET fetch failed 5min timeout (nitro `toNodeListener` buffer SSE)
+  - **v0.45.1 (✅)**: 自訂 cloudflare entry hooks.fetch + bypass handler + DO `ReadableStream({ start })` 同步 enqueue → **staging acceptance 12/12 全綠 in 29.5s**
+- **§7.1 acceptance 升級三項狀態**：
+  - (a) curl 4 tool call 全 `isError:false` ✅ (v0.45.1)
+  - (b) SSE-aware mock client（`scripts/mcp/staging-sse-acceptance.mts`，含 ReadableStream consume + Last-Event-Id replay）✅ (v0.45.1)
+  - (c) 真實 Claude.ai 連 staging UI ❌ 待你人工驗證
+- Claim: `unknown:charles@charlesdeMac-mini.local`（heartbeat 2026-04-25 v0.45.1 deploy）
 
 ### `upgrade-mcp-to-durable-objects` — 等 wire-do archive
 
