@@ -4,20 +4,31 @@
 
 ## Current State
 
-> 狀態（2026-04-25 更新）：branch `main`，最新 tag `v0.46.0`，production runtime `NUXT_KNOWLEDGE_FEATURE_MCP_SESSION = "true"`。MCP Durable Object 主軸已完整上線（DO tool dispatch + SSE channel + auth context HMAC forward）。無 active spectra change，open tech debt 無 build/deploy blocker。
+> 狀態（2026-04-26 更新）：branch `main`，最新 tag `v0.50.0`，production runtime `NUXT_KNOWLEDGE_FEATURE_MCP_SESSION = "true"`。MCP Durable Object 主軸已完整上線（DO tool dispatch + SSE channel + auth context HMAC forward）；v0.49.0 完成 SSE heartbeat + `readSseStream` 統一收尾；v0.50.0 持久化 refusal 訊息 + sidebar 「新對話」label + reason-specific copy + markdown 內容渲染。**TD-055 已修復**（archive `2026-04-26-fix-fk-rebuild-query-logs-chain`：migration 0015 explicit-FK rebuild + spec `auth-storage-consistency` 補 `Live DDL Foreign Key References Match Canonical Table Names` requirement，本機 fresh libsql 從零跑到 0015 後 FK 文字皆 canonical、`PRAGMA foreign_key_check` 乾淨；production D1 為 no-op）。當前無 active change。
 >
 > 歷史 archive 詳情請見 `openspec/changes/archive/<change>/` 各 change 目錄；tech debt 追蹤請見 `docs/tech-debt.md`。
 
 ## Next Moves
 
-進行中：_(none — MCP DO 主軸全收，無 active spectra change)_
+### 進行中（active，見 AUTO Active Changes 區塊）
 
-### 已 propose，待 apply（見 AUTO Parked Changes 區塊）
+_(目前無 active change)_
 
-_(none)_
+### 已 parked
+
+_(見 AUTO Parked Changes 區塊：add-mcp-token-revoke-do-cleanup、passkey-user-profiles-nullable-email)_
 
 ### 近期（尚未 propose，可獨立進）
 
+- [mid] **TD-057** evlog wide event lifecycle 警告 — `[evlog] log.error() called after the wide event was emitted` 於 production wrangler tail 出現，影響 SSE stream 真實錯誤可觀察性
+- [low] **TD-056** Workers AI judge 模型 `max_completion_tokens: 200` 上限被截斷 → JSON parse 失敗 → pipeline_error — 特定 query 才觸發、persist-refusal 已 cover UX
+- [low] **TD-015 production 觀察（post-archive follow-up）** — `add-sse-resilience` 已 archive，剩 production 7 天觀察 `chat.error` 計數無顯著上升 + 抽 10 條 chat run 確認 first-token-ts 對應第一個 `delta` event 未被 `: keep-alive` 行誤計。建議 2026-05-03 `/schedule` background agent
+- [low] **v0.50.0 simplify / code-review 留下的 cosmetic 觀察**（不登記 TD，留作 backlog）
+  - `conversation-store.ts` / `knowledge-audit.ts` / `web-chat.ts` / `mcp-ask.ts` 的 `refusalReason?: string | null` 可收緊為 `RefusalReason | null`（DB 層沒 enum 約束，靠 application layer enforce）
+  - `chat-sse-response.ts` heartbeat catch 不設 `closed = true`（finally 仍兜底，雙保險更乾淨）
+  - `MessageList.vue` assistant content 改 markdown 渲染（已落地，視覺驗收通過——標記為「已超出 persist-refusal 原 scope 但決定保留」）
+  - `conversation-title.ts` `slice(0, 40)` 是 code-unit indexed，emoji 可能斷在 surrogate pair 中間（罕見）
+  - `RefusalMessage.vue` `mailto:${adminContactEmail}` 未 URL-encode email 本身（subject 有 encode）
 - [mid] **TD-050** Staging R2 (`agentic-rag-documents-staging`) 為空，缺 RAG content seed / sync schedule — wire-do archive 後可獨立進（驗證 4 個 tool call `citations:[] / results:[]` empty 是否因 R2 缺資料導致）
 - [mid] **TD-049** Cloudflare Pages deploy API 拒絕 git HEAD commit message — in-progress（CI 已加 workaround `5ce334c`），持續觀察是否仍有 deploy 中斷
 - [mid] **TD-047** `/api/chat` SSE `ready` 後階段 error 時 Container 未 emit `conversation-persisted` — 獨立、scope 小
@@ -44,7 +55,7 @@ _(none)_
 
 ## Active Changes
 
-_last synced: 2026-04-25T18:18:52.109Z_
+_last synced: 2026-04-25T20:33:12.877Z_
 
 _No active changes._
 
