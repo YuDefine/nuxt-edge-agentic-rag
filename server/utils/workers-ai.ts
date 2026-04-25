@@ -1,5 +1,5 @@
 import type { VerifiedKnowledgeEvidence } from '#server/utils/knowledge-retrieval'
-import { createAbortError } from '#shared/utils/abort'
+import { readSseStream } from '#shared/utils/sse-parser'
 
 export interface WorkersAiBindingLike {
   run(model: string, payload: Record<string, unknown>): Promise<unknown>
@@ -266,78 +266,30 @@ async function readStreamedTextResponse(
     }
   }
 
-  const reader = stream.getReader()
-  const decoder = new TextDecoder()
-  const abortError = createAbortError()
-  let buffer = ''
   let text = ''
   let usage: WorkersAiUsageSnapshot | null = null
 
-  const abortReader = () => {
-    void reader.cancel(abortError)
-  }
-
-  if (options.signal?.aborted) {
-    abortReader()
-    throw abortError
-  }
-
-  options.signal?.addEventListener('abort', abortReader, { once: true })
-
-  try {
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) {
-        break
+  await readSseStream(new Response(stream), {
+    signal: options.signal,
+    onBlock: async (block) => {
+      const parsed = parseSseBlock(block.raw)
+      if (parsed === '[DONE]') {
+        return 'terminate'
+      }
+      if (parsed === null) {
+        return 'continue'
       }
 
-      buffer += decoder.decode(value, { stream: true })
-      const blocks = buffer.split('\n\n')
-      buffer = blocks.pop() ?? ''
-
-      for (const block of blocks) {
-        const parsed = parseSseBlock(block)
-        if (parsed === '[DONE]' || parsed === null) {
-          continue
-        }
-
-        const delta = readStreamDelta(parsed)
-        if (delta) {
-          text += delta
-          await options.onTextDelta(delta)
-          if (options.signal?.aborted) {
-            throw abortError
-          }
-        }
-
-        usage = readUsageSnapshot(parsed) ?? usage
+      const delta = readStreamDelta(parsed)
+      if (delta) {
+        text += delta
+        await options.onTextDelta(delta)
       }
-    }
 
-    const trailingBlock = buffer.trim()
-    if (trailingBlock) {
-      const parsed = parseSseBlock(trailingBlock)
-      if (parsed !== '[DONE]' && parsed !== null) {
-        const delta = readStreamDelta(parsed)
-        if (delta) {
-          text += delta
-          await options.onTextDelta(delta)
-          if (options.signal?.aborted) {
-            throw abortError
-          }
-        }
-        usage = readUsageSnapshot(parsed) ?? usage
-      }
-    }
-  } catch (error) {
-    if (options.signal?.aborted) {
-      throw abortError
-    }
-    throw error
-  } finally {
-    options.signal?.removeEventListener('abort', abortReader)
-    reader.releaseLock()
-  }
+      usage = readUsageSnapshot(parsed) ?? usage
+      return 'continue'
+    },
+  })
 
   return {
     text: text.trim(),

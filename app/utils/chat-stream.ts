@@ -3,8 +3,8 @@ import type {
   ChatStreamReadyEvent,
   ChatStreamTerminalEvent,
 } from '#shared/types/chat-stream'
-import { createAbortError } from '#shared/utils/abort'
 import { assertNever } from '#shared/utils/assert-never'
+import { readSseStream } from '#shared/utils/sse-parser'
 import type { ChatCitation, ChatMessage } from '~/types/chat'
 
 export class ChatStreamError extends Error {
@@ -38,62 +38,37 @@ export async function readChatStream(
     throw new ChatStreamError('串流回應缺少內容')
   }
 
-  const reader = response.body.getReader()
-  const decoder = new TextDecoder()
-  const abortError = createAbortError()
-  let buffer = ''
+  let terminalEvent: ChatStreamTerminalEvent | null = null
 
-  const abortReader = () => {
-    void reader.cancel(abortError)
-  }
-
-  if (input.signal?.aborted) {
-    abortReader()
-    throw abortError
-  }
-
-  input.signal?.addEventListener('abort', abortReader, { once: true })
-
-  try {
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) {
-        break
+  await readSseStream(response, {
+    signal: input.signal,
+    onBlock: async (block) => {
+      const event = parseChatStreamEvent(block.raw)
+      if (!event) {
+        return 'continue'
       }
 
-      buffer += decoder.decode(value, { stream: true })
-      const blocks = buffer.split('\n\n')
-      buffer = blocks.pop() ?? ''
+      switch (event.event) {
+        case 'ready':
+          await input.onReady?.(event.data)
+          return 'continue'
+        case 'delta':
+          await input.onTextDelta(event.data.content)
+          return 'continue'
+        case 'complete':
+        case 'refusal':
+          terminalEvent = event
+          return 'terminate'
+        case 'error':
+          throw new ChatStreamError(event.data.message)
+        default:
+          return assertNever(event, 'readChatStream onBlock')
+      }
+    },
+  })
 
-      for (const block of blocks) {
-        const result = await handleEventBlock(block, input)
-        if (result) {
-          return result
-        }
-        if (input.signal?.aborted) {
-          throw abortError
-        }
-      }
-    }
-
-    const trailingBlock = buffer.trim()
-    if (trailingBlock) {
-      const result = await handleEventBlock(trailingBlock, input)
-      if (result) {
-        return result
-      }
-      if (input.signal?.aborted) {
-        throw abortError
-      }
-    }
-  } catch (error) {
-    if (input.signal?.aborted) {
-      throw abortError
-    }
-    throw error
-  } finally {
-    input.signal?.removeEventListener('abort', abortReader)
-    reader.releaseLock()
+  if (terminalEvent) {
+    return terminalEvent
   }
 
   throw new ChatStreamError('串流在完成前意外中斷')
@@ -148,32 +123,5 @@ function parseChatStreamEvent(block: string): ChatStreamEvent | null {
     } as ChatStreamEvent
   } catch {
     return null
-  }
-}
-
-async function handleEventBlock(
-  block: string,
-  input: ReadChatStreamInput,
-): Promise<ChatStreamTerminalEvent | null> {
-  const event = parseChatStreamEvent(block)
-  if (!event) {
-    return null
-  }
-
-  switch (event.event) {
-    case 'ready':
-      await input.onReady?.(event.data)
-      return null
-    case 'delta':
-      await input.onTextDelta(event.data.content)
-      return null
-    case 'complete':
-      return event
-    case 'refusal':
-      return event
-    case 'error':
-      throw new ChatStreamError(event.data.message)
-    default:
-      return assertNever(event, 'handleEventBlock')
   }
 }
