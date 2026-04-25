@@ -1,4 +1,5 @@
 import type { VerifiedKnowledgeEvidence } from '#server/utils/knowledge-retrieval'
+import { createAbortError } from '#shared/utils/abort'
 
 export interface WorkersAiBindingLike {
   run(model: string, payload: Record<string, unknown>): Promise<unknown>
@@ -458,10 +459,6 @@ function readStreamDelta(payload: unknown): string {
   const deltaContent = firstChoice?.delta?.content
 
   return typeof deltaContent === 'string' ? deltaContent : ''
-}
-
-function createAbortError(): DOMException {
-  return new DOMException('aborted', 'AbortError')
 }
 
 function normalizeStructuredResponse(candidate: unknown): Record<string, unknown> {
