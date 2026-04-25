@@ -28,7 +28,7 @@
 | TD-016 | isAbortError / createAbortError 在四處重複實作                                                                                                                                                                                                                | low      | done        | 2026-04-24 /commit review                                        | —     |
 | TD-017 | chat.post.ts 兩個 AI binding getter 可合併                                                                                                                                                                                                                    | low      | done        | 2026-04-24 /commit review                                        | —     |
 | TD-018 | Container.vue classifyError 巢狀條件抽 lookup table                                                                                                                                                                                                           | low      | done        | 2026-04-24 /commit review                                        | —     |
-| TD-019 | SSE reader pattern 在 client/server 雷同可抽共用                                                                                                                                                                                                              | low      | open        | 2026-04-24 /commit review                                        | —     |
+| TD-019 | SSE reader pattern 在 client/server 雷同可抽共用                                                                                                                                                                                                              | low      | done        | 2026-04-24 /commit review                                        | —     |
 | TD-020 | CHATGPT_CONNECTOR_OAUTH_PATH_PATTERN 可收緊字元集                                                                                                                                                                                                             | low      | done        | 2026-04-24 /commit review                                        | —     |
 | TD-021 | ConversationHistory bucket toggle 缺 aria-expanded 等                                                                                                                                                                                                         | low      | done        | 2026-04-24 /commit review                                        | —     |
 | TD-022 | groupedConversations computed 不跨 midnight 重新分組                                                                                                                                                                                                          | low      | done        | 2026-04-24 /commit review                                        | —     |
@@ -809,7 +809,8 @@ HTTP status code → error kind 的 mapping 目前用三元鏈 + 巢狀 if，第
 
 ## TD-019 — SSE reader pattern 在 client/server 雷同可抽共用
 
-**Status**: open
+**Status**: done
+**Resolved**: 2026-04-26 — `add-sse-resilience` change archive。新增 `shared/utils/sse-parser.ts`（export `readSseStream` + `ReadSseStreamInput` + `SseBlock`），統一處理 reader / decoder / `buffer.split('\n\n')` 主迴圈、abort race handling（`signal.addEventListener('abort', () => reader.cancel(createAbortError()))` 配合 main loop `signal.aborted` 檢查 + finally 清 listener + releaseLock）、comment block detection（`: keep-alive` 等註解 block 不轉發給 onBlock）。`app/utils/chat-stream.ts:readChatStream` 與 `server/utils/workers-ai.ts:readStreamedTextResponse` 改用 `readSseStream`，block handler 各自處理 chat event type / `[DONE]` sentinel + JSON delta，外部簽章與 emit 行為不變。新增 `test/unit/sse-parser.spec.ts` 10 cases 覆蓋 normal / multi-block / partial trailing / abort mid-stream / signal pre-aborted / UTF-8 邊界 / comment block / terminate / missing body；既有 chat-stream / workers-ai / chat-route integration spec 全綠。Land 在 v0.48.0 commit `cd43bf2`，archive 於 v0.49.0 後。
 **Priority**: low
 **Discovered**: 2026-04-24 — `/commit` code-review
 **Location**: `app/utils/chat-stream.ts:readChatStream` + `server/utils/workers-ai.ts:readStreamedTextResponse`
@@ -830,9 +831,9 @@ HTTP status code → error kind 的 mapping 目前用三元鏈 + 巢狀 if，第
 
 ### Acceptance
 
-- `app/utils/chat-stream.ts` 與 `server/utils/workers-ai.ts` 共用同一個 SSE reader
-- 既有 unit / integration test 持續綠
-- 新增或擴充 sse-parser 的 unit test
+- [x] `app/utils/chat-stream.ts` 與 `server/utils/workers-ai.ts` 共用同一個 SSE reader
+- [x] 既有 unit / integration test 持續綠
+- [x] 新增或擴充 sse-parser 的 unit test
 
 ---
 
