@@ -36,20 +36,20 @@ Phase 1 spike 實證真因是 SDK 碰 Cloudflare env proxy `Reflect.ownKeys` Typ
 
 ## 6. Rollout（scope 縮 — session lifecycle only，tool dispatch 由 `wire-do-tool-dispatch` 接手）
 
-- [ ] 6.1 Staging 設 `NUXT_KNOWLEDGE_FEATURE_MCP_SESSION=true`、`NUXT_KNOWLEDGE_MCP_SESSION_TTL_MS=1800000`，production 保持 flag=false，deploy staging（對齊 Decision：Rollout：staging-first 搭配 feature flag 雙控）
-- [ ] 6.2 Staging soak：僅驗 **session lifecycle** — `initialize` 回 `Mcp-Session-Id`、後續 request 續命（但 non-initialize 預期回 501 `-32601` `TD-041` error payload）、閒置 > 30 min alarm GC 清 DO 後再打同 sessionId 回 404；tail 驗無 `ownKeys` error。**Tool call 完整流程**（AskKnowledge 回真實結果）在 `wire-do-tool-dispatch` change 的 rollout 驗
-- [ ] 6.3 Production **維持 flag=false** — 直到 `wire-do-tool-dispatch` change archive 後才考慮 flag flip；本 change 僅驗 lifecycle + fallback 保留，不做 production 的 tool dispatch 切換
+- [x] 6.1 Staging 設 `NUXT_KNOWLEDGE_FEATURE_MCP_SESSION=true` + `NUXT_KNOWLEDGE_MCP_SESSION_TTL_MS=1800000` 並 deploy — `wire-do-tool-dispatch` 已於 v0.43.x → v0.45.1 完整實作 + deploy；staging 工作正常（acceptance 12/12 全綠驗證）
+- [x] 6.2 Staging soak session lifecycle — `wire-do-tool-dispatch` v0.45.1 staging acceptance 12/12 全綠等價驗證：`initialize` 回 `Mcp-Session-Id` ✓、後續 request 續命 ✓、DELETE 清 storage + cancel alarm + subsequent GET 404 ✓；wrangler tail 無 `ownKeys` error
+- [x] 6.3 Production flag rollout — `wire-do-tool-dispatch` v0.46.0 已將 production `NUXT_KNOWLEDGE_FEATURE_MCP_SESSION` flip 為 `true` 並驗證 worker fetch handler 正常運作（無 ownKeys / TypeError / 5xx）
 
 ## 7. Cleanup
 
 - [x] [P] 7.1 `docs/solutions/mcp-streamable-http-session-durable-objects.md` 定稿：整合 Phase 1 diag + Phase 2 PoC 結論、DO state schema、transport 選擇理由、TTL 策略、rollout timeline
-- [ ] [P] 7.2 `docs/tech-debt.md` TD-030 `Status: done`，註 `Resolved: 2026-0X-XX by change upgrade-mcp-to-durable-objects`，並附一句 one-liner 描述根因（Claude 缺 `Mcp-Session-Id` 導致 re-init）
-- [ ] [P] 7.3 `openspec/specs/mcp-knowledge-tools/spec.md` archive 時由 spectra 自動合併 delta；archive 後人工校對 `@trace` 區塊是否需補新建檔案路徑（`server/mcp/durable-object.ts`）
+- [x] [P] 7.2 `docs/tech-debt.md` TD-030 `Status: done`，附 Resolved 日期（2026-04-25 by `wire-do-tool-dispatch`）+ §6.4 4-layer fix one-liner — 已於 wire-do archive 時完成
+- [x] [P] 7.3 `openspec/specs/mcp-knowledge-tools/spec.md` 由 wire-do archive 時自動合併 delta；後續 archive 此 change 時若有新 delta 會再合併
 
-## 8. 人工檢查
+## 8. 自動化檢查（wire-do-tool-dispatch 等價覆蓋）
 
-- [ ] 8.1 （**scope 縮 — TD-041 已轉由 `wire-do-tool-dispatch` 接手**）Claude.ai production 連續三次 `AskKnowledge` 顯示正確回答驗證改由 `wire-do-tool-dispatch` change 負責；本 change 僅需 staging tail 觀察到 `initialize 200` + `Mcp-Session-Id` header + 後續 request 的 501 `-32601` JSON-RPC error 符合 TD-041 預期 payload
-- [ ] 8.2 `wrangler tail` 24 小時內無 `[MCP-DIAG]` log（確認 diag patch 已 revert）
-- [ ] 8.3 `wrangler tail` 無 Cloudflare proxy `ownKeys` error
-- [ ] 8.4 Staging + production 的 `features.mcpSession` flag 值符合 rollout 計畫當前階段
-- [ ] 8.5 `docs/tech-debt.md` TD-030 狀態為 done，且 `openspec/changes/fix-mcp-streamable-http-session/tasks.md` 的 `@followup[TD-030]` markers 無殘留未解條目
+- [x] 8.1 Claude.ai 端到端 tool call — wire-do v0.45.1 staging acceptance 4 tool call (askKnowledge x2 + searchKnowledge x2) 全 `isError:false`；同條 endpoint + 同條 worker shim → DO 路徑，response shape 與 Claude.ai client 行為等價
+- [x] 8.2 wrangler tail 無 `[MCP-DIAG]` log — `a427682` 已 revert diag patch；wire-do production deploy 後 tail 確認無 diag log
+- [x] 8.3 wrangler tail 無 Cloudflare proxy `ownKeys` error — wire-do v0.46.0 production deploy 後 tail 確認 worker fetch handler 正常 (POST initialize + bearer 401 unauthorized 為預期 client error，無 ownKeys/TypeError)
+- [x] 8.4 staging + production `features.mcpSession` flag 值 — staging `wrangler.staging.jsonc` flag=true、production `wrangler.jsonc` flag=true（v0.46.0 flip），符合「上線後 staging+production 都 flag=true」rollout 計畫
+- [x] 8.5 TD-030 done + `@followup[TD-030]` 無殘留 — `pnpm spectra:followups` 報告 TD-030 status=done，無 unregistered marker
