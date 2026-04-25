@@ -49,6 +49,13 @@ import {
   resolveMcpAuthSigningKey,
   verifyAuthContextEnvelope,
 } from '#server/utils/mcp-auth-context-codec'
+import {
+  MCP_INVALIDATE_HEADER,
+  verifyInvalidateHeader,
+} from '#server/utils/mcp-internal-invalidate'
+import { appendSessionId } from '#server/utils/mcp-token-session-index'
+
+import type { KvBindingLike } from '#server/utils/cloudflare-bindings'
 
 import type { CallToolResult, JSONRPCMessage } from '@modelcontextprotocol/sdk/types.js'
 
@@ -296,6 +303,18 @@ export class MCPSessionDurableObject extends DurableObject<McpSessionDurableObje
   }
 
   async fetch(request: Request): Promise<Response> {
+    // Internal invalidate bypass — used by the admin token-revoke cascade
+    // cleanup path (`server/api/admin/mcp-tokens/[id].delete.ts`). Trust
+    // anchor: HMAC over `<sessionId>|<timestampMs>` using the shared
+    // `NUXT_MCP_AUTH_SIGNING_KEY`. Bypasses the forwarded auth-context check
+    // because admin/system flow has no user session envelope; HMAC + 60s skew
+    // window is the trust boundary instead. Method-agnostic so callers can
+    // POST a body-less invalidate request without coordinating verbs.
+    const invalidateHeaderValue = request.headers.get(MCP_INVALIDATE_HEADER)
+    if (invalidateHeaderValue) {
+      return this.handleInvalidate(request, invalidateHeaderValue)
+    }
+
     // Streamable HTTP (spec 2025-11-25) supports POST for JSON-RPC requests,
     // GET for server-initiated SSE streams, and DELETE for client-initiated
     // session termination. All other methods are rejected.
@@ -350,6 +369,10 @@ export class MCPSessionDurableObject extends DurableObject<McpSessionDurableObje
       const session = this.buildInitializedSession(sessionId, envelope, existing, now, callerUserId)
       await this.ctx.storage.put<McpSessionState>(STORAGE_KEY_SESSION, session)
       await this.ctx.storage.setAlarm(now + ttlMs)
+      // Best-effort token→session index for the admin revoke cascade-cleanup
+      // path (TD-040). KV failures are swallowed; the DO TTL alarm is the
+      // safety net if cascade cleanup never reaches this session.
+      await this.recordSessionForToken(authResult.auth.tokenId, session.sessionId)
       return this.buildInitializeResponse(session, requestId)
     }
 
@@ -566,6 +589,68 @@ export class MCPSessionDurableObject extends DurableObject<McpSessionDurableObje
         ...SSE_HEADERS,
         'Mcp-Session-Id': renewed.sessionId,
       },
+    })
+  }
+
+  private async recordSessionForToken(tokenId: string, sessionId: string): Promise<void> {
+    if (!tokenId || !sessionId) {
+      return
+    }
+    // The DO has direct access to the platform `env` so it skips Nitro's
+    // `getRequiredKvBinding(event, runtimeConfig.bindings.rateLimitKv)` indirection.
+    // The binding name must stay in lockstep with the admin revoke endpoint
+    // (`server/api/admin/mcp-tokens/[id].delete.ts`) which reads from
+    // `runtimeConfig.bindings.rateLimitKv` (defaults to `'KV'`,
+    // overridable via `NUXT_KNOWLEDGE_RATE_LIMIT_KV`). Honour the override
+    // so a non-default binding stays consistent end-to-end.
+    const bindingName =
+      typeof this.env.NUXT_KNOWLEDGE_RATE_LIMIT_KV === 'string' &&
+      this.env.NUXT_KNOWLEDGE_RATE_LIMIT_KV.length > 0
+        ? this.env.NUXT_KNOWLEDGE_RATE_LIMIT_KV
+        : 'KV'
+    const candidate = this.env[bindingName]
+    if (
+      !candidate ||
+      typeof (candidate as { get?: unknown }).get !== 'function' ||
+      typeof (candidate as { put?: unknown }).put !== 'function'
+    ) {
+      return
+    }
+
+    try {
+      await appendSessionId(candidate as KvBindingLike, tokenId, sessionId)
+    } catch (error) {
+      logDoError(error, 'mcp-session-index-append')
+    }
+  }
+
+  private async handleInvalidate(request: Request, headerValue: string): Promise<Response> {
+    const signingKey = resolveMcpAuthSigningKey(this.env.NUXT_MCP_AUTH_SIGNING_KEY)
+    const sessionId = request.headers.get('Mcp-Session-Id') ?? this.ctx.id.toString()
+    const verified = await verifyInvalidateHeader(headerValue, {
+      sessionId,
+      secret: signingKey,
+      now: this.now(),
+    })
+
+    if (!verified) {
+      return new Response(JSON.stringify({ error: 'invalidate verification failed' }), {
+        status: 403,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+
+    // Cleanup mirrors `handleDelete` but without forwarded-auth verification:
+    // close streams, drop transport, wipe SSE event log, deleteAll, deleteAlarm.
+    await this.closeAllSseWriters('session_invalidated')
+    await this.closeTransport()
+    await clearAllSseEvents(this.ctx.storage)
+    await this.ctx.storage.deleteAll()
+    await this.ctx.storage.deleteAlarm()
+
+    return new Response(JSON.stringify({ ok: true }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
     })
   }
 
