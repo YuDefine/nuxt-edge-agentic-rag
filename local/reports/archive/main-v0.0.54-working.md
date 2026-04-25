@@ -1,646 +1,25 @@
-## 第二節 設計
-
-### 2.2.1 資料庫設計
-
-圖 6 核心資料表 ER 圖
-
-erDiagram
-BETTER_AUTH_USERS ||--|| USER_PROFILES : maps_to
-USER_PROFILES ||--o{ DOCUMENTS : creates
-USER_PROFILES ||--o{ CONVERSATIONS : owns
-USER_PROFILES ||--o{ MCP_TOKENS : owns
-DOCUMENTS ||--o{ DOCUMENT_VERSIONS : has
-DOCUMENT_VERSIONS ||--o{ SOURCE_CHUNKS : splits_into
-DOCUMENT_VERSIONS ||--o{ CITATION_RECORDS : cited_by
-SOURCE_CHUNKS ||--o{ CITATION_RECORDS : replay_source
-CONVERSATIONS ||--o{ MESSAGES : contains
-QUERY_LOGS ||--o{ CITATION_RECORDS : records
-QUERY_LOGS ||--o{ MESSAGES : audits
-
-USER_PROFILES {
-string id PK
-string email_normalized
-string role_snapshot
-string admin_source
-}
-DOCUMENTS {
-string id PK
-string category_slug
-string access_level
-string status
-string current_version_id FK
-}
-DOCUMENT_VERSIONS {
-string id PK
-string document_id FK
-string index_status
-boolean is_current
-string normalized_text_r2_key
-}
-SOURCE_CHUNKS {
-string id PK
-string document_version_id FK
-string citation_locator
-}
-QUERY_LOGS {
-string id PK
-string channel
-string status
-string decision_path
-}
-CITATION_RECORDS {
-string id PK
-string query_log_id FK
-string source_chunk_id FK
-string citation_id
-}
-
-source_chunks.id 是對外可回放的引用真相來源；citation_records 則是單次查詢的引用快照，用於審計與重播。document_versions.ai_search_file_id 與 AI Search 索引項目對應，但正式回答仍以 D1 版本狀態與 source_chunks 對應結果為準。
-
-#### 2.2.1.2 引用回放來源建立策略
-
-**citation_records(引用紀錄)**
-
-表 16 citation_records 資料表
-
-補充規則：
-
-**mcp_tokens(MCP Bearer token)**
-
-表 17 mcp_tokens 資料表
-
-| 欄位               | 類型                                    | 說明                                                                                                                                    |
-| ------------------ | --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| id                 | string (PK)                             | Token 唯一識別碼                                                                                                                        |
-| name               | string                                  | 顯示名稱(取代先前 label)                                                                                                                |
-| token_hash         | string (unique)                         | 雜湊後 token 值                                                                                                                         |
-| scopes_json        | json                                    | 權限範圍陣列                                                                                                                            |
-| environment        | enum ('local', 'staging', 'production') | 該 token 綁定之部署環境，避免 staging token 在 production 直接可用                                                                      |
-| status             | enum ('active', 'revoked', 'expired')   | 狀態                                                                                                                                    |
-| created_by_user_id | string (FK → user.id)                   | 建立者；三級角色擴充後新增，用於在 MCP 入口以 token 創建者 role × guest_policy 做授權判定。此欄位先以可填入方式導入，後續再收斂為必填。 |
-| expires_at         | timestamp, nullable                     | 到期時間                                                                                                                                |
-| last_used_at       | timestamp, nullable                     | 最後使用時間                                                                                                                            |
-| revoked_at         | timestamp, nullable                     | 撤銷時間                                                                                                                                |
-| revoked_reason     | text, nullable                          | 撤銷原因描述                                                                                                                            |
-| created_at         | timestamp                               | 建立時間                                                                                                                                |
-
-補充規則：
-
-- issued_to_user_id、revoked_by、created_by、updated_at 欄位列為後續管理介面擴充階段處理；現階段以 query_logs.mcp_token_id + query_logs.user_profile_id(管理員發放行為亦以 web 通道登記)承擔稽核串接責任，並於 revoked_reason 內以自由文字紀錄重要背景。
-- 三級角色擴充後，MCP 入口 middleware 會解析 token → 查 created_by_user_id 對應 role → 若為 Guest 則依 system_settings.guest_policy 決定可否呼叫；Admin / Member token 不受 dial 限制。
-- 現階段的 MCP 採無狀態呼叫，因此不建立 mcp_sessions。若後續導入多輪上下文，應另增對應 metadata table，並維持「KV 保存 runtime state、D1 僅保存 metadata」的原則。
-
-**system_settings(三級角色擴充，單列 KV 設定)**
-
-三級角色擴充後新增 system_settings 表，作為輕量 KV 型設定表，欄位為 (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT, updated_by TEXT NOT NULL)。現階段僅使用單一 key guest_policy，value 為 same_as_member / browse_only / no_access 三擇一(enum 由 shared/types/auth.ts 的 guestPolicySchema 在應用層驗證，不下推 DB constraint)。updated_by 接受三種值：better-auth user.id(Admin 透過 UI 變更)、'system'(初始化或自動補值)、'db-direct'(維運人員直接 SQL)。Dial 預設為 same_as_member，代表 Guest 與 Member 同權；切換為 browse_only 則 Guest 僅能瀏覽公開分類之已發布文件，不可提問；no_access 則 Guest 登入後僅見「使用者待審核」提示頁。
-
-**member_role_changes(三級角色擴充，角色升降 audit 表)**
-
-成員升降事件一律透過 server/utils/member-role-changes.ts 的 recordRoleChange 單一入口寫入此表，確保稽核軌跡完整。欄位為 (id TEXT PK, user_id TEXT FK → user.id, from_role TEXT, to_role TEXT, changed_by TEXT, reason TEXT nullable, created_at TEXT)；其中 changed_by 可為 user.id、'system'、'db-direct' 三類值，reason 自由文字承擔「allowlist-seed / admin-ui / manual」等操作背景。(user_id, created_at) 建立複合索引，供後續管理介面擴充階段接入讀取介面。現階段本身不提供 UI 讀取此表，內容以 wrangler d1 execute 查看。
-
-#### 2.2.1.3 上下文與真相來源設計說明
-
-本系統將身分與上下文區分為三層：
-
-1. **認證核心表與登入 Session**：由 better-auth 管理，用於 Web 使用者的 Google OAuth、Passkey 與對應 Session 驗證；其他登入方式若後續擴充，仍應留在此層。
-2. **應用層角色設定**：由 user_profiles 管理角色、狀態與管理員來源，不直接複製整份 auth schema；現階段的管理員名單真相來源為部署環境變數 ADMIN_EMAIL_ALLOWLIST，每次 privileged request 仍須以正規化 Session email 對 allowlist 重新計算，D1 僅保存登入後角色快照與 admin_source 供 UI、審計與查詢使用。
-3. **Web 對話持久化**：Web 已支援持久化 conversationId、歷史列表、對話詳情重建與刪除淘汰。一般可見訊息會同時寫入 messages.content_text 與 messages.content_redacted；其中 content_text 供使用者 UI 與後續對話重建使用，content_redacted 僅供稽核。高風險 blocked 訊息則只寫入遮罩後副本，不寫入原文。
-4. **對話可見性重算**：conversations.access_level 代表該對話目前最高敏感等級，讀取對話時必須依目前角色重新檢查；若使用者失去 restricted 權限，原受限對話不得回傳。對話一旦刪除，deleted_at 需立即生效，列表、詳情、重整後畫面與後續模型上下文皆不得再回復該對話內容。
-
-現階段的 MCP 不承擔多輪上下文真相來源，只保存單次請求的契約輸入、輸出與審計資料。此設計的目的是避免將 Web 對話、MCP runtime state 與審計資料混寫在同一組資料表中，造成真相來源不一致。即使是 Web 多輪追問，每次回答仍需重新檢索 current 版本；若先前引用的 document_version_id 已非 current，系統應將該對話標記為 stale 並以新檢索結果為準。
-
-### 2.2.2 API 與 MCP 介面設計
-
-本節正文僅保留與流程責任、授權邊界與驗收直接相關的最小契約；較細的 request/response schema、internal DTO 與 SDK 命名差異，應集中收斂於附錄 A 或實作凍結規格，避免主文與供應商欄位命名雙重綁定。
-
-#### 2.2.2.1 內部 REST API(前端與管理後台使用)
-
-表 18 內部 REST API 方法清單
-
-現階段首批已落地路徑：
-
-| 方法   | 路徑                                                    | 說明                                                                                                                                     | 權限  |
-| ------ | ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ----- |
-| POST   | /api/chat                                               | Web 問答；非串流一次性回傳 { answer, citations, refused, conversationId, conversationCreated }，並支援以 conversationId 續問同一對話     | User  |
-| GET    | /api/citations/:citationId                              | Web 端引用回放；與 MCP getDocumentChunk 共用 source_chunks.id 作為 citationId                                                            | User  |
-| GET    | /api/conversations                                      | 取得目前使用者可見的對話列表                                                                                                             | User  |
-| GET    | /api/conversations/:id                                  | 取得單一對話詳情與持久化訊息                                                                                                             | User  |
-| DELETE | /api/conversations/:id                                  | 刪除對話；立即自列表、詳情與後續上下文淘汰，並清空 messages.content_text                                                                 | User  |
-| POST   | /api/uploads/presign                                    | 取得 S3 相容協定之一次性 R2 signed URL、objectKey 與 uploadId                                                                            | Admin |
-| POST   | /api/uploads/finalize                                   | 驗證 checksum、size、MIME type 並確認 staged upload                                                                                      | Admin |
-| POST   | /api/documents/sync                                     | 以已 finalize 的 R2 objectKey 一次完成：建立 / 對齊 document、建立新版本、寫入 normalized_text_r2_key 與預建 source_chunks               | Admin |
-| GET    | /api/admin/documents                                    | 文件列表(含 current 版本摘要)                                                                                                            | Admin |
-| GET    | /api/admin/documents/:id                                | 文件詳情                                                                                                                                 | Admin |
-| GET    | /api/admin/documents/check-slug                         | 檢查 slug 是否可用                                                                                                                       | Admin |
-| DELETE | /api/admin/documents/:id                                | Hard delete；僅允許 status = 'draft' 且所有版本 published_at IS NULL，cascade 清除 document_versions 與 source_chunks；其餘狀態回 409    | Admin |
-| POST   | /api/admin/documents/:id/archive                        | 封存文件(status: active → archived、寫入 archivedAt)；re-archive 回 no-op success                                                        | Admin |
-| POST   | /api/admin/documents/:id/unarchive                      | 解除封存(status: archived → active、清除 archivedAt)；re-unarchive 回 no-op success                                                      | Admin |
-| POST   | /api/admin/documents/:id/versions/:versionId/retry-sync | 重試單一版本的 AI Search 同步；sync_status: pending/failed → running，僅動 sync_status；前置 index_status = preprocessing 資料缺件回 409 | Admin |
-| GET    | /api/admin/mcp-tokens                                   | 取得 MCP token 列表                                                                                                                      | Admin |
-| POST   | /api/admin/mcp-tokens                                   | 建立 MCP token(原始 token 僅顯示一次)                                                                                                    | Admin |
-| POST   | /api/admin/mcp-tokens/:id/revoke                        | 撤銷 MCP token                                                                                                                           | Admin |
-| POST   | /api/admin/retention/\*                                 | 保留期限清理作業觸發入口(內部排程與維運手動觸發共用)                                                                                     | Admin |
-
-延伸 API(不納入交付範圍，依治理深化、管理介面深化與營運觀測三條線分階段設計)：
-
-| 方法 | 路徑                                            | 說明                                            | 對應擴充階段         |
-| ---- | ----------------------------------------------- | ----------------------------------------------- | -------------------- |
-| PUT  | /api/admin/documents/:id                        | 更新文件中繼資料                                | 後續管理介面深化階段 |
-| POST | /api/admin/documents/:id/versions               | 建立新版本(目前由 /api/documents/sync 一次承擔) | 後續管理介面深化階段 |
-| POST | /api/admin/documents/:id/reindex                | 對既有版本觸發同版重同步                        | 後續管理介面深化階段 |
-| POST | /api/admin/document-versions/:versionId/publish | 顯式把已 indexed 版本切換為 current             | 後續管理介面深化階段 |
-| POST | /api/admin/ai-search/sync                       | 觸發 instance 級同步                            | 後續管理介面深化階段 |
-| GET  | /api/admin/query-logs                           | 查詢日誌列表                                    | 後續營運觀測階段     |
-
-備註：
-
-- 現階段文件上傳採 staged upload 流程：Admin 先呼叫 /api/uploads/presign 取得一次性 R2 signed URL 與 uploadId，前端以 S3 相容協定直傳 R2 後，再呼叫 /api/uploads/finalize 完成 checksum、size 與 MIME type 驗證；通過後再呼叫 /api/documents/sync 一次完成「document 建立 / 對齊 → 建立新版本 → 寫 normalized_text_r2_key → 預建 source_chunks」的 happy path。
-- 將 document 建立與 version 建立拆成獨立路徑(含 PUT /api/admin/documents/:id、POST /api/admin/documents/:id/versions、publish / reindex / ai-search/sync)屬後續管理介面深化範圍；擴充時，/api/documents/sync 將由以上多個細粒度路徑取代，規格上的「一律先 finalize → 後建立版本」順序不變。
-- Cloudflare AI Search 已提供同步 REST API；現階段將「文件重同步」凍結為應用層工作流程：先標記目標版本、呼叫部署當下官方可用的同步能力，並由 document_versions.sync_status 與 metadata_json 回寫結果，不把供應商特定 API 直接綁死在報告規格中[18]。
-- 顯式 publish 流程(POST /api/admin/document-versions/:versionId/publish)的前置條件凍結為：目標版本 index_status = indexed、該版本沒有 sync_status ∈ (pending, running) 的進行中任務；就 documents.status 而言，active 直接發布、draft 於首次 publish(previousCurrentVersionId = NULL)於同一原子交易內自動升格為 active、archived 一律回 409 Conflict 並區分 archived 情境。目標版本已是 current 時應回傳 200 與 no-op 結果。此約束在 /api/documents/sync 一次承擔階段仍須由程式自動推進「發布 = 首個完成版本」的語意。
-- /api/documents/:id/reindex 擴充落地後僅用於既有 document_version_id 的同版重建與索引修復，不承載內容變更；凡內容異動一律建立新版本。若同一 document_version_id 已存在 sync_status ∈ (pending, running)，應回傳既有任務或 409，避免重複排程。
-
-#### 2.2.2.2 MCP 現階段核心工具
-
-表 19 MCP 現階段核心工具
-
-| Tool 名稱        | 說明             | 輸入參數                | 輸出                                     |
-| ---------------- | ---------------- | ----------------------- | ---------------------------------------- |
-| searchKnowledge  | 查詢知識庫片段   | query                   | 片段結果與 citationId                    |
-| askKnowledge     | 問答並回傳引用   | query                   | 回答、引用與拒答資訊                     |
-| getDocumentChunk | 取得完整引用片段 | citationId              | 片段全文與來源中繼資料                   |
-| listCategories   | 列出分類與數量   | includeCounts(required) | 依呼叫者可見範圍計算之分類清單與文件數量 |
-
-現階段將 topK / category / maxCitations 等調校參數保留至後續管理介面深化階段；擴充後仍須維持「MCP 無狀態契約 + 共用 retrieval.\* 應用層常數」原則，不得讓 MCP 自行攜帶與 Web 通道互相矛盾的檢索門檻。
-
-所有 MCP Tools 需同時符合以下條件：
-
-- Authorization: Bearer [token]
-- token 狀態為 active
-- token 具備對應 scope
-- 若需存取 restricted 內容，token 必須額外具備 knowledge.restricted.read
-
-補充規則如下：
-
-- Web /api/chat 現階段已接受 conversationId 並用於持久化續問；MCP 則維持明確無狀態契約，拒絕 conversationId 與 MCP-Session-Id 於 header / body 中出現，若偵測到將直接回 400。
-- searchKnowledge 與 askKnowledge 於檢索前即套用 allowed_access_levels 篩選。
-- 對 searchKnowledge 與 askKnowledge 而言，未具 knowledge.restricted.read 只代表 restricted 不在可見集合中；若過濾後無有效證據，應回傳空結果或業務拒答，不得為了提示受限資料存在而主動回 403。
-- getDocumentChunk 先解析 citationId 對應的 source_chunks，再做 scope 與 access_level 驗證。
-- searchKnowledge 若查無可用結果，應回傳 200 與空陣列 results: []，不得以 404 包裝「沒有命中」。
-- askKnowledge 若在授權後的可見集合中無足夠證據，應回傳 refused = true 與空引用；此情境與 401/403 協定錯誤必須分開。
-- listCategories.documentCount 僅計算呼叫者目前可見之 active + current 文件數，且以文件為單位去重，不計歷史版本。
-
-#### 2.2.2.3 MCP Resources、Dynamic Definitions、Evals
-
-以下項目列入後續延伸方向，不納入本階段定案範圍：
-
-- MCP Resources(如 resource://kb/categories、resource://kb/stats)
-- Dynamic Definitions
-- MCP Evals
-
-### 2.2.3 Agent 決策規則
-
-本系統將模型、檢索與決策責任拆分如下：
-
-模型可用性與命名以 Workers AI 官方模型頁與部署當下可用清單為準[5][23]。因供應商模型清單與 alias 可能變動，現階段先固定「角色」與「路由條件」，再於 Preview 驗證通過後鎖定實際模型名稱。
-本章不預先綁定候選模型名稱；正式主文、測試統計與答辯稿應只保留實際部署時鎖定的模型名稱。
-
-#### 2.2.3.1 模型分工
-
-表 20 Agent 模型角色分工
-
-| 角色                                   | 實際模型鎖定原則                         | 使用情境                                                               |
-| -------------------------------------- | ---------------------------------------- | ---------------------------------------------------------------------- |
-| 預設回答模型 models.defaultAnswer      | 低延遲、適合單文件與程序型回答之邊緣模型 | 單文件、明確、程序型或事實型回答                                       |
-| Agent 判斷與整合模型 models.agentJudge | 較強推理與結構化輸出模型                 | Query Reformulation、answerability judge、跨文件整合、比較與彙整型回答 |
-
-現階段固定路由為：simple_fact、single_document_procedural 與僅依單一已驗證文件延續的 Web 多輪追問，由 models.defaultAnswer 生成最終答案；cross_document_comparison、比較／彙整題與需兩份以上文件整合者，由 models.agentJudge 生成最終答案。若預定模型於部署時不可用，允許更換實際模型，但不得改變路由條件、回傳契約與驗證方式；更動後需同步更新部署設定、本文件與 query_logs.config_snapshot_version。現階段不納入邊緣備援模型與雲端外部模型切換；若後續擴充，須以明確 feature flag、治理條件與驗證報告另行定義。
-
-#### 2.2.3.2 檢索參數(現階段預設值)
-
-第一輪檢索預設設定如下：
-
-表 21 第一輪檢索預設參數
-
-| 參數                            | 值                                                                                                 |
-| ------------------------------- | -------------------------------------------------------------------------------------------------- |
-| max_num_results                 | 8                                                                                                  |
-| ranking_options.score_threshold | 0.35                                                                                               |
-| reranking                       | 啟用                                                                                               |
-| rewrite_query                   | true                                                                                               |
-| metadata filters                | status = active、access_level in allowed_access_levels，version_state = current 若存在僅作快篩提示 |
-
-第二輪 Self-Correction 重試設定如下：
-
-表 22 Self-Correction 重試參數
-
-| 參數                            | 值                |
-| ------------------------------- | ----------------- |
-| reformulation owner             | models.agentJudge |
-| max_num_results                 | 8                 |
-| ranking_options.score_threshold | 0.35              |
-| reranking                       | 啟用              |
-| rewrite_query                   | false             |
-| metadata filters                | 與第一輪相同      |
-| retry count                     | 最多 1 次         |
-
-上述檢索參數與分數門檻皆屬現階段預設值，可於正式驗證前校準；但校準僅可使用初始驗證資料集與獨立校準資料集，且校準後需統一寫入部署設定與本文件，不得由 Web、MCP 或不同模型路徑各自維護不同常數。
-
-#### 2.2.3.3 常數與 feature flag 凍結規則
-
-為避免門檻值散落在 prompt、server route、MCP Tool 與前端 debug UI，現階段需以單一共享設定模組輸出以下常數：
-
-表 23 共享設定常數與 feature flag
-
-| 類別          | 統一鍵名                          | 現階段值 / 原則                        |
-| ------------- | --------------------------------- | -------------------------------------- |
-| Retrieval     | retrieval.maxResults              | 8                                      |
-| Retrieval     | retrieval.minScore                | 0.35                                   |
-| Retrieval     | retrieval.queryRewrite.firstPass  | true                                   |
-| Retrieval     | retrieval.queryRewrite.secondPass | false                                  |
-| Decision      | thresholds.directAnswerMin        | 0.70                                   |
-| Decision      | thresholds.judgeMin               | 0.45                                   |
-| Decision      | thresholds.answerMin              | 0.55                                   |
-| Execution     | limits.maxSelfCorrectionRetry     | 1                                      |
-| Models        | models.defaultAnswer              | 角色型常數；Preview 通過後鎖定實際模型 |
-| Models        | models.agentJudge                 | 角色型常數；Preview 通過後鎖定實際模型 |
-| Feature flags | features.passkey                  | true(staging / production 已啟用)      |
-| Feature flags | features.mcpSession               | false(現階段)                          |
-| Feature flags | features.cloudFallback            | false(現階段)                          |
-| Feature flags | features.adminDashboard           | false(現階段)                          |
-
-上述共享設定只能由單一 server runtime config 或等價共享模組匯出；Web route、MCP Tool、測試程式與前端 debug UI 只可讀取，不得各自 hardcode。任何常數調整都必須同步更新本文件、部署設定與 query_logs.config_snapshot_version，否則視為規格與實作脫鉤。
-
-#### 2.2.3.4 分段式決策門檻(現階段預設值)
-
-表 24 分段式決策門檻(現行做法：以 retrieval_score 單一指標 + judge 結構式回傳)
-
-| 條件                                                     | 動作                                                                                 |
-| -------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| retrieval_score >= thresholds.directAnswerMin(0.70)      | 直接回答，不觸發 judge                                                               |
-| thresholds.judgeMin <= retrieval_score < directAnswerMin | 觸發 models.agentJudge，取得 { shouldAnswer, reformulatedQuery? }                    |
-| judge 回傳 shouldAnswer = true                           | 以原查詢進入回答生成(記為 judge_pass)                                                |
-| judge 回傳 reformulatedQuery                             | 以新查詢重試一次檢索，第二輪 mean_top3_score >= directAnswerMin 才允許回答，否則拒答 |
-| retrieval_score < thresholds.judgeMin                    | 直接拒答                                                                             |
-
-後續實模型與營運觀測階段導入 confidence_score 後，將額外加上 confidence_score < thresholds.answerMin → refuse 這一層門檻，並把「judge 回傳 shouldAnswer = false 但附帶 reformulatedQuery 的路徑」明確命名為 self_corrected。
-
-#### 2.2.3.5 Self-Correction 觸發條件
-
-- judge 回傳 shouldAnswer = false 且帶有 reformulatedQuery
-- retry_count = 0(受 limits.maxSelfCorrectionRetry = 1 約束)
-- 查詢不屬於授權阻擋或明確越界問題
-
-現階段不仰賴「Query Normalization 辨識出明確遺漏實體」之啟發式判斷；是否值得 retry 完全由 judge 回傳的 reformulatedQuery 是否存在決定。Query Normalization / 實體辨識列為後續治理深化階段擴充，擴充後可補充一條「即使 judge 未回傳 reformulatedQuery，若偵測到遺漏實體亦可重寫」的備援路徑。
-
-#### 2.2.3.6 拒答條件
-
-- judge 不通過且未回傳 reformulatedQuery
-- 或 Self-Correction 重試後的 mean_top3_score 仍低於 directAnswerMin
-- 或有效證據數量為 0(無法建立至少一筆可信引用)
-- 或敏感資料規則判定該查詢不應被回答(query_logs.status = 'blocked')
-- 或問題明確超出知識庫與系統職責範圍
-
-跨文件比較硬門檻(required_distinct_document_count = 2)與 confidence_score < 0.55 之拒答條件列為後續治理深化階段擴充；擴充前現階段以 models.agentJudge 路由承擔跨文件整合責任。
-
-#### 2.2.3.7 不納入現階段的外部模型備援(Cloud fallback)
-
-現階段不啟用外部模型備援(Cloud fallback)。若後續版本擴充，必須同時滿足以下前提：
-
-1. 以 feature flag 明確開啟，且不列入 現階段核心驗收。
-2. 僅能基於已核可的引用摘錄進行整合與表述，不得重新擴張檢索結果集合。
-3. restricted 內容、祕鑰、帳密與 PII 一律不得外送。
-4. 需提出獨立的延遲、品質與治理驗證報告後，才可升級為正式範圍。
-
-### 2.2.4 文件生命週期
-
-1. **建立文件**：Admin 建立文件主檔，指定分類、標籤與敏感等級。
-2. **staged upload**：原始檔先以 uploadId 暫存寫入 R2，並以 /kb/{category}/{document_id}/staged/{uploadId}/ 或等價路徑管理暫存物件。
-3. **finalize 上傳**：應用層驗證 checksum、mime_type、size_bytes 與檔案存在性，通過後才建立正式版本並搬移或確認正式路徑 /kb/{category}/{document_id}/v{version_no}/。
-4. **寫入版本資料**：建立 document_versions 紀錄，保存 checksum、mime_type、size_bytes、is_current = false、index_status = queued 與預期的 AI Search metadata。
-5. **正規化內容**：應用層將原始檔轉為單一 normalized_text_r2_key 文字快照，並於 document_versions.metadata_json.ingestion_profile_version 記錄所用規格版本。
-6. **預建引用真相來源**：依固定切分規則建立 source_chunks，此步驟先於正式發布完成，不等待供應商列舉 chunk。
-7. **發起同步**：將 document_versions.sync_status 推進為 running(不另建 ingestion_jobs 資料列)，觸發 instance 級同步，等待 AI Search 完成索引。
-8. **遠端同步進行中**：當 AI Search 開始處理時，document_versions.index_status 轉為 smoke_pending 或維持 preprocessing(視前處理狀態)，sync_status 維持 running。
-9. **Smoke retrieval 對應驗證**：遠端同步回報完成後，任務與版本先進入 smoke_pending。系統需以 smoke_test_queries_json 針對目標 document_version_id 執行 representative smoke retrieval，確認各 probe 的有效候選片段可被取回，且皆可對應至既有 source_chunks。若無法建立可回放 citationId，則視為驗證失敗。
-10. **標記為可發布版本**：僅當新版本 smoke retrieval 與對應驗證通過後，才可將 document_versions.index_status 標為 indexed、sync_status 標為 completed。此時版本代表「可發布」，但不會自動成為 current。
-11. **管理員顯式發布版本**：現階段由 /api/documents/sync 在首次成功完成 smoke retrieval 後即把第一個版本切為 is_current = true、寫入 published_at，形成「首次發布即 current」的結構式 publish；後續版本切換與 rollback 則仰賴補上的 /api/admin/document-versions/:versionId/publish 顯式端點，以單一 transaction 完成新版升級與舊版降級。此步驟受「每份文件僅一個 is_current = 1」partial unique index 保護。首次 publish 時若 documents.status = 'draft' 且 previousCurrentVersionId 為 NULL，publish 端點需於同一原子交易內將 documents.status 自 draft 升為 active(透過 DocumentPublishStore.publishVersionAtomic 的 promoteToActive 旗標)，避免 draft 文件永遠無法被推上外部檢索的死結；若 documents.status = 'archived'，publish 需直接以 409 Conflict 拒絕並於錯誤訊息區分 archived 情境，防止歷史歸檔文件被重啟。
-12. **正式檢索規則**：只有 documents.status = active、document_versions.index_status = indexed、document_versions.is_current = true 的內容可進入正式回答流程。
-13. **一致性保護**：AI Search metadata 僅為第一層快篩與觀測；回答前一律以 D1 post-verification 剔除非 active/indexed/current 片段，並丟棄無法對應到 source_chunks 的候選片段。若剔除後已無有效證據，則視為無結果，不得還原到舊版內容。
-14. **封存文件(archive)**：將 documents.status 由 active 設為 archived、寫入 archivedAt；應用層檢索過濾立即停止對外回答，但 document_versions 與 source_chunks 保留原狀，引用歷史仍可回放至 retention 期滿。後續同步再讓 AI Search 反映最新狀態。
-15. **解除封存(unarchive)**：Admin 得將 status = 'archived' 之文件還原為 active、清除 archivedAt，恢復對外檢索能力。此動作不強制重新驗證 index_status；若版本已 indexed 則立即回到可檢索，若 sync_status 仍為 failed 則需另行 retry-sync。
-16. **刪除 draft(hard delete)**：僅允許 documents.status = 'draft' 且所有 document_versions.published_at IS NULL(從未發布過)的文件。透過 FK onDelete: cascade 一併清除 document_versions 與 source_chunks；已發布歷史的文件一律不得 hard delete，須改走封存流程交由 retention cleanup 期滿處理。刪除請求一律以伺服器端狀態判斷 deletability，忽略 client payload 的 force 旗標。
-17. **重試同步(retry-sync)**：針對單一 document_versions，將 sync_status 由 pending 或 failed 推進為 running；僅動 sync_status，不動 index_status。觸發前需確認 index_status = preprocessing 之前置資料(normalized_text_r2_key、source_chunks)已就緒，否則回 409 Conflict 並附原因；sync_status 已為 running 或 completed 者亦回 409 拒絕，避免重複觸發 AI Search job。
-
-狀態真相來源與轉移規則如下：
-
-表 25 文件生命週期狀態轉移規則(現階段：以 document_versions.index_status + sync_status 承擔同步任務狀態機)
-
-| 項目                           | 狀態           | 代表意義                              | 允許下一狀態             | 失敗 / rollback 規則                                |
-| ------------------------------ | -------------- | ------------------------------------- | ------------------------ | --------------------------------------------------- |
-| document_versions.index_status | upload_pending | R2 直傳完成，等待前處理               | preprocessing、failed    | 若 finalize 驗證失敗則標 failed                     |
-| document_versions.index_status | preprocessing  | 正規化文字與 source_chunks 建立中     | smoke_pending、failed    | 前處理失敗即標 failed，需重新上傳                   |
-| document_versions.index_status | smoke_pending  | 等待 smoke retrieval 驗證             | indexed、failed          | 驗證失敗即標 failed，不得發布                       |
-| document_versions.index_status | indexed        | 已通過驗證，可作為 current 或歷史版本 | -                        | 僅在發布 transaction 成功後可成為 current           |
-| document_versions.index_status | failed         | 同步或驗證失敗                        | upload_pending(重新上傳) | 不允許原地 retry，避免誤用舊 R2 物件                |
-| document_versions.sync_status  | pending        | 等待觸發 AI Search 同步               | running、failed          | —                                                   |
-| document_versions.sync_status  | running        | AI Search 正在處理                    | completed、failed        | 遠端回報異常即轉 failed                             |
-| document_versions.sync_status  | completed      | 同步與 smoke retrieval 全部完成       | running(maintenance 時)  | maintenance reindex 可重新回到 running              |
-| document_versions.sync_status  | failed         | 同步任務失敗                          | running(手動 retry)      | 失敗僅影響同步任務本身，不會連帶把 indexed 版本降階 |
-
-- document_versions.index_status 是版本可發布性真相來源；document_versions.sync_status 是同步任務進度真相來源。兩者不得互相覆蓋語意，稽核資訊(ai_search_job_id / error_message / started_at / completed_at)寫入 document_versions.metadata_json；若後續另拆出獨立 ingestion_jobs 表，再把這些欄位遷移出去。
-- 發布 transaction 若失敗，舊版 is_current = true 必須維持不變；新版本保留 indexed 但 is_current = false，由管理員明確重試發布，不得半套切換。
-- 對已 indexed 版本執行顯式 reindex 時，不先將 index_status 降為其他狀態；只把 sync_status 重新轉為 running，通過後更新 metadata_json 快照。
-- 對已 indexed 版本執行 maintenance reindex 若失敗，不得把目前可服務版本的 index_status 降為 failed；應僅標記該次 sync_status = failed 並保留先前成功的 indexed 快照，由管理員重試。
-- AI Search 同步觸發若遭遇冷卻期(sync_in_cooldown)，應視為暫時性狀況而非失敗：sync_status 維持或轉回 pending、不寫入 error_message、不觸發告警；由排程或後續上傳事件自然重試。
-- AI Search 任務狀態由 started_at、ended_at、end_reason 三欄推導：未 started_at 視為 pending；已 started_at 但無 ended_at 視為 running；已 ended_at 且 end_reason 非空視為 failed(以 end_reason 為 error_message)；已 ended_at 且 end_reason 為空視為 completed。
-
-#### 2.2.4.1 上傳與 Ingestion Guardrails
-
-為避免文件管理規格與 AI Search 實際限制脫節，現階段補充以下上傳與 ingestion 邊界：
-
-- 現階段核心驗收資料集與正式驗收統計，可納入 md、txt 與已通過 canonical snapshot 驗證之 pdf、docx、xlsx、pptx；.doc、.xls、.ppt、音檔 / 影片與 scanned / image-only PDF 不作本階段核心 pass/fail 依據。
-- 現階段 Web 上傳一律採一次性 signed URL 直傳 R2；應用伺服器不轉送大檔，僅負責簽發 upload URL、驗證 metadata、產生 normalized_text_r2_key 與建立版本紀錄。
-- rich format 文件(例如 pdf、docx、xlsx、pptx)若超出 Cloudflare AI Search 當前公開限制，應在上傳前提示管理員改傳 Markdown/TXT，或先經應用層轉換為 canonical text snapshot 後再同步；答辯核心資料集不得把供應商自動轉檔當成唯一相依路徑。以 2026-04 查核時，官方公開 rich format 上限已提升至 4 MB[18]。
-- .doc、.xls、.ppt 與音檔 / 影片若要納入後續規劃，應分別透過 conversion path 與 transcript pipeline 先產出可校閱文字稿，再進入既有 normalized_text_r2_key / source_chunks 契約，而非直接共用目前同步 request path。
-- 上傳流程需在建立 document_versions 前先完成副檔名、MIME type、檔案大小與 checksum 驗證；未通過者不得進入 queued。
-- scanned / image-only PDF 可通過上傳與 checksum 驗證，但若 extraction 後無法產出可引用文字，sync 應以 non-replayable 4xx 失敗，並明確提示管理員改提供可選取文字版本或先整理成 Markdown。
-- 若 rich format 轉檔後的 normalized_text_r2_key 出現缺段、段落錯位或主要表格文字流失到無法引用，該版本不得進入同步；必要時應改以人工整理之 Markdown 作為核心驗收版本來源。
-- smoke retrieval 驗證除確認可檢回片段外，亦需確認片段文字皆可對應至既有 source_chunks；若只能取得摘要、無法對應或對應後內容不足以回放，該版本不得發布。
-- 現階段不把供應商的自動轉檔品質視為保證值；若同一來源在不同 reindex 產生明顯不同切塊，應以最新發布版本重新驗證，而非假定舊有 chunk 對應仍然有效。
-- rich format 若要納入正式驗收，必須先在初始驗證資料集與校準資料集證明 smoke probes、引用對應率與 getDocumentChunk 回放皆穩定，再升級進入正式驗收資料集。
-- 上傳檔名消毒(sanitizeFilename)須保留 Unicode 字元(中文、日文、韓文、emoji 等)，採 NFC normalize + 黑名單過濾(/ \ : \* ? " < > | 與 \u0000-\u001F\u007F 控制字元)，而非以 ASCII whitelist 無差別剝除；避免 採購流程.md 之類的中文檔名被消毒成 .md 或 upload.bin，造成 admin 失去可辨識的真實檔名。消毒後若 base name 為空或僅剩副檔名，以 upload-[uploadId 前 8 碼].[ext] 作 deterministic fallback；UTF-8 byte length 超過 255 時按字元邊界從 base name 尾端截斷，保留副檔名。
-
-### 2.2.5 引用格式規範
-
-回答中的引用採以下格式：
-
-- **行內引用**：以 【引1】、【引2】 等標記嵌入回答文字中，避免與參考文獻編號混淆。
-- **來源卡片**：回答下方列出引用來源，包含文件標題、版本、分類與摘錄文字。
-- **工具追溯**：每一筆引用都必須先對應至 source_chunks.id，再由 getDocumentChunk 以版本範圍內可回放的 citationId 取回完整片段。
-
-引用區塊格式如下：
-
-【引1】《採購流程作業手冊》 v3 - 採購管理
-"PO 建立後需經主管核准，核准完成方可轉為 PR 流程的下游採購需求。"
-
-對外顯示時不暴露 ai_search_file_id、ai_search_chunk_id 等供應商內部識別碼；此類欄位僅保留於 source_chunks 以利審計與除錯。searchKnowledge / askKnowledge 的回答 eligibility 僅以 current 版本為準；getDocumentChunk 則讀取當次已被引用之版本快照，仍受授權與 retention 規則限制。
-引用卡片與 getDocumentChunk 對外顯示之 documentTitle、category、versionLabel，應優先取自 document_versions.metadata_json 內的版本顯示快照，而非直接讀取 documents 的可變欄位，以避免文件改名或改分類後造成歷史引用回放內容漂移。
-
-## 第三節 開發時程
-
-圖 7 開發時程甘特圖
-
-gantt
-title Nuxt Edge Agentic RAG 開發時程
-dateFormat YYYY-MM-DD
-axisFormat W%V
-
-section 基礎建置
-M1 專案初始化、NuxtHub、D1 Schema :m1, 2026-01-05, 14d
-M2 Google OAuth、ADMIN_EMAIL_ALLOWLIST :m2, after m1, 7d
-
-section 知識管理
-M3 文件管理、版本管理、R2、AI Search :m3, after m2, 14d
-
-section 問答與治理
-M4 問答主流程、引用、對話歷史 :m4, after m3, 21d
-M5 信心判斷、Self-Correction、拒答 :m5, after m4, 14d
-
-section 對外互操作
-M6 MCP Tools、Middleware、token 管理 :m6, after m5, 7d
-
-section 驗證與交付
-M7 查詢日誌、rate limit、retention、錯誤處理 :m7, after m6, 14d
-M8 測試驗證、正式統計、報告與答辯資料 :m8, after m7, 14d
-
-表 26 開發里程碑與週次規劃
-
-| 階段 | 週次   | 任務                                        | 交付物                   |
-| ---- | ------ | ------------------------------------------- | ------------------------ |
-| M1   | W1-2   | 專案初始化、NuxtHub 部署、D1 Schema         | 可部署專案骨架           |
-| M2   | W3     | Google OAuth、ADMIN_EMAIL_ALLOWLIST         | 可登入並具角色控管的系統 |
-| M3   | W4-5   | 文件管理、版本管理、R2 上傳、AI Search 同步 | 可維護的知識庫管理後台   |
-| M4   | W6-8   | 問答主流程、引用、對話歷史                  | 基本問答功能             |
-| M5   | W9-10  | 信心分數評估、Self-Correction、拒答         | 智慧問答能力             |
-| M6   | W11    | MCP Tools、Bearer token                     | 可互操作的 MCP Server    |
-| M7   | W12-13 | 查詢日誌、rate limit、保留期限、錯誤處理    | 可觀測與可治理版本       |
-| M8   | W14-15 | 測試驗證、正式統計、報告與答辯資料          | 完整專題交付物           |
-
-若時程受壓，應優先完成 1.3.3 所定義之最小可行閉環，再處理 MCP 契約擴充、legacy Office / 媒體 / OCR 類延伸與畫面優化；並維持 current-version-only、引用回放與權限治理等核心驗收原則。
-
-## 第四節 其他相關設計或考量
-
-### 2.4.1 資訊安全設計
-
-#### 2.4.1.1 身分驗證與角色控制
-
-- 現階段採 better-auth 整合 Google OAuth 與 Passkey，並以 user_profiles 承接 Admin/Member/Guest 三級角色、狀態與身分來源；Passkey 已在 staging / production 啟用，且其 build-time / runtime 設定必須一致[15][16][24]。
-- 三級角色擴充已將授權模型由「Admin vs 非 Admin」二元模型升級為三級 RBAC：
-  - **Admin**：管理全部功能；身分唯一真相來源為部署環境變數 ADMIN_EMAIL_ALLOWLIST。所有 Admin 專屬操作於授權時仍須依目前 Session email 重新比對 allowlist，不得僅依據既有 D1 角色快照。
-  - **Member**：已由 Admin 確認的成員；擁有完整 Web 問答與 MCP 使用權限，可讀取 internal 文件；遇 restricted 文件仍需再由文件 access_level 與 token scope 判定。
-  - **Guest**：已完成 Google OAuth 但未被 Admin 升格者；可存取範圍由 system_settings.guest_policy dial(same_as_member / browse_only / no_access)決定。
-- ADMIN_EMAIL_ALLOWLIST 語義從「允許登入閘門」收斂為「Admin seed 來源」：非 allowlist 成員仍可完成 OAuth，建立為 Guest 後由 Admin 於 /admin/members 升為 Member。此調整避免「新成員無法登入 → 只能找 Admin 改 env var → 重新部署」之循環，同時保持 Admin 升權以 allowlist 為單一入口。
-- guest_policy dial 同時控制 Web 與 MCP 入口：Web /chat 於 browse_only / no_access 時以 GuestAccessGate 元件呈現對應狀態(非靜默失敗或退化為 404)；MCP 則由 middleware 解析 token created_by_user_id → 查對應 role → 若為 Guest 則依 dial 判定是否放行。
-- 一般 Member 使用者預設僅可檢索與閱讀 internal 文件；Admin 可於 Web 問答、管理後台與引用回看讀取 internal 與 restricted 文件。
-- MCP 則由 token scope 控制是否可讀 restricted 內容，並疊加 token 創建者 role × guest_policy 作為前置閘。
-- 未登入使用者不得存取問答、管理與 MCP 管理頁面。
-- 對話若被標記為 restricted，則後續讀取時仍需依目前角色重新驗證；原本看過的受限對話，不因曾經成功讀取而永久保留可見性。
-- searchKnowledge / askKnowledge 對未授權呼叫者只保證看不到 restricted 內容，不保證以 403 告知受限資料存在；是否回空結果或業務拒答，取決於過濾後是否仍有足夠 internal 證據。
-- 角色升降事件一律透過 recordRoleChange 單一入口寫入 member_role_changes 表，以利稽核；現階段本身不提供對應讀取 UI，待後續管理介面擴充時補上。
-
-#### 2.4.1.2 allowed_access_levels 推導與存取矩陣
-
-表 27 allowed_access_levels 存取矩陣
-
-| 通道／身分                                                       | allowed_access_levels      | 說明                                                                                           |
-| ---------------------------------------------------------------- | -------------------------- | ---------------------------------------------------------------------------------------------- |
-| Web Guest(guest_policy = same_as_member)                         | ['internal']               | Dial 預設值；Guest 問答路徑與 Member 同權，但仍不可讀 restricted                               |
-| Web Guest(guest_policy = browse_only)                            | [](可讀公開分類，不可問)   | /chat 入口以 GuestAccessGate 呈現「此環境僅開放瀏覽」；POST /api/chat 伺服器拒絕回 403         |
-| Web Guest(guest_policy = no_access)                              | []                         | 登入後僅見「使用者待審核」提示頁；Web 與 MCP 全部入口拒絕                                      |
-| Web Member                                                       | ['internal']               | 一般問答與對話歷史僅可使用 internal 證據                                                       |
-| Web Admin                                                        | ['internal', 'restricted'] | Admin 可於 Web 問答與引用回看中讀取 restricted                                                 |
-| MCP token(由 Admin/Member 建立，無 knowledge.restricted.read)    | ['internal']               | searchKnowledge、askKnowledge 只可檢索 internal；getDocumentChunk 遇 restricted 一律回 403     |
-| MCP token(由 Admin/Member 建立，有 knowledge.restricted.read)    | ['internal', 'restricted'] | 可檢索與讀取 restricted；現階段仍維持無狀態呼叫                                                |
-| MCP token(由 Guest 建立，guest_policy = browse_only / no_access) | []                         | Middleware 以 token created_by_user_id 查創建者 role → 查 dial → 拒絕回 403，不進入 scope 判定 |
-
-- allowed_access_levels 必須於第一次檢索前推導完成，並寫入 retrieval_filters_json 供稽核。
-- AI Search metadata filter 僅是第一層快篩；正式回答前仍需以 D1 驗證 document_version_id 是否符合 active/indexed/current 規則。
-- MCP 入口閘(token 創建者 role × guest_policy)先於 scope 判定；即使 token scope 完整，若創建者為 Guest 且 dial 非 same_as_member，仍一律拒絕。
-
-#### 2.4.1.3 MCP 授權
-
-- MCP Server 僅接受 Bearer token，遵循 OAuth 2.0 Bearer Token 標準[25]。
-- Token 以雜湊值保存於 mcp_tokens，原始 token 只在建立當下顯示一次。
-- 每個 token 需具備至少一個 scope，例如 knowledge.search、knowledge.ask、knowledge.citation.read、knowledge.category.list；若需讀取 restricted 內容，須額外具備 knowledge.restricted.read。
-- Token 可設定到期、撤銷與最後使用時間。
-- 現階段的 MCP 不使用 MCP-Session-Id；每次請求都必須重新驗證 token 與 scope。
-- getDocumentChunk 在解析 citationId 後仍需再次驗證 scope，不得因已知 ID 而繞過授權。
-- searchKnowledge 與 askKnowledge 若僅因 knowledge.restricted.read 缺失而看不到目標內容，應維持 existence-hiding 原則：僅在工具本身 scope 不足時回 403，不得主動揭露 restricted 文件是否存在。
-- 授權不足屬協定錯誤而非業務拒答：缺少或失效 token 一律回 401，scope 不足或越權讀取一律回 403，不得包裝成 refused。
-
-#### 2.4.1.4 速率限制與保留期限
-
-- /api/chat 與 MCP Tools 必須實作 per-user / per-token rate limit，並於超限時回傳 429。
-- 現階段以 Cloudflare KV 實作 fixed-window rate limit，key 由 channel + actor_id + bucket_start 組成，TTL 為視窗長度加 60 秒。
-- 建議基準值如下：/api/chat 每位使用者 5 分鐘 30 次；askKnowledge 每個 token 5 分鐘 30 次；searchKnowledge 每個 token 5 分鐘 60 次；getDocumentChunk 與 listCategories 每個 token 5 分鐘 120 次。
-- 此機制目標為邊緣近即時防濫用，允許極短時間邊界誤差；若後續需要更嚴格一致性，再於後續版本評估 Durable Object 或等價方案。
-- Web 對話現階段保留一般可見訊息於 messages.content_text，以支援歷史重建與同對話續問；但高風險 blocked 訊息不得寫入 content_text。對話刪除後，該對話所有 content_text 會被清空，content_redacted 則僅供 retention window 內之稽核路徑使用。
-- messages.content_redacted、query_logs 與必要的事件 metadata 預設保留 180 天供稽核；此類保留資料不得回到一般使用者 UI，也不得重新作為模型上下文。
-- citation_records 由 expires_at 欄位直接承載 retention window(預設 180 天)；在 retention 期內，即使版本已非 current 或文件已 archived，getDocumentChunk 仍應對具相應權限之呼叫者回放當次引用快照。對應 source_chunks.chunk_text 視為不可變快照，不因版本切換或下架而立即刪除。
-- 撤銷、過期與失效的 mcp_tokens metadata 預設保留 180 天；清理作業由 /api/admin/retention/\* 承擔，至少每日執行一次。
-
-長週期保留規則於專題時程內不宜直接等待 180 天驗證；Staging 應以縮短 TTL、backdated record 或等價方式驗證清理邏輯，正式環境則僅驗證組態一致性與排程存在，不宣稱已完成滿期觀察。
-
-#### 2.4.1.5 敏感資料治理
-
-- 文件需標記 internal 或 restricted 兩種敏感等級。
-- 現階段不啟用外部模型備援(Cloud fallback)；若後續版本啟用外部模型，restricted 文件仍不得外送。
-- 使用者輸入需先經祕鑰、帳密、PII 偵測，避免高風險內容直接進入模型推論。
-- 原始 token 與祕密字串只存在於單次請求記憶體；query_logs 與除錯輸出僅保存遮罩後版本。messages 現階段同時具備 content_text 與 content_redacted，但 blocked 高風險輸入的 content_text 會直接寫成 NULL，因此原文仍不會落地；一般可見訊息的 content_text 則僅供使用者歷史與後續上下文重建，刪除對話時必須清空。
-- query_logs 必須保存 risk_flags_json 與 redaction_applied，以驗證遮罩流程是否實際執行。
-
-#### 2.4.1.6 部署環境與組態真相來源
-
-為避免實作時把開發、驗收與正式環境混成同一套知識庫，現階段至少需區分下列三種環境：
-
-表 28 部署環境與組態真相來源
-
-| 項目                         | Local / Dev                | Staging / Preview                    | Production                                                           |
-| ---------------------------- | -------------------------- | ------------------------------------ | -------------------------------------------------------------------- |
-| D1                           | 開發資料庫                 | 驗收資料庫                           | 正式資料庫                                                           |
-| R2                           | 開發 bucket 或前綴         | 驗收 bucket 或前綴                   | 正式 bucket 或前綴                                                   |
-| KV                           | 開發 namespace             | 驗收 namespace                       | 正式 namespace                                                       |
-| AI Search instance           | 開發 / 驗收專用 instance   | 驗收專用 instance                    | 正式 instance                                                        |
-| OAuth Redirect URI           | localhost / 本機網域       | 驗收網域                             | 正式網域                                                             |
-| ADMIN_EMAIL_ALLOWLIST        | 測試管理員清單(Admin seed) | 驗收管理員清單(Admin seed)           | 正式管理員清單(Admin seed)                                           |
-| system_settings.guest_policy | 可任意切換驗證 dial 行為   | 依驗收情境切換                       | 預設 same_as_member，由 Admin 透過 /admin/settings/guest-policy 調整 |
-| Feature flags                | 可局部開關驗證             | passkey 啟用，其餘驗收項目依情境開關 | passkey 啟用，其餘不納入目前範圍之功能預設關閉                       |
-
-補充原則如下：
-
-- 不得讓 Staging / Preview 與 Production 共用同一組 D1、R2、KV 或 AI Search instance，避免測試資料污染正式發布真相。
-- 祕密值、OAuth 憑證、binding 名稱與 feature flags 皆須由 runtime config、NuxtHub / Wrangler 環境設定注入，不得寫死在前端或共享常數檔。
-- features.passkey 在 staging / production 已顯式啟用，且必須與 deploy build env、Worker runtime vars 保持一致；features.mcpSession、features.cloudFallback 與 features.adminDashboard 在 Production 現階段仍預設為 false。若 Preview 環境提前試驗後續功能，不得回頭修改現階段驗收基準。
-
-### 2.4.2 與大型 LLM API 方案之比較
-
-本系統的比較基準不是「證明邊緣一定更快更便宜」，而是作為架構選型理由與後續觀察方向；本節不承諾在現階段另行實作完整純雲端對照組。以下比較以純雲端 LLM 方案為參照組，候選模型以實驗當時可實際申請之主流 API 模型為準，例如 GPT、Gemini 與 Claude 系列。
-
-表 29 與純雲端 LLM 方案比較
-
-| 比較面向   | 純雲端 LLM 方案                 | 本系統設計原則                                                                                                                                  |
-| ---------- | ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| 檢索控制   | 多仰賴外部服務或額外自建        | 以 AI Search 統一受管理檢索                                                                                                                     |
-| 回答生成   | 直接由雲端模型完成              | 以邊緣模型為主，自建流程控制                                                                                                                    |
-| 資料外送   | 查詢與上下文預設送往外部供應商  | 預設留在邊緣，外送需經治理閘道                                                                                                                  |
-| 延遲       | 依外部 API 往返與排隊狀況而變動 | 目標以邊緣優先降低體感延遲                                                                                                                      |
-| 成本控制   | 以外部 token 計費為主           | 以邊緣模型承擔常見查詢，現階段不啟用額外跨雲 LLM API                                                                                            |
-| 用量可觀測 | 由供應商主控台提供聚合數字      | 以 Cloudflare AI Gateway 前置所有 Workers AI 呼叫，於 /admin/usage 呈現 tokens、requests、cache hit rate 與 Neurons 剩餘額度；免費 100k logs/月 |
-| 審計與引用 | 視供應商能力而定                | 應用層強制保存 query_logs、source_chunks 與 citation_records                                                                                    |
-
-### 2.4.3 平台限制與因應
-
-表 30 平台限制與因應方式
-
-| 限制                                 | 說明                                            | 因應方式                                                                                          |
-| ------------------------------------ | ----------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| Workers CPU 與請求生命週期限制       | 不適合無上限重試或長鏈工具呼叫                  | Self-Correction 限制最多 1 次重試，回答採串流輸出                                                 |
-| AI Search 同步具最終一致性           | 索引更新不是即時完成                            | 管理後台明示 index_status，重同步採工作流程設計                                                   |
-| AI Search custom metadata 有欄位上限 | 若把過多欄位塞入遠端 metadata，會使規格無法落地 | 僅保留 5 個 custom metadata，其他識別資訊由 folder 路徑與 D1 回推                                 |
-| MCP 多輪上下文若直接落 D1            | 容易與 Web 對話形成雙重真相                     | 現階段先採無狀態 MCP；後續版本若導入 Session，runtime state 仍留在 KV                             |
-| 供應商 chunk ID 不適合作為公開契約   | reindex 後可能變動，直接外露不利相容性          | 以應用層 source_chunks.id 作為可回放 citationId，並搭配 locator_hash 與 chunk_text 快照確保可回放 |
-| 敏感資料治理複雜                     | 即使不外送模型，也可能在日誌與除錯輸出洩漏資料  | 高風險查詢先遮罩再拒答；日誌僅保存遮罩版本                                                        |
-| 邊界案例若每次都跑 judge 會拉高延遲  | 複雜推理模型呼叫成本高                          | answerability judge 僅於 retrieval_score 中段區間觸發                                             |
-| 模型供應與版本變動                   | 邊緣模型與 SDK 皆可能更新                       | 現階段先凍結兩個核心模型角色，變更需同步更新驗證報告                                              |
-
-### 2.4.4 驗證與評估規劃
-
-本專題採「設計規格 → 核心閉環實作 → 測試集與稽核證據驗證」三階段方法。驗證目標不是證明所有候選功能都同時完成，而是確認現階段的核心命題是否成立：current-version-only、可回放引用、分段式回答／拒答，以及 Web／MCP 契約分流後的治理一致性。
-
-#### 2.4.4.1 功能驗證
-
-- 一般問答：可直接回答並附引用。
-- 模糊查詢：能觸發 Self-Correction 並改善檢索結果。
-- 越界問題：能正確拒答且提示補充方向。
-- 多輪對話：Web 可保留既有上下文；MCP 現階段 維持無狀態契約。
-- MCP 互操作：外部 AI Client 能正確呼叫 4 個核心 Tools；其中 Web 多輪追問與 MCP 無狀態契約須分開驗證。
-- 權限治理：無權限 token 不可存取受限 Tool。
-- 版本治理：歷史版本與 archived 文件不得出現在正式回答中。
-- 記錄治理：查詢與訊息落地資料應完成遮罩且可稽核。
-
-#### 2.4.4.2 驗收判定原則
-
-- 附錄 B 的每一筆案例都必須定義「主要期望結果」與「允收條件」；凡實際結果落在允收條件之外，一律判定為不通過。
-- 401 / 403 屬協定與授權驗證通過，不視為 refused；統計時應與業務拒答分開計算。
-- self_corrected 只在第一輪證據不足、第二輪改善後成功回答且引用有效時才算命中；若原案例直接回答即可成立，應先重寫案例而非直接視為通過。
-- judge_pass 僅在最終回答正確、引用有效且未違反權限或 current-version-only 規則時才視為通過，不得因為模型有輸出就算成功。
-- current-version-only、restricted 隔離與 redaction 完整性屬零違規 invariant；任一案例失守即不得視為通過。
-- 所有驗收統計都需附上 config_snapshot_version，避免不同批次以不同門檻或 feature flags 產生不可比較的結果。
-
-#### 2.4.4.3 資料集分層與凍結規則
-
-- 初始驗證資料集：20 筆，供欄位檢查、早期 dry run 與流程走通，不納入正式統計。
-- 校準資料集：獨立於正式驗收集，用於校準門檻、prompt 與模型路由。
-- 正式驗收資料集：30–50 筆，凍結後不得再改 threshold、prompt、route 或題目標註規則；正式統計可納入 md、txt 與已通過 canonical snapshot 驗證之 pdf、docx、xlsx、pptx，但 .doc、.xls、.ppt、媒體檔與 scanned / image-only PDF 仍應排除。若需調整，應建立下一版驗收集並重跑。
-- 答辯展示案例集：可自正式驗收資料集挑選，但不得回頭改寫正式驗收規則。
-- 每筆案例至少需定義：適用通道、gold facts、必要引用、不可犯錯、預期 http_status，以及是否允許 judge／Self-Correction。
-
-#### 2.4.4.4 效能與品質指標(驗收層級)
-
-下表將驗收指標分為三類：硬性驗收(current-version-only / restricted 隔離 / redaction 完整性等不可違反 invariant)、品質驗收(回答品質、引用精準率、拒答精準率等需以正式驗收資料集統計者)、觀測指標(延遲與觸發率等需於 Preview / Staging 觀測者)。**硬性驗收已由 §3.3.2.1 結構式自動化測試承擔**；**品質驗收門檻作為正式驗收資料集凍結後的判定基準，實模型大樣本統計列入 §4.2.3 研究限制與第三章 §3.3 之延伸驗證邊界**；**觀測指標以固定環境 Preview / Staging 觀測值佐證，不單獨作為 fail gate**。
-
-表 31 效能與品質驗收指標
-
-| 指標                                | 定義                                                        | 類別     | 現階段目標 / 原則                                     |
-| ----------------------------------- | ----------------------------------------------------------- | -------- | ----------------------------------------------------- |
-| Current-Version Retrieval Accuracy  | 回答僅引用已發布 current 版本且文件狀態為 active 之比例     | 硬性驗收 | 100%                                                  |
-| Restricted Access Isolation         | 未授權身分不得取得 restricted 內容之比例                    | 硬性驗收 | 100%                                                  |
-| Redaction Coverage                  | 應遮罩記錄中已完成遮罩之比例                                | 硬性驗收 | 100%                                                  |
-| Citation Precision                  | 引用能正確支持回答內容之比例                                | 品質驗收 | > 85%                                                 |
-| Answer Correctness                  | 可回答題之正確回答比例                                      | 品質驗收 | > 80%                                                 |
-| Refusal Precision                   | 應拒答題被正確拒答之比例                                    | 品質驗收 | > 90%                                                 |
-| MCP Tool Success Rate               | MCP Tools 呼叫成功比例                                      | 品質驗收 | > 95%                                                 |
-| Direct Path First Token Latency P50 | 不經 judge / Self-Correction 的第一個回應字元輸出中位數延遲 | 觀測指標 | 固定環境下以 <= 1.5s 為優化目標，不單獨作為 fail gate |
-| Overall First Token Latency P50     | 全部查詢路徑合併後的首字延遲中位數                          | 觀測指標 | 固定環境下以 <= 2.5s 為優化目標，不單獨作為 fail gate |
-| Completion Latency P95              | 完整回答輸出的 95 百分位延遲                                | 觀測指標 | 固定環境下以 <= 6s 為優化目標，不單獨作為 fail gate   |
-| Self-Correction Hit Rate            | 觸發後確實改善結果之比例                                    | 觀測指標 | 實測回報即可，不預先綁死固定比例                      |
-| Judge Trigger Rate                  | 需進入 answerability judge 的查詢比例                       | 觀測指標 | 實測回報即可，用於門檻校準                            |
-
-#### 2.4.4.5 評估方式
-
-- 先以 seed 案例 dry run，確認 query_logs、citation_records、messages 與 config_snapshot_version 等欄位都能穩定記錄，再進入正式驗收。
-- 正式驗收資料集應涵蓋一般查詢、模糊查詢、越界問題、追問情境、跨文件比較、權限受限查詢與敏感查詢。
-- 測試案例應區分 shared core、Web-only 與 MCP-only contract 三類，不強制兩通道共用同一整套題目。
-- 小樣本人工標註主要用於回答正確率、引用精準率與拒答精準率；較大樣本重複執行主要用於成功率、延遲、rate limit 與協定穩定性。
-- 分別記錄第一次檢索結果、judge 是否觸發、重試後結果、是否拒答，以及是否命中 current-version-only、restricted 隔離與 redaction invariant。
-- 輔以資料表對照 source_chunks、citation_records、document_versions.is_current、query_logs.redaction_applied、messages.content_redacted 與 blocked rows 的 messages.content_text IS NULL，驗證引用可回放性與記錄治理。
-- 對於 180 天保留期限等長週期規則，Staging 應以縮短 TTL 或 backdated record 驗證執行邏輯；正式環境僅驗證設定與排程存在。
-
-正式驗收時，先檢查硬性驗收與品質驗收兩層；觀測指標若未達標，需說明原因與後續優化方向，但不應單獨推翻已通過的治理與正確性驗證。
-
 ### 2.4.5 部署成本與容量規劃
 
-本節補充作為回應「§1.4 預期效益」所宣稱之「降低基礎設施管理複雜度」與「以邊緣原生架構降低維運負擔」的情境化規劃依據。成本與容量皆以 2026-04 時點之 Cloudflare 公開計費與限額為基準，用途是提供部署規劃與答辯討論參考，不應被解讀為已完成之正式營運統計；實際運行費用仍須於 Preview / Staging 實測後再填入。
+本節補充作為回應「§1.4 預期效益」所宣稱之「降低基礎設施管理複雜度」與「以邊緣原生架構降低維運負擔」的情境化規劃依據。成本與容量皆以 2026-04 時點之 Cloudflare 公開計費與限額為基準，用途是提供部署規劃與答辯討論參考，不應被解讀為正式營運統計；實際運行費用屬部署後營運觀測指標。
 
 #### 2.4.5.1 成本估算
 
 現階段預期部署規模為單租戶、中小企業內部使用(估 5–50 位啟用使用者、每日 50–500 次問答、知識庫 50–500 份 md / txt 文件)。在此規模下，以 Cloudflare 免費方案與 Workers Paid(US$5/月)方案做雙層試算如下。
 
-表 32 現階段情境化月度運營成本估算
+表 35 現階段情境化月度運營成本估算
 
-| 服務                            | 計費單位                     | 現階段預估用量                                     | 免費額度 / 單價                                                   | 情境估算月費 (USD) | 備註                                                                                     |
-| ------------------------------- | ---------------------------- | -------------------------------------------------- | ----------------------------------------------------------------- | ------------------ | ---------------------------------------------------------------------------------------- |
-| Workers (Paid)                  | 每月請求數 + CPU 時間        | 約 50k 請求 / 月(問答 + 管理 + MCP)                | Paid：10M 請求 / 月含；CPU 30M ms / 月含；超額 $0.30/百萬請求     | $5.00              | Workers AI / AI Gateway 啟用通常需 Paid plan；是 現階段的基礎月費                        |
-| D1                              | Rows read / written + 儲存   | 讀 500k / 寫 10k / 月；儲存 < 100MB                | Paid：25B rows read / 50M rows written / 5GB 儲存含               | 0                  | 預估用量遠低於 Paid 額度                                                                 |
-| R2                              | Class A / Class B ops + 儲存 | Class A 5k / Class B 50k / 月；儲存 < 1GB          | Paid：1M Class A / 10M Class B / 10GB 儲存含                      | 0                  | 預估用量遠低於 Paid 額度                                                                 |
-| KV                              | Read / Write / Delete + 儲存 | 讀 500k / 寫 5k / 月                               | Paid：10M read / 1M write / 1GB 儲存含                            | 0                  | 預估用量遠低於 Paid 額度                                                                 |
-| Workers AI                      | Neurons(依模型與 token 計費) | 500 次 / 日 × 30 日 × 平均 500 Neurons = 7.5M / 月 | Paid：10k Neurons / 日含(300k / 月)；超額約 $0.011 / 1k Neurons   | $79.2(超額 7.2M)   | 實際費用視所選模型與回答長度而定；測試用 synthesizer 不計費，但正式回答會進入 Workers AI |
-| AI Search                       | Queries + Indexed documents  | 500 次 / 日 × 30 日 = 15k / 月；文件 < 500 份      | 具體計費於 2026-04 仍在調整，預計 beta 期間不另計費；文件索引免費 | 0(beta)            | 依最新 release note[18] 為準；若 GA 後計費，再填入                                       |
-| AI Gateway                      | Logs / 月                    | 50k 請求對應 50k logs                              | 免費 100k logs / 月                                               | 0                  | 僅作觀測，不承擔 enforcement                                                             |
-| Better Auth / OAuth             | —                            | —                                                  | Google OAuth 免費                                                 | 0                  | 自建 better-auth，不收訂閱費                                                             |
-| **合計(結構式測試期)**          | —                            | —                                                  | —                                                                 | **$5.00**          | 僅跑治理流程、資料庫、R2、KV 與測試 synthesizer 時之最低月費                             |
-| **合計(Workers AI 正式回答期)** | —                            | —                                                  | —                                                                 | **≈ $84.20**       | 以每日 500 次問答與平均 500 Neurons 粗估之月費                                           |
+| 服務                            | 計費單位                     | 現階段預估用量                                     | 免費額度 / 單價                                                 | 情境估算月費 (USD) | 備註                                                                                     |
+| ------------------------------- | ---------------------------- | -------------------------------------------------- | --------------------------------------------------------------- | ------------------ | ---------------------------------------------------------------------------------------- |
+| Workers (Paid)                  | 每月請求數 + CPU 時間        | 約 50k 請求 / 月(問答 + 管理 + MCP)                | Paid：10M 請求 / 月含；CPU 30M ms / 月含；超額 $0.30/百萬請求   | $5.00              | Workers AI / AI Gateway 啟用通常需 Paid plan；是 現階段的基礎月費                        |
+| D1                              | Rows read / written + 儲存   | 讀 500k / 寫 10k / 月；儲存 < 100MB                | Paid：25B rows read / 50M rows written / 5GB 儲存含             | 0                  | 預估用量遠低於 Paid 額度                                                                 |
+| R2                              | Class A / Class B ops + 儲存 | Class A 5k / Class B 50k / 月；儲存 < 1GB          | Paid：1M Class A / 10M Class B / 10GB 儲存含                    | 0                  | 預估用量遠低於 Paid 額度                                                                 |
+| KV                              | Read / Write / Delete + 儲存 | 讀 500k / 寫 5k / 月                               | Paid：10M read / 1M write / 1GB 儲存含                          | 0                  | 預估用量遠低於 Paid 額度                                                                 |
+| Workers AI                      | Neurons(依模型與 token 計費) | 500 次 / 日 × 30 日 × 平均 500 Neurons = 7.5M / 月 | Paid：10k Neurons / 日含(300k / 月)；超額約 $0.011 / 1k Neurons | $79.2(超額 7.2M)   | 實際費用視所選模型與回答長度而定；測試用 synthesizer 不計費，但正式回答會進入 Workers AI |
+| AI Search                       | Queries + Indexed documents  | 500 次 / 日 × 30 日 = 15k / 月；文件 < 500 份      | 2026-04 公告仍屬 beta 計費資訊；文件索引免費                    | 0(beta)            | 正式費率以 GA 後官方 release note[18] 為準                                               |
+| AI Gateway                      | Logs / 月                    | 50k 請求對應 50k logs                              | 免費 100k logs / 月                                             | 0                  | 僅作觀測，不承擔 enforcement                                                             |
+| Better Auth / OAuth             | —                            | —                                                  | Google OAuth 免費                                               | 0                  | 自建 better-auth，不收訂閱費                                                             |
+| **合計(結構式測試期)**          | —                            | —                                                  | —                                                               | **$5.00**          | 僅跑治理流程、資料庫、R2、KV 與測試 synthesizer 時之最低月費                             |
+| **合計(Workers AI 正式回答期)** | —                            | —                                                  | —                                                               | **≈ $84.20**       | 以每日 500 次問答與平均 500 Neurons 粗估之月費                                           |
 
 超額試算：若單月請求爆增至 500k、Workers AI 使用至 75M Neurons(10 倍規模)，則月費可能升至數百美元等級。此處僅用來說明「成本主要會集中在實模型推理層」，不應被解讀為已完成之正式成本實測依據；若後續接入外部雲端模型，也需以當時官方單價重新估算。
 
@@ -654,7 +33,7 @@ M8 測試驗證、正式統計、報告與答辯資料 :m8, after m7, 14d
 
 現階段的 scale envelope 依 Cloudflare 平台限額與本系統設計常數推導，屬容量規劃與擴展觸發點參考，而非實際壓測後的正式承諾。envelope 內指標滿足時，可作為「目前設計大致適用」的規劃判斷；若超出 envelope，則應視為需要另行提出擴展方案並重跑驗證，而非直接沿用目前設計。
 
-表 33 現階段 Scale Envelope 與擴展觸發點
+表 36 現階段 Scale Envelope 與擴展觸發點
 
 | 維度                      | 現階段設計容量                                 | 推導依據                                                                                                      | 超出時之擴展路徑                                                                       |
 | ------------------------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
@@ -674,7 +53,7 @@ Scale envelope 的語意：
 2. **接近上限(> 80%)**：觸發 /admin/usage 儀表板告警(列為後續營運擴充)，並於定期審視時重新評估擴展時程。
 3. **超出 envelope**：屬明確擴展觸發點，需另行提出擴充方案並重跑正式驗收資料集。
 
-本節與 §2.4.3 表 30(平台限制與因應)互補：表 30 描述限制本質與因應原則，本節以量化數字描述現階段在此限制下的可用範圍與擴展門檻。
+本節與 §2.4.3 表 33(平台限制與因應)互補：表 33 描述限制本質與因應原則，本節以量化數字描述現階段在此限制下的可用範圍與擴展門檻。
 
 ---
 
@@ -686,7 +65,7 @@ Scale envelope 的語意：
 
 ### 3.1.1 硬體環境
 
-表 34 硬體環境規格
+表 37 硬體環境規格
 
 | 項目       | 規格                    |
 | ---------- | ----------------------- |
@@ -700,7 +79,7 @@ Scale envelope 的語意：
 
 本節以目前工作區的 package.json、lockfile 與已接入之雲端服務狀態為依據，整理本系統實作所使用的主要軟體環境。受管理服務以官方公開狀態標示，專案內套件則以工作區實際版本為準。
 
-表 35 軟體環境版本
+表 38 軟體環境版本
 
 | 類別                    | 技術                                                         | 版本                           | 用途                                                    |
 | ----------------------- | ------------------------------------------------------------ | ------------------------------ | ------------------------------------------------------- |
@@ -721,7 +100,7 @@ Scale envelope 的語意：
 
 ### 3.1.3 開發工具環境
 
-表 36 開發工具版本
+表 39 開發工具版本
 
 | 工具               | 版本 / 狀態      | 用途                      |
 | ------------------ | ---------------- | ------------------------- |
@@ -777,7 +156,7 @@ Scale envelope 的語意：
 
 ### 3.2.2 功能說明
 
-表 37 系統功能模組說明
+表 40 系統功能模組說明
 
 | 功能模組           | 說明                                                                                                                                                                                                                     |
 | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -797,11 +176,11 @@ Scale envelope 的語意：
 
 本節畫面示意以功能驗收為主，實際版面可調整，但不得缺漏引用、版本、授權與稽核所需證據。
 
-本節 7 張實機截圖(圖 8 至圖 14)以 desktop 環境(1920×1080 或等價 viewport)為主，聚焦結構、角色、狀態、lifecycle 等語義驗收；對應 §3.2.2 表 37「響應式與無障礙」之 mobile / tablet / desktop 三 breakpoint 實機證據，則由 **EV-06(§3.3.2 表 44)** 獨立承擔，驗證文件與截圖清單詳見 docs/verify/RESPONSIVE_A11Y_VERIFICATION.md。此分工之理由有三：
+本節 7 張實機截圖(圖 8 至圖 14)以 desktop 環境(1920×1080 或等價 viewport)為主，聚焦結構、角色、狀態、lifecycle 等語義驗收；對應 §3.2.2 表 40「響應式與無障礙」之 mobile / tablet / desktop 三 breakpoint 實機證據，則由 **EV-06(§3.3.2 表 47)** 獨立承擔，驗證文件與截圖清單詳見 docs/verify/RESPONSIVE_A11Y_VERIFICATION.md。此分工之理由有三：
 
 1. **職責切分**：本節截圖重點在「每個畫面該有什麼欄位 / 狀態 / lifecycle 表現」，不重疊 EV-06 的跨 viewport 版面崩潰檢查。
 2. **避免截圖膨脹**：若每個 UI 都拍三 viewport，圖表索引將達上百張，閱讀性劣化；集中到 EV-06 以 batch 方式驗證更有效率。
-3. **交付版證據分工**：mobile / tablet viewport 之實機截圖與 @nuxt/a11y dev report 由 EV-06 統一承接(詳見 §3.3.2 表 44 與 §3.3.2.3 表 45)，不在本節逐張重複列圖。
+3. **交付版證據分工**：mobile / tablet viewport 之實機截圖與 @nuxt/a11y dev report 由 EV-06 統一承接(詳見 §3.3.2 表 47 與 §3.3.2.3 表 48)，不在本節逐張重複列圖。
 
 若讀者關注特定頁面之響應式行為，可直接開啟對應頁面 URL 並以瀏覽器 dev tools 切換 viewport 驗證；本系統採 Tailwind + Nuxt UI 響應式 utilities，breakpoint 與 CSS 定義集中於 app/assets/css/ 可供對照。
 
@@ -865,7 +244,7 @@ Scale envelope 的語意：
 
 為避免使用者(即使是 Admin)於高速操作時誤觸破壞性動作造成內容遺失或服務中斷，本畫面對操作按鈕依「風險等級」採取對應的確認策略。破壞性的 lifecycle 動作(封存、解除封存、刪除 draft)以 LifecycleConfirmDialog 元件統一呈現，顯示動作名稱、影響範圍(例如刪除時顯示將移除的版本與 chunks 數)與當前 Admin email 以供再次確認；建立新版本與發布為 current 沿用各自既有的 Modal。列表 actions 欄位採漸進式揭露(UDropdownMenu)：draft-never-published 顯示「刪除 draft」、draft-has-published 與 active 顯示「封存」、archived 顯示「解除封存」，不一次暴露所有動作；deletability 與狀態允許性一律由伺服器端判斷，不信任 client payload。
 
-表 38 知識庫管理操作按鈕確認策略
+表 41 知識庫管理操作按鈕確認策略
 
 | 操作                    | 風險等級 | 確認策略                                                                            | 說明                                                                                                                                                                                                 |
 | ----------------------- | -------- | ----------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -877,7 +256,7 @@ Scale envelope 的語意：
 | 解除封存(unarchive)     | 低       | LifecycleConfirmDialog(復原說明 + Admin email)                                      | 將 status 由 archived 還原為 active、清除 archivedAt，恢復對外檢索；不強制重新驗證 index_status；re-unarchive 回 no-op success。                                                                     |
 | 刪除 draft(hard delete) | 最高     | LifecycleConfirmDialog(顯示將移除的版本與 chunks 數 + Admin email)                  | 僅允許 documents.status = 'draft' 且所有 document_versions.published_at IS NULL 的文件；透過 FK onDelete: cascade 一併清除版本與 source_chunks；其他狀態伺服器端一律回 409，忽略 client force 旗標。 |
 
-**MCP 不涉及 agent-initiated approval**：現階段 MCP 4 個 tool 全為 read-only(searchKnowledge / askKnowledge / getDocumentChunk / listCategories)，不執行任何破壞性操作；因此表 38 的確認策略僅適用於 Web Admin 管理介面，不延伸至 MCP 契約。
+**MCP 不涉及 agent-initiated approval**：現階段 MCP 4 個 tool 全為 read-only(searchKnowledge / askKnowledge / getDocumentChunk / listCategories)，不執行任何破壞性操作；因此表 41 的確認策略僅適用於 Web Admin 管理介面，不延伸至 MCP 契約。
 
 #### 3.2.3.4 MCP Token 管理畫面
 
@@ -923,7 +302,7 @@ Scale envelope 的語意：
 
 圖 13 訪客政策設定畫面實機畫面(2026-04-21，local dev 環境)
 
-實機狀態：loaded；顯示三選一 radio dial，目前選 same_as_member(同成員(預設))並附「目前」標記；另二選項 browse_only(僅可瀏覽)、no_access(完全不開放)各附對 Web Chat 與 MCP 的具體影響說明。頁首敘述明確標示「修改後新政策會透過 KV version stamp 於所有 Worker 實例下次請求時立即生效」，對應 §2.4.1.1 與表 27 MCP 入口閘的運作原理。
+實機狀態：loaded；顯示三選一 radio dial，目前選 same_as_member(同成員(預設))並附「目前」標記；另二選項 browse_only(僅可瀏覽)、no_access(完全不開放)各附對 Web Chat 與 MCP 的具體影響說明。頁首敘述明確標示「修改後新政策會透過 KV version stamp 於所有 Worker 實例下次請求時立即生效」，對應 §2.4.1.1 與表 30 MCP 入口閘的運作原理。
 
 圖面說明：
 
@@ -940,7 +319,7 @@ Scale envelope 的語意：
 
 圖 14 AI Gateway 用量儀表板實機畫面(2026-04-21，local dev 環境)
 
-實機狀態：**error (graceful)**；本機開發環境未配置 CLOUDFLARE_API_TOKEN_ANALYTICS，因此 /api/admin/usage 回非 2xx，前端顯示「無法載入用量資料」降級提示、原因說明與「重新載入」按鈕，而非整頁崩潰。此畫面用於驗證管理介面在外部分析 API 暫時不可用時，仍能維持可理解、可操作的降級呈現，對應表 30「平台限制與因應」的可降級原則，並與 UX Completeness 規則要求之 empty / loading / error / unauthorized 四態覆蓋一致。
+實機狀態：**error (graceful)**；本機開發環境未配置 CLOUDFLARE_API_TOKEN_ANALYTICS，因此 /api/admin/usage 回非 2xx，前端顯示「無法載入用量資料」降級提示、原因說明與「重新載入」按鈕，而非整頁崩潰。此畫面用於驗證管理介面在外部分析 API 暫時不可用時，仍能維持可理解、可操作的降級呈現，對應表 33「平台限制與因應」的可降級原則，並與 UX Completeness 規則要求之 empty / loading / error / unauthorized 四態覆蓋一致。
 
 圖面說明：
 
@@ -960,7 +339,7 @@ Scale envelope 的語意：
 
 下表以核心閉環為優先；延遲欄位為 Preview／Staging 的觀測目標，不作單獨 fail gate。
 
-表 39 核心測試情境設計
+表 42 核心測試情境設計
 
 | 情境                  | 對應 TC             | 問題範例                                                                                                         | 預期行為                                                                      | 觀測目標延遲 |
 | --------------------- | ------------------- | ---------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- | ------------ |
@@ -984,7 +363,7 @@ Scale envelope 的語意：
 
 本表彙整 2026-04-21 以 pnpm verify:acceptance 與 pnpm test:integration 執行之測試檔與通過數量，用以佐證 §2.1.2 問答流程、§2.2 資料模型與 §2.4.1 授權治理在結構式判斷器與測試 synthesizer 下行為正確。Workers AI 正式回答品質、延遲與成本指標不在此列。
 
-表 40 自動化測試覆蓋
+表 43 自動化測試覆蓋
 
 | 層                 | 檔數 | Pass | Fail | Skip | 說明                                                                                                      |
 | ------------------ | ---- | ---- | ---- | ---- | --------------------------------------------------------------------------------------------------------- |
@@ -993,7 +372,7 @@ Scale envelope 的語意：
 | Integration(全體)  | 51   | 260  | 0    | 1    | --project integration 專案全綠；1 skipped 為明示暫停之 pre-existing case，不屬迴歸                        |
 | 其中 TC / UI-state | 19   | 42   | 0    | 0    | test/integration/acceptance-tc-\*.test.ts + acceptance-tc-ui-state.test.ts                                |
 
-表 41 TC / UI-state 測試檔對照
+表 44 TC / UI-state 測試檔對照
 
 | TC 編號               | 檔名                           | 通過 assertions | 主要驗證                                                                |
 | --------------------- | ------------------------------ | --------------- | ----------------------------------------------------------------------- |
@@ -1023,16 +402,16 @@ Scale envelope 的語意：
 
 除情境彙總表外，本報告同步保留按 TC-xx 填寫的逐案結果表，以及處理部署、身分與版本交易等非問答證據的 EV-xx 補充證據表，確保第三章資料可逐項回對第四章驗收命題。下列表格的功能在於固定驗收格式與判定依據，而非以空白資料取代既有成果。
 
-下方表 42 與表 43 為「正式驗收統計」的欄位定義模板，欄位本身屬交付版規格，數值列用於承接正式驗收資料集(30–50 筆)與長期營運觀測。**現階段以表 40 / 41 結構式自動化測試(pnpm verify:acceptance + pnpm test:integration)承擔結構式正確性驗證**；讀者應將本表理解為實模型品質統計格式，而非以空白資料取代既有成果。
+下方表 45 與表 46 為「正式驗收統計」的欄位定義模板，欄位本身屬交付版規格，數值列用於承接正式驗收資料集(30–50 筆)與長期營運觀測。**現階段以表 43 / 44 結構式自動化測試(pnpm verify:acceptance + pnpm test:integration)承擔結構式正確性驗證**；讀者應將本表理解為實模型品質統計格式，而非以空白資料取代既有成果。
 
-表 42 實測情境彙總表(欄位定義；現階段以表 40 / 41 結構式自動化測試承擔)
+表 45 實測情境彙總表(欄位定義；現階段以表 43 / 44 結構式自動化測試承擔)
 
 | 情境 | 執行次數 | 平均延遲(ms) | P50 | P95 | Judge 觸發率 | 引用正確率 | 回答正確率 | 拒答精準率 | Self-Correction 觸發率 | 備註 |
 | ---- | -------- | ------------ | --- | --- | ------------ | ---------- | ---------- | ---------- | ---------------------- | ---- |
 
 逐案結果表欄位如下：
 
-表 43 TC 逐案測試結果表(欄位定義；現階段以表 41 結構式驗證代替；正式驗收後填入)
+表 46 TC 逐案測試結果表(欄位定義；以表 44 結構式驗證承擔)
 
 | TC 編號 | Acceptance ID | 適用通道 | gold facts／必要引用／不可犯錯 | 實際結果摘要 | 是否通過 | http_status | judge | Self-Correction | 引用／拒答證據 | config_snapshot_version |
 | ------- | ------------- | -------- | ------------------------------ | ------------ | -------- | ----------- | ----- | --------------- | -------------- | ----------------------- |
@@ -1054,7 +433,7 @@ Scale envelope 的語意：
 
 除逐題問答案例外，本報告另以 EV-xx 證據矩陣承接跨步驟驗收項目，涵蓋 OAuth／allowlist 權限重算、發布交易、rate limit、保留期限、對話持久化、響應式與無障礙等不適合只用單一問句描述的內容。
 
-表 44 EV 補充證據項目
+表 47 EV 補充證據項目
 
 | 證據編號 | 對應 Acceptance ID | 驗收重點                                         | 證據形式                                                                                                        | 通過條件                                                                                                                | 佐證文件                                                                                                                           |
 | -------- | ------------------ | ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
@@ -1068,15 +447,15 @@ Scale envelope 的語意：
 
 #### 3.3.2.3 交付版驗收證據整理
 
-本節整理本報告交付時採用的證據組合。問答案例以表 42 與表 43 呈現逐題判定，跨步驟與跨畫面的驗收內容則以表 44 的 EV-xx 證據矩陣承接。此安排使「單一問句可驗證的回答品質」與「需要操作流程、資料狀態或畫面佐證的系統行為」分開呈現，避免把驗收依據混成流水帳。
+本節整理本報告交付時採用的證據組合。問答案例以表 45 與表 46 呈現逐題判定，跨步驟與跨畫面的驗收內容則以表 47 的 EV-xx 證據矩陣承接。此安排使「單一問句可驗證的回答品質」與「需要操作流程、資料狀態或畫面佐證的系統行為」分開呈現，避免把驗收依據混成流水帳。
 
-表 45 交付版驗收證據整理
+表 48 交付版驗收證據整理
 
 | 證據類型               | 對應 Acceptance ID                     | 本報告採用方式                                                                       | 佐證重點                                                                  | 驗收邊界說明                                                         |
 | ---------------------- | -------------------------------------- | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------- | -------------------------------------------------------------------- |
-| 表 42 實測情境彙總統計 | A02、A05、A06、A07                     | 彙整核心問答、拒答、Self-Correction、MCP 工具鏈與 current-version-only 情境          | 回答正確性、拒答精準性、引用可回放、工具契約穩定性                        | 以結構式測試與短期實機證據為主；長期營運曲線列為研究限制             |
-| 表 43 TC 逐案測試結果  | A02、A03、A04、A05、A06、A07、A09、A12 | 逐案對照 gold facts、必要引用、不可犯錯與預期結果                                    | 每一筆案例均有明確通過條件，避免只以主觀觀察判斷                          | 若不可犯錯項命中，即使文字流暢亦判定不通過                           |
-| 表 44 EV 補充證據      | A01、A08、A11、A13、A14                | 以 EV-01 至 EV-07 承接部署、OAuth/RBAC、發布交易、rate limit、保留期限與 UI 證據     | 補足單一問答題無法描述的跨步驟流程與資料狀態                              | EV 證據用於證明系統治理行為，不取代問答案例本身                      |
+| 表 45 實測情境彙總統計 | A02、A05、A06、A07                     | 彙整核心問答、拒答、Self-Correction、MCP 工具鏈與 current-version-only 情境          | 回答正確性、拒答精準性、引用可回放、工具契約穩定性                        | 以結構式測試與短期實機證據為主；長期營運曲線列為研究限制             |
+| 表 46 TC 逐案測試結果  | A02、A03、A04、A05、A06、A07、A09、A12 | 逐案對照 gold facts、必要引用、不可犯錯與預期結果                                    | 每一筆案例均有明確通過條件，避免只以主觀觀察判斷                          | 若不可犯錯項命中，即使文字流暢亦判定不通過                           |
+| 表 47 EV 補充證據      | A01、A08、A11、A13、A14                | 以 EV-01 至 EV-07 承接部署、OAuth/RBAC、發布交易、rate limit、保留期限與 UI 證據     | 補足單一問答題無法描述的跨步驟流程與資料狀態                              | EV 證據用於證明系統治理行為，不取代問答案例本身                      |
 | 圖 1 至圖 7            | A01、A02、A05                          | 以 Mermaid 圖與程式邏輯圖呈現功能、架構、使用案例、活動流程、決策流程、ER 與開發時程 | 圖面與第一章、第二章敘述一致，說明核心四層邊界與 Agentic RAG 主流程       | 正式 Word / PDF 版以同一圖面內容輸出，頁碼由文書軟體產生             |
 | 圖 8 至圖 14           | A08、A14                               | 以實機畫面補充登入、問答主畫面、文件管理、MCP Token、成員、訪客政策與用量頁          | 呈現使用者可操作介面、管理流程、權限設定與外部分析 API 不可用時的降級提示 | 截圖作為介面佐證；不以截圖取代自動化測試與資料層驗證                 |
 | 附錄 B 測試資料集      | A02 至 A14                             | 列出 20 筆可重現案例，明確標示通道、必要引用、不可犯錯、預期狀態與允收條件           | 提供答辯與重跑測試時可對照的固定判定準則                                  | 大樣本統計與長期模型品質屬研究限制與未來展望，不作為本次繳交必要條件 |
@@ -1095,9 +474,9 @@ Scale envelope 的語意：
 
 #### 3.3.3.2 資料集與評分方式
 
-資料集為 12 筆手工撰寫的 ground truth，分佈如表 46：
+資料集為 12 筆手工撰寫的 ground truth，分佈如表 49：
 
-表 46 MCP tool-selection eval 資料集覆蓋
+表 49 MCP tool-selection eval 資料集覆蓋
 
 | Tool            | 樣本數 | specific-topic | category-flavored | boundary |
 | --------------- | ------ | -------------- | ----------------- | -------- |
@@ -1111,7 +490,7 @@ Scale envelope 的語意：
 
 首次跑 baseline 於 2026-04-24 的 staging 環境取得。整體 overall=83.33%(12 筆中 10 筆滿分、2 筆 0 分)：
 
-表 47 v2 baseline 結果
+表 50 v2 baseline 結果
 
 | 指標                   | 值                                          |
 | ---------------------- | ------------------------------------------- |
@@ -1143,9 +522,7 @@ Eval 不納入 pnpm check / CI 必經 gate——LLM API 有金錢成本、回應
 
 ### 4.1.1 驗收對照項目
 
-表 48 驗收對照項目清單
-
-「目前狀態」欄採三級分級：**結構性保障**(由 schema / migration 強制)、**自動化覆蓋**(整合測試已驗證結構式正確性)、**交付版佐證**(以 EV 證據、實機畫面或 runbook 補充操作與部署層證據)。長期營運趨勢與大樣本實模型品質不列為本次繳交的必要條件，改於 §4.2.3 研究限制說明。
+表 51 驗收對照項目清單
 
 | Acceptance ID | 驗收目標                                                                                         | 對應章節            | 主要對應案例                      | 驗收證據                                                                                                  | 目前狀態                                                                                                          |
 | ------------- | ------------------------------------------------------------------------------------------------ | ------------------- | --------------------------------- | --------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
@@ -1164,6 +541,8 @@ Eval 不納入 pnpm check / CI 必經 gate——LLM API 有金錢成本、回應
 | A13           | rate limit 與保留期限規則可被驗證                                                                | 2.4.1               | EV-04                             | 429 測試紀錄、citation_records.expires_at 清理作業摘要                                                    | 交付版佐證(runbook 與驗證文件已彙整；長週期清理作業列為營運期例行檢查)                                            |
 | A14           | Web 聊天已完成持久化對話、歷史重整、同 ID 續問與刪除淘汰                                         | 2.2.1、2.2.2、3.2.2 | EV-07                             | Playwright journey、checkpoint 截圖、evidence manifest、對話 persistence 驗證文件                         | 自動化覆蓋(e2e/chat-persistence.spec.ts 通過，create / reload / select / follow-up / delete 五個 checkpoint 全綠) |
 
+補充說明：「目前狀態」欄採三級分級：**結構性保障**(由 schema / migration 強制)、**自動化覆蓋**(整合測試已驗證結構式正確性)、**交付版佐證**(以 EV 證據、實機畫面或 runbook 補充操作與部署層證據)。長期營運趨勢與大樣本實模型品質不列為本次繳交的必要條件，改於 §4.2.3 研究限制說明。
+
 ### 4.1.2 技術特色與驗證層級
 
 本系統相對純雲端 LLM 方案，主要差異化定位於三個互補軸：**邊緣原生部署**、**Hybrid Managed 治理**，以及**可稽核的拒答機制**。以下八點特色依此三軸展開；依目前證據，可將其區分為「已完成結構式與整合測試驗證」與「需於長期運轉或實模型接入後持續觀察」兩類。
@@ -1171,11 +550,11 @@ Eval 不納入 pnpm check / CI 必經 gate——LLM API 有金錢成本、回應
 - **已達結構式驗證**：目前的自動化測試、引用回放與介面證據，已佐證系統在流程、權限、引用與契約層面的正確性。
 - **延伸驗證邊界**：長期營運期資料、實模型品質與延遲分布，需於後續實際運轉與正式驗收階段持續觀察。
 
-各特色分級如下(詳細驗證證據見 §4.1.1 表 48 對應 Acceptance ID)。
+各特色分級如下(詳細驗證證據見 §4.1.1 表 51 對應 Acceptance ID)。
 
 1. **檢索受管理、回答自建**(Hybrid Managed 軸)｜*已達結構式驗證*：以 AI Search 接手檢索基礎建設，保留應用層對回答與治理的主導權；TC-01/04/06 整合測試全綠佐證。
 2. **分段式信心判斷**(Hybrid Managed 軸)｜*已達結構式驗證；實模型 judge 精準度需持續觀察*：先以 retrieval_score 做快路徑決策，再只在邊界情境追加 judge，以兼顧品質與延遲。現階段 judge 由結構式判斷器承擔；若後續接入實模型，則需在相同驗收框架下重新比對準確度與延遲。
-3. **拒答作為產品級信任門檻**(拒答軸)｜*已達結構式驗證*：企業知識庫若在不確定時亂答，使用者信任成本比「不答」更高。本系統以規則式 Query Normalization + 分段式信心分數 + 重試後仍低分則拒答的結構式流程，確保回答與拒答皆可回放、可稽核；拒答精準率列為硬性驗收指標(§2.4.4.4 表 31)，並於使用者介面提供下一步引導(如改寫關鍵字、查看相關文件)，而非僅回傳籠統失敗訊息；TC-07/08/09/15 全綠佐證。
+3. **拒答作為產品級信任門檻**(拒答軸)｜*已達結構式驗證*：企業知識庫若在不確定時亂答，使用者信任成本比「不答」更高。本系統以規則式 Query Normalization + 分段式信心分數 + 重試後仍低分則拒答的結構式流程，確保回答與拒答皆可回放、可稽核；拒答精準率列為硬性驗收指標(§2.4.4.4 表 34)，並於使用者介面提供下一步引導(如改寫關鍵字、查看相關文件)，而非僅回傳籠統失敗訊息；TC-07/08/09/15 全綠佐證。
 4. **引用可追溯且可相容演進**(Hybrid Managed 軸)｜*已達結構式驗證*：回答中的每一筆引用皆以應用層可回放 citationId 回看完整片段，不暴露供應商內部 ID；TC-12 citation replay 與 TC-20 契約瘦身驗證通過。
 5. **Web 與 MCP 契約分流**｜*已達自動化驗證*：Web 已完成持久化 conversationId、歷史列表、重整恢復、同 ID 續問與刪除淘汰；MCP 則維持單輪無狀態契約，不接受 MCP-Session-Id。Web 端驗證見 docs/verify/WEB_CHAT_PERSISTENCE_VERIFICATION.md、docs/verify/evidence/web-chat-persistence.json 與 e2e/chat-persistence.spec.ts；MCP contracts 15 檔 51 tests 佐證其無狀態工具鏈。
 6. **雙閘一致性保護**｜*已達結構式驗證*：AI Search metadata 負責快篩，D1 post-verification 負責 current-version-only 最終把關，避免最終一致性導致舊版內容誤入回答；TC-18 current-version-only 過濾與版本切換驗證通過。
@@ -1184,12 +563,12 @@ Eval 不納入 pnpm check / CI 必經 gate——LLM API 有金錢成本、回應
 
 為使第一章(§1.1.1)所識別之中小企業 ERP 使用痛點與本節產品特色之對應關係更為清楚，茲以下表彙整各痛點所對應之本系統解法：
 
-表 49 中小企業 ERP 痛點與本系統產品特色對照
+表 52 中小企業 ERP 痛點與本系統產品特色對照
 
 | §1.1.1 痛點  | 痛點本質                                                             | 本系統對應特色                                                                                                                             | 驗收指標 / 章節依據                                           |
 | ------------ | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------- |
 | 學習成本高   | 新進人員仰賴操作手冊與資深同仁帶領，系統模組多、流程複雜。           | 自然語言問答介面 + 引用可追溯：使用者以一般語句詢問即可取得含引用出處的回答，不需記憶報表路徑或欄位名稱。                                  | A02(AI Search + Agent 整合)、A03(citationId 回放)             |
-| 知識分散     | SOP、FAQ、規章、教育訓練教材與報表說明分散於不同路徑，查找效率不佳。 | AI Search 受管理檢索 + current-version-only 雙閘保護：跨文件單一入口查找，永遠只取最新已發布版本，避免文件散落導致的版本混亂。             | A04(current-version-only 過濾)、表 30 平台限制因應            |
+| 知識分散     | SOP、FAQ、規章、教育訓練教材與報表說明分散於不同路徑，查找效率不佳。 | AI Search 受管理檢索 + current-version-only 雙閘保護：跨文件單一入口查找，永遠只取最新已發布版本，避免文件散落導致的版本混亂。             | A04(current-version-only 過濾)、表 33 平台限制因應            |
 | 知識傳承困難 | 隱性操作經驗難以制度化，當人員異動時容易產生斷層。                   | 所有正式回答皆以應用層 citationId 回放完整片段並留 query_logs 稽核：經驗數位化後，新進人員問答即可取得原始文件段落，而非仰賴資深同仁口述。 | A03、A10(Admin restricted 可讀)、§2.4.1 記錄治理              |
 | 問題定位耗時 | 使用者知道問題類型，卻不一定知道正確關鍵字或文件名稱。               | 規則式 Query Normalization + Self-Correction 單次重試 + 可稽核拒答：系統會在模糊查詢時主動重寫查詢，若仍無足夠證據則明確拒答而非亂答。     | A05(Self-Correction 改善)、A06(拒答正確性)、§2.2.3 Agent 決策 |
 
@@ -1198,11 +577,11 @@ Eval 不納入 pnpm check / CI 必經 gate——LLM API 有金錢成本、回應
 ### 4.2.1 功能擴展方向
 
 1. 擴充更多資料來源，例如雲端文件庫、內部 Wiki、工單系統與表單平台。
-2. 納入 MCP Resources、Dynamic Definitions 與 Evals，提升外部整合與測試能力。
+2. 納入 MCP Resources、Dynamic Definitions 與更完整的 retrieval quality、groundedness、citation correctness、multi-turn tool use 評測，提升外部整合與測試能力。
 3. 納入更細緻的檢索策略，例如 rerank tuning、freshness boost 與 metadata boosting。
-4. 完成 stateful MCP Session / Durable Objects / SSE 的外部 Client 驗收，再評估是否開啟 Production feature flag。
+4. 擴充 connector 首次授權旅程與更多外部 Client 相容性驗證，延伸既有 Production MCP session / Durable Objects / SSE 主軸。
 5. 規劃 LINE Login 與細粒度文件 ACL，作為後續企業級權限模型的延伸能力。
-6. **使用者操作示範代理(UI Demonstration Agent，探索性方向)**：針對 §1.1.1「學習成本高」痛點，可擴充 Agent 在 UI 上以可見游標逐步示範操作、等待使用者確認後再進行下一步，並允許使用者隨時中斷接手；屬後續版本探索項目，不在現階段核心驗收範圍。
+6. **使用者操作示範代理(UI Demonstration Agent，探索性方向)**：針對 §1.1.1「學習成本高」痛點，可擴充 Agent 在 UI 上以可見游標逐步示範操作、等待使用者確認後再進行下一步，並允許使用者隨時中斷接手；此項目作為產品化延伸方向說明。
 
 ### 4.2.2 架構演進方向
 
@@ -1253,16 +632,16 @@ Eval 不納入 pnpm check / CI 必經 gate——LLM API 有金錢成本、回應
 
 **C. 自動化驗證證據**
 
-5. **自動化 acceptance 測試全綠**：2026-04-21 以 pnpm verify:acceptance + pnpm test:integration 跑完後，Unit acceptance 6、MCP contracts 51、Integration 260(1 skipped pre-existing)、其中 TC-01~20 與 TC-UI-01 合計 42 個 assertions 全綠。明細見 §3.3.2.1 表 40 / 41；現階段驗證重點是流程與治理的結構式正確性，不以此宣稱已完成實模型品質驗收。
+5. **自動化 acceptance 測試全綠**：2026-04-21 以 pnpm verify:acceptance + pnpm test:integration 跑完後，Unit acceptance 6、MCP contracts 51、Integration 260(1 skipped pre-existing)、其中 TC-01~20 與 TC-UI-01 合計 42 個 assertions 全綠。明細見 §3.3.2.1 表 43 / 44；現階段驗證重點是流程與治理的結構式正確性，不以此宣稱已完成實模型品質驗收。
 6. **實機截圖與操作證據已整理完成**：2026-04-21 於 local dev 環境拍下七張主畫面(圖 8 至圖 14)，覆蓋登入、問答 empty onboarding、文件管理(三 lifecycle 狀態)、Token 管理、成員管理(三級角色)、訪客政策 dial、AI Gateway 用量(graceful error 降級)。其中 /chat 以 empty onboarding 呈現初始狀態、/admin/usage 以 graceful error 呈現降級狀態，搭配 EV-01 至 EV-07 說明操作與治理證據。
 
 **D. 報告結構強化**
 
-7. **報告結構與驗收章節已完成對齊**：第二至第四章已補入自動化驗證覆蓋、實機截圖、EV runbook 指向與表 48 狀態分級，使成果說明、驗收依據與研究限制能互相對照。
-8. **§3.3.2.3 交付版驗收證據整理**：新增表 45，將問答案例、EV 證據、架構圖、活動圖、ER 圖、實機畫面與附錄 B 資料集整理成同一套交付版證據矩陣，讓讀者能直接看出每類證據支撐哪些 Acceptance ID。
-9. **§2.4.5 部署成本與容量規劃**：新增表 32 情境化月度運營成本估算與表 33 Scale Envelope，作為部署規劃、擴展觸發點與答辯討論的參考依據；這些數字屬估算與規劃，不等同正式營運統計或正式容量驗證結果。
-10. **附錄 E 實模型選型參考**：新增表 57 Workers AI 候選模型對照，列出候選模型、選型 gate 與鎖定流程；此附錄用於說明模型替換時的治理規則，不把長期觀測前的模型效果寫成成果。
-11. **§4.1.2 特色分級敘述**：8 項技術特色改以「已達結構式驗證 / 延伸驗證邊界」兩級分級呈現，每項標註對應 TC 測試證據，與 §4.1.1 表 48 三級狀態分級互補。
+7. **報告結構與驗收章節已完成對齊**：第二至第四章已補入自動化驗證覆蓋、實機截圖、EV runbook 指向與表 51 狀態分級，使成果說明、驗收依據與研究限制能互相對照。
+8. **§3.3.2.3 交付版驗收證據整理**：新增表 48，將問答案例、EV 證據、架構圖、活動圖、ER 圖、實機畫面與附錄 B 資料集整理成同一套交付版證據矩陣，讓讀者能直接看出每類證據支撐哪些 Acceptance ID。
+9. **§2.4.5 部署成本與容量規劃**：新增表 35 情境化月度運營成本估算與表 36 Scale Envelope，作為部署規劃、擴展觸發點與答辯討論的參考依據；這些數字屬估算與規劃，不等同正式營運統計或正式容量驗證結果。
+10. **附錄 E 實模型選型參考**：新增表 60 Workers AI 候選模型對照，列出候選模型、選型 gate 與鎖定流程；此附錄用於說明模型替換時的治理規則，不把長期觀測前的模型效果寫成成果。
+11. **§4.1.2 特色分級敘述**：8 項技術特色改以「已達結構式驗證 / 延伸驗證邊界」兩級分級呈現，每項標註對應 TC 測試證據，與 §4.1.1 表 51 三級狀態分級互補。
 12. **§3.2.3 響應式職責切分敘述**：明確本節 7 張截圖以 desktop 為主、跨 viewport 證據由 EV-06 獨立承擔，避免讀者誤判響應式缺失。
 13. **其他清理**：圖表索引改為校方要求的圖目錄／表目錄格式，並補入程式碼目錄；保留表號從索引去除佔位、參考文獻補入 OAuth 2.0 Bearer Token RFC[25]，並修正 Vercel AI SDK 引用[28]、目錄展開至節／小節層級。
 
@@ -1270,15 +649,15 @@ A、B、C 三類項目均已進入生產環境並透過單元 / 整合 acceptanc
 
 ### 5.2.2 交付版限制
 
-本報告已將架構設計、核心實作、自動化測試、實機畫面與 EV 證據整理為可繳交版本；仍需誠實標示的限制，主要屬於研究範圍與長期營運觀測：
+本報告已將架構設計、核心實作、自動化測試、實機畫面與 EV 證據整理為可繳交版本；以下限制屬研究範圍與長期營運觀測：
 
 1. 圖 1 至圖 7 以 Mermaid 圖與程式邏輯圖呈現，正式 Word / PDF 版需維持相同內容並由文書軟體產生頁碼。
-2. 表 42、表 43 以 TC / EV 證據整理核心驗收結果；更大樣本與長期統計可作為後續營運觀測，不作為本次繳交必要條件。
+2. 表 45、表 46 以 TC / EV 證據整理核心驗收結果；更大樣本與長期統計可作為後續營運觀測，不作為本次繳交必要條件。
 3. 圖 9 與圖 14 呈現問答主畫面與用量頁在目前環境下的代表狀態；loaded 資料量與長期流量曲線屬部署後營運資料。
 4. EV-01、EV-04、EV-06 已分別承接部署、保留期限、響應式與無障礙基線；長週期清理與趨勢報表屬例行維運。
 5. 封面日期、目錄頁碼與圖表頁碼屬排版層資訊，不影響本報告對系統架構、功能與驗收結論的說明。
 
-### 5.2.3 後續補強重點
+### 5.2.3 營運觀測與產品化延伸
 
 為使本系統自「可運作」進一步走向「可長期營運與完整答辯」，後續應優先完成以下項目：
 
@@ -1294,7 +673,7 @@ A、B、C 三類項目均已進入生產環境並透過單元 / 整合 acceptanc
 1. **架構責任分離**：正式回答層可呼叫 Workers AI，但檢索、版本驗證、授權、引用與遮罩不得交給模型決定。
 2. **測試可重現**：模型輸出具非決定性，若直接把 LLM 呼叫放進所有 acceptance 測試，會讓治理測試受到模型波動干擾；synthesizer 只用來固定結構式驗收。
 3. **成本控制**：大批量測試若全部呼叫模型會增加 Neurons 與延遲成本，因此正式品質統計與日常結構式測試應分層執行。
-4. **工程誠實**：可宣稱 Workers AI answer adapter 已接入與可被使用，但不可把 deterministic synthesizer 的測試通過率等同於實模型大樣本品質；正式回答正確率、延遲與 token 成本仍需以表 42、表 43 的凍結資料集另行統計。
+4. **工程誠實**：可宣稱 Workers AI answer adapter 已接入與可被使用，但不可把 deterministic synthesizer 的測試通過率等同於實模型大樣本品質；正式回答正確率、延遲與 token 成本應以表 45、表 46 的凍結資料集持續統計。
 
 因此，答辯時應將「流程與治理已通過結構式驗證」與「實模型品質需長期統計」分開說明。前者是本專題已完成的核心工程成果，後者是系統產品化與營運階段持續追蹤的品質指標。
 
@@ -1472,7 +851,7 @@ Authorization: Bearer [token]
 
 scope 對照如下：
 
-表 50 MCP scope 授權對照
+表 53 MCP scope 授權對照
 
 | scope                     | 說明                                 |
 | ------------------------- | ------------------------------------ |
@@ -1493,7 +872,7 @@ scope 對照如下：
 
 錯誤碼：
 
-表 51 MCP 錯誤碼定義
+表 54 MCP 錯誤碼定義
 
 | 錯誤碼 | 說明                                                       |
 | ------ | ---------------------------------------------------------- |
@@ -1509,7 +888,7 @@ scope 對照如下：
 
 本附錄整理本報告採用的 20 筆驗證案例，作為第三章實測結果、第四章驗收對照與答辯展示的共同判定基準。每一筆案例均標示 Acceptance ID、gold facts、必要引用、不可犯錯、預期 http_status 與允收條件，使回答品質、拒答行為、權限隔離、版本切換與 MCP 工具契約皆能以固定規則重現。
 
-表 52 初始驗證測試資料集
+表 55 初始驗證測試資料集
 
 | 編號  | Acceptance ID | 類別                        | 適用通道  | 問題／操作                                                                                 | gold facts／驗證重點                                           | 必要引用                                   | 不可犯錯                                                                                                      | 預期 http_status | 主要期望結果                | 允收條件                                                                                                  | 備註                                                        |
 | ----- | ------------- | --------------------------- | --------- | ------------------------------------------------------------------------------------------ | -------------------------------------------------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------- | ---------------- | --------------------------- | --------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
@@ -1540,7 +919,7 @@ scope 對照如下：
 2. 必要引用 欄若為「無」，表示該案應維持零引用；若列出多份文件，則各文件均須有對應引用。
 3. 不可犯錯 任一命中即直接判定不通過，不因回答流暢、篇幅完整或延遲較低而豁免。
 
-OAuth／allowlist 變更後的權限重算、publish no-op / 失敗 rollback、rate limit、stale 對話重算與 rich format canonical snapshot 驗證等跨步驟項目，已改由表 44 的 EV-xx 補充證據承接。附錄 B 因此專注於「可用單一問答或單一工具鏈重現」的案例，避免把操作流程與問答資料集混在同一張表內。
+OAuth／allowlist 變更後的權限重算、publish no-op / 失敗 rollback、rate limit、stale 對話重算與 rich format canonical snapshot 驗證等跨步驟項目，已改由表 47 的 EV-xx 補充證據承接。附錄 B 因此專注於「可用單一問答或單一工具鏈重現」的案例，避免把操作流程與問答資料集混在同一張表內。
 
 執行結果表採以下欄位記錄：
 
@@ -1570,13 +949,13 @@ OAuth／allowlist 變更後的權限重算、publish no-op / 失敗 rollback、r
 
 ### C.2 示範步驟
 
-表 53 答辯示範劇本步驟
+表 56 答辯示範劇本步驟
 
 | 步驟 | 動作                                                                                                                         | 預期畫面 / 行為                                                                                  | 對應 Acceptance / TC             |
 | ---- | ---------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ | -------------------------------- |
 | 1    | 以新 Google 帳號登入(非 allowlist)                                                                                           | 登入後角色為 Guest，看到訪客介面或等候審核提示                                                   | A08                              |
 | 2    | 切換至管理員測試使用者登入，進入「成員管理」畫面，將步驟 1 之訪客升格為 Member                                               | 成員列表顯示該使用者，role 變更為 Member；admin_source 顯示 allowlist / promotion                | A08(含三級角色擴充)              |
-| 3    | Member 重新登入，看到空知識庫 onboarding CTA「尚無可問答文件」                                                               | empty state 圖示 + 說明文字「請聯絡管理員建立第一份文件」                                        | 表 39 UI 四態(TC-UI-01)          |
+| 3    | Member 重新登入，看到空知識庫 onboarding CTA「尚無可問答文件」                                                               | empty state 圖示 + 說明文字「請聯絡管理員建立第一份文件」                                        | 表 42 UI 四態(TC-UI-01)          |
 | 4    | Admin 進入「文件管理」上傳 3 份文件(採購 SOP、人事制度 restricted、報表說明)                                                 | Upload Wizard 四階段進度(上傳 % → 前處理 → smoke 驗證 → 發布成功)                                | TC-UI-02 loading、EV-01、EV-03   |
 | 5    | Admin 執行發布 transaction，使 3 份文件進入 current 狀態                                                                     | 每份文件 is_current = true、document_versions.index_status = indexed                             | A04(current-version-only)、EV-01 |
 | 6    | Member 於 Chat 問「PO 和 PR 有什麼差別？」                                                                                   | direct path 串流回答，含【引1】指向採購 SOP current 版引用卡片，可點開回放原文                   | TC-01、A02、A03                  |
@@ -1605,11 +984,11 @@ OAuth／allowlist 變更後的權限重算、publish no-op / 失敗 rollback、r
 
 ## 附錄 D：部署與災難復原
 
-本附錄補充正文 §2.4.1 與表 28 所列之部署環境與組態來源，從運維操作視角完整交代：部署時應設定哪些環境變數與憑證、初次部署與日常部署的正確順序，以及四類災難情境的復原程序。本附錄採敘述性語氣說明「為什麼如此設計」與「邊界條件」；可直接 copy-paste 執行的完整指令序列與驗證輸出，請交叉參考 docs/verify/DEPLOYMENT_RUNBOOK.md 與 docs/verify/DISASTER_RECOVERY_RUNBOOK.md，避免與本附錄分歧維護。
+本附錄補充正文 §2.4.1 與表 31 所列之部署環境與組態來源，從運維操作視角完整交代：部署時應設定哪些環境變數與憑證、初次部署與日常部署的正確順序，以及四類災難情境的復原程序。本附錄採敘述性語氣說明「為什麼如此設計」與「邊界條件」；可直接 copy-paste 執行的完整指令序列與驗證輸出，請交叉參考 docs/verify/DEPLOYMENT_RUNBOOK.md 與 docs/verify/DISASTER_RECOVERY_RUNBOOK.md，避免與本附錄分歧維護。
 
-本附錄與表 28 採互補分工：表 28 以「Local / Staging / Production」三欄呈現組態真相來源的差異，偏重設計原則(不得共用資源、祕密值不寫死等)；表 54 則從「運維層」列出每個環境變數的用途、範例格式、敏感度與設定管道，協助新 operator 在執行部署時知道該把哪些值放到何處。兩表欄位不重複：表 28 不列變數名稱，表 54 不重述環境差異原則。
+本附錄與表 31 採互補分工：表 31 以「Local / Staging / Production」三欄呈現組態真相來源的差異，偏重設計原則(不得共用資源、祕密值不寫死等)；表 57 則從「運維層」列出每個環境變數的用途、範例格式、敏感度與設定管道，協助新 operator 在執行部署時知道該把哪些值放到何處。兩表欄位不重複：表 31 不列變數名稱，表 57 不重述環境差異原則。
 
-表 54 部署環境變數清單
+表 57 部署環境變數清單
 
 | 變數名                                   | 用途                                                                                                       | 範例格式                          | 敏感度 | 設定方式                                   |
 | ---------------------------------------- | ---------------------------------------------------------------------------------------------------------- | --------------------------------- | ------ | ------------------------------------------ |
@@ -1640,7 +1019,7 @@ OAuth／allowlist 變更後的權限重算、publish no-op / 失敗 rollback、r
 | CLOUDFLARE_ACCOUNT_ID                    | /api/admin/usage 用於讀取 Analytics API 的帳戶識別碼                                                       | Cloudflare account ID             | 低     | wrangler secret put                        |
 | CLOUDFLARE_API_TOKEN_ANALYTICS           | AI Gateway Analytics API read-only token；scope 為 Account → Analytics → Read，**NEVER** 與部署 token 共用 | Cloudflare API token              | 高     | wrangler secret put                        |
 
-「敏感度」欄之「高」代表外流即需立即輪替並通知相關人員；「中」代表外流會洩漏特定個資或組織資訊，應盡速輪替；「低」代表本身不是祕密，但仍不宜隨意公開。Feature flags 在現階段的預設狀態已對齊表 28「不納入目前範圍之功能預設關閉」之原則。
+「敏感度」欄之「高」代表外流即需立即輪替並通知相關人員；「中」代表外流會洩漏特定個資或組織資訊，應盡速輪替；「低」代表本身不是祕密，但仍不宜隨意公開。Feature flags 在現階段的預設狀態已對齊表 31「不納入目前範圍之功能預設關閉」之原則。
 
 AI Gateway 相關變數屬 add-ai-gateway-usage-tracking 階段引入之 observability 基礎設施；若 NUXT_KNOWLEDGE_AI_GATEWAY_ID 未設，系統仍可正常運作但 /admin/usage 會呈現 graceful error 降級提示(圖 13 佐證)。
 
@@ -1654,7 +1033,7 @@ AI Gateway 相關變數屬 add-ai-gateway-usage-tracking 階段引入之 observa
 
 現階段需要三類 Cloudflare 邊緣資源與一個 AI Search 索引，名稱須與 wrangler.jsonc 的 binding 宣告一致。
 
-表 55 現階段必要 Cloudflare 資源清單
+表 58 現階段必要 Cloudflare 資源清單
 
 | 資源類型       | Binding 名稱 | 正式命名              | 用途                                      |
 | -------------- | ------------ | --------------------- | ----------------------------------------- |
@@ -1664,7 +1043,7 @@ AI Gateway 相關變數屬 add-ai-gateway-usage-tracking 階段引入之 observa
 | Workers AI     | AI           | (平台內建)            | 邊緣 LLM 推理                             |
 | AI Search 索引 | (無)         | agentic-rag           | 語義檢索索引(原 AutoRAG)                  |
 
-建立時須注意三點邊界：(1)R2 bucket 若需支援前端 PUT pre-signed URL，須套用專案根目錄 r2-cors.json 之 CORS 設定，且 production / staging bucket 都要各自套用一次，allowed origins 至少包含 http://localhost:3010、https://agentic.yudefine.com.tw 與 https://agentic-staging.yudefine.com.tw；(2)AI Search 索引之 embedding model 應對齊 shared/schemas/knowledge-runtime.ts 預設之 @cf/baai/bge-m3，避免日後切換嵌入模型需重建整個索引；(3)Staging 與 Production 不得共用同一組資源，對齊表 28「不得讓 Staging / Preview 與 Production 共用同一組 D1、R2、KV 或 AI Search instance」之原則。
+建立時須注意三點邊界：(1)R2 bucket 若需支援前端 PUT pre-signed URL，須套用專案根目錄 r2-cors.json 之 CORS 設定，且 production / staging bucket 都要各自套用一次，allowed origins 至少包含 http://localhost:3010、https://agentic.yudefine.com.tw 與 https://agentic-staging.yudefine.com.tw；(2)AI Search 索引之 embedding model 應對齊 shared/schemas/knowledge-runtime.ts 預設之 @cf/baai/bge-m3，避免日後切換嵌入模型需重建整個索引；(3)Staging 與 Production 不得共用同一組資源，對齊表 31「不得讓 Staging / Preview 與 Production 共用同一組 D1、R2、KV 或 AI Search instance」之原則。
 
 #### D.1.2 Schema Migration
 
@@ -1747,9 +1126,9 @@ Tag 命名採 semantic versioning(v[MAJOR].[MINOR].[PATCH])，對齊 package.jso
 
 ### D.3 災難復原
 
-本節分四類子節說明發生事故時之復原程序。表 56 彙整四類情境之觸發信號與決策路徑，作為 operator 拿到 incident 後之第一步分類依據。
+本節分四類子節說明發生事故時之復原程序。表 59 彙整四類情境之觸發信號與決策路徑，作為 operator 拿到 incident 後之第一步分類依據。
 
-表 56 災難情境與對應復原路徑
+表 59 災難情境與對應復原路徑
 
 | 情境                                    | 常見觸發信號                           | 對應子節 | 資料遺失邊界                |
 | --------------------------------------- | -------------------------------------- | -------- | --------------------------- |
@@ -1808,7 +1187,7 @@ Secret 還原或輪替不影響資料層，但輪替瞬間至部署完成之約 
 
 以下清單以 2026-04 時點 Cloudflare Workers AI 官方模型頁[5][23]可用模型為主；模型清單與 alias 可能變動，實際接入前須再次核對官方最新公告。本附錄屬候選規劃與選型參考，不代表已實際部署下表模型。
 
-表 57 Workers AI 候選模型對照
+表 60 Workers AI 候選模型對照
 
 | 模型 alias                      | 類別                   | Context Window | 粗估每次呼叫成本(Neurons) | 強項                                   | 弱項                             | 建議對應角色                                       |
 | ------------------------------- | ---------------------- | -------------- | ------------------------- | -------------------------------------- | -------------------------------- | -------------------------------------------------- |
@@ -1824,19 +1203,19 @@ Secret 還原或輪替不影響資料層，但輪替瞬間至部署完成之約 
 接入實模型時，應依下列優先序決定角色對應：
 
 1. **可用性 gate**：Preview 環境實際 ping 過該模型、確認 alias 存在、Neurons 額度與限速設定允許現階段預期流量。未通過此 gate 的模型直接從候選名單剔除。
-2. **延遲 gate**：models.defaultAnswer 須在 Preview 環境達成「首字延遲 P50 <= 1.5s」(表 31 觀測指標)；models.agentJudge 允許較寬鬆但 completion latency P95 不應超過 6s。
+2. **延遲 gate**：models.defaultAnswer 須在 Preview 環境達成「首字延遲 P50 <= 1.5s」(表 34 觀測指標)；models.agentJudge 允許較寬鬆但 completion latency P95 不應超過 6s。
 3. **結構化輸出 gate**：models.agentJudge 須能穩定回傳 JSON schema({ shouldAnswer, reformulatedQuery? })；小樣本測試若出現明顯 schema 破格，即應淘汰該模型。
-4. **成本 gate**：以 §2.4.5.1 表 32 的情境化估算作初步判斷；若候選模型推估超過年度預算，則降階為較小模型或啟用 AI Gateway cache。正式採用前仍須以實測資料填入。
-5. **中英文 gate**：附錄 B 正式驗收資料集含中文知識庫內容，候選模型須在中文 gold facts 命中率達品質驗收 > 80%(表 31 Answer Correctness)。
+4. **成本 gate**：以 §2.4.5.1 表 35 的情境化估算作初步判斷；若候選模型推估超過年度預算，則降階為較小模型或啟用 AI Gateway cache。正式採用前仍須以實測資料填入。
+5. **中英文 gate**：附錄 B 正式驗收資料集含中文知識庫內容，候選模型須在中文 gold facts 命中率達品質驗收 > 80%(表 34 Answer Correctness)。
 
 ### E.3 鎖定流程
 
 候選模型通過 E.2 五 gate 後，執行以下鎖定步驟：
 
 1. 將模型 alias 寫入部署設定(Workers env var 或 wrangler.jsonc vars)。
-2. 更新本文件 §2.2.3.1 表 20 的「實際模型鎖定原則」欄為具體 alias，並補充鎖定理由(延遲 / 成本 / 品質 trade-off 摘要)。
+2. 更新本文件 §2.2.3.1 表 23 的「實際模型鎖定原則」欄為具體 alias，並補充鎖定理由(延遲 / 成本 / 品質 trade-off 摘要)。
 3. 於 query_logs.config_snapshot_version bump 一次(v1.x.0)，作為鎖定前後統計不可混算之分界。
-4. 跑一輪正式驗收資料集，將結果填入表 42、表 43 與 §3.3.2 前言。
+4. 跑一輪正式驗收資料集，將結果填入表 45、表 46 與 §3.3.2 前言。
 5. 若後續更換模型，不得改變 §2.2.3.1 的路由條件與回傳契約；僅更新 alias 與 config_snapshot_version，再跑一次正式驗收資料集對照前後差異。
 
 ### E.4 不選的替代方案
