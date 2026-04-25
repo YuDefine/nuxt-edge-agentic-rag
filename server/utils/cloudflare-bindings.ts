@@ -18,7 +18,7 @@ interface D1DatabaseLike {
   prepare(query: string): D1PreparedStatementLike
 }
 
-interface KvBindingLike {
+export interface KvBindingLike {
   get(key: string): Promise<string | null>
   put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void>
 }
