@@ -128,8 +128,7 @@ await input.onBlock({ raw: trimmed })
 
 1. land code + tests → CI 全綠 → merge main
 2. production deploy 後觀察 wrangler tail：confirm `: keep-alive` 行有出現在 chat SSE 流（local + production）
-3. 觀察 7 天，confirm 無 regression（無 chat 連線異常掉線、無 evlog first-token 異常）
-4. archive 時 TD-015 + TD-019 改 `done`
+3. archive 時 TD-015 + TD-019 改 `done`
 
 Rollback：純 code revert，無資料 / 配置殘留。
 
