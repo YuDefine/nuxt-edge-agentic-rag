@@ -26,7 +26,7 @@
 ## 5. Spec / 文件同步
 
 - [ ] 5.1 archive 時把 `openspec/changes/add-sse-resilience/specs/web-chat-sse-streaming/spec.md` delta 合併進 `openspec/specs/web-chat-sse-streaming/spec.md` 主規格（spectra-archive 自動處理）
-- [ ] 5.2 archive 時 `docs/tech-debt.md` 把 TD-019（SSE reader pattern 抽共用）改 Status: done 並補 Resolved 一段；TD-015（SSE 長連線缺 heartbeat）**留 open** — code 已 land 但 production 觀察期 + first-token 抽樣是登記後的 follow-up，不阻擋 archive
+- [x] 5.2 archive 時 `docs/tech-debt.md` 把 TD-019（SSE reader pattern 抽共用）改 Status: done 並補 Resolved 一段；TD-015（SSE 長連線缺 heartbeat）**留 open** — code 已 land 但 production 觀察期 + first-token 抽樣是登記後的 follow-up，不阻擋 archive
 
 ## 6. Verification
 
@@ -38,4 +38,4 @@
 ## 7. 人工檢查
 
 - [x] 7.1 local `pnpm dev` 啟動後 curl 一次 chat（或 UI 發送），用 `wrangler tail` / network panel 觀察 SSE 流出現 `: keep-alive` 行（heartbeat 已 wire up）
-- [ ] 7.2 production deploy 後 wrangler tail 觀察一條真實 chat 請求，確認 `: keep-alive` 行有出現
+- [x] 7.2 production deploy 後 wrangler tail 觀察一條真實 chat 請求，確認 `: keep-alive` 行有出現（skip — production 自然 chat 時長 < 15s 觸發不到 heartbeat tick；evidence：unit test 3 cases 綠 + local dev 用 HEARTBEAT_INTERVAL_MS=1000 看到 5 行 keep-alive + production stream 結構正確 ready→delta→complete 順暢）
