@@ -44,9 +44,9 @@ _(none)_
 
 ## Active Changes
 
-_last synced: 2026-04-25T15:48:22.492Z_
+_last synced: 2026-04-25T16:27:26.858Z_
 
-1 active change (0 ready · 1 in progress · 0 draft · 0 blocked)
+2 active changes (0 ready · 1 in progress · 1 draft · 0 blocked)
 
 ### Ready to apply
 
@@ -54,12 +54,13 @@ _(none)_
 
 ### In progress
 
-- **add-sse-resilience** — 17/22 tasks (77%)
+- **add-sse-resilience** — 18/21 tasks (86%)
   - Specs: `web-chat-sse-streaming`
 
 ### Draft
 
-_(none)_
+- **persist-refusal-and-label-new-chat** — 0/43 tasks (0%)
+  - Specs: `conversation-lifecycle-governance`, `web-agentic-answering`, `web-chat-ui`
 
 ### Blocked
 
@@ -74,9 +75,17 @@ _(none)_
 > 即時 ownership 由 `.spectra/claims/*.json` 提供。
 > 接手 handoff / 開始做 change 時，先 claim，再移除 `HANDOFF.md` 對應項目。
 
-_No active claims._
+1 claim (1 active · 0 stale)
 
-> 若你要開始做上面的 active change，先跑 `spectra:claim -- <change>`。
+### Live Ownership
+
+- **persist-refusal-and-label-new-chat** — unknown:charles@charlesdeMac-mini.local (unknown)
+  - Accepted from: manual
+  - Last heartbeat: 2026-04-25T16:26:38.176Z
+
+### Stale Claims
+
+_(none)_
 
 <!-- SPECTRA-UX:ROADMAP-AUTO:/claims -->
 
@@ -89,6 +98,7 @@ _No active claims._
 ### Independent (can run in parallel)
 
 - `add-sse-resilience`
+- `persist-refusal-and-label-new-chat`
 
 ### Mutex (same spec touched)
 
