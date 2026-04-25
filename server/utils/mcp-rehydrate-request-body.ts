@@ -29,12 +29,39 @@ interface RequestLike {
  *
  * Uses `readBody(event)` which hits the H3 body cache populated by the
  * earlier reads — it does NOT re-drain the original stream.
+ *
+ * GET / HEAD / DELETE have no body to rehydrate, but the worker shim still
+ * needs to forward `event.context.mcpAuthEnvelope` as the
+ * `X-Mcp-Auth-Context` header so the DO can verify the auth context. Without
+ * this injection, `mcp-agents-compat`'s GET/DELETE → DO branch falls through
+ * to the stateless 405 path because the incoming client request only carries
+ * `Authorization: Bearer` — the envelope header is added by us, not the
+ * client. Skip the replay entirely when no envelope is present so legitimate
+ * stateless 405 fallback (flag=false / no auth) still works.
  */
 export async function rehydrateMcpRequestBody(event: H3Event): Promise<void> {
   const eventShape = event as unknown as WebRequestEventShape
   const original = eventShape.web?.request ?? eventShape.req
   if (!original) return
-  if (original.method === 'GET' || original.method === 'HEAD') return
+
+  const envelope = eventShape.context?.mcpAuthEnvelope
+  const headers = new Headers(original.headers)
+  if (envelope) {
+    headers.set(MCP_AUTH_CONTEXT_HEADER, envelope)
+  }
+
+  if (original.method === 'GET' || original.method === 'HEAD' || original.method === 'DELETE') {
+    if (!envelope) return
+    // MCP Streamable HTTP spec 2025-11-25 confirms DELETE /mcp carries no body
+    // (client-initiated session termination is signaled by method + Mcp-Session-Id
+    // alone), so we drop body from the replay even though HTTP technically allows it.
+    const replay = new Request(resolveReplayUrl(original.url, event), {
+      method: original.method,
+      headers,
+    })
+    installReplayRequest(event, replay)
+    return
+  }
 
   const parsed = await readBody(event)
   const bodyText =
@@ -43,12 +70,6 @@ export async function rehydrateMcpRequestBody(event: H3Event): Promise<void> {
       : typeof parsed === 'string'
         ? parsed
         : JSON.stringify(parsed)
-
-  const headers = new Headers(original.headers)
-  const envelope = (event as unknown as WebRequestEventShape).context?.mcpAuthEnvelope
-  if (envelope) {
-    headers.set(MCP_AUTH_CONTEXT_HEADER, envelope)
-  }
 
   const replay = new Request(resolveReplayUrl(original.url, event), {
     method: original.method,

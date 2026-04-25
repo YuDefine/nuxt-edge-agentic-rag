@@ -157,14 +157,14 @@ Claude.ai client                Worker (Nuxt /mcp)            DO MCPSessionDurab
      |                                |                              |
      |--POST tools/call-------------->|--fetch--------------------->|
      |                                |                              |--start tool call
-     |<==SSE: progress notif (eventId=stream-1:5)====================<|
-     |<==SSE: progress notif (eventId=stream-1:6)====================<|
+     |<==SSE: progress notif (eventId=e-0000000000000005)============<|
+     |<==SSE: progress notif (eventId=e-0000000000000006)============<|
      |<-{result, response}------------|<-{response}------------------|
-     |<==SSE: complete (eventId=stream-1:7)===========================<|
+     |<==SSE: complete (eventId=e-0000000000000007)===================<|
      |                                |                              |
      |   (network failure / disconnect)|                             |--keep events in storage
      |                                |                              |
-     |--GET /mcp (Last-Event-Id:5)--->|--fetch (GET forward)-------->|
+     |--GET /mcp (Last-Event-Id: e-0000000000000005)----------------->|
      |                                |                              |--replay events 6,7
      |<==SSE: replay event 6==========================================<|
      |<==SSE: replay event 7==========================================<|
@@ -204,51 +204,61 @@ DO instance 維護 `Map<connectionId, SseWriterEntry>`（其中 `SseWriterEntry 
 
 ## Storage Schema for Event Queue (scope expansion)
 
-DO `ctx.storage` 新增 events queue rows：
+DO `ctx.storage` 新增 events queue rows，由 `server/durable-objects/mcp-event-shim.ts` 統一封裝：
 
 ```typescript
-// Row key: `events:<eventId>`
+// Row key: `sse-event:<16 位 zero-padded counter>`（與 broadcast routing 配合，
+// 整個 session 共享單一 monotonic counter；行 lex 序 = 數值序）
 interface SseEventRow {
-  eventId: string // e.g. "stream-1:7" — encode origin stream + per-stream cursor
-  data: string // JSON-RPC notification serialized as SSE event payload
+  counter: number // session-wide monotonic
+  message: JSONRPCMessage // serialize 成 SSE `data:` 行
   eventType?: string // optional SSE `event:` field（spec 預設 "message"）
   timestamp: number // Date.now() at enqueue
 }
 ```
 
-**Quota / TTL eviction**:
+對應的 SSE wire format（client 看到）：
 
-- max 100 events / session（FIFO）— 超過時 alarm cleanup 刪最舊
-- 5 分鐘 TTL — alarm 每分鐘掃描 `events:*` rows 刪 timestamp < `Date.now() - 5*60*1000`
-- DELETE /mcp → 立刻清整個 events:\* range
+```
+id: e-<padded counter>
+event: <eventType — optional>
+data: <JSON.stringify(message)>
+\n
+```
 
-**Storage cost**: 每 row ~1KB；單 session 最大 100KB；DO storage quota 128MB → 同 instance 可承載 ~1000 active sessions 同時上限滿載（保守）
+**Quota / TTL eviction**：
+
+- max 100 events / session（FIFO）— `enforceEventQuota()` 在 push 後檢查、超過時刪最舊
+- 5 分鐘 TTL — `cleanupExpiredEvents()` 由 alarm 觸發；timestamp < `now - 5*60*1000` 的 row 刪除
+- DELETE /mcp → `clearAllSseEvents()` 立刻清整個 `sse-event:*` range
+
+**Storage cost**：每 row ~1KB；單 session 最大 100KB；DO storage quota 128MB → 同 instance 可承載 ~1000 active sessions 同時上限滿載（保守）
 
 ## Last-Event-Id Resumability (scope expansion)
 
-### eventId 編碼
+### eventId 編碼（broadcast routing 對應的 single-counter 設計）
 
-格式：`<streamType>:<counter>`
+格式：`e-<16 位 zero-padded counter>`（per `mcp-event-shim.ts` 的 `encodeEventId(n)`）
 
-- `stream-1` = SSE channel from GET /mcp 第一條
-- `stream-2` = SSE channel from GET /mcp 第二條（multi-connection 場景）
-- counter = 此 stream 內 monotonic increment
+- counter = session-wide monotonic（broadcast routing 讓所有 connection 共看同一序列；client 端用 eventId dedupe）
+- 16 位 zero-pad 讓 lex 序 = 數值序，符合 DO storage `list({ start, prefix })` 的字串比較行為
 
-spec 要求 eventId globally unique within session，且 encode origin stream，便於 server 對應 `Last-Event-Id` 路由到正確 stream replay queue。
+設計選擇：原本 design 草案採 `<streamType>:<counter>`（per-stream 編碼）配合 newest-active routing。但實作 review 揭露 newest-active 會讓 client 為 redundancy 開兩條 stream 時，舊 stream silently miss 通知。改為 broadcast 後 per-stream cursor 不再有意義，回到單一 session-wide counter 是最小原則 — 簡化 storage list / replay query、避免 stream lifecycle 漏 row 的邊界。
 
 ### Replay 演算法
 
-GET /mcp 帶 `Last-Event-Id: <eventId>` 時：
+GET /mcp 帶 `Last-Event-Id: <eventId>` 時，`handleGet`：
 
-1. 解析 eventId → 取 streamType（決定哪條 stream 的 replay queue）
-2. `ctx.storage.list({ prefix: 'events:', start: 'events:<eventId>:next' })` 取出所有 missed events
-3. 透過 newly-opened SSE channel 依序 push（保持 SSE event ID 連續）
-4. Replay 完畢後，新 events 繼續 push 至此 stream
+1. `decodeEventId(header)` → 取得 numeric counter 或 null
+2. counter 為 null（malformed header）→ 立刻 push 一個 `notifications/events_dropped` frame，`params.reason: 'invalid_last_event_id'`、`params.header` 帶原 raw 值；不嘗試 replay
+3. counter 為合法值 → `listEventsAfter(storage, counter)` 取得 storage 中所有 `counter > N` 的 rows，依序透過 newly-opened SSE channel push
+4. Replay 完畢後，新 events 繼續走 broadcast 進這條 stream（與其他 active stream 同時 emit）
 
-若 `Last-Event-Id` 對應 row 已被 TTL 清除：
+若 `Last-Event-Id` 為合法格式但對應 row 已被 TTL 清除：
 
-- 回 `id: <newId>\nevent: events_dropped\ndata: {"missed":N}\n\n` 提示 client 漏掉 N 個 events
-- client 應自行決定是否需要 re-init session（spec 沒強制；toolkit 用法層判斷）
+- `listEventsAfter` 自然回空（被 cleanup 的 row 不在 storage）
+- 不送 `events_dropped`（spec 無強制；client 端用 eventId 跳號偵測 + reset 為合理應對）
+- 與 `invalid_last_event_id` 區分：前者是「server 知道 client 卡在哪、就是沒了」，後者是「server 連 header 都看不懂」
 
 ## Toolkit-Transparent Integration (scope expansion)
 

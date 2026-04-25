@@ -23,6 +23,7 @@ function makeEvent(opts: {
   url?: string
   headers?: HeadersInit
   cachedBody?: unknown
+  envelope?: string
 }): H3Event {
   const method = opts.method ?? 'POST'
   const url = opts.url ?? 'https://worker.test/mcp'
@@ -37,6 +38,7 @@ function makeEvent(opts: {
 
   return {
     _body: opts.cachedBody,
+    context: opts.envelope ? { mcpAuthEnvelope: opts.envelope } : {},
     web: {
       request: originalRequest,
     },
@@ -88,7 +90,7 @@ describe('rehydrateMcpRequestBody', () => {
     }
   })
 
-  it('skips rehydration for GET requests', async () => {
+  it('skips replay for GET when no envelope is present', async () => {
     const event = makeEvent({ method: 'GET', cachedBody: undefined })
     const original = (event as unknown as { web: { request: Request } }).web.request
 
@@ -97,13 +99,62 @@ describe('rehydrateMcpRequestBody', () => {
     expect((event as unknown as { web: { request: Request } }).web.request).toBe(original)
   })
 
-  it('skips rehydration for HEAD requests', async () => {
+  it('skips replay for HEAD when no envelope is present', async () => {
     const event = makeEvent({ method: 'HEAD', cachedBody: undefined })
     const original = (event as unknown as { web: { request: Request } }).web.request
 
     await rehydrateMcpRequestBody(event)
 
     expect((event as unknown as { web: { request: Request } }).web.request).toBe(original)
+  })
+
+  it('skips replay for DELETE when no envelope is present', async () => {
+    const event = makeEvent({ method: 'DELETE', cachedBody: undefined })
+    const original = (event as unknown as { web: { request: Request } }).web.request
+
+    await rehydrateMcpRequestBody(event)
+
+    expect((event as unknown as { web: { request: Request } }).web.request).toBe(original)
+  })
+
+  it('installs replay with X-Mcp-Auth-Context header for GET when envelope is present', async () => {
+    const event = makeEvent({
+      method: 'GET',
+      headers: {
+        authorization: 'Bearer client-token',
+        'mcp-session-id': 'sess-123',
+      },
+      cachedBody: undefined,
+      envelope: 'envelope-base64-payload',
+    })
+    const original = (event as unknown as { web: { request: Request } }).web.request
+
+    await rehydrateMcpRequestBody(event)
+
+    const replay = (event as unknown as { web: { request: Request } }).web.request
+    expect(replay).not.toBe(original)
+    expect(replay.method).toBe('GET')
+    expect(replay.headers.get('X-Mcp-Auth-Context')).toBe('envelope-base64-payload')
+    expect(replay.headers.get('authorization')).toBe('Bearer client-token')
+    expect(replay.headers.get('mcp-session-id')).toBe('sess-123')
+  })
+
+  it('installs replay with X-Mcp-Auth-Context header for DELETE when envelope is present', async () => {
+    const event = makeEvent({
+      method: 'DELETE',
+      headers: {
+        authorization: 'Bearer client-token',
+        'mcp-session-id': 'sess-456',
+      },
+      cachedBody: undefined,
+      envelope: 'envelope-base64-payload-2',
+    })
+
+    await rehydrateMcpRequestBody(event)
+
+    const replay = (event as unknown as { web: { request: Request } }).web.request
+    expect(replay.method).toBe('DELETE')
+    expect(replay.headers.get('X-Mcp-Auth-Context')).toBe('envelope-base64-payload-2')
   })
 
   it('is a no-op when event.web is missing', async () => {
