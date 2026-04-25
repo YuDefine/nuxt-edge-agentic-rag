@@ -65,6 +65,12 @@
   const messageInputRef = ref<{ focusAndClear: () => void } | null>(null)
 
   let activeController: AbortController | null = null
+  // TD-047 — Capture conversation metadata from the SSE `ready` event so that
+  // post-`ready` failures (AutoRAG / Workers AI / judge errors emitted as
+  // `error` events after the DB row was already created) can still emit
+  // `conversation-persisted` upward. Without this, sidebar / active id never
+  // refresh and the next user message creates an orphan conversation row.
+  let pendingConversation: { conversationCreated: boolean; conversationId: string } | null = null
   const toast = useToast()
   const isConversationBusy = computed(() => isSubmitting.value || isStreaming.value)
 
@@ -179,6 +185,7 @@
     isStreaming.value = true
     streamingContent.value = ''
     streamingError.value = null
+    pendingConversation = null
 
     const controller = new AbortController()
     activeController = controller
@@ -216,6 +223,12 @@
       const terminalEvent = await readChatStream(response, {
         onTextDelta: (delta) => {
           streamingContent.value += delta
+        },
+        onReady: (data) => {
+          pendingConversation = {
+            conversationCreated: data.conversationCreated,
+            conversationId: data.conversationId,
+          }
         },
         signal: controller.signal,
       })
@@ -262,11 +275,33 @@
         }
         messages.value.push(errorAssistantMessage)
       }
+
+      // TD-047 — When the server already created the conversation row (signal
+      // received via `ready` SSE event) but a later stream stage threw, we
+      // still owe the parent a `conversation-persisted` event so that the
+      // sidebar refreshes and the active id locks to this conversation.
+      // Otherwise the next user message will create an orphan conversation.
+      if (
+        kind !== 'abort' &&
+        pendingConversation !== null &&
+        typeof pendingConversation === 'object'
+      ) {
+        const persistedFallback = pendingConversation as {
+          conversationCreated: boolean
+          conversationId: string
+        }
+        emit('conversation-persisted', {
+          conversationId: persistedFallback.conversationId,
+          conversationCreated: persistedFallback.conversationCreated,
+          messages: cloneChatMessages(messages.value),
+        })
+      }
     } finally {
       isSubmitting.value = false
       isStreaming.value = false
       streamingContent.value = ''
       activeController = null
+      pendingConversation = null
       scrollToBottom()
     }
   }
