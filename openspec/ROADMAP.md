@@ -67,9 +67,9 @@ _(none)_
 
 ## Active Changes
 
-_last synced: 2026-04-25T08:15:26.840Z_
+_last synced: 2026-04-25T10:59:04.576Z_
 
-4 active changes (0 ready · 4 in progress · 0 draft · 0 blocked)
+2 active changes (0 ready · 2 in progress · 0 draft · 0 blocked)
 
 ### Ready to apply
 
@@ -77,13 +77,9 @@ _(none)_
 
 ### In progress
 
-- **add-new-conversation-entry-points** — 19/26 tasks (73%)
-  - Specs: `web-chat-ui`
-- **fix-user-profile-id-drift** — 18/25 tasks (72%)
-  - Specs: `auth-storage-consistency`
 - **upgrade-mcp-to-durable-objects** — 17/27 tasks (63%)
   - Specs: `mcp-knowledge-tools`
-- **wire-do-tool-dispatch** — 22/34 tasks (65%)
+- **wire-do-tool-dispatch** — 27/35 tasks (77%)
   - Specs: `mcp-knowledge-tools`
 
 ### Draft
@@ -103,26 +99,18 @@ _(none)_
 > 即時 ownership 由 `.spectra/claims/*.json` 提供。
 > 接手 handoff / 開始做 change 時，先 claim，再移除 `HANDOFF.md` 對應項目。
 
-3 claims (1 active · 2 stale)
+1 claim (1 active · 0 stale)
 
 ### Live Ownership
 
 - **wire-do-tool-dispatch** — unknown:charles@charlesdeMac-mini.local (unknown)
   - Accepted from: manual
-  - Last heartbeat: 2026-04-25T08:14:58.374Z
-  - Note: 接手 v0.43.3 production broken state，執行 v0.43.4 stop-gap rollback (SSE 未完成)
+  - Last heartbeat: 2026-04-25T10:06:25.765Z
+  - Note: v0.43.4 stop-gap 收尾完成；production runtime flag = false 已驗證；下次推進為 §5.x SSE Tests
 
 ### Stale Claims
 
-- **fix-user-profile-id-drift** — unknown:charles@charlesdeMac-mini.local (unknown)
-  - Accepted from: manual
-  - Last heartbeat: 2026-04-24T22:45:13.683Z
-  - Note: apply by main session, implementing TD-044 fix
-  - Status: stale (last heartbeat 2026-04-24T22:45:13.683Z)
-- **add-new-conversation-entry-points** — unknown:charles@charlesdeMac-mini.local (unknown)
-  - Accepted from: manual
-  - Last heartbeat: 2026-04-24T22:39:19.472Z
-  - Status: stale (last heartbeat 2026-04-24T22:39:19.472Z)
+_(none)_
 
 <!-- SPECTRA-UX:ROADMAP-AUTO:/claims -->
 
@@ -134,8 +122,7 @@ _(none)_
 
 ### Independent (can run in parallel)
 
-- `add-new-conversation-entry-points`
-- `fix-user-profile-id-drift`
+_(none)_
 
 ### Mutex (same spec touched)
 
