@@ -5,6 +5,7 @@
   import { ChatConversationHistoryInjectionKey } from '~/composables/useChatConversationHistory'
   import { useChatConversationSession } from '~/composables/useChatConversationSession'
   import { loadChatConversationDetail } from '~/utils/chat-conversation-loader'
+  import { clearConversationSessionStorage } from '~/utils/chat-conversation-state'
 
   /**
    * Home page — chat UI. Authentication is required; unauthenticated
@@ -91,6 +92,14 @@
     })
   }
 
+  function handleNewConversationRequest() {
+    handleConversationCleared()
+    if (import.meta.client) {
+      clearConversationSessionStorage(user.value?.id ?? null, sessionStorage)
+    }
+    historyDrawer.close()
+  }
+
   function handleConversationBusyChange(isBusy: boolean) {
     conversationInteractionLocked.value = isBusy
   }
@@ -155,6 +164,7 @@
             @conversation-cleared="handleConversationCleared"
             @conversation-selected="handleConversationSelected"
             @expand-request="expandHistorySidebar"
+            @new-conversation-request="handleNewConversationRequest"
           >
             <template #header-action>
               <UButton
@@ -180,6 +190,18 @@
                 向知識庫提問，獲取準確的答案與引用來源
               </p>
             </div>
+            <UButton
+              data-testid="chat-header-new-conversation-button"
+              icon="i-lucide-message-circle-plus"
+              variant="ghost"
+              color="neutral"
+              size="sm"
+              aria-label="新對話"
+              :disabled="conversationInteractionLocked"
+              @click="handleNewConversationRequest"
+            >
+              <span class="hidden sm:inline">新對話</span>
+            </UButton>
           </div>
 
           <LazyChatContainer
@@ -213,6 +235,7 @@
               :selected-conversation-id="activeConversationId"
               @conversation-cleared="handleConversationCleared"
               @conversation-selected="handleConversationSelected"
+              @new-conversation-request="handleNewConversationRequest"
             />
           </div>
         </template>

@@ -150,4 +150,51 @@ describe('ConversationHistory', () => {
 
     expect(historyMock.selectConversation).toHaveBeenCalledWith('今日對話')
   })
+
+  it('emits new-conversation-request from the collapsed rail plus button (Explicit New Conversation Entry Points)', async () => {
+    const wrapper = await mountConversationHistory({ collapsed: true })
+
+    const collapsedNewButton = wrapper.get(
+      '[data-testid="conversation-history-new-button-collapsed"]',
+    )
+
+    await collapsedNewButton.trigger('click')
+
+    expect(wrapper.emitted('new-conversation-request')).toBeDefined()
+    expect(wrapper.emitted('new-conversation-request')).toHaveLength(1)
+    // 修綁定後 collapsed plus button 不再呼叫 requestExpand
+    expect(wrapper.emitted('expand-request')).toBeUndefined()
+  })
+
+  it('emits new-conversation-request from the expanded header button (Explicit New Conversation Entry Points)', async () => {
+    const wrapper = await mountConversationHistory()
+
+    const expandedNewButton = wrapper.get(
+      '[data-testid="conversation-history-new-button-expanded"]',
+    )
+
+    await expandedNewButton.trigger('click')
+
+    expect(wrapper.emitted('new-conversation-request')).toBeDefined()
+    expect(wrapper.emitted('new-conversation-request')).toHaveLength(1)
+  })
+
+  it('disables both new-conversation buttons when props.disabled is true', async () => {
+    const collapsedWrapper = await mountConversationHistory({
+      collapsed: true,
+      disabled: true,
+    })
+    const expandedWrapper = await mountConversationHistory({ disabled: true })
+
+    expect(
+      collapsedWrapper
+        .get('[data-testid="conversation-history-new-button-collapsed"]')
+        .attributes('disabled'),
+    ).toBeDefined()
+    expect(
+      expandedWrapper
+        .get('[data-testid="conversation-history-new-button-expanded"]')
+        .attributes('disabled'),
+    ).toBeDefined()
+  })
 })

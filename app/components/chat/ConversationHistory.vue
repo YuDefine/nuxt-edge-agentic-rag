@@ -31,6 +31,7 @@
       },
     ]
     'expand-request': []
+    'new-conversation-request': []
   }>()
 
   const { $csrfFetch } = useNuxtApp() as unknown as {
@@ -72,6 +73,10 @@
 
   function requestExpand(): void {
     emit('expand-request')
+  }
+
+  function requestNewConversation(): void {
+    emit('new-conversation-request')
   }
 
   const bucketOpenState = ref<Record<ConversationRecencyBucket, boolean>>({
@@ -127,13 +132,15 @@
     </button>
 
     <LazyUButton
-      icon="i-lucide-plus"
+      data-testid="conversation-history-new-button-collapsed"
+      icon="i-lucide-message-circle-plus"
       variant="ghost"
       color="neutral"
       size="xs"
-      aria-label="新增對話"
+      aria-label="新對話"
       class="mt-2"
-      @click="requestExpand"
+      :disabled="props.disabled"
+      @click="requestNewConversation"
     />
   </div>
 
@@ -142,6 +149,16 @@
       <h2 class="text-xs font-semibold tracking-wider text-muted uppercase">對話記錄</h2>
       <div class="flex items-center gap-1">
         <span v-if="isLoading" class="text-[11px] text-muted">載入中</span>
+        <LazyUButton
+          data-testid="conversation-history-new-button-expanded"
+          icon="i-lucide-message-circle-plus"
+          variant="ghost"
+          color="neutral"
+          size="xs"
+          aria-label="新對話"
+          :disabled="props.disabled"
+          @click="requestNewConversation"
+        />
         <slot name="header-action" />
       </div>
     </div>
