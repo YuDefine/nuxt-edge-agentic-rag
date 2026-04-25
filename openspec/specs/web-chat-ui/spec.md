@@ -160,7 +160,7 @@ code:
 
 ### Requirement: Persisted Conversation Session Continuity
 
-The Web chat UI SHALL treat the persisted `conversations/messages` store as the source of truth for conversation identity and message history. A first question without an existing conversation selection SHALL create a new persisted conversation, subsequent questions in the same active thread SHALL reuse that `conversationId`, and a page reload SHALL restore the visible conversation history from the server rather than from client-only memory.
+The Web chat UI SHALL treat the persisted `conversations/messages` store as the source of truth for conversation identity and message history. A first question without an existing conversation selection SHALL create a new persisted conversation, subsequent questions in the same active thread SHALL reuse that `conversationId`, and a page reload SHALL restore the visible conversation history from the server rather than from client-only memory. Reload-time auto-restoration of a previously active conversation SHALL be governed by the `web-chat:active-conversation:${userId}` sessionStorage key: when the key is present and points to a conversation that is still visible in the user's history, the UI SHALL restore that conversation; when the key is absent (including after the user has explicitly started a new conversation), the UI SHALL render the empty new-conversation state instead of auto-restoring any prior conversation.
 
 #### Scenario: First question creates a persisted conversation
 
@@ -180,118 +180,45 @@ The Web chat UI SHALL treat the persisted `conversations/messages` store as the 
 - **THEN** the UI sends that same `conversationId` with the request
 - **AND** the resulting user and assistant messages are appended to the same persisted conversation
 
+#### Scenario: Reload after explicit new conversation does not auto-restore
+
+- **WHEN** a signed-in user clicks any new-conversation button (which removes the `web-chat:active-conversation:${userId}` sessionStorage key) and then reloads the page without sending any message
+- **THEN** the UI loads the user's visible conversations from the server
+- **AND** the chat main column renders the empty new-conversation state without auto-restoring any prior conversation
+
+#### Scenario: Reload without explicit opt-out auto-restores prior conversation
+
+- **WHEN** a signed-in user has an active conversation A persisted in sessionStorage and reloads the page without clicking any new-conversation button
+- **THEN** the UI auto-restores conversation A's persisted messages so heavy users return to where they left off
+
 <!-- @trace
-source: complete-web-chat-persistence
-updated: 2026-04-23
+source: add-new-conversation-entry-points
+updated: 2026-04-25
 code:
-  - reports/archive/main-v0.0.27.md
-  - .agents/skills/spectra-discuss/SKILL.md
-  - reports/archive/main-v0.0.36.md
-  - reports/archive/main-v0.0.13.md
-  - .agents/skills/spectra-debug/SKILL.md
-  - tooling/__init__.py
-  - references/yuntech/專題報告編排規範1141216.pdf
-  - tooling/scripts/__init__.py
-  - reports/archive/main-v0.0.35.md
-  - reports/archive/main-v0.0.37.docx
-  - scripts/spectra-ux/design-gate.sh
-  - tooling/scripts/legacy/transform_v36.py
-  - reports/archive/main-v0.0.11.docx
-  - tooling/scripts/docx_diff.py
-  - reports/archive/main-v0.0.37.md
-  - package.json
-  - reports/archive/main-v0.0.21.md
-  - reports/archive/main-v0.0.12.md
-  - scripts/spectra-ux/roadmap-sync.mts
-  - README.md
-  - tooling/scripts/clone_section.py
-  - tooling/scripts/docx_rebuild_content.py
-  - docs/verify/index.md
-  - .agents/skills/spectra-propose/SKILL.md
-  - reports/archive/main-v0.0.20.md
-  - spectra-ux.config.json
-  - app/components/chat/Container.vue
-  - tooling/scripts/docx_sections.py
-  - reports/archive/main-v0.0.29.md
-  - reports/archive/main-v0.0.32.md
-  - reports/notes/diagram.md
-  - tooling/scripts/office/__init__.py
-  - references/yuntech/人工智慧實務專題書面成果報告內容規範1141216.pdf
-  - app/composables/useChatConversationHistory.ts
-  - reports/archive/main-v0.0.22.md
-  - app/utils/chat-conversation-state.ts
-  - reports/archive/main-v0.0.18.md
-  - .agents/skills/spectra-audit/SKILL.md
-  - docs/verify/evidence/web-chat-persistence.json
-  - .agents/skills/spectra-archive/SKILL.md
-  - app/composables/useChatConversationSession.ts
-  - .agents/skills/spectra-apply/SKILL.md
-  - server/api/auth/account/link-google-for-passkey-first/callback.get.ts
-  - .agents/skills/spectra-ingest/SKILL.md
-  - deliverables/defense/國立雲林科技大學人工智慧技優專班114學年實務專題審查.pdf
-  - tooling/scripts/office/pack.py
-  - reports/archive/main-v0.0.34.md
-  - app/types/chat.ts
-  - reports/archive/main-v0.0.25.md
-  - tooling/requirements.txt
-  - app/pages/account/settings.vue
-  - server/utils/link-google-for-passkey-first.ts
-  - scripts/spectra-ux/ui-qa-reminder.sh
-  - app/components/chat/ConversationHistory.vue
-  - app/pages/index.vue
-  - docs/verify/WEB_CHAT_PERSISTENCE_VERIFICATION.md
-  - app/utils/assert-never.ts
-  - reports/archive/main-v0.0.23.md
-  - server/api/auth/account/link-google-for-passkey-first/index.get.ts
-  - reports/archive/main-v0.0.1.docx
-  - reports/archive/main-v0.0.33.md
-  - reports/archive/main-v0.0.49.md
-  - reports/archive/main-v0.0.11.md
-  - reports/archive/main-v0.0.50.md
-  - HANDOFF.md
-  - templates/海報樣板.pptx
-  - .agents/skills/spectra-ask/SKILL.md
-  - tooling/scripts/docx_apply.py
-  - reports/archive/main-v0.0.48.md
-  - tooling/scripts/office/unpack.py
-  - playwright.config.ts
-  - reports/archive/main-v0.0.30.md
-  - reports/archive/main-v0.0.26.md
-  - scripts/spectra-ux/collect-followups.mts
+  - scripts/probe-mcp-sse-mock-client.sh
+  - server/durable-objects/mcp-session.ts
+  - server/database/migrations/0012_fk_rebuild_user_references.sql
+  - scripts/mcp/staging-sse-acceptance.mts
+  - server/auth.config.ts
+  - wrangler.jsonc
   - nuxt.config.ts
-  - scripts/spectra-ux/design-inject.sh
-  - tooling/scripts/sync_docx_content.py
-  - reports/archive/main-v0.0.10.md
-  - reports/archive/main-v0.0.11_assets/image1.jpeg
-  - reports/archive/main-v0.0.31.md
-  - deliverables/defense/答辯準備_口試Q&A.md
-  - tooling/scripts/clone_insert_docx.py
-  - GEMINI.md
-  - reports/archive/main-v0.0.36.docx
-  - .agents/skills/spectra-commit/SKILL.md
-  - AGENTS.md
-  - reports/archive/main-v0.0.19.md
-  - reports/archive/main-v0.0.24.md
-  - reports/archive/main-v0.0.28.md
-  - reports/latest.md
-  - reports/archive/main-v0.0.16.md
-  - scripts/audit-ux-drift.mts
-  - shared/utils/link-google-for-passkey-first.ts
-  - reports/archive/main-v0.0.14.md
-  - reports/archive/main-v0.0.15.md
-  - reports/archive/main-v0.0.17.md
-  - tooling/scripts/extract_docx_to_md.py
+  - HANDOFF.md
+  - server/utils/mcp-rehydrate-request-body.ts
+  - local/reports/archive/main-v0.0.53.md
+  - local/reports/archive/main-v0.0.54-draft.docx
+  - docs/tech-debt.md
+  - local/reports/archive/main-v0.0.54-draft.md
+  - package.json
+  - server/utils/user-profile-sync.ts
+  - docs/decisions/2026-04-25-user-profiles-app-level-migrate.md
 tests:
-  - test/unit/chat-conversation-session.test.ts
-  - e2e/chat-persistence.spec.ts
-  - test/unit/oauth-callback.spec.ts
-  - tooling/tests/test_extract_docx_to_md.py
-  - test/unit/chat-conversation-state.test.ts
-  - tooling/tests/test_office_pack_unpack.py
+  - test/unit/auth-user-profiles-sync.spec.ts
+  - test/unit/mcp-rehydrate-request-body.test.ts
   - test/integration/passkey-first-link-google.spec.ts
-  - test/unit/better-auth-passkey-hotfix-version.test.ts
-  - test/unit/chat-conversation-history.test.ts
-  - test/unit/link-google-for-passkey-first-initiator.test.ts
+  - test/unit/oauth-callback.spec.ts
+  - e2e/new-conversation-button.spec.ts
+  - test/integration/mcp-session-sse.spec.ts
+  - e2e/new-conversation-entrypoints-screenshots.spec.ts
 -->
 
 ---
@@ -557,4 +484,75 @@ code:
   - HANDOFF.md
 tests:
   - test/unit/create-chat-conversation-history.spec.ts
+-->
+
+---
+
+### Requirement: Explicit New Conversation Entry Points
+
+The Web chat UI SHALL provide explicit user-visible entry points to start a new conversation. The chat main column header SHALL render a "new conversation" button. The conversation history sidebar SHALL render a "new conversation" button in its expanded header alongside the "對話記錄" title. The conversation history sidebar's collapsed-rail plus icon SHALL emit a new-conversation request rather than expanding the sidebar. Activating any of these buttons SHALL clear the active conversation state, remove the corresponding `web-chat:active-conversation:${userId}` sessionStorage key, and close the off-canvas history drawer when open. The buttons SHALL be disabled while a conversation interaction is in flight (mirroring the existing `conversationInteractionLocked` state).
+
+#### Scenario: User starts a new conversation from the chat header
+
+- **WHEN** a signed-in user with an active conversation A clicks the new-conversation button in the chat main column header
+- **THEN** the message pane clears to an empty state
+- **AND** the active conversation id becomes null
+- **AND** the conversation history sidebar no longer highlights conversation A
+- **AND** the `web-chat:active-conversation:${userId}` sessionStorage key is removed
+
+#### Scenario: User starts a new conversation from the sidebar expanded header
+
+- **WHEN** a signed-in user clicks the new-conversation button in the conversation history sidebar's expanded header
+- **THEN** the same state reset occurs as the chat header button (message pane cleared, active id null, sessionStorage key removed)
+
+#### Scenario: User starts a new conversation from the collapsed rail plus icon
+
+- **WHEN** a signed-in user clicks the plus icon in the conversation history sidebar's collapsed rail
+- **THEN** the UI emits a new-conversation request that resets active conversation state instead of merely expanding the sidebar
+
+#### Scenario: New conversation closes the off-canvas history drawer
+
+- **WHEN** a signed-in user on a viewport below the `lg` breakpoint has the conversation history drawer open and clicks any new-conversation button
+- **THEN** the active conversation state resets
+- **AND** the off-canvas history drawer closes so the chat main column becomes visible
+
+#### Scenario: New conversation buttons are disabled during in-flight interaction
+
+- **WHEN** a signed-in user is currently streaming a response or otherwise has `conversationInteractionLocked = true`
+- **THEN** all new-conversation buttons render in a disabled state and ignore activation
+
+#### Scenario: SessionStorage unavailability does not block the action
+
+- **WHEN** a signed-in user clicks a new-conversation button in a browser context where sessionStorage is unavailable (Safari private mode, quota exceeded, DOM Storage disabled)
+- **THEN** the active conversation state still resets
+- **AND** the sessionStorage clear attempt fails silently without surfacing an error toast or interrupting the UI flow
+
+<!-- @trace
+source: add-new-conversation-entry-points
+updated: 2026-04-25
+code:
+  - scripts/probe-mcp-sse-mock-client.sh
+  - server/durable-objects/mcp-session.ts
+  - server/database/migrations/0012_fk_rebuild_user_references.sql
+  - scripts/mcp/staging-sse-acceptance.mts
+  - server/auth.config.ts
+  - wrangler.jsonc
+  - nuxt.config.ts
+  - HANDOFF.md
+  - server/utils/mcp-rehydrate-request-body.ts
+  - local/reports/archive/main-v0.0.53.md
+  - local/reports/archive/main-v0.0.54-draft.docx
+  - docs/tech-debt.md
+  - local/reports/archive/main-v0.0.54-draft.md
+  - package.json
+  - server/utils/user-profile-sync.ts
+  - docs/decisions/2026-04-25-user-profiles-app-level-migrate.md
+tests:
+  - test/unit/auth-user-profiles-sync.spec.ts
+  - test/unit/mcp-rehydrate-request-body.test.ts
+  - test/integration/passkey-first-link-google.spec.ts
+  - test/unit/oauth-callback.spec.ts
+  - e2e/new-conversation-button.spec.ts
+  - test/integration/mcp-session-sse.spec.ts
+  - e2e/new-conversation-entrypoints-screenshots.spec.ts
 -->

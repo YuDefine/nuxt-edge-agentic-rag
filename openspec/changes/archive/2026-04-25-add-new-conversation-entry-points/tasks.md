@@ -34,13 +34,15 @@
 ## 6. 文件同步
 
 - [x] 6.1 apply 開始時將 `docs/tech-debt.md` TD-048 Status 改為 `in-progress`
-- [ ] 6.2 archive 前將 `docs/tech-debt.md` TD-048 Status 改為 `done`，並從 `openspec/ROADMAP.md` Next Moves 移除對應條目
+- [x] 6.2 archive 前將 `docs/tech-debt.md` TD-048 Status 改為 `done`，並從 `openspec/ROADMAP.md` Next Moves 移除對應條目
 
 ## 人工檢查
 
-- [ ] 7.1 進對話 A 中、點 chat header 新對話按鈕 → messages 清空 / sidebar A 不再 highlight / sessionStorage `web-chat:active-conversation:${userId}` key 移除
-- [ ] 7.2 新對話畫面點 sidebar 的對話 B → 載入 B 歷史 messages / sidebar B highlight / sessionStorage 寫入 B.id
-- [ ] 7.3 點過新對話、未送任何訊息直接 reload → 仍是新對話畫面（不 auto-restore 任何舊對話）
-- [ ] 7.4 完全沒點過新對話、沒切 sidebar 即 reload → auto-restore 上次對話（既有重度使用者體驗不退步）
-- [ ] 7.5 在 `< lg` 視窗 drawer 開啟狀態下點側欄 collapsed plus 按鈕 → drawer 關閉 + 進新對話畫面 + sidebar 不再 highlight 任何項
-- [ ] 7.6 Safari private mode 點任一新對話按鈕 → 仍能進新對話畫面、無 error toast、無 console error
+- [x] 7.1 進對話 A 中、點 chat header 新對話按鈕 → messages 清空 / sidebar A 不再 highlight / sessionStorage `web-chat:active-conversation:${userId}` key 移除（使用者 OK 2026-04-25 — `e2e/new-conversation-button.spec.ts` (a) 全綠驗證）
+- [x] 7.2 新對話畫面點 sidebar 的對話 B → 載入 B 歷史 messages / sidebar B highlight / sessionStorage 寫入 B.id（使用者 OK 2026-04-25 — (b) 含 `expect.poll` 處理 async write）
+- [x] 7.3 點過新對話、未送任何訊息直接 reload → 仍是新對話畫面（不 auto-restore 任何舊對話）（使用者 OK 2026-04-25 — (c) 全綠）
+- [x] 7.4 完全沒點過新對話、沒切 sidebar 即 reload → auto-restore 上次對話（既有重度使用者體驗不退步）（使用者 OK 2026-04-25 — (d) 全綠）
+- [x] 7.5 在 `< lg` 視窗 drawer 開啟狀態下點側欄 collapsed plus 按鈕 → drawer 關閉 + 進新對話畫面 + sidebar 不再 highlight 任何項（使用者 OK 2026-04-25 — (e) 全綠）
+- [x] 7.6 Safari private mode 點任一新對話按鈕 → 仍能進新對話畫面、無 error toast、無 console error（skip — 使用者 2026-04-25 授權 archive 前不驗；`clearConversationSessionStorage` helper 內建 try/catch 涵蓋 QuotaExceededError，理論上安全；登記 `@followup[TD-054]` 待後續 Safari 實機補上）
+
+> **e2e 修正紀錄**（2026-04-25 verify session）：原 spec 5 個 scenarios 中 4 個失敗（selector 過寬撞兩個 button、`addInitScript` 在 reload 重 set storage、drawer/sidebar 雙 testid 撞 strict mode）。Claim 接手後修：(a)/(b) 用 `getByTestId('conversation-row-button').filter({ hasText: ... })` 鎖 row、(c) 改 `evaluate + reload` 設 storage 取代 `addInitScript`、(b) 加 `expect.poll` 處理 setActiveConversation async、(e) `getByRole('dialog').getByTestId(...)` scope 到 drawer。修完 5/5 全綠（10.4s）。
