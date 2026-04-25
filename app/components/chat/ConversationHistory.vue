@@ -152,13 +152,15 @@
         <LazyUButton
           data-testid="conversation-history-new-button-expanded"
           icon="i-lucide-message-circle-plus"
-          variant="ghost"
-          color="neutral"
+          variant="soft"
+          color="primary"
           size="xs"
           aria-label="新對話"
           :disabled="props.disabled"
           @click="requestNewConversation"
-        />
+        >
+          新對話
+        </LazyUButton>
         <slot name="header-action" />
       </div>
     </div>

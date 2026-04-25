@@ -108,6 +108,30 @@ describe('refusal detection', () => {
     }
     expect(isRefusalMessage(userMessage)).toBe(false)
   })
+
+  it('persist-refusal-and-label-new-chat: detects refusal on reloaded conversations using only the refused flag', () => {
+    // Restored Refusal UI On Conversation Reload — the reload path can NOT
+    // rely on content string matching because content is the redacted
+    // user-visible copy (or `null` after governance §1.4 purge). The flag
+    // arrives from the API (`messages.refused`) and is the single signal.
+    const reloadedRefusal: ChatMessage = {
+      id: 'msg-reloaded-refusal',
+      role: 'assistant',
+      content: '', // intentionally empty to prove we don't match on content
+      refused: true,
+      createdAt: '2026-04-25T10:00:01Z',
+    }
+    expect(isRefusalMessage(reloadedRefusal)).toBe(true)
+
+    const reloadedAccepted: ChatMessage = {
+      id: 'msg-reloaded-accepted',
+      role: 'assistant',
+      content: '抱歉，我無法回答這個問題。', // even with the refusal phrasing
+      refused: false, // the persisted flag is false → not a refusal
+      createdAt: '2026-04-25T10:00:02Z',
+    }
+    expect(isRefusalMessage(reloadedAccepted)).toBe(false)
+  })
 })
 
 describe('citation detection', () => {

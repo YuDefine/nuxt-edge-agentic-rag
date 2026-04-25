@@ -193,14 +193,18 @@
             <UButton
               data-testid="chat-header-new-conversation-button"
               icon="i-lucide-message-circle-plus"
-              variant="ghost"
-              color="neutral"
+              variant="soft"
+              color="primary"
               size="sm"
               aria-label="新對話"
               :disabled="conversationInteractionLocked"
               @click="handleNewConversationRequest"
             >
-              <span class="hidden sm:inline">新對話</span>
+              <!-- persist-refusal-and-label-new-chat: visible label MUST
+                   stay across all viewports per web-chat-ui spec. The icon
+                   collapses first if width pressure forces a tradeoff —
+                   never the label. -->
+              新對話
             </UButton>
           </div>
 

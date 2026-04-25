@@ -142,6 +142,11 @@ test.describe('Explicit New Conversation Entry Points', () => {
       page.getByTestId('conversation-row-button').filter({ hasText: '採購流程' }),
     ).toBeVisible()
 
+    // persist-refusal-and-label-new-chat: chat header button shows the
+    // visible "新對話" label alongside the icon (web-chat-ui — New
+    // Conversation Buttons Show Visible Text Label).
+    await expect(page.getByTestId('chat-header-new-conversation-button')).toContainText('新對話')
+
     await page.getByTestId('chat-header-new-conversation-button').click()
 
     // sessionStorage 對應 key 已被清掉

@@ -179,6 +179,18 @@ describe('ConversationHistory', () => {
     expect(wrapper.emitted('new-conversation-request')).toHaveLength(1)
   })
 
+  it('expanded header new-conversation button shows the visible "新對話" label (New Conversation Buttons Show Visible Text Label)', async () => {
+    const wrapper = await mountConversationHistory()
+
+    const expandedNewButton = wrapper.get(
+      '[data-testid="conversation-history-new-button-expanded"]',
+    )
+
+    // The expanded header is the primary entry point — per web-chat-ui spec
+    // the button MUST display visible text "新對話" alongside the icon.
+    expect(expandedNewButton.text()).toContain('新對話')
+  })
+
   it('disables both new-conversation buttons when props.disabled is true', async () => {
     const collapsedWrapper = await mountConversationHistory({
       collapsed: true,

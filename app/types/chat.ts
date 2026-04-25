@@ -33,6 +33,13 @@ export interface ChatConversationMessage {
   contentRedacted: string
   contentText: string | null
   citationsJson: string
+  /**
+   * persist-refusal-and-label-new-chat: true when the assistant turn ended
+   * in a refusal (audit-block, pipeline refusal, pipeline error). Sourced
+   * from `messages.refused` so reload paths can render `RefusalMessage.vue`
+   * without inspecting `contentText`.
+   */
+  refused: boolean
   createdAt: string
 }
 
