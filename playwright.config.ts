@@ -30,11 +30,14 @@ export default defineConfig({
     ? {}
     : {
         webServer: {
+          // CI 走 wrangler dev (cloudflare-module preset 對齊 production runtime)；
+          // local 走 nuxt dev (HMR + 快速 iter)。詳見 docs/tech-debt.md TD-059。
           command: isCI
-            ? `NUXT_KNOWLEDGE_MCP_CONNECTOR_CLIENTS_JSON='${mcpConnectorClientsJson}' NITRO_HOST=127.0.0.1 NITRO_PORT=3010 pnpm exec nuxt preview`
+            ? 'pnpm exec wrangler dev --config .output/server/wrangler.json --port 3010 --ip 127.0.0.1 --persist-to .wrangler/e2e-state --log-level warn'
             : `PLAYWRIGHT=true NUXT_DEVTOOLS_ENABLED=false NUXT_DISABLE_HINTS=true NUXT_KNOWLEDGE_MCP_CONNECTOR_CLIENTS_JSON='${mcpConnectorClientsJson}' pnpm dev`,
           port: 3010,
           reuseExistingServer: !isCI,
+          timeout: isCI ? 120_000 : 60_000,
         },
       }),
 })
