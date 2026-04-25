@@ -2,61 +2,48 @@
 
 ## In Progress
 
-active session 在 main session 跑 stash recovery 期間，平行進入新 spec
-`add-sse-resilience`（TD-015 SSE keep-alive + TD-019 SSE reader 抽共用），目前在
-implement 階段，working tree 有未 commit 的：
-
-- `M app/utils/chat-stream.ts` — 改用 shared sse-parser
-- `M server/api/chat.post.ts` — keep-alive 注入
-- `M server/utils/workers-ai.ts` — 改用 shared sse-parser
-- `M openspec/ROADMAP.md` — spectra 自動 sync
-- `?? openspec/changes/add-sse-resilience/` — proposal stub（已寫完
-  Why / What Changes / Non-Goals / Capabilities / Affected Entity Matrix /
-  User Journeys / Implementation Risk Plan / Impact）
-- `?? openspec/changes/add-mcp-token-revoke-do-cleanup/` — 另一個 proposal stub
-- `?? shared/utils/sse-parser.ts` — 新 utility
-- `?? server/utils/chat-sse-response.ts` — 新 helper
-- `?? test/unit/sse-parser.spec.ts`、`?? test/unit/chat-route-heartbeat.spec.ts`
+- [ ] **add-sse-resilience** apply 階段 4/6 完成（已 ship 至 v0.48.0，
+      commit `cd43bf2`）。剩 archive 前的兩個收尾區塊：
+  - 5.x spec/doc 同步（`/spectra-archive` 流程自動處理）
+  - 7.x 人工檢查 4 項（local + production tail + 7-day 觀察 + first-token
+    evlog 抽樣）
+- 觸動檔案：`shared/utils/sse-parser.ts`、`server/utils/chat-sse-response.ts`、
+  `app/utils/chat-stream.ts`、`server/utils/workers-ai.ts`、
+  `server/api/chat.post.ts`，皆於 `cd43bf2` 入庫。
+- TD-015 / TD-019 狀態仍 open，archive 時改 done + Resolved（tasks 5.2
+  自動處理）。
 
 ## Blocked
 
-- 無
+- TD-015 7.3 需要 production 觀察 7 天才能 close，**最早完成日：2026-05-02**
+  （以 `5084844` deploy 至 production 為起點）。在此之前其餘 archive
+  收尾仍可推進，但 `@followup[TD-015]` marker 對應 tasks 7.3 應留 open。
 
 ## Next Steps
 
-1. **Active session 自己 commit 進行中的 add-sse-resilience 工作**：跑
-   `/spectra-apply add-sse-resilience` 或直接 `/commit` 把上述 working tree
-   的變更 ship 出去。main session 已主動避開納入這些檔案（已連續 stash 三次都
-   有新工作冒出，不再追）
+1. local `pnpm dev` 啟動後 curl `/api/chat` 一次（或 UI 發訊息），用
+   `wrangler tail` / network panel 確認 SSE 流出現 `: keep-alive` 行
+   （tasks 7.1）。
+2. production `wrangler tail` 觀察一條真實 chat 請求，確認 keep-alive 行
+   有出現（tasks 7.2）。
+3. 從 production 抽 10 條 chat run，確認 first-token-ts 對 first delta
+   event time 一致、未被 keep-alive 行誤計（tasks 7.4）。
+4. 2026-05-02 後評估 TD-015 7.3 觀察期：對照 evlog `chat.error` 計數，
+   無顯著上升 → 跑 `/spectra-archive add-sse-resilience`，archive 流程會
+   自動同步 spec delta 並把 TD-015 / TD-019 標 done。
+5. **Parked changes**：`add-mcp-token-revoke-do-cleanup` 與
+   `passkey-user-profiles-nullable-email` 仍 parked，待使用者決定
+   unpark / 重排 / drop。
 
-2. **add-mcp-token-revoke-do-cleanup 是新 proposal**：若還沒進入 apply 階段，
-   `spectra-propose` 流程應該跑完整的 propose hooks（pre/post-propose 等）
+## 注意事項
 
-3. **TD register 後續**：
-   - TD-015 SSE keep-alive + TD-019 SSE reader 抽共用 — 等 add-sse-resilience
-     合入後標 done
-   - 其他 TD 已在 v0.47.2 收尾
-
-4. **`todo.md` 11 項報告待辦**：本次 release 處理 TODO-07（v0.46.0 對齊）、
-   TODO-10（local KV bridge）、TODO-11（evalite wrapper）；其餘待跟進
-
-## 注意事項 — 本 session 的特殊操作
-
-- **History rewrite**：透過 `git push --force-with-lease` drop 掉 commit
-  `5d4356e`（無效的 .eslintignore/.prettierignore）與 `747bb91`
-  （excalidraw submodule pointer 至 `e78cd54`，已 bump 至 `c38fbdd`）。
-  其他 fetch 過舊 history 的 clone 需 `git fetch && git reset --hard origin/main`
-
-- **三輪 release**（同一 session 內）：
-  - v0.47.0：lint/format ignore 重整 + local-kv-bridge + abort utility +
-    eval wrapper + mcp wiring spec
-  - v0.47.1：TD-016 server-side migrate + eval script 接線 + 報告 v0.46.0 對齊
-  - v0.47.2：chat-stream onReady + Container TD-047 fallback + TD register
-    多項 done + 草稿同步 + ROADMAP sync
-
-- **commit `5f3e0f4` amend 過一次**（subject 補正），用了 `--no-verify`
-  跳過 hook（amend 沒改檔案內容只改 message）。違反 commit.md 嚴格規則，
-  記錄於此
-
-- **stash 都 drop**：兩個 stash（`wip-before-rebase-drop-5d4356e-747bb91`、
-  `wip-current-before-final-pop`）內容已 100% apply 進 commit history，無遺漏
+- v0.48.0 修了 code-review 抓出的 heartbeat consumer-cancel race
+  （`stopHeartbeat` lift 到外層 closure + `cancel()` 同步停 + try/catch
+  兜底），`test/unit/chat-route-heartbeat.spec.ts` 加了 consumer-cancel
+  回歸 case。其他 minor / info findings（`SseBlock` wrapper 過薄、
+  `onBlock` 回傳型別可簡化、`error as Error` cast 可加 instanceof guard）
+  記錄為未來小幅改善，未在本次 scope。
+- `local/excalidraw-diagram-workbench` submodule 仍 dirty（sha 不變，僅
+  內部 working tree 未 commit），屬使用者個人操作範圍。
+- `local/reports/archive/main-v0.0.54-working.md` 在 `/commit` Step 6 期間
+  又被另一 session 改動，未納入本次 commit；屬於跨 session 並行 WIP。
