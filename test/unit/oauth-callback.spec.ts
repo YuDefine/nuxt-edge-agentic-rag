@@ -27,6 +27,7 @@ const mocks = vi.hoisted(() => ({
   hubDbSelect: vi.fn(),
   hubDbUpdate: vi.fn(),
   hubDbInsertProfile: vi.fn(),
+  syncUserProfile: vi.fn(),
 }))
 
 // Stub the relative-path `recordRoleChange` import inside `auth.config.ts`
@@ -37,6 +38,14 @@ vi.mock('../../server/utils/member-role-changes', () => ({
   recordRoleChange: mocks.recordRoleChange,
   ROLE_CHANGE_SYSTEM_ACTOR: 'system',
   ROLE_CHANGE_DB_DIRECT_ACTOR: 'db-direct',
+}))
+
+// fix-user-profile-id-drift (TD-044): user_profiles sync is now a dedicated
+// utility with its own unit spec (auth-user-profiles-sync.spec.ts). Stub it
+// here so the role-lifecycle test stays focused on the role branches (a) / (b)
+// / (c) without building a full drizzle transaction mock.
+vi.mock('../../server/utils/user-profile-sync', () => ({
+  syncUserProfile: mocks.syncUserProfile,
 }))
 
 // hub:db is imported dynamically at runtime inside the hook bodies. The
@@ -139,6 +148,8 @@ describe('auth.config databaseHooks (B16 §9.2)', () => {
     mocks.hubDbSelect.mockReset()
     mocks.hubDbUpdate.mockReset()
     mocks.hubDbInsertProfile.mockReset()
+    mocks.syncUserProfile.mockReset()
+    mocks.syncUserProfile.mockResolvedValue(undefined)
     mocks.recordRoleChange.mockResolvedValue({ id: 'audit-1' })
   })
 
