@@ -2,7 +2,7 @@
 
 ## In Progress
 
-### `wire-do-tool-dispatch` — 全綠收斂中，準備 archive
+### `wire-do-tool-dispatch` — ✅ 已 archive (2026-04-25-wire-do-tool-dispatch)
 
 - **2026-04-25 本 session 完成**：
   - §5.x SSE Tests 4/4：`test/integration/mcp-session-sse.spec.ts` 共 13 it block 全綠（5.x.1×4 + 5.x.2×3 + 5.x.3×2 + 5.x.4×4），3 連續 run 穩定

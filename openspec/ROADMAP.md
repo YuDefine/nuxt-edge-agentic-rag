@@ -37,8 +37,8 @@
 
 進行中：
 
-- **`wire-do-tool-dispatch`** 27/35 tasks (77%) — 依賴：(1) v0.43.4 stop-gap rollback 已完成驗證（production runtime flag = false 已確認）；(2) **§6.4 worker → DO routing wire-up gap** G1 + G2 解（**最新發現的 production flip blocker**）；(3) §7.1 acceptance 升級三項全綠（curl + SSE-aware mock + Claude.ai 端到端）；(4) §7.2 production flip true 重做（24h 監控）；(5) §7.3 7 天穩定觀察 → TD-030 + TD-041 標 done；(6) §8.1–§8.4 使用者人工檢查
-- **`upgrade-mcp-to-durable-objects`** 17/27 tasks (63%)，**Phase 4 scope 縮為 session lifecycle only** — tool dispatch 改由 `wire-do-tool-dispatch` 接手（見 TD-041）；mutex with wire-do-tool-dispatch（共碰 `mcp-knowledge-tools` spec），**MUST** 等 wire-do archive 才能續推或評估一起收斂
+- **`upgrade-mcp-to-durable-objects`** 17/27 tasks (63%)，**Phase 4 scope 縮為 session lifecycle only** — tool dispatch 已由 `wire-do-tool-dispatch` (archived 2026-04-25) 接手並完整實作於 production；本 change 剩 session lifecycle 部分（DO state TTL / alarm cleanup / multi-DO management 等）。Mutex 已解（wire-do archive 完成）→ 可續推
+- **`wire-do-tool-dispatch`** 已於 2026-04-25 archive：v0.46.0 production flip true 完成，§6.4 4-layer fix 全綠，TD-030 + TD-041 標 done，ADR `docs/decisions/2026-04-25-cloudflare-sse-streaming-bypass.md` 紀錄架構決策
 
 ### 已 propose，待 apply（見 AUTO Parked Changes 區塊）
 
@@ -69,9 +69,9 @@ _(none)_
 
 ## Active Changes
 
-_last synced: 2026-04-25T12:59:46.241Z_
+_last synced: 2026-04-25T13:20:17.935Z_
 
-2 active changes (0 ready · 2 in progress · 0 draft · 0 blocked)
+1 active change (0 ready · 1 in progress · 0 draft · 0 blocked)
 
 ### Ready to apply
 
@@ -80,8 +80,6 @@ _(none)_
 ### In progress
 
 - **upgrade-mcp-to-durable-objects** — 17/27 tasks (63%)
-  - Specs: `mcp-knowledge-tools`
-- **wire-do-tool-dispatch** — 28/35 tasks (80%)
   - Specs: `mcp-knowledge-tools`
 
 ### Draft
@@ -125,11 +123,11 @@ _(none)_
 
 ### Independent (can run in parallel)
 
-_(none)_
+- `upgrade-mcp-to-durable-objects`
 
 ### Mutex (same spec touched)
 
-- **mcp-knowledge-tools** — conflict between: `upgrade-mcp-to-durable-objects`, `wire-do-tool-dispatch`
+_(none)_
 
 ### Blocked by dependency
 
