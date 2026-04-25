@@ -44,7 +44,7 @@ _(none)_
 
 ## Active Changes
 
-_last synced: 2026-04-25T13:28:10.409Z_
+_last synced: 2026-04-25T15:06:00.565Z_
 
 _No active changes._
 
@@ -106,7 +106,10 @@ _(none)_
 > 已 `spectra park` 的 changes。檔案暫時從 `openspec/changes/` 移出，
 > metadata 保留在 `.spectra/spectra.db`。`spectra unpark <name>` 可取回。
 
-_No parked changes._
+1 parked change
+
+- **add-sse-resilience** — 0/23 tasks (0%)
+  - Summary: Web chat SSE 流目前有兩個獨立但相關的韌性問題：…
 
 <!-- SPECTRA-UX:ROADMAP-AUTO:/parked -->
 
