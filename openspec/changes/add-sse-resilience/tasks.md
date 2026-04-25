@@ -39,5 +39,4 @@
 
 - [ ] 7.1 local `pnpm dev` 啟動後 curl 一次 chat（或 UI 發送），用 `wrangler tail` / network panel 觀察 SSE 流出現 `: keep-alive` 行（heartbeat 已 wire up）
 - [ ] 7.2 production deploy 後 wrangler tail 觀察一條真實 chat 請求，確認 `: keep-alive` 行有出現
-- [ ] 7.3 production 觀察 7 天，確認無 chat 異常掉線（對照觀察期前後的 evlog `chat.error` 計數，無顯著上升）@followup[TD-015]
-- [ ] 7.4 確認 first-token latency evlog 欄位（existing wide event）不受 heartbeat 干擾（隨機抽 10 條 production chat run，first-token-ts 對 first delta event time 一致，無被 keep-alive 行誤計）
+- [ ] 7.3 確認 first-token latency evlog 欄位（existing wide event）不受 heartbeat 干擾（隨機抽 10 條 production chat run，first-token-ts 對 first delta event time 一致，無被 keep-alive 行誤計）
