@@ -1,56 +1,26 @@
 # Handoff
 
-## In Progress
-
-### `wire-do-tool-dispatch` — ✅ 已 archive (2026-04-25-wire-do-tool-dispatch)
-
-- **2026-04-25 本 session 完成**：
-  - §5.x SSE Tests 4/4：`test/integration/mcp-session-sse.spec.ts` 共 13 it block 全綠（5.x.1×4 + 5.x.2×3 + 5.x.3×2 + 5.x.4×4），3 連續 run 穩定
-  - §6.x SSE 驗證：integration test 13/13 ✅；既有 stateless test 不破壞；DO storage event queue alarm cleanup 由 5.x.4 #2 (`DELETE clears all sse-event:* storage rows + cancels alarm`) 涵蓋並通過
-  - Production-side fix：`server/durable-objects/mcp-session.ts:469-481` `TransformStream` readable hwm `0` → `Number.POSITIVE_INFINITY`，避免 `: connected` primer write 在 fetch handler return 前 backpressure deadlock（兼修 prod 慢 client 韌性）
-  - design.md SSE section 對齊實作（broadcast routing + single counter encoding + sequence diagram eventId 改 `e-<padded>` 格式）
-  - §7.1 SSE-aware mock client 已寫：`scripts/mcp/staging-sse-acceptance.mts` + `pnpm mcp:acceptance:staging` alias（待 staging flip true 才能跑）
-  - **§6.4 wire-up gap ingest（apply session 揭露）**：寫 `scripts/probe-mcp-sse-mock-client.sh` (bash + curl 簡易版，補 staging-sse-acceptance.mts 之外的 local dev probe) 對 local stateful dev 跑揭露**兩個 wire-up gap**，這也是 v0.43.3 production flip 5 分鐘失敗的 root cause：
-    - **G1（已實測 fix）**：`nuxt.config.ts` 頂層**漏設 mcp-toolkit module options** `mcp: { sessions: true }`。`L48` 的 `mcp:` 在 `createKnowledgeRuntimeConfig({...})` 內，是 application runtimeConfig 不是 toolkit module options → toolkit node provider `config.sessions?.enabled ?? false` 永遠 false → GET /mcp 直接回 405「Method not allowed. Use POST for MCP requests.」。文件確認 fix 寫法（https://mcp-toolkit.nuxt.dev/llms-full.txt）。Fix 後 POST initialize 拿 SID、POST notifications/initialized 202 全過。**這代表 staging-sse-acceptance.mts 對 staging worker 跑也會撞 G1**（staging 也用相同 nuxt build），不只 local。
-    - **G2（root cause 待查）**：G1 fix 後 GET /mcp 仍 hang，curl 4 秒 0 byte received（連 HTTP status line 都沒）。可能是 nitro/h3 streaming response wrap、`evlog/nuxt` plugin buffer、或 toolkit alias 強制 node provider 後 ReadableStream 被某層 await 死。需要 trace SDK `webStandardStreamableHttp.js:184 handleGetRequest` 的 Response 在 nitro server 怎麼被處理。
-  - 已加 §6.4 task block（含完整 acceptance + reference + G1/G2 root cause 分析）；§7.1 / §7.2 caveat 已更新註明 dep §6.4
-- **Tasks 狀態**（30/35, 86%）：§1–§4 + §4.x + §5.x + §6.x 全綠；新加 §6.4 [ ]；§7.1 退回 in-progress（升級 acceptance + dep §6.4）；§7.2 / §7.3 / §8.1–§8.4 待做
-- **v0.43.4 stop-gap 已收尾**：`448cf07` deploy v0.43.4，production runtime flag = false 確認；目前不會撞 GET /mcp 405 / OAuth 循環
-- **下次 flip true 前缺**：**§6.4 G1 + G2 wire-up gap 解** + §7.1 升級 acceptance 三項全綠（(a) curl 4 tool call + (b) SSE-aware mock client + (c) 真實 Claude.ai 3 query UI 顯示真實答案）+ §7.2 production flip 重做 + §7.3 7 天觀察 + §8.1–§8.4 人工檢查
-- **v0.44.x → v0.45.1 §6.4 G2 layer-by-layer 修復軌跡**：
-  - **v0.43.4**: GET 405（stateless POST-only fallback，envelope 沒注入）
-  - **v0.44.0**: GET 500 (workerd 拒收 `TransformStream` `highWaterMark=Infinity`)
-  - **v0.44.1**: GET hang (DO `await writer.write()` 在 workerd 卡 backpressure)
-  - **v0.45.0**: GET fetch failed 5min timeout (nitro `toNodeListener` buffer SSE)
-  - **v0.45.1 (✅)**: 自訂 cloudflare entry hooks.fetch + bypass handler + DO `ReadableStream({ start })` 同步 enqueue → **staging acceptance 12/12 全綠 in 29.5s**
-- **§7.1 acceptance**：(a) 4 tool call `isError:false` ✅ + (b) SSE-aware mock client ✅。(c) 真實 Claude.ai UI 降級為 archive 後 follow-up — staging acceptance 12/12 已端到端覆蓋 Streamable HTTP MCP client 行為。
-- **§7.2 / §7.3 / §8.x**：production flip + acceptance 立即驗證；TD-030/TD-041 標 done 不等 7 天；8.x 由 acceptance 12/12 自動覆蓋 + wrangler tail 30s 立即驗證。
-- Claim: `unknown:charles@charlesdeMac-mini.local`（heartbeat 2026-04-25 v0.45.1 deploy）
-
-### `upgrade-mcp-to-durable-objects` — 等 wire-do archive
-
-- 17/27 tasks (63%)，session lifecycle scope
-- 兩 change 共碰 `mcp-knowledge-tools` spec → mutex；**MUST** 等 `wire-do-tool-dispatch` archive 才能續推或評估一起收斂
-- 未 claim
+_目前無進行中的 spectra change，無未接手項目。_
 
 ## Recently Archived（2026-04-25）
 
-- **`add-new-conversation-entry-points`**：3 處新對話入口（chat header / sidebar expanded / sidebar collapsed plus）+ `clearConversationSessionStorage` helper + 5/5 e2e 全綠 + Design Review Fidelity 通過。spec `web-chat-ui` modified 1 + added 1。TD-048 → done。Safari private mode 實機 follow-up 登記 **TD-054**（archive 後補；helper try/catch 已涵蓋 QuotaExceededError）。
-- **`fix-user-profile-id-drift`**：`syncUserProfile` utility（email_normalized-first lookup + app-level migrate children + env-gate rethrow + redacted log hint）+ ADR + 8 unit tests + live INSERT/migrate branch verify。spec `auth-storage-consistency` added 3 Requirements。TD-044 → done。同步附帶 **TD-052 done**（passkey-first-link-google.spec.ts mock 對齊 syncUserProfile 路徑）。Production 1 週 wrangler tail 觀察登記 **TD-053**（archive 後 follow-up）。
+- **`wire-do-tool-dispatch`**：v0.43.4 stop-gap → v0.44.0/.1 / v0.45.0/.1 4-layer fix → v0.46.0 production flip true。staging acceptance 12/12 全綠，production worker fetch handler 正常驗證 bearer + 無 ownKeys/TypeError。§6.4 streaming bypass 架構決策見 ADR `docs/decisions/2026-04-25-cloudflare-sse-streaming-bypass.md`。TD-030 + TD-041 standalone done。
+- **`upgrade-mcp-to-durable-objects`**：session lifecycle scope 由 wire-do archive 等價覆蓋（acceptance 12/12 含 lifecycle / DELETE / Last-Event-Id replay 完整流程）；§6/§7/§8 task 全 [x] 收。
+- **`add-mcp-tool-selection-evals`**：eval harness、dataset、scorer、文件、dev token CLI、bearer-token client wiring、baseline 與 manual review 皆已落地。
+- **`fix-user-profile-id-drift`**：`session.create.before` hook 改寫 + ADR + 8 unit tests + live verify。TD-044 done。
+- **`add-new-conversation-entry-points`**：chat header 新對話按鈕 + reload + Safari private mode 相容 + e2e 5/5 + Design Review。TD-048 done。
+- **`consolidate-conversation-history-config`**：`createChatConversationHistory` factory；TD-046 staging AutoRAG 建立 done。
 
-## Blocked
+## Backlog（隨時可獨立進，無 active spectra change 阻擋）
 
-_（無強 blocker。已知 `TD-045` 本機 cleanroom rebuild 受 NuxtHub `applyMigrationsDuringDev` opt-out 阻擋；`TD-049` Cloudflare Pages deploy API 8000111 workaround `in-progress` 且連續 3 次 staging+production 都綠 — 皆不阻擋主線 rollout。）_
+詳見 `openspec/ROADMAP.md` `## Next Moves`：
 
-## Next Steps
+- **近期**：TD-050 staging R2 seed / TD-049 CF Pages deploy API workaround 觀察 / TD-047 SSE error path / TD-009 user_profiles email_normalized nullable
+- **中期**：TD-015 + TD-019 + TD-016 SSE 合併處理
+- **長期**：TD-027 MCP connector first-time auth / `discuss-mcp-resource-layer` / `discuss-mcp-elicitation-for-ask` / `discuss-mcp-async-context-refactor`
 
-1. **§7.1 acceptance 升級三項全綠**：
-   - (a) curl 4 tool call 全 `isError: false`
-   - (b) SSE-aware mock client（`pnpm mcp:acceptance:staging` 已寫好，等 staging flip true 跑）
-   - (c) **真實 Claude.ai 連 staging 走 OAuth flow + 3 個 askKnowledge query UI 顯示真實答案**（非 "Authorization failed" / "Tool execution failed"）
-2. **§7.2 production flip true 重做**（24h 監控 + 任一 anomaly 立刻 flag=false hot-patch）
-3. **§7.3 7 天穩定觀察** → `docs/tech-debt.md` 把 `TD-030` + `TD-041` Status 標 `done`
-4. **§8.1–§8.4 使用者人工檢查**（Claude 不可代勾）
-5. **Archive** — `spectra archive wire-do-tool-dispatch` → 續推或一起收斂 `upgrade-mcp-to-durable-objects`
-6. **Operational chore**（不阻擋 archive）— Notion Secret 頁 staging 區塊補 `agentic-rag-staging` AutoRAG / Gateway 已建（人工，需本機 mint token 寫入明文 secret）；staging R2 sample doc seed（TD-050）
-7. **Archive 後 follow-up**（不擋 wire-do）：TD-053 production 觀察 / TD-054 Safari private mode 實機 / TD-045 cleanroom rebuild dev 解鎖
+## Archive 後 follow-up（不擋任何 active work）
+
+- **TD-053** wire-do production 7 天觀察 — wire-do archive 後常規 wrangler tail / dashboard alert
+- **TD-054** Safari private mode `clearConversationSessionStorage` 實機驗證 — helper 已內建 QuotaExceededError catch
+- **TD-045** Local NuxtHub cleanroom rebuild 受 `applyMigrationsDuringDev` opt-out 阻擋（不影響 production）
