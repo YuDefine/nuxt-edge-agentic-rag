@@ -41,43 +41,43 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Patch NuxtHub local DB driver for preview E2E
-        run: node scripts/patch-hub-db-dev.mjs
-
-      - name: Bootstrap local sqlite schema for preview E2E
-        run: |
-          mkdir -p .data/db
-          rm -f .data/db/sqlite.db
-
-          for file in $(find server/database/migrations -name '*.sql' | sort); do
-            sqlite3 .data/db/sqlite.db < "$file"
-          done
-
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
 
-      - name: Build Nuxt
+      - name: Build Nuxt (cloudflare-module preset)
         env:
           ADMIN_EMAIL_ALLOWLIST: admin@test.local
           BETTER_AUTH_SECRET: e2e-better-auth-secret-at-least-32-chars
           NODE_OPTIONS: --max-old-space-size=4096
-          NITRO_PRESET: node-server
-          NUXT_HUB_LIBSQL_URL: file:.data/db/sqlite.db
           NUXT_KNOWLEDGE_FEATURE_PASSKEY: true
+          NUXT_KNOWLEDGE_MCP_CONNECTOR_CLIENTS_JSON: '[{"clientId":"claude-remote","enabled":true,"allowedScopes":["knowledge.ask","knowledge.search","knowledge.category.list"],"environments":["local"],"name":"Claude Remote","redirectUris":["https://claude.example/callback"]}]'
           NUXT_PASSKEY_RP_ID: localhost
           NUXT_PASSKEY_RP_NAME: Agentic E2E
           NUXT_SESSION_PASSWORD: e2e-ci-session-password-at-least-32-chars
         run: pnpm build
 
+      - name: Generate .dev.vars for wrangler dev
+        run: |
+          cat > .output/server/.dev.vars <<'EOF'
+          ADMIN_EMAIL_ALLOWLIST=admin@test.local
+          BETTER_AUTH_SECRET=e2e-better-auth-secret-at-least-32-chars
+          NUXT_SESSION_PASSWORD=e2e-ci-session-password-at-least-32-chars
+          NUXT_KNOWLEDGE_FEATURE_PASSKEY=true
+          NUXT_PASSKEY_RP_ID=localhost
+          NUXT_PASSKEY_RP_NAME=Agentic E2E
+          NUXT_KNOWLEDGE_MCP_CONNECTOR_CLIENTS_JSON=[{"clientId":"claude-remote","enabled":true,"allowedScopes":["knowledge.ask","knowledge.search","knowledge.category.list"],"environments":["local"],"name":"Claude Remote","redirectUris":["https://claude.example/callback"]}]
+          EOF
+
+      - name: Bootstrap local D1 schema via wrangler
+        run: |
+          for file in $(find server/database/migrations -name '*.sql' | sort); do
+            pnpm exec wrangler d1 execute DB --local \
+              --file="$file" \
+              --config .output/server/wrangler.json \
+              --persist-to .wrangler/e2e-state
+          done
+
       - name: Run E2E tests
-        env:
-          ADMIN_EMAIL_ALLOWLIST: admin@test.local
-          BETTER_AUTH_SECRET: e2e-better-auth-secret-at-least-32-chars
-          NUXT_HUB_LIBSQL_URL: file:.data/db/sqlite.db
-          NUXT_KNOWLEDGE_FEATURE_PASSKEY: true
-          NUXT_PASSKEY_RP_ID: localhost
-          NUXT_PASSKEY_RP_NAME: Agentic E2E
-          NUXT_SESSION_PASSWORD: e2e-ci-session-password-at-least-32-chars
         run: pnpm test:e2e
 
       - name: Upload Playwright report
