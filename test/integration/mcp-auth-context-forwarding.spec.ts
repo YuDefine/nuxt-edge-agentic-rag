@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { MCPSessionDurableObject } from '#server/durable-objects/mcp-session'
 import { createMcpHandler } from '#server/utils/mcp-agents-compat'
-import { MCP_AUTH_CONTEXT_HEADER } from '#server/utils/mcp-auth-context-codec'
+import { MCP_AUTH_CONTEXT_HEADER, signAuthContext } from '#server/utils/mcp-auth-context-codec'
 import { rehydrateMcpRequestBody } from '#server/utils/mcp-rehydrate-request-body'
 import { runMcpMiddleware } from '#server/utils/mcp-middleware'
 
@@ -451,16 +451,27 @@ describe('MCP auth context forwarding through middleware, compat shim, and sessi
       },
       () => now,
     )
-    await durableObject.fetch(
+    const initHeader = await signAuthContext(
+      {
+        principal: { authSource: 'oauth_access_token', userId: 'user-1' },
+        scopes: ['knowledge.ask'],
+        tokenId: 'oauth:token-1',
+      },
+      authSigningKey,
+      now,
+    )
+    const initResponse = await durableObject.fetch(
       new Request('https://do.test/mcp', {
         method: 'POST',
         headers: {
           'content-type': 'application/json',
           'Mcp-Session-Id': sessionId,
+          [MCP_AUTH_CONTEXT_HEADER]: initHeader,
         },
         body: JSON.stringify(createBody('initialize', 0)),
       }),
     )
+    expect(initResponse.status).toBe(200)
 
     const response = await durableObject.fetch(
       new Request('https://do.test/mcp', {

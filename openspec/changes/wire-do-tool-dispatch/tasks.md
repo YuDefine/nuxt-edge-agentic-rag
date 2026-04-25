@@ -21,21 +21,37 @@
 - [x] 4.2 DO instance 管理 McpServer + transport lifecycle：首次 non-initialize 建；session 清除時（`alarm()` / 外部 revoke）呼叫 `transport.close()` 釋放 pending resolvers
 - [x] 4.3 4 個 tool handler 回應 shape 核對：對同一組 input，DO path 與 stateless path response 除 `Mcp-Session-Id` / `Date` 外完全一致；必要時 tool handler 內部改用 `useEvent()`（Nitro）以同時相容兩路徑
 
+## 4.x SSE on DO（scope expansion 2026-04-25）
+
+- [x] 4.x.1 `server/utils/mcp-agents-compat.ts`：flag=true + GET/DELETE → forward to DO；移除 unconditional 405 hardcoded check（保留 stateless path 對 GET/DELETE 仍 405 的既有行為）
+- [x] 4.x.2 `server/durable-objects/mcp-event-shim.ts`：暴露 `enqueueServerEvent(message)` API；DO storage events row schema (`{ eventId, data, eventType, timestamp }`)；alarm cleanup helper（5 分鐘 TTL + max 100 events FIFO eviction）
+- [x] 4.x.3 `server/durable-objects/mcp-do-transport.ts`：`send()` server-initiated notifications push 至 `enqueueServerEvent`（不再 silently drop），保留 response correlation 路徑不變
+- [x] 4.x.4 `server/durable-objects/mcp-session.ts`：依 design.md `## SSE Architecture` sequence diagram 實作 — 新增 GET handler 開 ReadableStream + 25s heartbeat + Last-Event-Id replay；新增 DELETE handler clear storage + close streams + cancel alarm；DO multi-connection map（spec round-robin / newest-active routing；見 design.md `## SSE Architecture > DO Multi-Connection Map`）
+- [x] 4.x.5 SSE infrastructure：依 design.md `## SSE Architecture > Cloudflare Workers SSE 設計依據` 實作 — 25s heartbeat（`: heartbeat\n\n`）+ retry hint（`retry: 3000`）+ CF Edge 30s idle timeout 防護；eventId 編碼 `<streamType>:<counter>` 確保 globally unique within session（依 design.md `## Last-Event-Id Resumability > eventId 編碼`）
+
 ## 5. Integration tests
 
 - [x] 5.1 [P] 新增 `test/integration/mcp-session-tool-dispatch.spec.ts`：假 MCP_SESSION binding + 假 DO → 真 McpServer + 真 4 tool registration + 假 retrieval backend；驗 `tools/list` 回 4 個 tool metadata；驗 `tools/call askKnowledge` 經 DO path 回與 stateless 等價 response
 - [x] 5.2 [P] 擴充 `test/integration/mcp-session-handshake.spec.ts`：flag=true + `tools/call` 經 DO 後回真實結果（非 501）；同 query 對 flag=false 比對 response shape byte-level 等價
 - [x] 5.3 [P] 新增 `test/integration/mcp-auth-context-forwarding.spec.ts`：驗 middleware 產 envelope → shim forward → DO verify 全鏈路；篡改 header 時 DO 401；無 header 時 DO fallback / 400
 
+## 5.x SSE Tests（scope expansion 2026-04-25）
+
+- [ ] 5.x.1 [P] 新增 `test/integration/mcp-session-sse.spec.ts`：GET /mcp 帶 valid SID 開 SSE → server 回 `Content-Type: text/event-stream`；POST tool call 觸發 `useMcpLogger().notify.info` → SSE 收到 server-initiated notification 順序正確；POST tool call 同步回 `application/json` response + SSE 收到 complete event；isError=false 路徑驗 SSE 不發 error event
+- [ ] 5.x.2 [P] Last-Event-Id replay test（依 design.md `## Last-Event-Id Resumability > Replay 演算法`）：建 SSE channel → 收 N events → disconnect mid-stream → reconnect with `Last-Event-Id: <event-N-1>` → 驗收到 event-N（不重複收 N-1）；驗 Last-Event-Id 對應 row 已 TTL 清除時 server 回 `events_dropped` notification
+- [ ] 5.x.3 [P] Multi-connection test：同 session 開兩條 SSE channel（stream-1 + stream-2）→ POST tool call → server-initiated notifications 依 spec round-robin / newest-active 不重複跨 stream；驗 eventId 編碼正確（`stream-1:N` / `stream-2:M`）
+- [ ] 5.x.4 [P] DELETE test：DELETE /mcp 帶 valid SID → 驗 DO storage events:\* range 全清；驗 active SSE streams 全 close（client 收到 stream end）；驗 alarm cancelled；驗後續 GET /mcp 帶 same SID 回 404 + re-init guidance
+
 ## 6. 驗證與品質閘門
 
 - [x] 6.1 `pnpm check` 全綠（format + lint + typecheck + test）；既有 `test/integration/mcp-*.test.ts` + `mcp-agents-compat.spec.ts` **未改動**仍全綠（證明 stateless fallback 未破壞）
 - [x] 6.2 `pnpm spectra:followups` 確認 TD-041 marker 已於 `upgrade-mcp-to-durable-objects/tasks.md` 與 `server/durable-objects/mcp-session.ts` comment 都清除
 - [x] 6.3 Micro-benchmark：DO path tool call latency vs stateless path；差異 ≤ 100ms 否則回頭檢查 cold start
+- [ ] 6.x SSE-specific 驗證：`pnpm check` 全綠（含新 SSE integration test）；既有 stateless path test 不破壞；DO storage event queue 在 alarm cleanup 後正確空（無 stale rows）
 
 ## 7. Rollout
 
-- [x] 7.1 Staging: `NUXT_KNOWLEDGE_FEATURE_MCP_SESSION=true` 後立即驗證 `AskKnowledge` / `SearchKnowledge` 各 2+ 次；確認 response 非 501、非 re-init loop，且 staging custom domain 可達（HTTP 200）。若可用 `wrangler tail`，同步確認無 `ownKeys` error / 401 auth context failure；若本機無 Cloudflare token，需以 GitHub deploy evidence + protocol response 記錄替代 tail（對齊 Decision 4: Rollout = staging flag=true immediate verification → production flag=true）
+- [ ] 7.1 Staging: `NUXT_KNOWLEDGE_FEATURE_MCP_SESSION=true` 後立即驗證 `AskKnowledge` / `SearchKnowledge` 各 2+ 次；確認 response 非 501、非 re-init loop，且 staging custom domain 可達（HTTP 200）。若可用 `wrangler tail`，同步確認無 `ownKeys` error / 401 auth context failure；若本機無 Cloudflare token，需以 GitHub deploy evidence + protocol response 記錄替代 tail（對齊 Decision 4: Rollout = staging flag=true immediate verification → production flag=true）。**SSE scope expansion 升級**：新增 (a) SSE-aware mock client（ReadableStream consume + Last-Event-Id replay simulation）通過；(b) 真實 Claude.ai 連 staging 走 OAuth flow + 3 個 askKnowledge query UI 顯示真實答案（非 "Authorization failed" / "Tool execution failed"）。
   - **Staging v0.42.2 (2026-04-25, Deploy run 24905096791)** protocol-layer 驗證通過：
     - `initialize`、`notifications/initialized`、`tools/list` 皆 HTTP 200；`Mcp-Session-Id` 正確傳回
     - `askKnowledge` x2、`searchKnowledge` x2 皆 HTTP 200
@@ -55,7 +71,9 @@
     - `searchKnowledge` x2 → `{"results":[]}`（empty index，正確 empty response）
     - SID `e9dcb3b4-224e-47ef-8120-8323b5fdf3e5`，無 throw、無 fallback、無 `Server already initialized`
   - **Standalone follow-up @followup[TD-050]**: staging R2 仍為空 / 無 sync schedule active；TD-046 binding 層已修，但 staging 真實 RAG content 取得（seed sample docs 或 daily sync from production）拆 TD-050 處理，不阻擋本 change archive。
-- [ ] 7.2 Production `NUXT_KNOWLEDGE_FEATURE_MCP_SESSION=true` flip；24 小時 wrangler tail 密集監控；任一 anomaly 立刻 flag=false（無需 redeploy）
+  - **SSE scope expansion 重新驗證 (2026-04-25, post v0.43.3)**: v0.43.3 production flag flip 揭露 stateful DO transport 缺 GET /mcp SSE channel — Claude.ai client 對 stateful server (回 `Mcp-Session-Id`) 試 GET /mcp 開 server-initiated channel，被 hardcoded 405 → 解讀 self-contradicting → 重新 OAuth 循環 → "Authorization with the MCP server failed (ofid_59a379970d736495)"。MCP spec 2025-11-25 確認 405 對 GET 是 spec-compliant，但 Claude.ai client fallback 行為不是 POST-only 而是重 OAuth；且 stateful server 缺 SSE = stateful 名實不符（專題 Edge-native Agentic RAG 的 stateful claim self-contradicting）。
+  - **Acceptance 升級**：原「curl 4 tool call」標準不足（curl 不發 GET re-connect）。新標準：(a) curl 4 tool call 全綠；(b) SSE-aware mock client（ReadableStream consume + Last-Event-Id replay simulation）通過；(c) 真實 Claude.ai 連 staging 走 OAuth flow + 3 個 askKnowledge query 全部成功（UI 顯示真實答案，非 "Authorization failed" / "Tool execution failed"）。**§7.1 checkbox 因新標準暫退回 in-progress 狀態**，待 §4.x SSE 實作 + §5.x SSE tests + 升級 acceptance 全部通過後重新勾選。
+- [ ] 7.2 Production `NUXT_KNOWLEDGE_FEATURE_MCP_SESSION=true` flip；24 小時 wrangler tail 密集監控；任一 anomaly 立刻 flag=false（無需 redeploy）。**SSE scope expansion caveat**：production flag flip 前 MUST 完成 §7.1 升級的全部 SSE 驗證（含真實 Claude.ai 連線 + 3 query UI 顯示真實答案）。**v0.43.3 已實測過早 flip 會踩 GET /mcp 405 → Claude.ai OAuth 循環，於 2026-04-25 透過 v0.43.4 stop-gap commit 把 `wrangler.jsonc` flag 改回 `false` 重新 deploy 完成 rollback；下次 flip true 必須等 §4.x（已完成）+ §5.x SSE tests + 升級 acceptance 全綠後再做。**
 - [ ] 7.3 Production 正常運作 7 天後 `docs/tech-debt.md` 把 TD-030 + TD-041 Status 標 `done`，各附一句 one-liner
 
 ## 8. 人工檢查
