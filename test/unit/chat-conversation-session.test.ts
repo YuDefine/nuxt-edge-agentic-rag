@@ -189,4 +189,55 @@ describe('useChatConversationSession', () => {
     expect(storage.setItem).toHaveBeenCalledWith('web-chat:active-conversation:user-3', 'conv-3')
     expect(session.activeConversationId.value).toBe('conv-3')
   })
+
+  // Persisted Conversation Session Continuity — reload 折衷邏輯
+  it('does not auto-restore when sessionStorage key is absent (post explicit new conversation)', async () => {
+    const storage = createStorageMock()
+    const userId = shallowRef('user-6')
+    const loadConversation = vi.fn()
+
+    const session = useChatConversationSession({
+      loadConversation,
+      storage,
+      userId,
+    })
+
+    await session.restoreActiveConversation()
+
+    // 點過新對話按鈕後 sessionStorage 對應 key 已被 clearConversationSessionStorage 清掉，
+    // 此時 reload 不應呼叫 loadConversation 也不應 auto-restore 任何舊對話。
+    expect(loadConversation).not.toHaveBeenCalled()
+    expect(session.activeConversationId.value).toBeNull()
+    expect(session.persistedMessages.value).toEqual([])
+  })
+
+  // Persisted Conversation Session Continuity — 重度使用者 reload 不退步
+  it('still auto-restores when sessionStorage key is present (heavy user not regressed)', async () => {
+    const storage = createStorageMock(new Map([['web-chat:active-conversation:user-7', 'conv-7']]))
+    const userId = shallowRef('user-7')
+    const loadConversation = vi.fn().mockResolvedValue({
+      status: 'found',
+      detail: {
+        id: 'conv-7',
+        title: '上一個對話',
+        accessLevel: 'internal',
+        createdAt: '2026-04-25T01:00:00.000Z',
+        updatedAt: '2026-04-25T01:10:00.000Z',
+        userProfileId: 'user-7',
+        messages: [],
+      },
+    })
+
+    const session = useChatConversationSession({
+      loadConversation,
+      storage,
+      userId,
+    })
+
+    await session.restoreActiveConversation()
+
+    // 沒點過新對話 → key 還在 → reload 仍 auto-restore conv-7
+    expect(loadConversation).toHaveBeenCalledWith('conv-7')
+    expect(session.activeConversationId.value).toBe('conv-7')
+  })
 })
