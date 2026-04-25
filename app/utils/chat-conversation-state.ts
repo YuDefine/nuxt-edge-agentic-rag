@@ -23,6 +23,23 @@ export function buildConversationSessionStorageKey(userId: string): string {
   return `web-chat:active-conversation:${userId}`
 }
 
+export function clearConversationSessionStorage(
+  userId: string | null,
+  storage: Pick<Storage, 'removeItem'> | null,
+): void {
+  if (!userId || !storage) {
+    return
+  }
+
+  try {
+    storage.removeItem(buildConversationSessionStorageKey(userId))
+  } catch {
+    // sessionStorage may throw in Safari private mode (QuotaExceededError) or
+    // when DOM Storage is disabled. The reset still proceeded in component
+    // state, so we swallow the error rather than surfacing a toast.
+  }
+}
+
 export function resolvePreferredConversationId(input: {
   currentConversationId?: string | null
   storedConversationId?: string | null
