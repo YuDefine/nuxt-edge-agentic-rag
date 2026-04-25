@@ -1,4 +1,9 @@
-import type { ChatStreamEvent, ChatStreamTerminalEvent } from '#shared/types/chat-stream'
+import type {
+  ChatStreamEvent,
+  ChatStreamReadyEvent,
+  ChatStreamTerminalEvent,
+} from '#shared/types/chat-stream'
+import { createAbortError } from '#shared/utils/abort'
 import { assertNever } from '#shared/utils/assert-never'
 import type { ChatCitation, ChatMessage } from '~/types/chat'
 
@@ -9,12 +14,25 @@ export class ChatStreamError extends Error {
   }
 }
 
+export interface ReadChatStreamInput {
+  onTextDelta: (delta: string) => Promise<void> | void
+  /**
+   * Called when the server confirms a conversation has been persisted (DB row
+   * created or updated). Fires once, before any `delta` / `complete` /
+   * `refusal` / `error` events on the same stream. Container-level callers
+   * MUST capture the payload so that downstream error paths (AutoRAG /
+   * Workers AI / judge failures emitted as `error` events after `ready`) can
+   * still emit `conversation-persisted` upward — otherwise the sidebar /
+   * active id never refreshes and the next user message creates an orphan
+   * conversation.
+   */
+  onReady?: (data: ChatStreamReadyEvent['data']) => Promise<void> | void
+  signal?: AbortSignal
+}
+
 export async function readChatStream(
   response: Response,
-  input: {
-    onTextDelta: (delta: string) => Promise<void> | void
-    signal?: AbortSignal
-  },
+  input: ReadChatStreamInput,
 ): Promise<ChatStreamTerminalEvent> {
   if (!response.body) {
     throw new ChatStreamError('串流回應缺少內容')
@@ -48,7 +66,7 @@ export async function readChatStream(
       buffer = blocks.pop() ?? ''
 
       for (const block of blocks) {
-        const result = await handleEventBlock(block, input.onTextDelta)
+        const result = await handleEventBlock(block, input)
         if (result) {
           return result
         }
@@ -60,7 +78,7 @@ export async function readChatStream(
 
     const trailingBlock = buffer.trim()
     if (trailingBlock) {
-      const result = await handleEventBlock(trailingBlock, input.onTextDelta)
+      const result = await handleEventBlock(trailingBlock, input)
       if (result) {
         return result
       }
@@ -135,7 +153,7 @@ function parseChatStreamEvent(block: string): ChatStreamEvent | null {
 
 async function handleEventBlock(
   block: string,
-  onTextDelta: (delta: string) => Promise<void> | void,
+  input: ReadChatStreamInput,
 ): Promise<ChatStreamTerminalEvent | null> {
   const event = parseChatStreamEvent(block)
   if (!event) {
@@ -144,9 +162,10 @@ async function handleEventBlock(
 
   switch (event.event) {
     case 'ready':
+      await input.onReady?.(event.data)
       return null
     case 'delta':
-      await onTextDelta(event.data.content)
+      await input.onTextDelta(event.data.content)
       return null
     case 'complete':
       return event
@@ -157,8 +176,4 @@ async function handleEventBlock(
     default:
       return assertNever(event, 'handleEventBlock')
   }
-}
-
-function createAbortError(): DOMException {
-  return new DOMException('aborted', 'AbortError')
 }
