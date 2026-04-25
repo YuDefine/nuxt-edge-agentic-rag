@@ -111,6 +111,12 @@ export async function chatWithKnowledge(
          * explicitly because MCP refusal contracts are owned separately.
          */
         refused?: boolean
+        /**
+         * persist-refusal-and-label-new-chat: specific RefusalReason value
+         * for refusal assistant rows. `null` (or omit) for user / system /
+         * accepted rows.
+         */
+        refusalReason?: string | null
         userProfileId?: string | null
       }): Promise<string>
       createQueryLog(input: {
@@ -201,6 +207,13 @@ export async function chatWithKnowledge(
     stale: StaleResolverResult
   }
   refused: boolean
+  /**
+   * persist-refusal-and-label-new-chat: specific reason populated when
+   * `refused === true` so the SSE refusal event payload (and downstream
+   * `RefusalMessage.vue`) can render reason-specific copy. `null` when
+   * `refused === false`.
+   */
+  refusalReason: RefusalReason | null
   retrievalScore: number
 }> {
   // Coerce `input.now` (epoch ms or undefined) into a Date once so persistence
@@ -252,12 +265,15 @@ export async function chatWithKnowledge(
   const audit = auditKnowledgeText(input.query)
 
   if (audit.shouldBlock) {
+    // observability-and-debug §1.2: audit-blocked path is a pre-pipeline
+    // refusal — the decision is fully known here. Lifted to the outer
+    // `audit.shouldBlock` block (rather than nested inside `auditStore`)
+    // so the return shape can surface the same reason whether or not an
+    // audit store is wired.
+    const blockedDecisionPath: DecisionPath = 'restricted_blocked'
+    const blockedRefusalReason: RefusalReason = 'restricted_scope'
+
     if (options.auditStore) {
-      // observability-and-debug §1.2: audit-blocked path is a pre-pipeline
-      // refusal, so the decision is fully known at INSERT time — no separate
-      // `updateQueryLog` back-fill is needed.
-      const blockedDecisionPath: DecisionPath = 'restricted_blocked'
-      const blockedRefusalReason: RefusalReason = 'restricted_scope'
       const queryLogId = await options.auditStore.createQueryLog({
         allowedAccessLevels,
         channel: 'web',
@@ -288,7 +304,8 @@ export async function chatWithKnowledge(
       // outcome — write the assistant turn so reload paths can render
       // `RefusalMessage.vue` from `messages.refused = 1`. content uses
       // the shared REFUSAL_MESSAGE_CONTENT constant; per-reason copy
-      // belongs in the UI template, not in `messages.content`.
+      // belongs in the UI template, not in `messages.content`. Reason is
+      // `'restricted_scope'` so reload UI shows credential-leak guidance.
       await options.auditStore.createMessage({
         channel: 'web',
         content: REFUSAL_MESSAGE_CONTENT,
@@ -296,6 +313,7 @@ export async function chatWithKnowledge(
         queryLogId,
         role: 'assistant',
         refused: true,
+        refusalReason: blockedRefusalReason,
         userProfileId: input.auth.userId,
       })
     }
@@ -304,6 +322,7 @@ export async function chatWithKnowledge(
       answer: null,
       citations: [],
       refused: true,
+      refusalReason: blockedRefusalReason,
       retrievalScore: 0,
       ...(staleResult && input.conversationId
         ? {
@@ -435,9 +454,11 @@ export async function chatWithKnowledge(
         // outcome from the user's perspective — the SSE container surfaces
         // a refusal experience after this throw. Persist the assistant
         // turn so reload paths still see the refusal even if the original
-        // stream never completed. Aborts are NOT persisted because they
-        // represent the user choosing to cancel mid-stream, not a refusal.
-        // The outer `options.auditStore?.updateQueryLog && queryLogId` guard
+        // stream never completed. Reason is `'pipeline_error'` so reload
+        // UI shows the transient-failure guidance copy. Aborts are NOT
+        // persisted because they represent the user choosing to cancel
+        // mid-stream, not a refusal. The outer
+        // `options.auditStore?.updateQueryLog && queryLogId` guard
         // already implies `auditStore` is truthy here.
         await options.auditStore.createMessage({
           channel: 'web',
@@ -447,6 +468,7 @@ export async function chatWithKnowledge(
           queryLogId,
           role: 'assistant',
           refused: true,
+          refusalReason: 'pipeline_error',
           userProfileId: input.auth.userId,
         })
       }
@@ -476,6 +498,20 @@ export async function chatWithKnowledge(
     })
   }
 
+  // persist-refusal-and-label-new-chat: derive the effective refusal reason
+  // before message persistence so both the assistant message row and the
+  // function return use the same value. Reason comes from telemetry
+  // (typically `no_citation` or `low_confidence`); fall back to
+  // `no_citation` when the pipeline exited without emitting telemetry so
+  // reload still gets a usable copy bucket. Accepted answers are `null`.
+  // The cast mirrors the surrounding code — control-flow narrowing through
+  // the `onDecision` callback assignment loses the original type otherwise.
+  const telemetrySnapshot = telemetry as KnowledgeAnsweringTelemetry | null
+  const effectiveRefusalReason: RefusalReason | null =
+    result.refused || result.answer === null
+      ? (telemetrySnapshot?.refusalReason ?? 'no_citation')
+      : null
+
   if (options.auditStore) {
     if (result.refused || result.answer === null) {
       // persist-refusal-and-label-new-chat: pipeline refusal outcome —
@@ -491,6 +527,7 @@ export async function chatWithKnowledge(
         queryLogId: queryLogId ?? undefined,
         role: 'assistant',
         refused: true,
+        refusalReason: effectiveRefusalReason,
         userProfileId: input.auth.userId,
       })
     } else {
@@ -512,6 +549,7 @@ export async function chatWithKnowledge(
         queryLogId: queryLogId ?? undefined,
         role: 'assistant',
         refused: false,
+        refusalReason: null,
         userProfileId: input.auth.userId,
       })
     }
@@ -520,6 +558,7 @@ export async function chatWithKnowledge(
   if (staleResult && input.conversationId) {
     return {
       ...result,
+      refusalReason: effectiveRefusalReason,
       followUp: {
         conversationId: input.conversationId,
         forcedFreshRetrieval,
@@ -528,5 +567,8 @@ export async function chatWithKnowledge(
     }
   }
 
-  return result
+  return {
+    ...result,
+    refusalReason: effectiveRefusalReason,
+  }
 }

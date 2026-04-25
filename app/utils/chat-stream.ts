@@ -88,6 +88,11 @@ export function createAssistantMessageFromTerminalEvent(
       role: 'assistant',
       content: REFUSAL_MESSAGE_CONTENT,
       refused: true,
+      // persist-refusal-and-label-new-chat: forward refusal reason from
+      // the SSE event so RefusalMessage.vue renders reason-specific copy
+      // for the live stream path. Reload paths get the same reason from
+      // the persisted `messages.refusal_reason` column.
+      refusalReason: terminalEvent.data.reason,
       createdAt: input.createdAt,
     }
   }
@@ -97,6 +102,7 @@ export function createAssistantMessageFromTerminalEvent(
     role: 'assistant',
     content: terminalEvent.data.answer,
     refused: false,
+    refusalReason: null,
     citations: terminalEvent.data.citations as ChatCitation[],
     createdAt: input.createdAt,
   }

@@ -62,6 +62,7 @@ describe('chat conversation state helpers', () => {
             contentText: '第一步怎麼做？',
             citationsJson: '[]',
             refused: false,
+            refusalReason: null,
             createdAt: '2026-04-23T08:00:00.000Z',
           },
           {
@@ -72,6 +73,7 @@ describe('chat conversation state helpers', () => {
             citationsJson:
               '[{"citationId":"cit-1","sourceChunkId":"chunk-1","documentVersionId":"ver-1"}]',
             refused: false,
+            refusalReason: null,
             createdAt: '2026-04-23T08:00:05.000Z',
           },
         ],
@@ -82,6 +84,7 @@ describe('chat conversation state helpers', () => {
         role: 'user',
         content: '第一步怎麼做？',
         refused: false,
+        refusalReason: null,
         createdAt: '2026-04-23T08:00:00.000Z',
       },
       {
@@ -89,6 +92,7 @@ describe('chat conversation state helpers', () => {
         role: 'assistant',
         content: '先建立請購單。',
         refused: false,
+        refusalReason: null,
         citations: [{ citationId: 'cit-1', sourceChunkId: 'chunk-1' }],
         createdAt: '2026-04-23T08:00:05.000Z',
       },
@@ -112,6 +116,7 @@ describe('chat conversation state helpers', () => {
             contentText: null,
             citationsJson: '[]',
             refused: false,
+            refusalReason: null,
             createdAt: '2026-04-23T09:00:00.000Z',
           },
         ],
@@ -122,6 +127,7 @@ describe('chat conversation state helpers', () => {
         role: 'user',
         content: '此訊息因治理規則無法顯示原文。',
         refused: false,
+        refusalReason: null,
         createdAt: '2026-04-23T09:00:00.000Z',
       },
     ])
@@ -147,6 +153,7 @@ describe('chat conversation state helpers', () => {
           contentText: '請問外洩 api_key 怎辦',
           citationsJson: '[]',
           refused: false,
+          refusalReason: null,
           createdAt: '2026-04-25T10:00:00.000Z',
         },
         {
@@ -156,17 +163,19 @@ describe('chat conversation state helpers', () => {
           contentText: '抱歉，我無法回答這個問題。',
           citationsJson: '[]',
           refused: true,
+          refusalReason: 'restricted_scope',
           createdAt: '2026-04-25T10:00:01.000Z',
         },
       ],
     })
 
     expect(result).toHaveLength(2)
-    expect(result[0]).toMatchObject({ role: 'user', refused: false })
+    expect(result[0]).toMatchObject({ role: 'user', refused: false, refusalReason: null })
     expect(result[1]).toMatchObject({
       role: 'assistant',
       content: '抱歉，我無法回答這個問題。',
       refused: true,
+      refusalReason: 'restricted_scope',
     })
   })
 })

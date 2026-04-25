@@ -2,6 +2,8 @@
  * Chat message types for Web UI
  */
 
+import type { RefusalReason } from '#shared/types/observability'
+
 export type MessageRole = 'user' | 'assistant'
 
 export interface ChatCitation {
@@ -14,6 +16,15 @@ export interface ChatMessage {
   role: MessageRole
   content: string
   refused?: boolean
+  /**
+   * persist-refusal-and-label-new-chat: specific reason for the refusal
+   * turn. Sourced from the live SSE `refusal` event reason (see
+   * `app/utils/chat-stream.ts`) or from `messages.refusal_reason` on
+   * conversation reload. `null` / `undefined` for user, accepted, and
+   * unknown-reason rows; `RefusalMessage.vue` falls back to generic copy
+   * when missing.
+   */
+  refusalReason?: RefusalReason | null
   citations?: ChatCitation[]
   createdAt: string
 }
@@ -40,6 +51,12 @@ export interface ChatConversationMessage {
    * without inspecting `contentText`.
    */
   refused: boolean
+  /**
+   * persist-refusal-and-label-new-chat: specific RefusalReason for the
+   * refusal turn. Sourced from `messages.refusal_reason`. `null` for user,
+   * system, and accepted-assistant rows.
+   */
+  refusalReason: RefusalReason | null
   createdAt: string
 }
 

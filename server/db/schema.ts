@@ -228,6 +228,14 @@ export const messages = sqliteTable(
      * to render `RefusalMessage.vue`. See migration 0013.
      */
     refused: integer('refused', { mode: 'boolean' }).notNull().default(false),
+    /**
+     * persist-refusal-and-label-new-chat: specific RefusalReason value (see
+     * `shared/types/observability.ts` `RefusalReason`) for refusal assistant
+     * turns. Null on user / system / accepted-assistant rows. Reload UI
+     * uses this to render reason-specific copy in RefusalMessage.vue. See
+     * migration 0014.
+     */
+    refusalReason: text('refusal_reason'),
     createdAt: text('created_at').notNull().default(timestampNow),
   },
   (table) => [

@@ -74,11 +74,14 @@
         'justify-start': getMessageRoleConfig(message.role).alignment === 'left',
       }"
     >
-      <!-- Refusal messages use dedicated component -->
+      <!-- Refusal messages use dedicated component. persist-refusal-and-label-new-chat:
+           forward `refusalReason` so reason-specific copy renders for both
+           live SSE and reload paths. -->
       <LazyChatRefusalMessage
         v-if="isRefusalMessage(message)"
         :content="message.content"
         :created-at="message.createdAt"
+        :reason="message.refusalReason ?? null"
         class="max-w-[85%] sm:max-w-2xl"
         @retry-focus="emit('retryFocus')"
       />
@@ -99,7 +102,8 @@
           </span>
         </div>
 
-        <div class="text-sm whitespace-pre-wrap text-default">
+        <LazyChatMarkdownContent v-if="message.role === 'assistant'" :content="message.content" />
+        <div v-else class="text-sm whitespace-pre-wrap text-default">
           {{ message.content }}
         </div>
 

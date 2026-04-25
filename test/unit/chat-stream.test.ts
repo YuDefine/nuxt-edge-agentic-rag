@@ -58,7 +58,7 @@ describe('chat stream reader', () => {
     const result = await readChatStream(
       createSseResponse([
         'event: ready\ndata: {"conversationCreated":false,"conversationId":"conv-2"}\n\n',
-        'event: refusal\ndata: {"answer":null,"citations":[],"conversationCreated":false,"conversationId":"conv-2","refused":true}\n\n',
+        'event: refusal\ndata: {"answer":null,"citations":[],"conversationCreated":false,"conversationId":"conv-2","refused":true,"reason":"restricted_scope"}\n\n',
       ]),
       { onTextDelta: vi.fn() },
     )
@@ -71,6 +71,7 @@ describe('chat stream reader', () => {
         conversationCreated: false,
         conversationId: 'conv-2',
         refused: true,
+        reason: 'restricted_scope',
       },
     })
   })
@@ -201,12 +202,16 @@ describe('chat stream reader', () => {
       role: 'assistant',
       content: 'Launch moved to Tuesday.',
       refused: false,
+      refusalReason: null,
       citations: [{ citationId: 'citation-1', sourceChunkId: 'chunk-1' }],
       createdAt: '2026-04-24T00:00:00.000Z',
     })
   })
 
-  it('maps refusal terminal events to explicit refused assistant messages', () => {
+  it('maps refusal terminal events to explicit refused assistant messages with reason', () => {
+    // persist-refusal-and-label-new-chat: refusal event payload now carries
+    // `reason` so RefusalMessage.vue can render reason-specific copy. The
+    // mapper forwards the reason onto ChatMessage.refusalReason.
     expect(
       createAssistantMessageFromTerminalEvent(
         {
@@ -217,6 +222,7 @@ describe('chat stream reader', () => {
             conversationCreated: false,
             conversationId: 'conv-2',
             refused: true,
+            reason: 'restricted_scope',
           },
         },
         {
@@ -229,7 +235,33 @@ describe('chat stream reader', () => {
       role: 'assistant',
       content: '抱歉，我無法回答這個問題。',
       refused: true,
+      refusalReason: 'restricted_scope',
       createdAt: '2026-04-24T00:00:00.000Z',
+    })
+  })
+
+  it('accepted answer mapping carries refusalReason: null', () => {
+    expect(
+      createAssistantMessageFromTerminalEvent(
+        {
+          event: 'complete',
+          data: {
+            answer: 'Field A means …',
+            citations: [{ citationId: 'cit-1', sourceChunkId: 'chunk-1' }],
+            conversationCreated: false,
+            conversationId: 'conv-3',
+            refused: false,
+          },
+        },
+        {
+          createdAt: '2026-04-24T01:00:00.000Z',
+          id: 'msg-3',
+        },
+      ),
+    ).toMatchObject({
+      role: 'assistant',
+      refused: false,
+      refusalReason: null,
     })
   })
 })

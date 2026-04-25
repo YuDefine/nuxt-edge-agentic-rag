@@ -190,6 +190,13 @@ export function createKnowledgeAuditStore(database: D1DatabaseLike) {
        * does not flag MCP rows.
        */
       refused?: boolean
+      /**
+       * persist-refusal-and-label-new-chat: specific RefusalReason for
+       * refusal assistant rows. Reload UI uses this to render
+       * reason-specific copy. Pass `null` (or omit) for user, system, and
+       * accepted-assistant rows.
+       */
+      refusalReason?: string | null
       userProfileId?: string | null
     }): Promise<string> {
       const messageId = crypto.randomUUID()
@@ -220,8 +227,8 @@ export function createKnowledgeAuditStore(database: D1DatabaseLike) {
             'INSERT INTO messages (',
             '  id, conversation_id, query_log_id, user_profile_id, channel, role,',
             '  content_redacted, content_text, citations_json, risk_flags_json,',
-            '  redaction_applied, refused, created_at',
-            ') VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            '  redaction_applied, refused, refusal_reason, created_at',
+            ') VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
           ].join('\n'),
         )
         .bind(
@@ -237,6 +244,7 @@ export function createKnowledgeAuditStore(database: D1DatabaseLike) {
           JSON.stringify(audit.riskFlags),
           audit.redactionApplied ? 1 : 0,
           input.refused ? 1 : 0,
+          input.refusalReason ?? null,
           now,
         )
         .run()
