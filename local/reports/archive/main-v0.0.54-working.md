@@ -1,7 +1,3 @@
-### 1.3.2 專題架構
-
-本系統採四層式邊緣原生架構，分為前端層、資料與受管理檢索層、Agentic AI 層與 MCP 層。整體原則為「檢索受管理、回答自建、治理先行、核心優先」。
-
 圖 2 Hybrid Managed RAG 邊緣原生系統架構圖
 
 flowchart LR
@@ -44,97 +40,9 @@ Worker --> KV
 Agent -.後續受控啟用.-> CloudFallback[外部模型備援]
 MCPServer -.Staging 驗證中.-> DO[Durable Objects MCP session]
 
-架構說明如下：
-
-- 前端層：使用 Nuxt 4 與 Nuxt UI 建立問答介面、管理後台、設定頁與 connector authorization / consent 狀態頁。現階段使用者以 Google OAuth 或 Passkey 登入，並在同一前端中存取各自權限允許的對話歷史、文件管理頁與 remote MCP 授權流程[9][10][14]。
-- 資料與受管理檢索層：以 R2 儲存原始文件與版本檔，D1 儲存結構化資料，KV 作為快取與 rate limit 計數器；Web Admin 文件上傳採應用層簽發一次性 signed URL 後直傳 R2。應用層需先將原始檔轉為正規化文字快照並寫入 normalized_text_r2_key，再以固定切分規則預建 source_chunks，作為引用回放真相來源。Cloudflare AI Search 連接既定資料來源後，負責 Markdown 轉換、分塊、Embedding、query rewriting、reranking 與 retrieval；應用層先以 metadata filter 套用 status = active 與可見 access_level，必要時可附帶 version_state = current 作為快篩提示，但不將遠端 metadata 視為發布真相來源。正式回答前一律以 D1 驗證 document_version_id 是否仍符合 documents.status = active、document_versions.index_status = indexed 與 document_versions.is_current = true，並要求 AI Search 回傳候選片段可對應至既有 source_chunks。D1 與正規化文字快照才是 current-version-only 與引用回放的正式真相來源，AI Search metadata 與供應商 chunk 僅作快篩、檢索與觀測用途[6][12]。
-- Agentic AI 層：回答生成與流程控制由應用層掌握。現行程式已具備 Workers AI answer adapter，依 models.defaultAnswer / models.agentJudge 角色常數選擇模型，並以「只能根據證據回答」作為系統提示。檢索後先計算 retrieval_score；僅在邊界區間才觸發 judge 與查詢改寫。若 judge 回傳 reformulatedQuery，應用層重送一次檢索並再次評估；單文件、明確、程序型或事實型回答路由到 models.defaultAnswer，跨文件整合則路由到 models.agentJudge。測試環境仍保留 deterministic synthesizer 以固定驗收輸出，但正式架構不再把其視為主要回答層。
-- MCP 層：以 @nuxtjs/mcp-toolkit 的 defineMcpTool 建立 4 個核心 MCP tools，對應單一 /mcp JSON-RPC endpoint；透過統一 middleware 驗證 Bearer token、OAuth-compatible remote auth context 與 scope。Production 目前採無狀態呼叫，不建立 MCP-Session-Id 相依性；Web 對話與 MCP 工具契約因此分別對應「D1 持久化對話輔助」與「單次請求契約」。Staging 保留 Durable Objects / SSE 版本用於相容性測試，通過真實 Client 驗收前不得視為 Production 成果[11][12][13]。
-
-雖然 Cloudflare AI Search 已提供 public endpoint 與原生 MCP 能力[6][18][19]，本專題現階段仍選擇在應用層自建 MCP。主因是正式回答前必須統一經過 D1 active/indexed/current 驗證、restricted scope 檢查、source_chunks 可回放引用對應與遮罩後查詢日誌；若直接暴露供應商原生 MCP 端點，將難以保證 Web 與 MCP 共用同一套發布真相與審計規則。
-
-Cloudflare AI Search 每個 instance 最多支援 5 個 custom metadata 欄位[6][20]。本系統現階段固定保留 4 個核心欄位：document_version_id、category、status、access_level；version_state 僅於需要輔助管理後台觀測或同步檢查時作為第 5 個選用欄位，不作正式回答的硬性判斷依據。其中 document_id 與 version_no 不再額外占用 custom metadata，而是由 folder = /kb/{category}/{document_id}/v{version_no}/ 路徑策略與 D1 回推。此設計是為了符合 AI Search custom metadata 上限，同時保留分類篩選、版本追蹤與資料治理判斷。documents.tags 僅保留於 D1 供管理後台管理與後續延伸，不同步至 AI Search，也不作為現階段 MCP 對外檢索契約參數。
-
-### 1.3.3 平台能力與最小可行閉環
-
-本專題的驗收重點不是功能數量，而是核心閉環是否可被重現。現階段將平台能力確認、功能驗證與降階原則整理如下。
-
-表 2 平台能力與核心閉環確認項
-
-| 面向       | 確認事項                                                                                       | 通過條件                                                                                   | 若未通過之降階原則                                                                                                       |
-| ---------- | ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------ |
-| 檢索介面   | AI Search 在目標環境可透過 Workers binding 或 API 回傳可驗證 metadata 與候選片段               | 可用 document_version_id 對應 D1 版本資料，並完成 active/indexed/current post-verification | 保留 Web 問答、文件同步與引用回放；進階 MCP filter 與外部 Client 相容性列為營運期觀測                                    |
-| 引用回放   | 候選片段可穩定對應到應用層預建之 source_chunks                                                 | 任何正式回答至少一筆引用可透過 citationId 回放完整片段                                     | 若 rich format snapshot 不穩定，先使用 md、txt 或人工校閱文字版；舊式 Office、掃描 PDF 與媒體檔不作核心 pass / fail 依據 |
-| 模型可用性 | Workers AI 於部署環境可完成回答生成；測試環境可用 deterministic synthesizer 固定結構式驗收輸出 | models.defaultAnswer 與 models.agentJudge 角色常數存在，回答 adapter 不改變對外契約        | 保留角色常數與治理流程，臨時以測試 adapter 驗證流程；正式成果不得把測試 adapter 說成模型品質驗收                         |
-| 權限治理   | Web role、MCP scope 與 guest_policy 皆由同一套 allowed_access_levels 推導                      | Admin / Member / Guest 與 knowledge.restricted.read 能在 Web 與 MCP 入口得到一致結果       | 若某入口未通過，該入口不得視為正式成果；但不得放寬 restricted 與 existence-hiding 規則                                   |
-| 通道邊界   | Web 可持久化對話，MCP Production 維持無狀態契約                                                | Web conversationId 可重整恢復；MCP Production 不要求 MCP-Session-Id                        | Durable Objects / SSE 版本僅留在 Staging 測試線，通過真實 Client 驗收前不開啟 Production flag                            |
-
-現階段最小可行閉環如下：
-
-1. Admin 上傳並發布一份 internal 文件，使其成為 current version。
-2. 使用者針對 current 文件提問，系統回傳含有效引用的回答。
-3. getDocumentChunk 可回放其中至少一筆引用。
-4. 同一文件切到新版本後，舊版內容不再出現在正式回答。
-5. 未具 knowledge.restricted.read 之 MCP token 與一般 Web 使用者均不得讀取 restricted 內容。
-6. query_logs 與 messages 可證明高風險輸入未以原文持久化。
-7. Web 對話歷史可建立、重整恢復、續問與刪除。
-
-本系統的交付重點集中於 current-version-only、引用回放、權限隔離與遮罩記錄等治理能力；debug 視覺化、管理摘要、legacy Office、媒體與 OCR 類功能則列為後續資料來源與營運介面擴充。
-
-### 1.3.4 交付版邊界
-
-本節將「核心驗收契約」與「交付版邊界」分開說明。前者整理系統實作與驗收的主要依據，後者說明本報告已納入的交付證據，以及研究限制與營運期觀測項目。
-
-表 3 核心驗收契約與設計原則
-
-| 面向     | 核心設計項目                                                                                              | 核心驗收原則                                                                                                 |
-| -------- | --------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| 版本真相 | documents.status、document_versions.index_status、is_current 與 publish transaction                       | 只有 active/indexed/current 可進入正式回答，且每份文件僅允許一個 current                                     |
-| 引用真相 | normalized_text_r2_key、deterministic source_chunks、citationId 回放契約                                  | 正式回答只可引用既有 source_chunks；無有效引用不得形成正式回答                                               |
-| 存取治理 | Web 角色、MCP scope、allowed_access_levels 與 existence-hiding                                            | 未授權不得讀取 restricted 內容；getDocumentChunk 必須再次驗證 scope                                          |
-| 記錄治理 | messages.content_redacted、messages.content_text、query_logs.risk_flags_json / redaction_applied / status | 高風險輸入不得以原文落地；一般可見訊息以 content_text 供 UI 顯示，刪除對話時必須清空且不得回到後續模型上下文 |
-| 通道邊界 | Web 對話持久化與 MCP Production 無狀態契約分流                                                            | Production 採無狀態 MCP 請求；Passkey 已納入身分驗證主線；外部模型備援作為後續架構演進項目                   |
-
-表 4 交付版邊界與營運期觀測項
-
-| 項目                         | 本報告處理方式                                   | 成果結論定位                                   |
-| ---------------------------- | ------------------------------------------------ | ---------------------------------------------- |
-| 目錄、圖表索引與正式頁碼     | Markdown 保留章節與圖表順序，Word / PDF 產生頁碼 | 排版層資訊，不影響架構與驗收結論               |
-| 圖 1 至圖 6                  | 以 Mermaid 圖納入正文                            | 已作為架構、流程與資料模型說明                 |
-| 表 41、表 42                 | 以 TC / EV 證據整理核心驗收結果                  | 支撐交付版驗收；更大樣本統計列為營運觀測       |
-| 圖 8 與圖 13                 | 呈現目前環境下的問答主畫面與用量頁代表狀態       | 補充使用者介面證據；長期用量曲線不列為本次成果 |
-| Stateful MCP / DO / SSE 驗收 | 保留於 Staging 測試線                            | 不列入 Production 成果結論                     |
-
-因此，本報告可以明確宣稱已完成核心治理閉環、結構式驗證與交付版證據整理；長期營運統計、stateful MCP session 與大樣本實模型品質則列為研究限制與未來展望，不列入成果結論。
-
-## 第四節 預期效益
-
-對使用者：
-
-- 以自然語言提問取代手動翻找文件，提高操作問題的定位效率。
-- 透過引用與片段回看機制，降低對黑盒式回答的不信任感。
-- 在問題資訊不足時得到明確拒答與補充方向，而非錯誤但自信的回答。
-
-對中小企業：
-
-- 以邊緣原生架構降低基礎設施管理複雜度，將維運工作集中在知識內容與權限治理。
-- 以 AI Search 接手文件處理與檢索基礎流程，減少自建向量基礎設施的負擔。
-- 透過 MCP 提供標準化知識能力，讓未來 AI 助理整合不必重新設計私有 API。
-- 以不預設額外跨雲 LLM API 的 現階段降低資料外送風險，後續若擴充外部模型再由治理閘道控管。
-
-對技術社群：
-
-- 提供 Cloudflare AI Search、Workers AI、Nuxt MCP Toolkit 與 better-auth 的整合規格範例。
-- 示範如何把受管理檢索服務與自建 Agent 決策流程分層，避免責任邊界混亂。
-- 提供專題報告在規劃階段的規格化寫法，讓後續填入測試資料與截圖時有一致基準。
-
-本節效益為設計預期，不宣稱既有成效；成本節省比例、延遲改善幅度與使用者效益須待第三章與第四章之正式驗證結果填入後方可定論。
-
 ---
 
 # 第二章 分析與設計
-
-本章以說明系統分析、設計與驗證依據為目標。內容可分為兩類：其一是 current-version-only、引用回放、授權隔離與記錄遮罩等核心驗收規則；其二是會隨平台版本、SDK 與部署環境微調的實作細節。前者已固定為驗收契約，後者保留調整空間，但需維持核心治理邊界一致。
 
 ## 第一節 分析
 
