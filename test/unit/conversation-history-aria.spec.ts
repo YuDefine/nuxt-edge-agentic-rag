@@ -122,6 +122,17 @@ describe('ConversationHistory aria-expanded', () => {
     expect(earlier!.attributes('aria-expanded')).toBe('false')
   })
 
+  it('collapsed-rail new-conversation icon retains aria-label="新對話" (Icon-only secondary rail entry retains aria-label)', async () => {
+    // persist-refusal-and-label-new-chat: the collapsed rail icon is the
+    // secondary entry point — per spec it MAY remain icon-only as long as
+    // assistive technology still announces "新對話" via aria-label. The
+    // primary entry points (chat header / sidebar expanded header) carry
+    // visible text labels separately.
+    const wrapper = await mountConversationHistory({ collapsed: true })
+    const collapsedButton = wrapper.get('[data-testid="conversation-history-new-button-collapsed"]')
+    expect(collapsedButton.attributes('aria-label')).toBe('新對話')
+  })
+
   it('aria-expanded flips synchronously when the bucket open state changes', async () => {
     historyMock.conversations.value = [
       createConversation('更早對話', new Date(2026, 2, 20, 10).toISOString()),

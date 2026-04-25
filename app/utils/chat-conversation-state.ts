@@ -71,6 +71,10 @@ export function mapConversationDetailToChatMessages(detail: ChatConversationDeta
       id: message.id,
       role: message.role,
       content: getConversationMessageContent(message),
+      // persist-refusal-and-label-new-chat: forward the persisted refusal
+      // flag from the API straight onto the ChatMessage so MessageList can
+      // render `RefusalMessage.vue` without any content string heuristic.
+      refused: message.refused,
       ...(citations.length > 0 ? { citations } : {}),
       createdAt: message.createdAt,
     }

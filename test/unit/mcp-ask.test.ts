@@ -96,6 +96,7 @@ describe('mcp ask', () => {
       content: 'api_key=super-secret-value',
       queryLogId: 'query-log-blocked',
       role: 'user',
+      refused: false,
       userProfileId: null,
     })
     expect(retrieve).not.toHaveBeenCalled()

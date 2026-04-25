@@ -222,12 +222,57 @@ wrangler d1 execute "${DB_NAME:-agentic-rag-db}" --remote --command \
 - 新對話 model 回覆含原文 → 檢查 chat context assembly 是否過濾 `conversations.deleted_at IS NOT NULL`
 - 稽核表查得到明文 → 檢查 purge policy 是否對 `messages.content_redacted` 真的執行 clear / hard delete
 
+## 3.5 Refusal 訊息持久化於 `messages.refused`（persist-refusal-and-label-new-chat）
+
+migration 0013 起，每個 refusal 助理回合（audit-block / pipeline_refusal /
+pipeline_error）都被寫入 `messages` 並標記 `refused = 1`，使重新載入歷史對話
+時 `RefusalMessage.vue` 能完整還原（含「可能原因」「建議下一步」區塊）。
+
+### 3.5.1 驗證寫入
+
+```bash
+# 觸發 audit-block：以含 api_key=... 的 query 提問
+# 之後查詢
+wrangler d1 execute <DB> --remote \
+  --command "SELECT id, role, refused, content_text FROM messages \
+             WHERE conversation_id = '<conv-id>' ORDER BY created_at"
+```
+
+預期：
+
+- 至少一筆 `role = user`、`refused = 0`
+- 緊接著一筆 `role = assistant`、`refused = 1`、`content_text` 為
+  「抱歉，我無法回答這個問題。」
+
+### 3.5.2 驗證 reload UI
+
+1. 登入 → 在 `/` 觸發 refusal（audit-block 或 pipeline 拒答）
+2. 切換至其他對話再切回，或重新整理瀏覽器
+3. 助理回合應渲染 `RefusalMessage.vue`（不是普通訊息泡泡）
+
+### 3.5.3 不回填舊資料（design Non-Goal 4）
+
+migration 之前產生的 conversation 若曾觸發拒答，原本就沒寫入 assistant 列，
+migration 0013 不會逆向補寫。重載時這些對話仍只看見使用者的提問——這是
+刻意行為，而非 bug。新建立的對話從第一次拒答起即正確持久化。
+
+```bash
+# 確認舊 row 全為 refused = 0
+wrangler d1 execute <DB> --remote \
+  --command "SELECT COUNT(*) AS legacy FROM messages WHERE refused = 1 \
+             AND created_at < '<migration-deploy-time>'"
+# legacy = 0 才正常
+```
+
 ## 4. Integration Test 對應
 
 本文件為人工驗證；對應的自動化測試應落在：
 
 - `test/integration/chat/stale-follow-up.test.ts`（或同等命名）— 驗證 §2
 - `test/integration/conversations/delete-purge.test.ts`（或同等命名）— 驗證 §3
+- `test/integration/messages-refused-migration.test.ts` — 驗證 §3.5 migration 形狀
+- `test/integration/web-chat-persistence.test.ts` — 驗證 §3.5 寫入路徑（三條 refusal + accepted）
+- `test/integration/conversation-messages-refused.test.ts` — 驗證 §3.5 reload API contract
 
 若自動化測試缺漏 → 回到 governance 1.6 任務補測。
 

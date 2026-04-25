@@ -140,12 +140,13 @@ describe('knowledge audit', () => {
       null,
       null,
     )
-    // After governance §1.4: INSERT now binds
+    // After persist-refusal-and-label-new-chat: INSERT now binds
     //   id, conversation_id, query_log_id, user_profile_id, channel, role,
     //   content_redacted, content_text, citations_json, risk_flags_json,
-    //   redaction_applied, created_at
+    //   redaction_applied, refused, created_at
     // content_text holds the raw input (pre-redaction); content_redacted
-    // holds the redacted audit copy.
+    // holds the redacted audit copy. `refused` defaults to 0 when the
+    // caller omits it (user / system / accepted-answer rows).
     expect(messageBind).toHaveBeenCalledWith(
       expect.any(String),
       null,
@@ -158,6 +159,7 @@ describe('knowledge audit', () => {
       '[]',
       '["pii:email"]',
       1,
+      0,
       expect.any(String),
     )
   })
