@@ -20,9 +20,10 @@ _(見 AUTO Parked Changes 區塊：add-mcp-token-revoke-do-cleanup、passkey-use
 
 ### 近期（尚未 propose，可獨立進）
 
-- [mid] **TD-057** evlog wide event lifecycle 警告 — `[evlog] log.error() called after the wide event was emitted` 於 production wrangler tail 出現，影響 SSE stream 真實錯誤可觀察性
-- [low] **TD-056** Workers AI judge 模型 `max_completion_tokens: 200` 上限被截斷 → JSON parse 失敗 → pipeline_error — 特定 query 才觸發、persist-refusal 已 cover UX
-- [low] **TD-015 production 立即驗收（post-archive follow-up）** — `add-sse-resilience` 已 archive，立即驗收方式：(1) `wrangler tail --env production --format json | jq 'select(.outcome=="error" or .level=="error")'` 採樣 10-15 分鐘看 `chat.error` 是否異常；(2) 撈 production D1 最近 24h `query_logs` 抽 10 條 chat run，比對 `first_token_ts - created_at` delta 落在合理區間（< 5s 為健康）。任一異常開新 TD entry，否則直接標 done
+- ~~[high] **TD-059** E2E Tests CI workflow 連續 50+ run 全紅~~ — **2026-04-26 done**（採方案 A：wrangler dev 取代 nuxt preview 當 webServer），register Status `done`
+- [mid] **TD-057** evlog wide event lifecycle 警告 — production live tail 已重現 `log.error()` × 3（對應 pipeline_error 路徑）+ `log.set()` × 3（對應 refusal/成功路徑），同 root cause（SSE `ReadableStream.start()` 內 callback 試圖 mutate 已 emit 的 wide event）。影響 SSE stream 真實錯誤與結果欄位可觀察性
+- [low] **TD-056** Workers AI judge 模型 `max_completion_tokens: 200` 上限被截斷 → JSON parse 失敗 → pipeline_error — 2026-04-26 production live 採樣再添 3 條樣本（皆為 reasoning-heavy 或 markdown 處理 query），可從 `query_logs.id` `958783b0` / `278a50a8` / `e17514ed` 抽 `workers_ai_runs_json` 對照
+- [low] **TD-058** Production `user_profiles` 6 條 orphaned rows（profile.id 不在 user.id）— TD-053 立即驗收附帶發現；schema 中 `user_profiles.id` 非 `user.id` 的 FK，需評估清理 / FK 加掛策略，可能與 TD-009 user_profiles rebuild 合併處理
 - [low] **v0.50.0 simplify / code-review 留下的 cosmetic 觀察**（不登記 TD，留作 backlog）
   - `conversation-store.ts` / `knowledge-audit.ts` / `web-chat.ts` / `mcp-ask.ts` 的 `refusalReason?: string | null` 可收緊為 `RefusalReason | null`（DB 層沒 enum 約束，靠 application layer enforce）
   - `chat-sse-response.ts` heartbeat catch 不設 `closed = true`（finally 仍兜底，雙保險更乾淨）
@@ -30,14 +31,8 @@ _(見 AUTO Parked Changes 區塊：add-mcp-token-revoke-do-cleanup、passkey-use
   - `conversation-title.ts` `slice(0, 40)` 是 code-unit indexed，emoji 可能斷在 surrogate pair 中間（罕見）
   - `RefusalMessage.vue` `mailto:${adminContactEmail}` 未 URL-encode email 本身（subject 有 encode）
 - [mid] **TD-050** Staging R2 (`agentic-rag-documents-staging`) 為空，缺 RAG content seed / sync schedule — wire-do archive 後可獨立進（驗證 4 個 tool call `citations:[] / results:[]` empty 是否因 R2 缺資料導致）
-- [mid] **TD-049** Cloudflare Pages deploy API 拒絕 git HEAD commit message — in-progress（CI 已加 workaround `5ce334c`），持續觀察是否仍有 deploy 中斷
-- [mid] **TD-047** `/api/chat` SSE `ready` 後階段 error 時 Container 未 emit `conversation-persisted` — 獨立、scope 小
-- [mid] **TD-009** `user_profiles.email_normalized` nullable migration — 獨立（scope 非小：rebuild `user_profiles` + 4 FK children，約 700+ 行 SQL + data migration）
+- ~~[mid] **TD-009** `user_profiles.email_normalized` nullable migration~~ — **2026-04-26 unparked + active**（claim charles@charlesdeMac-mini.local；改用 migration 0016；不合併 TD-058，後者另案處理）
 - [low] **日期格式 smoke（遺留）** — `/account/settings`、`/admin/documents/:id`、`/admin/members`、`/admin/query-logs` list+detail、`/admin/tokens` 目視確認
-
-### 中期（合併評估）
-
-- [mid] **TD-015 + TD-019 + TD-016 SSE 合併處理**
 
 ### 長期（DO 主軸 archive 後可進）
 
@@ -55,9 +50,9 @@ _(見 AUTO Parked Changes 區塊：add-mcp-token-revoke-do-cleanup、passkey-use
 
 ## Active Changes
 
-_last synced: 2026-04-25T20:33:12.877Z_
+_last synced: 2026-04-25T23:48:30.878Z_
 
-_No active changes._
+2 active changes (0 ready · 2 in progress · 0 draft · 0 blocked)
 
 ### Ready to apply
 
@@ -65,7 +60,10 @@ _(none)_
 
 ### In progress
 
-_(none)_
+- **add-mcp-token-revoke-do-cleanup** — 17/23 tasks (74%)
+  - Specs: `oauth-remote-mcp-auth`
+- **passkey-user-profiles-nullable-email** — 15/22 tasks (68%)
+  - Specs: `auth-storage-consistency`
 
 ### Draft
 
@@ -84,9 +82,22 @@ _(none)_
 > 即時 ownership 由 `.spectra/claims/*.json` 提供。
 > 接手 handoff / 開始做 change 時，先 claim，再移除 `HANDOFF.md` 對應項目。
 
-_No active claims._
+2 claims (0 active · 2 stale)
 
-> 若你要開始做上面的 active change，先跑 `spectra:claim -- <change>`。
+### Live Ownership
+
+_(none)_
+
+### Stale Claims
+
+- **passkey-user-profiles-nullable-email** — unknown:charles@charlesdeMac-mini.local (unknown)
+  - Accepted from: manual
+  - Last heartbeat: 2026-04-25T22:46:11.210Z
+  - Status: stale (last heartbeat 2026-04-25T22:46:11.210Z)
+- **add-mcp-token-revoke-do-cleanup** — unknown:charles@charlesdeMac-mini.local (unknown)
+  - Accepted from: manual
+  - Last heartbeat: 2026-04-25T21:57:18.701Z
+  - Status: stale (last heartbeat 2026-04-25T21:57:18.701Z)
 
 <!-- SPECTRA-UX:ROADMAP-AUTO:/claims -->
 
@@ -98,7 +109,8 @@ _No active claims._
 
 ### Independent (can run in parallel)
 
-_(none)_
+- `add-mcp-token-revoke-do-cleanup`
+- `passkey-user-profiles-nullable-email`
 
 ### Mutex (same spec touched)
 
@@ -117,12 +129,7 @@ _(none)_
 > 已 `spectra park` 的 changes。檔案暫時從 `openspec/changes/` 移出，
 > metadata 保留在 `.spectra/spectra.db`。`spectra unpark <name>` 可取回。
 
-2 parked changes
-
-- **add-mcp-token-revoke-do-cleanup** — 0/25 tasks (0%)
-  - Summary: **TD-040** — 當 admin revoke 一組…
-- **passkey-user-profiles-nullable-email** — 0/22 tasks (0%)
-  - Summary: **TD-009** — `passkey-authenti…
+_No parked changes._
 
 <!-- SPECTRA-UX:ROADMAP-AUTO:/parked -->
 
