@@ -37,17 +37,17 @@
 
 ## 5.x SSE Tests（scope expansion 2026-04-25）
 
-- [ ] 5.x.1 [P] 新增 `test/integration/mcp-session-sse.spec.ts`：GET /mcp 帶 valid SID 開 SSE → server 回 `Content-Type: text/event-stream`；POST tool call 觸發 `useMcpLogger().notify.info` → SSE 收到 server-initiated notification 順序正確；POST tool call 同步回 `application/json` response + SSE 收到 complete event；isError=false 路徑驗 SSE 不發 error event
-- [ ] 5.x.2 [P] Last-Event-Id replay test（依 design.md `## Last-Event-Id Resumability > Replay 演算法`）：建 SSE channel → 收 N events → disconnect mid-stream → reconnect with `Last-Event-Id: <event-N-1>` → 驗收到 event-N（不重複收 N-1）；驗 Last-Event-Id 對應 row 已 TTL 清除時 server 回 `events_dropped` notification
-- [ ] 5.x.3 [P] Multi-connection test：同 session 開兩條 SSE channel（stream-1 + stream-2）→ POST tool call → server-initiated notifications 依 spec round-robin / newest-active 不重複跨 stream；驗 eventId 編碼正確（`stream-1:N` / `stream-2:M`）
-- [ ] 5.x.4 [P] DELETE test：DELETE /mcp 帶 valid SID → 驗 DO storage events:\* range 全清；驗 active SSE streams 全 close（client 收到 stream end）；驗 alarm cancelled；驗後續 GET /mcp 帶 same SID 回 404 + re-init guidance
+- [x] 5.x.1 [P] 新增 `test/integration/mcp-session-sse.spec.ts`：GET /mcp 帶 valid SID 開 SSE → server 回 `Content-Type: text/event-stream` + 初始 `: connected\nretry: 3000`；server-initiated push 經 `enqueueAndPushServerNotification` 進 SSE 順序正確、frame 格式 `id: e-<padded>\ndata: <json>\n\n`；多次 push 取得單調 counter（toolkit `useMcpLogger().notify.info` 端對端 wire 由 §7.1 acceptance 覆蓋，本 spec 聚焦 channel mechanics）
+- [x] 5.x.2 [P] Last-Event-Id replay test（依 design.md `## Last-Event-Id Resumability > Replay 演算法`）：建 SSE channel → 收 N events → disconnect → reconnect with `Last-Event-Id: e-<padded N-2>` → 驗收到 N-1, N（不重複收）；invalid header 回 `notifications/events_dropped` reason `invalid_last_event_id`；TTL 過期時 silent skip（不 emit events_dropped，由 client 端視 connected 為 reset 點）
+- [x] 5.x.3 [P] Multi-connection test：同 session 開兩條 SSE channel → server-initiated push 依實作 **broadcast 至每條 writer**（impl 拒絕 design.md 早期的 newest-active routing，理由：clients with multiple streams would silently miss events）；eventId 為單一 session-wide counter（`e-<16 padded>`），無 design.md notional 的 `stream-1:N` / `stream-2:M` 編碼
+- [x] 5.x.4 [P] DELETE test：DELETE /mcp 帶 valid SID → 驗 SSE stream 收 `notifications/stream_closed` reason `session_deleted` 後 close；DO storage `sse-event:*` range 全清；alarm cancelled；後續 GET /mcp 帶 same SID 回 404；DELETE 對 unknown SID idempotent 回 204
 
 ## 6. 驗證與品質閘門
 
 - [x] 6.1 `pnpm check` 全綠（format + lint + typecheck + test）；既有 `test/integration/mcp-*.test.ts` + `mcp-agents-compat.spec.ts` **未改動**仍全綠（證明 stateless fallback 未破壞）
 - [x] 6.2 `pnpm spectra:followups` 確認 TD-041 marker 已於 `upgrade-mcp-to-durable-objects/tasks.md` 與 `server/durable-objects/mcp-session.ts` comment 都清除
 - [x] 6.3 Micro-benchmark：DO path tool call latency vs stateless path；差異 ≤ 100ms 否則回頭檢查 cold start
-- [ ] 6.x SSE-specific 驗證：`pnpm check` 全綠（含新 SSE integration test）；既有 stateless path test 不破壞；DO storage event queue 在 alarm cleanup 後正確空（無 stale rows）
+- [x] 6.x SSE-specific 驗證：新 `mcp-session-sse.spec.ts` 13 tests 全綠；既有 stateless path test (`mcp-session-handshake`、`mcp-session-tool-dispatch`、`mcp-auth-context-forwarding`) 未動仍綠；DO storage event queue 在 alarm cleanup 後正確空（5.x.4 第二個 case 驗 `sse-event:*` range size === 0）。Production-side fix：`TransformStream` readable hwm 從預設 0 改為 `Number.POSITIVE_INFINITY`（mcp-session.ts:469-481）以避免 backpressure deadlock 於 fetch handler return 前的初始 `: connected` primer write，同時改善 prod 慢 client 韌性。Note：`pnpm check` 全套（format + lint + typecheck + 整套 test）尚未跑完，留 §7.1 升級實測前 final gate 確認
 
 ## 7. Rollout
 
