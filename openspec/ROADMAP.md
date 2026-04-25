@@ -14,6 +14,12 @@
 > - **`consolidate-conversation-history-config`** 已完成 archive（保留歷史視野）：抽出 `createChatConversationHistory` factory，把 `index.vue` + `ConversationHistory` 的雙份 config / refresh 邏輯收斂；`/api/chat` 路徑修復連串本地 bootstrap 斷點（TD-046 done — staging AutoRAG index 已建立）。人工檢查中發現 TD-044 / TD-045 / TD-047 / TD-048 / TD-050 並登記在 register。
 > - **v0.43.0 → v0.43.3 release 歷史**：v0.43.0 收 wire-do-tool-dispatch staging protocol 驗證 + DO debug instrumentation；v0.43.1 補 docs vitepress yaml escape；v0.43.2 修 `reflect-metadata` polyfill 洩漏 Nitro bundle module scope；v0.43.3 把 production MCP session flag 翻 true（已被 v0.43.4 rollback）並收尾 TD-045 narrow scope（`predev` bootstrap health check）。
 > - **`add-mcp-tool-selection-evals`** 已於 2026-04-25 完成 archive：eval harness、dataset、scorer、文件、dev token CLI、bearer-token client wiring、baseline 與 manual review 皆已落地；`mcp-tool-selection-evals` spec 已同步到主規格。
+> - **`fix-user-profile-id-drift`** 已於 2026-04-25 完成 archive：`session.create.before` hook 改寫為 email_normalized-first lookup + app-level migrate children + non-production rethrow + actionable log hint；TD-044 standalone done。
+> - **`add-new-conversation-entry-points`** 已於 2026-04-25 完成 archive：chat header 顯式「新對話」按鈕 + reload 行為修復 + Safari private mode 相容；TD-048 standalone done。
+> - **`wire-do-tool-dispatch` §6.4 wire-up gap 揭露（apply session 2026-04-25 後追）**：寫 `scripts/probe-mcp-sse-mock-client.sh` 對 local stateful dev 跑 §7.1 (b) probe，揭露 v0.43.3 production flip 5 分鐘失敗的 root cause = 兩個 wire-up gap：
+>   - **G1（已實測 fix）**：`nuxt.config.ts` 頂層漏設 mcp-toolkit module options `mcp: { sessions: true }` → toolkit node provider `sessions.enabled` 永遠 false → GET /mcp 直接回 405。staging-sse-acceptance.mts 對 staging 跑也會撞同樣 G1。
+>   - **G2（root cause 待查）**：G1 fix 後 GET /mcp 仍 hang，curl 4 秒 0 byte received。可能 nitro/h3 streaming response wrap、`evlog/nuxt` plugin buffer、或 toolkit alias 強制 node provider 後 ReadableStream wrap 問題。
+>   - 已加 §6.4 task block 到 tasks.md；§7.1 / §7.2 caveat 已更新註明 dep §6.4。
 >
 > **2026-04-24 收斂項目（保留歷史視野）**：
 >
@@ -31,10 +37,8 @@
 
 進行中：
 
-- **`wire-do-tool-dispatch`** 22/34 tasks (65%) — 依賴：(1) v0.43.4 stop-gap rollback 完成驗證（`wrangler versions view` env flag = false）；(2) §5.x SSE Tests 4 項（basic SSE / Last-Event-Id replay / multi-connection / DELETE）；(3) §6.x SSE-specific 驗證 + DO storage event queue alarm cleanup；(4) §7.1 acceptance 升級三項全綠（curl + SSE-aware mock + Claude.ai 端到端）；(5) §7.2 production flip true 重做（24h 監控）；(6) §7.3 7 天穩定觀察 → TD-030 + TD-041 標 done；(7) §8.1–§8.4 使用者人工檢查
+- **`wire-do-tool-dispatch`** 27/35 tasks (77%) — 依賴：(1) v0.43.4 stop-gap rollback 已完成驗證（production runtime flag = false 已確認）；(2) **§6.4 worker → DO routing wire-up gap** G1 + G2 解（**最新發現的 production flip blocker**）；(3) §7.1 acceptance 升級三項全綠（curl + SSE-aware mock + Claude.ai 端到端）；(4) §7.2 production flip true 重做（24h 監控）；(5) §7.3 7 天穩定觀察 → TD-030 + TD-041 標 done；(6) §8.1–§8.4 使用者人工檢查
 - **`upgrade-mcp-to-durable-objects`** 17/27 tasks (63%)，**Phase 4 scope 縮為 session lifecycle only** — tool dispatch 改由 `wire-do-tool-dispatch` 接手（見 TD-041）；mutex with wire-do-tool-dispatch（共碰 `mcp-knowledge-tools` spec），**MUST** 等 wire-do archive 才能續推或評估一起收斂
-- **`add-new-conversation-entry-points`** 19/26 tasks (73%) — stale claim（heartbeat 2026-04-24），獨立 spec；接手前需重新 claim
-- **`fix-user-profile-id-drift`** 18/25 tasks (72%) — stale claim（heartbeat 2026-04-24），獨立 spec；TD-044 in-progress；接手前需重新 claim
 
 ### 已 propose，待 apply（見 AUTO Parked Changes 區塊）
 
@@ -42,10 +46,8 @@ _(none)_
 
 ### 近期（尚未 propose，可與 DO change 並行）
 
-- [high] **TD-048** 聊天 UI 缺顯式「新對話」入口 — 使用者反映「找不到新對話按鈕、reload 始終停在同個對話」，影響日常 chat UX；已被 `add-new-conversation-entry-points` change 涵蓋（in-progress）
 - [mid] **TD-050** Staging R2 (`agentic-rag-documents-staging`) 為空，缺 RAG content seed / sync schedule — 依賴：與 `wire-do-tool-dispatch` archive 一併處理（驗證 4 個 tool call `citations:[] / results:[]` empty 是否因 R2 缺資料導致）
 - [mid] **TD-049** Cloudflare Pages deploy API 拒絕 git HEAD commit message — in-progress（CI 已加 workaround `5ce334c`），持續觀察是否仍有 deploy 中斷
-- [mid] **TD-044** `session.create.before` 靜默吞 user_profiles UNIQUE 衝突 → better-auth user id 與 user_profiles.id 可能漂移 — 已被 `fix-user-profile-id-drift` change 涵蓋（in-progress）
 - [mid] **TD-047** `/api/chat` SSE `ready` 後階段 error 時 Container 未 emit `conversation-persisted` — 獨立、scope 小
 - [mid] **TD-009** `user_profiles.email_normalized` nullable migration — 獨立（scope 非小：rebuild `user_profiles` + 4 FK children，約 700+ 行 SQL + data migration）
 - [low] **日期格式 smoke（遺留）** — `/account/settings`、`/admin/documents/:id`、`/admin/members`、`/admin/query-logs` list+detail、`/admin/tokens` 目視確認
@@ -67,7 +69,7 @@ _(none)_
 
 ## Active Changes
 
-_last synced: 2026-04-25T10:59:04.576Z_
+_last synced: 2026-04-25T11:09:12.751Z_
 
 2 active changes (0 ready · 2 in progress · 0 draft · 0 blocked)
 
@@ -99,18 +101,19 @@ _(none)_
 > 即時 ownership 由 `.spectra/claims/*.json` 提供。
 > 接手 handoff / 開始做 change 時，先 claim，再移除 `HANDOFF.md` 對應項目。
 
-1 claim (1 active · 0 stale)
+1 claim (0 active · 1 stale)
 
 ### Live Ownership
+
+_(none)_
+
+### Stale Claims
 
 - **wire-do-tool-dispatch** — unknown:charles@charlesdeMac-mini.local (unknown)
   - Accepted from: manual
   - Last heartbeat: 2026-04-25T10:06:25.765Z
   - Note: v0.43.4 stop-gap 收尾完成；production runtime flag = false 已驗證；下次推進為 §5.x SSE Tests
-
-### Stale Claims
-
-_(none)_
+  - Status: stale (last heartbeat 2026-04-25T10:06:25.765Z)
 
 <!-- SPECTRA-UX:ROADMAP-AUTO:/claims -->
 
