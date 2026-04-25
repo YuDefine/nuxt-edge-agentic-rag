@@ -38,7 +38,7 @@ RBAC --> D1
 Worker --> KV
 
 Agent -.後續受控啟用.-> CloudFallback[外部模型備援]
-MCPServer -.Staging 驗證中.-> DO[Durable Objects MCP session]
+MCPServer --> DO[Durable Objects MCP session]
 
 ---
 
@@ -87,25 +87,6 @@ Agent --> Chunk
 Agent --> Categories
 Q --> Confidence
 Confidence -.邊界證據.-> Correction
-
-主要 Actor 與使用案例摘要如下：
-
-表 5 主要 Actor 與使用案例
-
-| Actor          | Use Case               | 說明                                                  |
-| -------------- | ---------------------- | ----------------------------------------------------- |
-| User           | 提問並獲得回答         | 輸入自然語言問題，取得含引用與拒答能力的回答          |
-| User           | 查看對話歷史           | 回顧過往問答紀錄與引用資訊                            |
-| User           | 追問多輪對話           | 基於現有對話上下文延伸提問                            |
-| Admin          | 上傳文件               | 建立文件與初始版本，上傳原始檔至 R2                   |
-| Admin          | 建立新版本             | 為既有文件建立新版本並重新同步至 AI Search            |
-| Admin          | 觸發 AI Search 同步    | 發動 instance 級同步流程，更新索引狀態                |
-| Admin          | 查看查詢日誌與觀測摘要 | 檢視延遲、引用、拒答、Self-Correction 與 MCP 使用概況 |
-| Admin          | 管理 MCP token         | 建立、檢視、撤銷 Bearer token 與 scope                |
-| External Agent | 呼叫 searchKnowledge   | 以檢索方式取得片段結果                                |
-| External Agent | 呼叫 askKnowledge      | 以問答方式取得回答與引用                              |
-| External Agent | 呼叫 getDocumentChunk  | 以 citationId 取得完整引用片段                        |
-| External Agent | 呼叫 listCategories    | 取得知識庫分類列表與數量                              |
 
 ### 2.1.2 問答流程分析
 
@@ -1641,7 +1622,7 @@ Eval 不納入 pnpm check / CI 必經 gate——LLM API 有金錢成本、回應
 5. **Web 與 MCP 契約分流**｜*已達自動化驗證*：Web 已完成持久化 conversationId、歷史列表、重整恢復、同 ID 續問與刪除淘汰；MCP 則維持單輪無狀態契約，不接受 MCP-Session-Id。Web 端驗證見 docs/verify/WEB_CHAT_PERSISTENCE_VERIFICATION.md、docs/verify/evidence/web-chat-persistence.json 與 e2e/chat-persistence.spec.ts；MCP contracts 15 檔 51 tests 佐證其無狀態工具鏈。
 6. **雙閘一致性保護**｜*已達結構式驗證*：AI Search metadata 負責快篩，D1 post-verification 負責 current-version-only 最終把關，避免最終一致性導致舊版內容誤入回答；TC-18 current-version-only 過濾與版本切換驗證通過。
 7. **治理前置**｜*已達結構式驗證；實模型接入後需再次複核*：restricted scope、版本發布規則、rate limit、保留期限與記錄遮罩已納入系統設計與驗證範圍；TC-13/14/15/17 全綠佐證 scope 隔離與 existence-hiding。實模型接入後需確認 prompt 工程不反向破壞遮罩承諾。
-8. **分階段落地**（邊緣原生軸）｜*已達結構式驗證*：先完成 Web 問答、文件治理、Passkey、三級 RBAC、AI Gateway 用量前置與無狀態 MCP Tools，再把 stateful MCP session、外部模型備援（Cloud fallback）、多租戶與細緻 ACL 留作後續版本；此做法使成果範圍與驗收證據保持一致。
+8. **分階段落地**（邊緣原生軸）｜*已達結構式驗證*：先完成 Web 問答、文件治理、Passkey、三級 RBAC、AI Gateway 用量前置、MCP Tools 與 Production MCP session 主軸，再把外部模型備援（Cloud fallback）、多租戶、細緻 ACL 與其他外部 Client 相容性留作後續版本；此做法使成果範圍與驗收證據保持一致。
 
 為使第一章（§1.1.1）所識別之中小企業 ERP 使用痛點與本節產品特色之對應關係更為清楚，茲以下表彙整各痛點所對應之本系統解法：
 
@@ -1745,7 +1726,7 @@ A、B、C 三類項目均已進入生產環境並透過單元 / 整合 acceptanc
 
 1. 附錄 B 已列明 Acceptance ID、gold facts、必要引用、不可犯錯與預期 http_status；若未來擴充資料集，應維持相同欄位語意，不回頭改動既有判定基準。
 2. 180 天稽核保留（citation_records.expires_at 直接承載 retention window）與 citationId 全域唯一性等治理語意已先封口，避免日後營運擴充時重改資料模型；對話刪除與 content_text 清理已完成，長週期 retention 驗證可納入例行維運。
-3. 核心閉環以「文件發布 → Web 問答 → 引用回放 → current-version-only → restricted 隔離 → redaction」六步為主；stateful MCP session、staging R2 seed 與長期 usage trend 屬後續產品化與營運補強。
+3. 核心閉環以「文件發布 → Web 問答 → 引用回放 → current-version-only → restricted 隔離 → redaction → MCP session / tools call」為主；connector 首次授權旅程、staging R2 seed 與長期 usage trend 屬後續產品化與營運補強。
 4. 第三章截圖、第四章驗收對照與答辯簡報均以實際環境資料為準；若後續補充新畫面或新統計，應清楚標示版本與環境，避免與既有證據混淆。
 
 ### 5.2.4 Workers AI Answer Adapter 與測試 Synthesizer 取捨說明
@@ -2190,7 +2171,7 @@ jobs:
 
 部署後的 smoke-test / smoke-test-staging 共用 scripts/check-deploy-health.mjs。若 custom domain 在 GitHub runner 端因 Cloudflare WAF 或 Bot protection 回 403，只可記為 warning；仍須至少一個 target（通常是 deployment URL）實際回 200 才能視為部署健康。
 
-專案狀態為：Production 已完成 v0.43.4 stop-gap：NUXT_KNOWLEDGE_FEATURE_MCP_SESSION=false，回到穩定的無狀態 MCP 行為；Staging 則保留 Durable Objects / SSE 測試線。這代表本報告可把「無狀態 MCP Tools 可用」列為目前成果，但不得把 stateful MCP session 寫入 Production 成果結論。歷史上 Passkey、帳戶自刪與 Worker runtime 相容性問題已以版本升級、safe logger、cookie cache 關閉與 client hard redirect 等方式收斂；正式報告僅保留運維原則與目前狀態，不逐筆展開除錯流水帳。
+專案狀態為：Production 已於 v0.46.0 啟用 NUXT_KNOWLEDGE_FEATURE_MCP_SESSION=true，MCP Durable Object 主軸已完成 tool dispatch、SSE channel 與 auth context HMAC forward。這代表本報告可把 Stateful MCP / DO / SSE 主軸列入 Production 成果結論；connector 首次授權旅程與其他外部 Client 相容性仍列為營運期實測。歷史上 Passkey、帳戶自刪與 Worker runtime 相容性問題已以版本升級、safe logger、cookie cache 關閉與 client hard redirect 等方式收斂；正式報告僅保留運維原則與目前狀態，不逐筆展開除錯流水帳。
 
 #### D.2.3 Post-deploy 煙霧測試與 Tag 命名
 
