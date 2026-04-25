@@ -57,6 +57,13 @@ interface McpAskDependencies {
       now?: Date
       queryLogId?: string
       role: 'system' | 'user' | 'assistant' | 'tool'
+      /**
+       * persist-refusal-and-label-new-chat: web-chat uses this flag to mark
+       * refusal assistant turns. MCP callers always pass `false` because
+       * MCP v1.0.0 has no conversation reload UI and its refusal contract
+       * is governed elsewhere.
+       */
+      refused?: boolean
       userProfileId?: string | null
     }): Promise<string>
     createQueryLog(input: {
@@ -222,6 +229,7 @@ export async function askKnowledge(
         content: input.query,
         queryLogId,
         role: 'user',
+        refused: false,
         userProfileId: null,
       })
     }
@@ -261,6 +269,7 @@ export async function askKnowledge(
       now: input.now,
       queryLogId,
       role: 'user',
+      refused: false,
       userProfileId: null,
     })
   }
@@ -388,6 +397,7 @@ export async function askKnowledge(
       now: input.now,
       queryLogId,
       role: 'assistant',
+      refused: false,
       userProfileId: null,
     })
   }

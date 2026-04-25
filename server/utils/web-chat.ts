@@ -1,6 +1,7 @@
 import type { KnowledgeGovernanceConfig } from '#shared/schemas/knowledge-runtime'
 import type { DecisionPath, RefusalReason } from '#shared/types/observability'
 import { isAbortError } from '#shared/utils/abort'
+import { REFUSAL_MESSAGE_CONTENT } from '#shared/utils/chat-refusal'
 import { answerKnowledgeQuery, type KnowledgeAnsweringTelemetry } from './knowledge-answering'
 import { auditKnowledgeText } from './knowledge-audit'
 import { getAllowedAccessLevels } from './knowledge-runtime'
@@ -103,6 +104,13 @@ export async function chatWithKnowledge(
         now?: Date
         queryLogId?: string
         role: 'system' | 'user' | 'assistant' | 'tool'
+        /**
+         * persist-refusal-and-label-new-chat: marks the row as a refusal
+         * assistant turn so reload paths can render `RefusalMessage.vue`.
+         * Defaults to `false` when omitted; MCP callers MUST pass `false`
+         * explicitly because MCP refusal contracts are owned separately.
+         */
+        refused?: boolean
         userProfileId?: string | null
       }): Promise<string>
       createQueryLog(input: {
@@ -195,6 +203,11 @@ export async function chatWithKnowledge(
   refused: boolean
   retrievalScore: number
 }> {
+  // Coerce `input.now` (epoch ms or undefined) into a Date once so persistence
+  // calls below don't repeat the `typeof === 'number' ? new Date(...) : undefined`
+  // ternary. `auditStore` callees expect `Date | undefined`, not epoch ms.
+  const nowDate = typeof input.now === 'number' ? new Date(input.now) : undefined
+
   const rateLimit = await consumeFixedWindowRateLimit({
     key: `web:${input.environment}:chat:${input.auth.userId}`,
     now: input.now,
@@ -267,6 +280,22 @@ export async function chatWithKnowledge(
         conversationId: input.conversationId ?? null,
         queryLogId,
         role: 'user',
+        refused: false,
+        userProfileId: input.auth.userId,
+      })
+
+      // persist-refusal-and-label-new-chat: audit-blocked is a refusal
+      // outcome — write the assistant turn so reload paths can render
+      // `RefusalMessage.vue` from `messages.refused = 1`. content uses
+      // the shared REFUSAL_MESSAGE_CONTENT constant; per-reason copy
+      // belongs in the UI template, not in `messages.content`.
+      await options.auditStore.createMessage({
+        channel: 'web',
+        content: REFUSAL_MESSAGE_CONTENT,
+        conversationId: input.conversationId ?? null,
+        queryLogId,
+        role: 'assistant',
+        refused: true,
         userProfileId: input.auth.userId,
       })
     }
@@ -294,7 +323,7 @@ export async function chatWithKnowledge(
         channel: 'web',
         configSnapshotVersion: input.governance.configSnapshotVersion,
         environment: input.environment,
-        now: typeof input.now === 'number' ? new Date(input.now) : undefined,
+        now: nowDate,
         queryText: input.query,
         status: 'accepted',
         userProfileId: input.auth.userId,
@@ -306,9 +335,10 @@ export async function chatWithKnowledge(
       channel: 'web',
       content: input.query,
       conversationId: input.conversationId ?? null,
-      now: typeof input.now === 'number' ? new Date(input.now) : undefined,
+      now: nowDate,
       queryLogId: queryLogId ?? undefined,
       role: 'user',
+      refused: false,
       userProfileId: input.auth.userId,
     })
   }
@@ -365,10 +395,7 @@ export async function chatWithKnowledge(
               ...citation,
               queryLogId,
             })),
-          }
-
-          if (typeof input.now === 'number') {
-            payload.now = new Date(input.now)
+            ...(nowDate ? { now: nowDate } : {}),
           }
 
           return options.persistCitations(payload)
@@ -403,6 +430,25 @@ export async function chatWithKnowledge(
           decisionPath: 'pipeline_error',
           refusalReason: 'pipeline_error',
         })
+
+        // persist-refusal-and-label-new-chat: pipeline_error is a refusal
+        // outcome from the user's perspective — the SSE container surfaces
+        // a refusal experience after this throw. Persist the assistant
+        // turn so reload paths still see the refusal even if the original
+        // stream never completed. Aborts are NOT persisted because they
+        // represent the user choosing to cancel mid-stream, not a refusal.
+        // The outer `options.auditStore?.updateQueryLog && queryLogId` guard
+        // already implies `auditStore` is truthy here.
+        await options.auditStore.createMessage({
+          channel: 'web',
+          content: REFUSAL_MESSAGE_CONTENT,
+          conversationId: input.conversationId ?? null,
+          now: nowDate,
+          queryLogId,
+          role: 'assistant',
+          refused: true,
+          userProfileId: input.auth.userId,
+        })
       }
     }
     throw error
@@ -430,26 +476,45 @@ export async function chatWithKnowledge(
     })
   }
 
-  if (!result.refused && result.answer !== null && options.auditStore) {
-    // Governance §1.1: persist a de-duplicated list of cited
-    // `document_version_id` values so the stale resolver can re-validate
-    // them on the next follow-up turn.
-    const citedDocumentVersionIds = [
-      ...new Set(result.citations.map((citation) => citation.documentVersionId)),
-    ]
+  if (options.auditStore) {
+    if (result.refused || result.answer === null) {
+      // persist-refusal-and-label-new-chat: pipeline refusal outcome —
+      // judge rejected, retrieval coverage too low, or the orchestration
+      // returned a null answer. Persist the assistant turn so reload
+      // paths render `RefusalMessage.vue` from `messages.refused = 1`.
+      // No citationsJson because there is no cited evidence to replay.
+      await options.auditStore.createMessage({
+        channel: 'web',
+        content: REFUSAL_MESSAGE_CONTENT,
+        conversationId: input.conversationId ?? null,
+        now: nowDate,
+        queryLogId: queryLogId ?? undefined,
+        role: 'assistant',
+        refused: true,
+        userProfileId: input.auth.userId,
+      })
+    } else {
+      // Governance §1.1: persist a de-duplicated list of cited
+      // `document_version_id` values so the stale resolver can re-validate
+      // them on the next follow-up turn.
+      const citedDocumentVersionIds = [
+        ...new Set(result.citations.map((citation) => citation.documentVersionId)),
+      ]
 
-    await options.auditStore.createMessage({
-      channel: 'web',
-      citationsJson: JSON.stringify(
-        citedDocumentVersionIds.map((documentVersionId) => ({ documentVersionId })),
-      ),
-      content: result.answer,
-      conversationId: input.conversationId ?? null,
-      now: typeof input.now === 'number' ? new Date(input.now) : undefined,
-      queryLogId: queryLogId ?? undefined,
-      role: 'assistant',
-      userProfileId: input.auth.userId,
-    })
+      await options.auditStore.createMessage({
+        channel: 'web',
+        citationsJson: JSON.stringify(
+          citedDocumentVersionIds.map((documentVersionId) => ({ documentVersionId })),
+        ),
+        content: result.answer,
+        conversationId: input.conversationId ?? null,
+        now: nowDate,
+        queryLogId: queryLogId ?? undefined,
+        role: 'assistant',
+        refused: false,
+        userProfileId: input.auth.userId,
+      })
+    }
   }
 
   if (staleResult && input.conversationId) {
