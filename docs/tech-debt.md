@@ -55,7 +55,9 @@
 | TD-052 | `passkey-first-link-google.spec.ts` 的 `hubDb.transaction` stub 沒覆蓋 `syncUserProfile` migrate path 的 `tx.update().set().where()` chain                                                                                                                    | low      | done        | 2026-04-25 wire-do §5.x SSE Tests cross-spec failure             | —     |
 | TD-053 | `fix-user-profile-id-drift` production observation — 部署後 1 週 `wrangler tail --env production` 搜 `user_profiles sync failed` 確認無預期外觸發                                                                                                             | low      | open        | 2026-04-25 fix-user-profile-id-drift archive                     | —     |
 | TD-054 | `add-new-conversation-entry-points` Safari private mode 實機驗證 — archive 時授權 skip，待後續本機 Safari 補上                                                                                                                                                | low      | open        | 2026-04-25 add-new-conversation-entry-points archive             | —     |
-| TD-055 | TD-051 的漏網之魚：`query_logs.mcp_token_id` / `messages.query_log_id` / `citation_records.query_log_id` FK 在 fresh local DB 殘留 `mcp_tokens_new` / `query_logs_new` ref（migration 0010 的 RENAME-rewrite 假設失敗），任何 chat insert 直接炸 SQLITE_ERROR | high     | open        | 2026-04-26 add-sse-resilience 7.1 local heartbeat 驗證           | —     |
+| TD-055 | TD-051 的漏網之魚：`query_logs.mcp_token_id` / `messages.query_log_id` / `citation_records.query_log_id` FK 在 fresh local DB 殘留 `mcp_tokens_new` / `query_logs_new` ref（migration 0010 的 RENAME-rewrite 假設失敗），任何 chat insert 直接炸 SQLITE_ERROR | high     | done        | 2026-04-26 add-sse-resilience 7.1 local heartbeat 驗證           | —     |
+| TD-056 | Workers AI judge 模型 `max_completion_tokens: 200` 上限被截斷 → JSON parse 失敗 → pipeline_error                                                                                                                                                              | low      | open        | 2026-04-26 v0.50.0 production 7.2 verify 抽查 query_logs         | —     |
+| TD-057 | evlog wide event lifecycle 警告 — `log.error()` 在 wide event emit 後呼叫，導致 SSE stream 真實錯誤 keys 被丟棄                                                                                                                                               | mid      | open        | 2026-04-26 production wrangler tail                              | —     |
 
 ---
 
@@ -1908,7 +1910,8 @@ better-auth 在 OAuth callback 拼裝 `account` row 時拋出例外，路徑：`
 
 ## TD-055 — TD-051 漏網之魚：3 張表的 FK 殘留 `_new` ref（mcp_tokens_new / query_logs_new）
 
-**Status**: open
+**Status**: done
+**Resolved**: 2026-04-26 — `fix-fk-rebuild-query-logs-chain` change 落地：migration 0015（`server/database/migrations/0015_fk_rebuild_query_logs_chain.sql`）仿 0012 explicit-FK rebuild pattern 重建 `query_logs` / `messages` / `citation_records` 三張表，FK 文字改為 canonical `mcp_tokens(id)` / `query_logs(id)`。Spec 補一條 ADDED Requirement「Live DDL Foreign Key References Match Canonical Table Names」進 `auth-storage-consistency`，把「stored DDL 不得殘留 `*_new` 字樣」變可測試契約（`SELECT name FROM sqlite_master WHERE sql LIKE '%REFERENCES %_new(%'` 必須回 0 列）。Synth-broken 端對端驗證：bug 重現（FK on INSERT 炸 `no such table: main.mcp_tokens_new`）→ 套 0015 → 修復 → INSERT 成功 + foreign_key_check 乾淨 + row counts 保留 + 五個 named index 全在。
 **Priority**: high
 **Discovered**: 2026-04-26 — `add-sse-resilience` §7.1 local heartbeat 驗證時連環炸：
 
@@ -1945,13 +1948,13 @@ sqlite> SELECT name FROM sqlite_master WHERE name IN ('mcp_tokens_new', 'query_l
 
 ### Fix approach
 
-仿 migration 0012 的 explicit-FK rebuild pattern，新增 `0013_fk_rebuild_query_logs_chain.sql`：
+仿 migration 0012 的 explicit-FK rebuild pattern，新增 `0015_fk_rebuild_query_logs_chain.sql`（0013 / 0014 已被 messages refused/refusal_reason 擴欄佔用）：
 
 - 開頭 `PRAGMA legacy_alter_table = OFF` + `PRAGMA defer_foreign_keys = ON`
 - 對三張表分別 rebuild：
-  - `query_logs_v13`（FK → `mcp_tokens(id)`）
-  - `messages_v13`（FK → `query_logs(id)`）
-  - `citation_records_v13`（FK → `query_logs(id)`）
+  - `query_logs_v15`（FK → `mcp_tokens(id)`）
+  - `messages_v15`（FK → `query_logs(id)`）
+  - `citation_records_v15`（FK → `query_logs(id)`）
 - 每張：CREATE → INSERT SELECT → DROP old → RENAME → recreate indexes
 - recreate 索引：
   - `idx_query_logs_channel_created_at`
@@ -1970,3 +1973,80 @@ sqlite> SELECT name FROM sqlite_master WHERE name IN ('mcp_tokens_new', 'query_l
 - [ ] `PRAGMA foreign_key_check;` 乾淨
 - [ ] 五個索引（查上方列表）已 recreate
 - [ ] Production D1 fk_check 仍乾淨、無資料漂移（待 deploy 後驗證；預期為 no-op）
+
+## TD-056 — Workers AI judge 模型 `max_completion_tokens: 200` 上限被截斷 → JSON parse 失敗 → pipeline_error
+
+**Status**: open
+**Priority**: low
+**Discovered**: 2026-04-26 — `persist-refusal-and-label-new-chat` v0.50.0 production 7.2 verify 抽查 `query_logs` 時意外撈到。Judge 模型回 JSON 結構包，但 `workers_ai_runs_json` 顯示 `completionTokens: 200` 等於上限，content 在 JSON object 中段被截斷，後續 `JSON.parse` throw → pipeline_error。
+**Location**:
+
+- judge prompt / model call 位置：`server/utils/workers-ai.ts`、`server/utils/judge.ts`（或對應 retrieve-then-judge orchestrator；apply 時再精準定位）
+- 截斷觸發 query 樣本：production `query_logs.workers_ai_runs_json` 帶 `completionTokens: 200`（精確 query id 待 apply 時撈出）
+
+**Related markers**: 無 tasks.md marker（本 entry 為發現紀錄；fix 會在獨立 change 處理）
+
+### Problem
+
+Workers AI 對 judge 模型呼叫設定 `max_completion_tokens: 200`，正常 judge JSON 多數在 ~150 tokens 內可結束，但少數 query（候選文件多 / reasoning 較長）會撞 200 token 上限：模型輸出在 JSON 中段被硬截 → 字串非合法 JSON → `JSON.parse(...)` throw → pipeline 走 refusal 路徑回 `pipeline_error`。
+
+UX 影響有限：v0.50.0 已落地 persist-refusal，使用者會看到 refusal message + reason `pipeline_error`，不再「整個訊息消失」；但實際上是模型本來能回答、只是被 token 上限切斷。等於把可救援的查詢誤標 refused。
+
+### Fix approach
+
+兩條路擇一（apply 時用實機資料 sampling 決定）：
+
+1. **抬高 `max_completion_tokens`**（例如 400 或 512）— 最低成本，但長尾 query 仍可能再撞牆
+2. **Judge 模型輸出 schema 改 schema-constrained / structured output**（若 Workers AI 該模型支援 JSON mode / response_format）— 強制模型在預算內結束 JSON，超過則 partial 而非 mid-string truncation；搭配 fallback parser 容忍尾段不完整
+
+兩條都要：
+
+- 加 evlog 在 `completionTokens` 達 max 時記 wide event field（ex: `judge.token_truncated: true`），便於後續 production sampling
+- pipeline_error 時保留 raw response snippet（前 N 字元）到 `query_logs`，方便事後 audit
+
+### Acceptance
+
+- [ ] Production query_logs 過 7 天內 `judge.token_truncated: true` 或 `pipeline_error` 觸發次數收斂到 0（或對照 baseline 顯著下降）
+- [ ] Local repro：把 judge max_completion 故意調 50 重現截斷 → 修復後 fix path 觸發、不 throw
+- [ ] judge 模型呼叫具備 instrumentation，可區分「真正 refusal」vs「token-budget 截斷」
+
+## TD-057 — evlog wide event lifecycle 警告：`log.error()` 在 wide event emit 後呼叫，SSE stream 真實錯誤被吞
+
+**Status**: open
+**Priority**: mid
+**Discovered**: 2026-04-26 — production `wrangler tail` 重複出現：
+
+```
+[evlog] log.error() called after the wide event was emitted — Keys dropped: operation, error.
+```
+
+**Location**:
+
+- `server/api/chat.post.ts` `createSseChatResponse` 的 `ReadableStream.start()` callback
+- 上層 wide event 在 SSE response 建立時 emit 完畢；`start()` 內 stream pipe 若 throw，`catch` block 試圖 `log.error(err, { operation, error })` 已無 owning event，evlog 丟掉 keys
+
+**Related markers**: 無 tasks.md marker（本 entry 為發現紀錄）
+
+### Problem
+
+evlog 設計上一個 request 對應一個 wide event。`createSseChatResponse` 把 SSE stream 建立後立即 return Response，wide event 在 handler 結束時 emit。SSE 內部的 `ReadableStream.start()` callback 是異步、長壽命：當 stream 中段 throw（例如 Workers AI fetch 中斷、token decode 失敗），catch handler 呼叫 `log.error(err, ...)` 時 wide event 已 emit，evlog 紀錄 warn + drop keys。
+
+實際後果：production 看到 `pipeline_error` 但 wide event 缺 `operation` / `error` 細節，無法追真實錯誤；只能靠 `wrangler tail` 撈當下 console，過了就找不回。直接影響 SSE 路徑可觀察性。
+
+### Fix approach
+
+兩條路擇一（apply 時定）：
+
+1. **`log.fork('sse-stream', fn)` 模式** — evlog 若支援 sub-event：在 `ReadableStream.start()` 內 fork 一個新的 wide event lifecycle，error 寫進 sub-event 而非 parent
+2. **延後 wide event emit** — 把 wide event lifecycle 改成跨 stream（handler return 前不 emit，等 stream 自然結束或 abort 才 emit）；技術上需 evlog 支援「stream-aware」生命週期，或自寫 wrapper
+
+兩條都需要：
+
+- 整理當前 `createSseChatResponse` 的 wide event lifecycle 圖（哪個 emit、何時 emit）寫進 design / docs
+- 確認其他 SSE / streaming endpoint 是否同樣 pattern（avoid one-off fix）
+
+### Acceptance
+
+- [ ] Production wrangler tail 不再出現 `[evlog] log.error() called after the wide event was emitted` warning
+- [ ] SSE stream 中段 error 可在 wide event / sub-event 中看到 `operation` + `error` keys
+- [ ] 其他 streaming endpoint 不再有相同 lifecycle 漏洞
