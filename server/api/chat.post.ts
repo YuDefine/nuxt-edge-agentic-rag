@@ -11,7 +11,8 @@ import { getD1Database } from '#server/utils/database'
 import { createCitationStore } from '#server/utils/citation-store'
 import { createConversationStaleResolver } from '#server/utils/conversation-stale-resolver'
 import { createConversationStore } from '#server/utils/conversation-store'
-import { auditKnowledgeText, createKnowledgeAuditStore } from '#server/utils/knowledge-audit'
+import { deriveConversationTitleFromQuery } from '#server/utils/conversation-title'
+import { createKnowledgeAuditStore } from '#server/utils/knowledge-audit'
 import { createKnowledgeEvidenceStore } from '#server/utils/knowledge-evidence-store'
 import { retrieveVerifiedEvidence } from '#server/utils/knowledge-retrieval'
 import { getKnowledgeRuntimeConfig } from '#server/utils/knowledge-runtime'
@@ -105,14 +106,13 @@ export default defineEventHandler(async function chatHandler(event) {
 
       effectiveConversationId = body.conversationId
     } else {
-      // Derive title from the redacted copy, not the raw query, so that
-      // credential / PII fragments never land on conversations.title.
-      // Empty-string fallback lets the store apply its DEFAULT_TITLE.
-      const titleSource = auditKnowledgeText(body.query).redactedText
-      const derivedTitle = titleSource.trim().slice(0, 40)
+      // persist-refusal-and-label-new-chat: title derivation centralised in
+      // `deriveConversationTitleFromQuery`. Audit-blocked queries fall back
+      // to the fixed `'無法處理的提問'` label so internal redaction markers
+      // never reach the sidebar conversation list.
       const created = await conversationStore.createForUser({
         userProfileId: session.user.id,
-        title: derivedTitle,
+        title: deriveConversationTitleFromQuery(body.query),
       })
 
       effectiveConversationId = created.id

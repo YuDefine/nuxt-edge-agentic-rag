@@ -95,6 +95,7 @@ export default defineNuxtConfig({
     '@nuxthub/core',
     '@onmax/nuxt-better-auth',
     '@nuxt/ui',
+    '@nuxtjs/mdc',
     'nuxt-security',
     '@nuxt/image',
     '@vueuse/nuxt',

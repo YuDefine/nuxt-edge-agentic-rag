@@ -32,6 +32,7 @@ interface RecordedMessage {
   queryLogId?: string
   role: 'system' | 'user' | 'assistant' | 'tool'
   refused?: boolean
+  refusalReason?: string | null
   userProfileId?: string | null
 }
 
@@ -107,6 +108,7 @@ describe('web chat persistence — refusal message rows', () => {
     expect(assistantRows[0]).toMatchObject({
       role: 'assistant',
       refused: true,
+      refusalReason: 'restricted_scope',
       content: '抱歉，我無法回答這個問題。',
       channel: 'web',
     })
@@ -157,6 +159,10 @@ describe('web chat persistence — refusal message rows', () => {
       refused: true,
       content: '抱歉，我無法回答這個問題。',
     })
+    // pipeline-refusal reason comes from telemetry; the judge-refused path
+    // here surfaces `low_confidence`. The fallback `no_citation` only
+    // applies when telemetry is null.
+    expect(assistantRows[0]?.refusalReason).toMatch(/^(low_confidence|no_citation)$/)
     expect(assistantRows[0]?.citationsJson).toBeUndefined()
   })
 
@@ -205,6 +211,7 @@ describe('web chat persistence — refusal message rows', () => {
     expect(assistantRows[0]).toMatchObject({
       role: 'assistant',
       refused: true,
+      refusalReason: 'pipeline_error',
       content: '抱歉，我無法回答這個問題。',
     })
   })
@@ -250,6 +257,7 @@ describe('web chat persistence — refusal message rows', () => {
     expect(assistantRows[0]).toMatchObject({
       role: 'assistant',
       refused: false,
+      refusalReason: null,
     })
     expect(assistantRows[0]?.citationsJson).toBeDefined()
     expect(JSON.parse(assistantRows[0]!.citationsJson!)).toEqual([{ documentVersionId: 'ver-z' }])
