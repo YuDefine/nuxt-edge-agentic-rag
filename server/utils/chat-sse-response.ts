@@ -1,3 +1,4 @@
+import type { RefusalReason } from '#shared/types/observability'
 import { createAbortError, isAbortError } from '#shared/utils/abort'
 
 interface SseChatLogger {
@@ -19,6 +20,13 @@ export interface SseChatRunResult {
   answer: string | null
   citations: ReadonlyArray<{ citationId: string; sourceChunkId: string }>
   refused: boolean
+  /**
+   * persist-refusal-and-label-new-chat: specific reason populated when
+   * `refused === true` so the SSE refusal event can carry it to the
+   * client for reason-specific RefusalMessage copy. `null` for accepted
+   * answers.
+   */
+  refusalReason: RefusalReason | null
 }
 
 export interface CreateSseChatResponseInput<TResult extends SseChatRunResult> {
@@ -98,6 +106,12 @@ export function createSseChatResponse<TResult extends SseChatRunResult>(
             conversationCreated: input.conversationCreated,
             conversationId: input.conversationId,
             refused: true,
+            // persist-refusal-and-label-new-chat: forward the specific
+            // RefusalReason so the client can render reason-specific copy
+            // immediately. Fall back to `no_citation` when the run did not
+            // surface telemetry (defensive — chatWithKnowledge should
+            // always populate this field for refusal results).
+            reason: result.refusalReason ?? 'no_citation',
           })
         } else {
           enqueue('complete', {

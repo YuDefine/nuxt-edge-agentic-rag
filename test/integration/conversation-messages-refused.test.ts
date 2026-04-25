@@ -31,6 +31,7 @@ interface MessageRow {
   content_text: string | null
   citations_json: string
   refused: number
+  refusal_reason: string | null
   created_at: string
 }
 
@@ -75,9 +76,14 @@ function createFakeDatabase(input: { conversations: ConversationRow[]; messages:
       }
 
       if (query.includes('FROM messages') && query.includes('conversation_id = ?')) {
-        // Be strict: reload-path SELECT MUST include `refused`.
+        // Be strict: reload-path SELECT MUST include `refused` AND the
+        // `refusal_reason` column so reason-specific RefusalMessage copy
+        // can render on reload.
         if (!query.includes('refused')) {
           throw new Error('messages SELECT must include the refused column')
+        }
+        if (!query.includes('refusal_reason')) {
+          throw new Error('messages SELECT must include the refusal_reason column')
         }
         return {
           bind(conversationId: string) {
@@ -124,6 +130,7 @@ describe('conversation store — exposes messages.refused on reload', () => {
       content_text: 'why X',
       citations_json: '[]',
       refused: 0,
+      refusal_reason: null,
       created_at: '2026-04-25T10:00:00.000Z',
     }
     const refusalMsg: MessageRow = {
@@ -134,6 +141,7 @@ describe('conversation store — exposes messages.refused on reload', () => {
       content_text: '抱歉，我無法回答這個問題。',
       citations_json: '[]',
       refused: 1,
+      refusal_reason: 'restricted_scope',
       created_at: '2026-04-25T10:00:01.000Z',
     }
     const acceptedMsg: MessageRow = {
@@ -144,6 +152,7 @@ describe('conversation store — exposes messages.refused on reload', () => {
       content_text: 'Y because Z.',
       citations_json: '[{"documentVersionId":"ver-z"}]',
       refused: 0,
+      refusal_reason: null,
       created_at: '2026-04-25T10:05:00.000Z',
     }
 
@@ -164,8 +173,11 @@ describe('conversation store — exposes messages.refused on reload', () => {
 
     const byId = new Map(detail!.messages.map((m) => [m.id, m]))
     expect(byId.get('msg-user')?.refused).toBe(false)
+    expect(byId.get('msg-user')?.refusalReason).toBeNull()
     expect(byId.get('msg-refusal')?.refused).toBe(true)
+    expect(byId.get('msg-refusal')?.refusalReason).toBe('restricted_scope')
     expect(byId.get('msg-accepted')?.refused).toBe(false)
+    expect(byId.get('msg-accepted')?.refusalReason).toBeNull()
   })
 
   it('coerces null/undefined refused (legacy rows) to false', async () => {
@@ -176,8 +188,10 @@ describe('conversation store — exposes messages.refused on reload', () => {
       content_redacted: 'pre-migration body',
       content_text: 'pre-migration body',
       citations_json: '[]',
-      // refused absent: simulates a row written before migration 0013.
+      // refused / refusal_reason absent: simulates a row written before
+      // migrations 0013 / 0014.
       refused: 0,
+      refusal_reason: null,
       created_at: '2026-04-20T00:00:00.000Z',
     }
 
