@@ -4,27 +4,9 @@
 
 ## Current State
 
-> 狀態（2026-04-25 更新）：目前 branch `main`，最新 tag `v0.46.0`，production runtime `NUXT_KNOWLEDGE_FEATURE_MCP_SESSION = "true"` 翻新後正常運作。MCP Durable Object 主軸已上線（DO tool dispatch + SSE channel + auth context HMAC forward）。Open tech debt 無 build/deploy blocker。
+> 狀態（2026-04-25 更新）：branch `main`，最新 tag `v0.46.0`，production runtime `NUXT_KNOWLEDGE_FEATURE_MCP_SESSION = "true"`。MCP Durable Object 主軸已完整上線（DO tool dispatch + SSE channel + auth context HMAC forward）。無 active spectra change，open tech debt 無 build/deploy blocker。
 >
-> **最新進度**（2026-04-25）：
->
-> - **`wire-do-tool-dispatch`** 已於 2026-04-25 完整 archive：v0.43.4 stop-gap rollback → v0.44.0/.1 / v0.45.0/.1 4-layer fix → v0.46.0 production flip true。staging acceptance 12/12 全綠 (`pnpm mcp:acceptance:staging`)，production worker fetch handler 正常驗證 bearer + 無 ownKeys/TypeError。§6.4 streaming bypass 架構決策見 ADR `docs/decisions/2026-04-25-cloudflare-sse-streaming-bypass.md`；TD-030 + TD-041 standalone done。
-> - **`add-mcp-tool-selection-evals`** archive：eval harness、dataset、scorer、文件、dev token CLI、bearer-token client wiring、baseline 與 manual review 皆已落地；`mcp-tool-selection-evals` spec 已同步到主規格。
-> - **`fix-user-profile-id-drift`** archive：`session.create.before` hook 改寫為 email_normalized-first lookup + app-level migrate children + non-production rethrow + actionable log hint；TD-044 standalone done。
-> - **`add-new-conversation-entry-points`** archive：chat header 顯式「新對話」按鈕 + reload 行為修復 + Safari private mode 相容；TD-048 standalone done。
-> - **`consolidate-conversation-history-config`** archive：抽出 `createChatConversationHistory` factory；TD-046 staging AutoRAG index 已建立 → done（acceptance 4 tool call 全 isError:false 等價驗證）。
->
-> **2026-04-24 收斂項目（保留歷史視野）**：
->
-> - **Spectra / Claude workflow orchestration**：新增 `.agent/skills/*` 與 `scripts/spectra-ux/*` claim / release / design-gate / reminder 流程，同步 `AGENTS.md`、`CLAUDE.md`、`GEMINI.md`、commit / handoff / roadmap / screenshot 規則。
-> - **web chat persistence** archive：conversation history refresh race、last-click-wins、stale restore、in-flight request 汙染等已修，補齊 unit + Playwright evidence（`docs/verify/WEB_CHAT_PERSISTENCE_VERIFICATION.md`）。
-> - **`passkey-first-link-google-custom-endpoint`** archive：custom GET initiator / callback、`/account/settings` UI、spec sync、design-review、ui-audit 與 local / production 人工驗證皆完成。
-> - **`multi-format-document-ingestion`** archive：Upload Wizard tier disclosure、canonical snapshot extractor、local upload fallback、rich-format validation 已落地（v0.31.0）。
-> - **`standardize-chart-surfaces-on-nuxt-charts`** archive：`/admin/usage` timeline 與 `/admin/debug/latency` outcome breakdown 統一改為 `nuxt-charts` surface。
-> - **`TD-014` integration test logger 初始化缺口** 收斂：本地重跑 `pnpm test:integration` 為 `72 files / 364 tests / 1 skipped`。
-> - **Delete account Google reauth 修復** archive：Google reauth 跨 redirect resume、passkey-only regression、`?open-delete=1` bypass 防護與 OAuth cancel case 已驗證。
-> - **MCP Durable Object 工作線拆分**：`upgrade-mcp-to-durable-objects` 保留 session lifecycle scope；`wire-do-tool-dispatch` 已 archive（負責 DO 內 tool dispatch、auth context HMAC forward 與 production flag rollout 全收）。
-> - **Workers AI 回答層 / web chat 真串流** archive。
+> 歷史 archive 詳情請見 `openspec/changes/archive/<change>/` 各 change 目錄；tech debt 追蹤請見 `docs/tech-debt.md`。
 
 ## Next Moves
 
@@ -49,9 +31,12 @@ _(none)_
 ### 長期（DO 主軸 archive 後可進）
 
 - [high] **TD-027** MCP connector first-time auth — DO archive 已完成，可隨時實測 Claude.ai connector OAuth flow
-- [mid] **`discuss-mcp-resource-layer`** — DO archive 已完成，可 propose
-- [low] **`discuss-mcp-elicitation-for-ask`** — DO archive 已完成，可 propose
-- [low] **`discuss-mcp-async-context-refactor`** — Tier 3 高風險，discuss 階段需驗證 asyncContext 與 CF Workers runtime 相容性；**supersedes** `integrate-mcp-logger-notifications`（實證 `@nuxtjs/mcp-toolkit@0.14.0` 的 `useMcpLogger` + `useMcpServer` 皆硬性要求 `nitro.experimental.asyncContext: true`，本專案目前走自寫 `getCurrentMcpEvent()` 繞過 asyncContext，不相容）
+
+> **2026-04-25 決策**：以下 MCP capability surface 提案已評估後放棄，不再保留為 backlog：
+>
+> - `discuss-mcp-resource-layer` — 與 RAG retrieve-first 設計衝突，現有 `getDocumentChunk` 已涵蓋等價語意
+> - `discuss-mcp-elicitation-for-ask` — multi-turn agent 領域，違背 stateless RAG 設計；`inputExamples` 已涵蓋引導 LLM 寫出精確 query 的等價收益
+> - `discuss-mcp-async-context-refactor`（supersedes `integrate-mcp-logger-notifications`） — 自寫 `getCurrentMcpEvent()` shim 已通過 production verification（wire-do v0.46.0 acceptance 12/12），refactor 為 Tier 3 高風險且無 user value
 
 <!-- SPECTRA-UX:ROADMAP-MANUAL:END -->
 
