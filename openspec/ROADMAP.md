@@ -44,7 +44,7 @@ _(none)_
 
 ## Active Changes
 
-_last synced: 2026-04-25T15:26:52.617Z_
+_last synced: 2026-04-25T15:48:22.492Z_
 
 1 active change (0 ready · 1 in progress · 0 draft · 0 blocked)
 
@@ -54,7 +54,7 @@ _(none)_
 
 ### In progress
 
-- **add-sse-resilience** — 17/23 tasks (74%)
+- **add-sse-resilience** — 17/22 tasks (77%)
   - Specs: `web-chat-sse-streaming`
 
 ### Draft
