@@ -177,13 +177,13 @@ export function createMcpHandler(server: McpConnectableServer, options: McpHandl
   }
 }
 
-function isMcpSessionFlagEnabled(env?: CloudflareEnv): boolean {
+export function isMcpSessionFlagEnabled(env?: CloudflareEnv): boolean {
   const raw = env?.NUXT_KNOWLEDGE_FEATURE_MCP_SESSION
   if (typeof raw !== 'boolean' && typeof raw !== 'string') return false
   return parseBooleanFlag(raw)
 }
 
-function resolveMcpSessionNamespace(env?: CloudflareEnv): McpSessionNamespaceLike | null {
+export function resolveMcpSessionNamespace(env?: CloudflareEnv): McpSessionNamespaceLike | null {
   const candidate = env?.MCP_SESSION
   if (!candidate || typeof candidate !== 'object') return null
   const namespace = candidate as McpSessionNamespaceLike
