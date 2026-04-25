@@ -17,7 +17,8 @@
 - **Tasks 狀態**（30/35, 86%）：§1–§4 + §4.x + §5.x + §6.x 全綠；新加 §6.4 [ ]；§7.1 退回 in-progress（升級 acceptance + dep §6.4）；§7.2 / §7.3 / §8.1–§8.4 待做
 - **v0.43.4 stop-gap 已收尾**：`448cf07` deploy v0.43.4，production runtime flag = false 確認；目前不會撞 GET /mcp 405 / OAuth 循環
 - **下次 flip true 前缺**：**§6.4 G1 + G2 wire-up gap 解** + §7.1 升級 acceptance 三項全綠（(a) curl 4 tool call + (b) SSE-aware mock client + (c) 真實 Claude.ai 3 query UI 顯示真實答案）+ §7.2 production flip 重做 + §7.3 7 天觀察 + §8.1–§8.4 人工檢查
-- Claim: `unknown:charles@charlesdeMac-mini.local`（heartbeat 2026-04-25）
+- **v0.44.0 deploy 後 staging acceptance 進展**：mcp-rehydrate-request-body GET/DELETE envelope inject fix 上線後，`pnpm mcp:acceptance:staging` 從**405 → 500**（不再走 stateless POST-only fallback，已進 worker shim DO forward 路徑），但 GET /mcp 仍 fail。Staging 端 500 是 §6.4 G2 streaming response wrap 問題的同源表現；下一步用 `wrangler tail nuxt-edge-agentic-rag-staging` trace 真實 throw stack
+- Claim: `unknown:charles@charlesdeMac-mini.local`（heartbeat 2026-04-25 v0.44.0 deploy）
 
 ### `upgrade-mcp-to-durable-objects` — 等 wire-do archive
 
