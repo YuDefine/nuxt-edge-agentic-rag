@@ -19,6 +19,20 @@ const mcpToolkitNodeProvider = mcpToolkitProviderPath('node')
 const mcpAgentsCompatProvider = fileURLToPath(
   new URL('./server/utils/mcp-agents-compat.ts', import.meta.url),
 )
+// Custom Cloudflare Worker entry that bypasses nitroApp.localFetch for
+// `/mcp` GET / DELETE. Default nitro entry buffers SSE streams via
+// `toNodeListener` + `fetchNodeRequestHandler`, which hangs long-lived SSE
+// streams. See `build/nitro/cloudflare-mcp-sse-entry.mjs` docstring for the
+// full root-cause and strategy (wire-do-tool-dispatch §6.4 G2 fix).
+const cloudflareMcpSseEntry = fileURLToPath(
+  new URL('./build/nitro/cloudflare-mcp-sse-entry.mjs', import.meta.url),
+)
+const nitroCloudflareDefaultEntry = fileURLToPath(
+  new URL(
+    './node_modules/nitropack/dist/presets/cloudflare/runtime/cloudflare-module.mjs',
+    import.meta.url,
+  ),
+)
 const devMcpAuthSigningKey = 'dev-only-mcp-auth-context-signing-key-keep-out-of-production'
 const isLocalEnvironment = (process.env.NUXT_KNOWLEDGE_ENVIRONMENT ?? 'local') === 'local'
 
@@ -325,6 +339,10 @@ export default defineNuxtConfig({
     alias: {
       [mcpToolkitCloudflareProvider]: mcpToolkitNodeProvider,
       'agents/mcp': mcpAgentsCompatProvider,
+      // Replace nitro's default cloudflare-module entry with our custom
+      // entry that bypasses nitroApp.localFetch for `/mcp` GET/DELETE.
+      // See `build/nitro/cloudflare-mcp-sse-entry.mjs` docstring.
+      [nitroCloudflareDefaultEntry]: cloudflareMcpSseEntry,
     },
     cloudflare: {
       deployConfig: true,
