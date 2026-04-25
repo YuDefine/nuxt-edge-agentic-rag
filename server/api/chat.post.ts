@@ -27,6 +27,7 @@ import {
   chatWithKnowledge,
   createChatKvRateLimitStore,
 } from '#server/utils/web-chat'
+import { createAbortError, isAbortError } from '#shared/utils/abort'
 
 const chatBodySchema = z
   .object({
@@ -391,21 +392,4 @@ function recordChatResult(
       followUpForcedFreshRetrieval: input.result.followUp?.forcedFreshRetrieval ?? false,
     },
   })
-}
-
-function isAbortError(error: unknown): boolean {
-  if (error instanceof DOMException && error.name === 'AbortError') {
-    return true
-  }
-
-  return (
-    typeof error === 'object' &&
-    error !== null &&
-    'name' in error &&
-    (error as { name?: unknown }).name === 'AbortError'
-  )
-}
-
-function createAbortError(): DOMException {
-  return new DOMException('aborted', 'AbortError')
 }
