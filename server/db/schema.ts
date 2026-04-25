@@ -220,6 +220,14 @@ export const messages = sqliteTable(
     citationsJson: text('citations_json').notNull().default('[]'),
     riskFlagsJson: text('risk_flags_json').notNull().default('[]'),
     redactionApplied: integer('redaction_applied', { mode: 'boolean' }).notNull().default(false),
+    /**
+     * persist-refusal-and-label-new-chat: marks assistant turns that ended
+     * in a refusal (audit-block, pipeline refusal, pipeline error). User /
+     * system rows and accepted assistant answers always store false. Reload
+     * paths use this flag — not content string matching — to decide whether
+     * to render `RefusalMessage.vue`. See migration 0013.
+     */
+    refused: integer('refused', { mode: 'boolean' }).notNull().default(false),
     createdAt: text('created_at').notNull().default(timestampNow),
   },
   (table) => [

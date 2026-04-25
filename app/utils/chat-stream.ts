@@ -4,6 +4,7 @@ import type {
   ChatStreamTerminalEvent,
 } from '#shared/types/chat-stream'
 import { assertNever } from '#shared/utils/assert-never'
+import { REFUSAL_MESSAGE_CONTENT } from '#shared/utils/chat-refusal'
 import { readSseStream } from '#shared/utils/sse-parser'
 import type { ChatCitation, ChatMessage } from '~/types/chat'
 
@@ -85,7 +86,7 @@ export function createAssistantMessageFromTerminalEvent(
     return {
       id: input.id,
       role: 'assistant',
-      content: '抱歉，我無法回答這個問題。',
+      content: REFUSAL_MESSAGE_CONTENT,
       refused: true,
       createdAt: input.createdAt,
     }

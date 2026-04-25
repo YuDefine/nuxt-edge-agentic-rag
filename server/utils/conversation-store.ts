@@ -61,6 +61,14 @@ export interface ConversationMessageSummary {
    */
   contentText: string | null
   citationsJson: string
+  /**
+   * persist-refusal-and-label-new-chat: true when this assistant turn
+   * ended in a refusal (audit-block, pipeline refusal, pipeline error).
+   * Sourced from `messages.refused`. User / system rows and accepted
+   * answers are always false. Reload UIs use this flag — not content
+   * string matching — to render `RefusalMessage.vue`.
+   */
+  refused: boolean
   createdAt: string
 }
 
@@ -197,7 +205,7 @@ export function createConversationStore(database: D1DatabaseLike) {
     const messageRows = await database
       .prepare(
         [
-          'SELECT id, role, content_redacted, content_text, citations_json, created_at',
+          'SELECT id, role, content_redacted, content_text, citations_json, refused, created_at',
           'FROM messages',
           'WHERE conversation_id = ?',
           'ORDER BY created_at ASC',
@@ -210,6 +218,7 @@ export function createConversationStore(database: D1DatabaseLike) {
         content_redacted: string
         content_text: string | null
         citations_json: string | null
+        refused: number | null
         created_at: string
       }>()
 
@@ -219,6 +228,7 @@ export function createConversationStore(database: D1DatabaseLike) {
       contentRedacted: row.content_redacted,
       contentText: row.content_text ?? null,
       citationsJson: row.citations_json ?? '[]',
+      refused: row.refused === 1,
       createdAt: row.created_at,
     }))
 

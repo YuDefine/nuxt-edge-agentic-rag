@@ -181,6 +181,15 @@ export function createKnowledgeAuditStore(database: D1DatabaseLike) {
       now?: Date
       queryLogId?: string
       role: MessageRole
+      /**
+       * persist-refusal-and-label-new-chat: marks the row as a refusal
+       * assistant turn (audit-block, pipeline refusal, pipeline error).
+       * Defaults to `false`. User / system rows and accepted assistant
+       * answers MUST omit this or pass `false`. MCP callers always pass
+       * `false` — MCP refusal contracts are owned separately and v1.0.0
+       * does not flag MCP rows.
+       */
+      refused?: boolean
       userProfileId?: string | null
     }): Promise<string> {
       const messageId = crypto.randomUUID()
@@ -211,8 +220,8 @@ export function createKnowledgeAuditStore(database: D1DatabaseLike) {
             'INSERT INTO messages (',
             '  id, conversation_id, query_log_id, user_profile_id, channel, role,',
             '  content_redacted, content_text, citations_json, risk_flags_json,',
-            '  redaction_applied, created_at',
-            ') VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            '  redaction_applied, refused, created_at',
+            ') VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
           ].join('\n'),
         )
         .bind(
@@ -227,6 +236,7 @@ export function createKnowledgeAuditStore(database: D1DatabaseLike) {
           input.citationsJson ?? '[]',
           JSON.stringify(audit.riskFlags),
           audit.redactionApplied ? 1 : 0,
+          input.refused ? 1 : 0,
           now,
         )
         .run()
