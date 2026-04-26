@@ -11,7 +11,7 @@
     "check:test-roots": "node scripts/checks/check-legacy-test-roots.mts",
     "check:vue-components": "node scripts/checks/check-vue-component-resolution.mts",
     "dev": "nuxt dev --dotenv .env --port 3010",
-    "docs:build": "vitepress build docs",
+    "docs:build": "vitepress build docs && node scripts/generate-llms-txt.mjs",
     "docs:dev": "vitepress dev docs --host 0.0.0.0 --port 4173",
     "docs:preview": "vitepress preview docs --host 0.0.0.0 --port 4173",
     "eval": "node scripts/run-eval-with-exit.mjs",
