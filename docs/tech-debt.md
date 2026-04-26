@@ -62,6 +62,11 @@
 | TD-059 | E2E Tests CI workflow 連續 50+ run 全紅 — `nuxt preview` webServer 啟動時 Node ESM loader 撞 `cloudflare:` protocol scheme，整個 webServer exit 1                                                                                                             | high     | done        | 2026-04-26 v0.50.1 E2E run 24940734040                           | —     |
 | TD-060 | Production `agentic-rag` AutoRAG 對 seed acceptance fixture 的 retrieval_score 平均 0.32–0.44，全部低於 `directAnswerMin=0.7`，治理層 100% 走 `no_citation_refuse`                                                                                            | high     | open        | 2026-04-26 main-v0.0.54-acceptance run                           | —     |
 | TD-061 | Production `query_logs` r2 重測批次 28.6%（10/35）觸發 `decision_path=pipeline_error`；同 prompt 重複查詢可能觸發 stateful failure                                                                                                                            | high     | open        | 2026-04-26 main-v0.0.54-acceptance run                           | —     |
+| TD-062 | `rag-query-rewriting` 三個 entry point 的 retrieve closure 幾乎重複（chat.post.ts / mcp/tools/ask.ts / mcp/tools/search.ts），約 28 LoC × 3 應抽 helper                                                                                                       | mid      | open        | 2026-04-26 `/commit` 0-A simplify review                         | —     |
+| TD-063 | `useRewriter: false on retry` 的 docstring 在 4 個 callback signature 重複 6-9 行同一段；應只留一份 canonical 在 `knowledge-query-rewriter.ts`                                                                                                                | low      | open        | 2026-04-26 `/commit` 0-A simplify review                         | —     |
+| TD-064 | `test/integration/retrieve-verified-evidence-with-rewriter.spec.ts` 同時 mock `search` 與 `resolveCurrentEvidence`，違反「no mocking DB in integration tests」；應 relocate 或補真實 D1 round-trip 覆蓋 audit dynamic UPDATE                                  | mid      | open        | 2026-04-26 `/commit` 0-A code-review                             | —     |
+| TD-065 | `UpdateQueryLog.rewriterStatus` 型別 `string \| null` 與 `query_logs.rewriter_status` NOT NULL 不一致；潛在 5xx                                                                                                                                               | low      | open        | 2026-04-26 `/commit` 0-A code-review                             | —     |
+| TD-066 | `retrieveVerifiedEvidence` 用 `=== 'success'` 比對 `RewriterStatus`，違反專案 `switch + assertNever` exhaustiveness rule；新增 enum 值時不會 compiler error                                                                                                   | low      | open        | 2026-04-26 `/commit` 0-A code-review                             | —     |
 
 ---
 
@@ -2169,7 +2174,7 @@ pnpm exec wrangler dev --config .output/server/wrangler.json --port 3010 --ip 12
 
 ## TD-060 — Production `agentic-rag` AutoRAG 對 seed acceptance fixture 的 retrieval_score 全低於 directAnswer 門檻
 
-**Status**: open
+**Status**: in-progress（實作於 change `rag-query-rewriting`，staging deploy 後驗收 acceptance evidence）
 **Priority**: high
 **Discovered**: 2026-04-26 — `main-v0.0.54-acceptance` run 對 production `https://agentic.yudefine.com.tw/mcp` 跑 35 筆 seed cases，D1 `query_logs` 顯示 `retrieval_score` 平均 0.32–0.44，全部 35 筆都低於 `thresholds.directAnswerMin=0.7`
 **Location**: `production agentic-rag` AutoRAG index、`shared/schemas/knowledge-runtime` thresholds、`server/utils/knowledge-*` retrieval pipeline
@@ -2228,6 +2233,8 @@ pnpm exec wrangler dev --config .output/server/wrangler.json --port 3010 --ip 12
 **Location**: `server/utils/knowledge-*`、`server/api/mcp/**`、production rate-limit、AutoRAG pipeline
 **Related markers**: search `@followup[TD-061]` in repo
 
+> **Acceptance dependency**：本 TD 的最終 acceptance 驗證依賴 change `rag-query-rewriting` ramp staging — 必須先讓 fixture 能進 judge gate（即 retrieval_score ≥0.45），才有真實 judge truncation 路徑可 verify TD-061 的 fix 是否消除 pipeline_error。
+
 ### Problem
 
 對 production 跑 50 筆 fixture：
@@ -2272,3 +2279,144 @@ pnpm exec wrangler dev --config .output/server/wrangler.json --port 3010 --ip 12
 - [ ] 連續 50 筆同 prompt 重測，pipeline_error rate < 5%
 - [ ] `decision_path` enum 擴張到分類錯誤（schema migration）
 - [ ] Production 連續一週 pipeline_error rate baseline 寫入 `docs/verify/`
+
+---
+
+## TD-062 — Extract `buildRetrieveWithRewriter` helper across 3 entry points
+
+**Status**: open
+**Priority**: mid
+**Discovered**: 2026-04-26 — `/commit` 0-A simplify review on change `rag-query-rewriting`
+**Location**: `server/api/chat.post.ts:192-217`、`server/mcp/tools/ask.ts:128-154`、`server/mcp/tools/search.ts:79-106`
+**Related markers**: search `@followup[TD-062]` in repo
+
+### Problem
+
+三個 entry point 都建立同一形狀的 retrieve closure：判斷 `input.useRewriter !== false && isQueryRewritingEnabled(runtimeConfig)`，組裝同樣 shape 的 `rewriteForRetrieval` 參數，呼叫 `retrieveVerifiedEvidence`。約 28 LoC × 3 = 重複面積大；未來要改 rewriter 接口要動三個檔。
+
+### Fix approach
+
+抽 `buildRetrieveWithRewriter({ runtimeConfig, event, search, store, governance, onRewriterOutcome? })` helper，回傳 `(input) => Promise<...>` closure。`chat.post.ts` / `mcp/tools/ask.ts` 透過 `onRewriterOutcome` callback 取得 last status / rewrittenQuery 寫進 audit；`mcp/tools/search.ts` 不需要。helper 放在 `server/utils/knowledge-query-rewriter.ts` 或 `server/utils/knowledge-retrieval.ts`。
+
+### Acceptance
+
+- 三個 entry point 各自從 ~28 LoC closure 縮成 ~5 LoC（call helper + optional callback）
+- 既有 unit + integration test 全綠不需改
+- `pnpm typecheck` 通過
+
+---
+
+## TD-063 — Trim duplicated `useRewriter` callback docstring
+
+**Status**: open
+**Priority**: low
+**Discovered**: 2026-04-26 — `/commit` 0-A simplify review on change `rag-query-rewriting`
+**Location**: `server/utils/knowledge-answering.ts:65-73`、`server/utils/web-chat.ts:186-193`、`server/utils/mcp-ask.ts:171-180`、`server/utils/mcp-search.ts:14-22`
+**Related markers**: search `@followup[TD-063]` in repo
+
+### Problem
+
+四處 retrieve callback signature 都各自寫 6-9 行 docstring，重述「retry pass 必須 `useRewriter: false` 因為 reformulatedQuery 已是 LLM-shaped query」同一段話。違反專案規則「Default to writing no comments」「Don't reference the current task / fix / callers」。
+
+### Fix approach
+
+把完整 rationale 留在 `server/utils/knowledge-query-rewriter.ts` 開頭一份 canonical docstring；四個 callsite 縮成單行 `// see knowledge-query-rewriter.ts §S-RW for retry-pass rationale`。
+
+### Acceptance
+
+- 四個 callsite docstring ≤ 1 行
+- canonical docstring 仍涵蓋 retry pass rationale
+- `pnpm typecheck` 通過
+
+---
+
+## TD-064 — Integration test mocks DB; should be relocated or replaced with real D1
+
+**Status**: open
+**Priority**: mid
+**Discovered**: 2026-04-26 — `/commit` 0-A code-review on change `rag-query-rewriting`
+**Location**: `test/integration/retrieve-verified-evidence-with-rewriter.spec.ts`、`server/utils/knowledge-audit.ts:359-400`
+**Related markers**: search `@followup[TD-064]` in repo
+
+### Problem
+
+`test/integration/retrieve-verified-evidence-with-rewriter.spec.ts` 用 `vi.fn()` mock 了 `search` 與 `resolveCurrentEvidence`，沒有真實 D1 / evidence store / `auditStore.updateQueryLog` round-trip。違反 `.claude/rules/testing-anti-patterns.md` 「no mocking DB in integration tests」。更關鍵：本 change 風險最高的程式碼之一—— `knowledge-audit.ts` 的 dynamic SET clause UPDATE—— **沒有任何 test 覆蓋 bind ordering / SQL composition**。未來開發者改 `setClauses` 順序會悄悄壞 audit 寫入。
+
+### Fix approach
+
+兩擇一：
+
+- (a) 把這個 spec 移到 `test/unit/`，並為 audit dynamic UPDATE 另外寫一個 D1-backed integration test（in-memory `better-sqlite3` 或 D1 local），assert `rewriter_status` / `rewritten_query` 經完整 INSERT → UPDATE → SELECT round-trip 結果正確
+- (b) 保留檔名位置但改寫內容用真實 D1，覆蓋 audit dynamic UPDATE 的 setClauses 順序
+
+### Acceptance
+
+- 至少一個 integration-tier test 對 audit dynamic UPDATE 用真實 D1 round-trip
+- 測試 cover：rewriter_status / rewritten_query 都帶 / 都不帶 / 一個帶一個不帶 三種組合
+- `pnpm test` 全綠
+
+---
+
+## TD-065 — `UpdateQueryLog.rewriterStatus` 型別與 NOT NULL 欄位不一致
+
+**Status**: open
+**Priority**: low
+**Discovered**: 2026-04-26 — `/commit` 0-A code-review on change `rag-query-rewriting`
+**Location**: `server/utils/knowledge-audit.ts:357-388`
+**Related markers**: search `@followup[TD-065]` in repo
+
+### Problem
+
+`UpdateQueryLog.rewriterStatus` 型別宣告 `string | null`，但 `query_logs.rewriter_status` schema 是 `TEXT NOT NULL DEFAULT 'disabled'`。caller 傳 `null` 會 bind SQL NULL 進 NOT NULL 欄位 → D1 constraint error 包成 5xx。目前 caller 都從 `lastRewriterStatus: string = 'disabled'` 起手，永遠不傳 `null`，是 latent bug。
+
+### Fix approach
+
+1. `UpdateQueryLog.rewriterStatus?: string`（drop `| null`）
+2. 確認 `bindings.push(input.rewriterStatus ?? null)` 改成 `bindings.push(input.rewriterStatus)`（undefined 已被 `setRewriterStatus` 旗標濾掉）
+3. typecheck 通過
+
+### Acceptance
+
+- 型別不再允許 `null`
+- typecheck + 既有 test 通過
+- 加一條 unit test：傳 `'disabled'` / `'success'` / `'fallback_timeout'` 等都 round-trip 正確
+
+---
+
+## TD-066 — `RewriterStatus` discrimination 缺 `assertNever`
+
+**Status**: open
+**Priority**: low
+**Discovered**: 2026-04-26 — `/commit` 0-A code-review on change `rag-query-rewriting`
+**Location**: `server/utils/knowledge-retrieval.ts:137-138`
+**Related markers**: search `@followup[TD-066]` in repo
+
+### Problem
+
+`rewriteResult.status === 'success' ? auditKnowledgeText(...).redactedText : null` 是單一 equality check，未走專案規定的 `switch + assertNever` pattern（見 `.claude/rules/development.md` 與 `ux-completeness.md` Exhaustiveness Rule）。將來新增 `RewriterStatus` 值（如 `fallback_blocked`）時不會 compiler error。
+
+### Fix approach
+
+```typescript
+import { assertNever } from '~/utils/assert-never'
+
+let rewrittenQueryForAudit: string | null
+switch (rewriteResult.status) {
+  case 'success':
+    rewrittenQueryForAudit = auditKnowledgeText(rewriteResult.rewrittenQuery).redactedText
+    break
+  case 'fallback_timeout':
+  case 'fallback_error':
+  case 'fallback_parse':
+    rewrittenQueryForAudit = null
+    break
+  default:
+    assertNever(rewriteResult.status, 'retrieveVerifiedEvidence rewriter')
+}
+```
+
+### Acceptance
+
+- 新增 `RewriterStatus` 值（暫測 `fallback_blocked`）時 typecheck 立刻 fail
+- 移除測試後既有 4 個 status 全綠
+- `pnpm audit:ux-drift` 不報新漂移

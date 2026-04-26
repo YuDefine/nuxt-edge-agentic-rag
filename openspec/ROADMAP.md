@@ -56,9 +56,9 @@ _(目前無 parked change — 2026-04-26 兩個 parked change 全 unpark + 實�
 
 ## Active Changes
 
-_last synced: 2026-04-26T01:56:07.128Z_
+_last synced: 2026-04-26T06:27:37.535Z_
 
-_No active changes._
+1 active change (0 ready · 1 in progress · 0 draft · 0 blocked)
 
 ### Ready to apply
 
@@ -66,7 +66,8 @@ _(none)_
 
 ### In progress
 
-_(none)_
+- **rag-query-rewriting** — 16/34 tasks (47%)
+  - Specs: `workers-ai-grounded-answering`
 
 ### Draft
 
@@ -99,7 +100,7 @@ _No active claims._
 
 ### Independent (can run in parallel)
 
-_(none)_
+- `rag-query-rewriting`
 
 ### Mutex (same spec touched)
 
