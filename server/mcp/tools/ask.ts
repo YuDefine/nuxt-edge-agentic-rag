@@ -10,6 +10,10 @@ import { createCitationStore } from '#server/utils/citation-store'
 import { getRequiredD1Binding, getRequiredKvBinding } from '#server/utils/cloudflare-bindings'
 import { createKnowledgeAuditStore } from '#server/utils/knowledge-audit'
 import { createKnowledgeEvidenceStore } from '#server/utils/knowledge-evidence-store'
+import {
+  isQueryRewritingEnabled,
+  rewriteForRetrieval,
+} from '#server/utils/knowledge-query-rewriter'
 import { retrieveVerifiedEvidence } from '#server/utils/knowledge-retrieval'
 import { getKnowledgeRuntimeConfig } from '#server/utils/knowledge-runtime'
 import { askKnowledge, createMcpQueryLogStore } from '#server/utils/mcp-ask'
@@ -74,6 +78,14 @@ export default defineMcpTool({
     // handler's binding-health signal.
     getRequiredKvBinding(event, runtimeConfig.bindings.rateLimitKv)
 
+    // §S-OB (change rag-query-rewriting): mirror chat.post.ts — capture
+    // rewriter outcome inside the retrieve closure and surface it on
+    // auditStore.updateQueryLog so query_logs.rewriter_status / rewritten_query
+    // are populated for the MCP ask path. queryLogStore.updateQueryLog is a
+    // fallback (older test path) and does not write the rewriter columns.
+    let lastRewriterStatus: string = 'disabled'
+    let lastRewrittenQuery: string | null = null
+
     return askKnowledge(
       {
         auth,
@@ -93,6 +105,8 @@ export default defineMcpTool({
                 auditStore.updateQueryLog({
                   ...input,
                   workersAiRunsJson: workersAiRuns.serialize(),
+                  rewriterStatus: lastRewriterStatus,
+                  rewrittenQuery: lastRewrittenQuery,
                 })
             : undefined,
         },
@@ -111,12 +125,33 @@ export default defineMcpTool({
                 })
             : undefined,
         },
-        retrieve: (input) =>
-          retrieveVerifiedEvidence(input, {
-            governance: runtimeConfig.governance,
-            search: aiSearchClient.search,
-            store: evidenceStore,
-          }),
+        retrieve: async (input) => {
+          const useRewriter = input.useRewriter !== false && isQueryRewritingEnabled(runtimeConfig)
+          const rewriter = useRewriter
+            ? async function (normalized: string) {
+                return rewriteForRetrieval(normalized, {
+                  ai: workersAiBinding,
+                  runtimeConfig,
+                  onUsage: workersAiRuns.record,
+                })
+              }
+            : undefined
+          const result = await retrieveVerifiedEvidence(
+            {
+              allowedAccessLevels: input.allowedAccessLevels,
+              query: input.query,
+            },
+            {
+              governance: runtimeConfig.governance,
+              rewriter,
+              search: aiSearchClient.search,
+              store: evidenceStore,
+            },
+          )
+          lastRewriterStatus = result.rewriterStatus
+          lastRewrittenQuery = result.rewrittenQuery
+          return result
+        },
       },
     )
   },

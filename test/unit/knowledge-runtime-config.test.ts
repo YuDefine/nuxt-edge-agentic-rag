@@ -43,6 +43,7 @@ describe('knowledge runtime bootstrap', () => {
         cloudFallback: false,
         mcpSession: false,
         passkey: false,
+        queryRewriting: false,
       },
       governance: {
         configSnapshotVersion: expect.any(String),
@@ -55,6 +56,7 @@ describe('knowledge runtime bootstrap', () => {
           cloudFallback: false,
           mcpSession: false,
           passkey: false,
+          queryRewriting: false,
         },
         models: {
           agentJudge: 'agentJudge',

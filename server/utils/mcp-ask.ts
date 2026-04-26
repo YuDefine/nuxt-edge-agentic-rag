@@ -171,7 +171,17 @@ interface McpAskDependencies {
       refusalReason?: string | null
     }): Promise<void>
   }
-  retrieve: (input: { allowedAccessLevels: string[]; query: string }) => Promise<{
+  /**
+   * §S-RW (change rag-query-rewriting): see `chatWithKnowledge.retrieve`
+   * docstring — `useRewriter: false` is set on the judge-driven retry pass
+   * inside `answerKnowledgeQuery` and MUST be honoured by the caller's
+   * closure.
+   */
+  retrieve: (input: {
+    allowedAccessLevels: string[]
+    query: string
+    useRewriter?: boolean
+  }) => Promise<{
     evidence: Array<{
       accessLevel: string
       categorySlug: string

@@ -99,6 +99,12 @@ describe('knowledge retrieval', () => {
         },
       ],
       normalizedQuery: 'frequently asked questions for 2026-04-16',
+      // §S-OB (change rag-query-rewriting): rewriter columns appended to
+      // the return shape — disabled path keeps originalQuery == normalized
+      // and rewrittenQuery NULL.
+      originalQuery: 'frequently asked questions for 2026-04-16',
+      rewriterStatus: 'disabled',
+      rewrittenQuery: null,
     })
   })
 })

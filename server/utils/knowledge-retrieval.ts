@@ -1,4 +1,6 @@
 import type { KnowledgeGovernanceConfig } from '#shared/schemas/knowledge-runtime'
+import { auditKnowledgeText } from '#server/utils/knowledge-audit'
+import type { RewriteForRetrieval, RewriterStatus } from '#server/utils/knowledge-query-rewriter'
 
 export interface KnowledgeSearchCandidate {
   accessLevel: string
@@ -91,20 +93,66 @@ export async function retrieveVerifiedEvidence(
   },
   options: {
     governance: Pick<KnowledgeGovernanceConfig, 'retrieval'>
+    /**
+     * workers-ai-grounded-answering §S-RW (change rag-query-rewriting):
+     * Optional LLM-based query rewriter applied AFTER `normalizeKnowledgeQuery`
+     * and BEFORE the AI Search call. Caller is responsible for the
+     * `isQueryRewritingEnabled` gate — pass `undefined` to keep the
+     * pre-change behaviour 100% intact.
+     */
+    rewriter?: RewriteForRetrieval
     search: SearchKnowledgeClient['search']
     store: ResolveCurrentEvidenceStore
   },
 ): Promise<{
   evidence: VerifiedKnowledgeEvidence[]
   normalizedQuery: string
+  /**
+   * §S-OB — original normalized query before the rewriter step. Always
+   * the same string the pre-change pipeline would have used. Callers MAY
+   * persist this alongside `rewrittenQuery` for retrieval audit.
+   */
+  originalQuery: string
+  /**
+   * §S-OB — rewriter outcome enum to be persisted in
+   * `query_logs.rewriter_status`. Defaults to `'disabled'` when no
+   * rewriter is supplied (the disabled-path scenario).
+   */
+  rewriterStatus: RewriterStatus | 'disabled'
+  /**
+   * §S-OB — the rewritten query string when `rewriterStatus === 'success'`,
+   * NULL otherwise (matching the column nullability).
+   */
+  rewrittenQuery: string | null
 }> {
   const normalized = normalizeKnowledgeQuery(input.query)
+
+  let queryForSearch = normalized.normalizedQuery
+  let rewriterStatus: RewriterStatus | 'disabled' = 'disabled'
+  let rewrittenQueryForAudit: string | null = null
+
+  if (options.rewriter) {
+    const rewriteResult = await options.rewriter(normalized.normalizedQuery)
+    queryForSearch = rewriteResult.rewrittenQuery
+    rewriterStatus = rewriteResult.status
+    // §S-OB (change rag-query-rewriting): the rewriter LLM sees the
+    // normalized (NOT redacted) query — same trust boundary as AI Search.
+    // For the persisted audit value we redact through `auditKnowledgeText`
+    // so the admin debug surface keeps the same PII guarantee as
+    // `query_redacted_text`. `queryForSearch` (sent to AI Search) keeps
+    // the un-redacted form to preserve retrieval quality.
+    rewrittenQueryForAudit =
+      rewriteResult.status === 'success'
+        ? auditKnowledgeText(rewriteResult.rewrittenQuery).redactedText
+        : null
+  }
+
   const candidates = await options.search({
     filters: buildKnowledgeSearchFilters({
       allowedAccessLevels: input.allowedAccessLevels,
     }),
     max_num_results: input.maxResults ?? options.governance.retrieval.maxResults,
-    query: normalized.normalizedQuery,
+    query: queryForSearch,
     ranking_options: {
       score_threshold: options.governance.retrieval.minScore,
     },
@@ -139,6 +187,9 @@ export async function retrieveVerifiedEvidence(
   return {
     evidence,
     normalizedQuery: normalized.normalizedQuery,
+    originalQuery: normalized.normalizedQuery,
+    rewriterStatus,
+    rewrittenQuery: rewrittenQueryForAudit,
   }
 }
 

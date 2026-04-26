@@ -189,6 +189,21 @@ export const queryLogs = sqliteTable(
      * backwards compatibility for blocked / legacy rows with no model calls.
      */
     workersAiRunsJson: text('workers_ai_runs_json').notNull().default('[]'),
+    /**
+     * workers-ai-grounded-answering §S-OB (change rag-query-rewriting):
+     * Outcome of the optional LLM-based query rewriter step. Default
+     * `'disabled'` covers legacy rows + production-off paths. Enum (writer
+     * does not validate, debug API consumes verbatim):
+     * `disabled` / `success` / `fallback_timeout` / `fallback_error` / `fallback_parse`.
+     */
+    rewriterStatus: text('rewriter_status').notNull().default('disabled'),
+    /**
+     * workers-ai-grounded-answering §S-OB (change rag-query-rewriting):
+     * Rewritten query string when `rewriter_status='success'`. NULL on
+     * disabled / fallback rows. Subject to same redaction rules as
+     * `query_redacted_text` when surfaced via admin debug API.
+     */
+    rewrittenQuery: text('rewritten_query'),
   },
   (table) => [index('query_logs_channel_created_idx').on(table.channel, table.createdAt)],
 )

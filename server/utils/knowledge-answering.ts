@@ -64,7 +64,19 @@ export async function answerKnowledgeQuery(
       }>,
     ) => Promise<Array<{ citationId: string; documentVersionId: string; sourceChunkId: string }>>
     governance: Pick<KnowledgeGovernanceConfig, 'models' | 'thresholds'>
-    retrieve: (input: { allowedAccessLevels: string[]; query: string }) => Promise<{
+    /**
+     * §S-RW (change rag-query-rewriting): the `useRewriter` flag lets this
+     * orchestrator opt the second-pass retrieval out of the rewriter — the
+     * judge-supplied `reformulatedQuery` is already an LLM-shaped query
+     * meant for retrieval, so re-running the rewriter on it would either
+     * duplicate cost or drift the query away from the judge's intent.
+     * Caller MUST honour the flag in its retrieve closure.
+     */
+    retrieve: (input: {
+      allowedAccessLevels: string[]
+      query: string
+      useRewriter?: boolean
+    }) => Promise<{
       evidence: VerifiedKnowledgeEvidence[]
       normalizedQuery: string
     }>
@@ -152,6 +164,7 @@ export async function answerKnowledgeQuery(
   const retryPass = await options.retrieve({
     allowedAccessLevels: input.allowedAccessLevels,
     query: judgment.reformulatedQuery,
+    useRewriter: false,
   })
   const retryScore = computeRetrievalScore(retryPass.evidence)
 

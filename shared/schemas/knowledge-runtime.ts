@@ -8,6 +8,7 @@ export const KNOWLEDGE_FEATURE_FLAG_VALUES = [
   'mcpSession',
   'cloudFallback',
   'adminDashboard',
+  'queryRewriting',
 ] as const
 export const MCP_TOKEN_SCOPE_VALUES = [
   'knowledge.search',
@@ -78,6 +79,13 @@ export interface KnowledgeFeatureFlags {
   cloudFallback: boolean
   mcpSession: boolean
   passkey: boolean
+  /**
+   * workers-ai-grounded-answering §S-FF (change rag-query-rewriting):
+   * gate for the optional LLM-based query rewriting step inside
+   * `retrieveVerifiedEvidence`. Default `false` in production until
+   * acceptance evidence demonstrates retrieval quality improvement.
+   */
+  queryRewriting: boolean
 }
 
 export interface McpConnectorClientConfig {
@@ -184,6 +192,7 @@ const knowledgeRuntimeConfigSchema = z.object({
     cloudFallback: z.boolean(),
     mcpSession: z.boolean(),
     passkey: z.boolean(),
+    queryRewriting: z.boolean(),
   }),
   governance: z.object({
     configSnapshotVersion: z.string().min(1),
@@ -196,6 +205,7 @@ const knowledgeRuntimeConfigSchema = z.object({
       cloudFallback: z.boolean(),
       mcpSession: z.boolean(),
       passkey: z.boolean(),
+      queryRewriting: z.boolean(),
     }),
     models: z.object({
       agentJudge: z.string().min(1),
@@ -354,6 +364,7 @@ export function createKnowledgeFeatureFlags(
     cloudFallback: parseBooleanFlag(overrides?.cloudFallback),
     mcpSession: parseBooleanFlag(overrides?.mcpSession),
     passkey: parseBooleanFlag(overrides?.passkey),
+    queryRewriting: parseBooleanFlag(overrides?.queryRewriting),
   }
 }
 

@@ -16,6 +16,10 @@ import { createConversationStore } from '#server/utils/conversation-store'
 import { deriveConversationTitleFromQuery } from '#server/utils/conversation-title'
 import { createKnowledgeAuditStore } from '#server/utils/knowledge-audit'
 import { createKnowledgeEvidenceStore } from '#server/utils/knowledge-evidence-store'
+import {
+  isQueryRewritingEnabled,
+  rewriteForRetrieval,
+} from '#server/utils/knowledge-query-rewriter'
 import { retrieveVerifiedEvidence } from '#server/utils/knowledge-retrieval'
 import { getKnowledgeRuntimeConfig } from '#server/utils/knowledge-runtime'
 import { requireRole } from '#server/utils/require-role'
@@ -38,6 +42,46 @@ const chatBodySchema = z
     conversationId: z.string().uuid().optional(),
   })
   .strict()
+
+defineRouteMeta({
+  openAPI: {
+    tags: ['chat'],
+    summary: '對企業知識庫提問並串流回答',
+    description:
+      '輸入使用者問題，回傳 SSE 串流回答與引用清單（行內【引N】）。需 member 權限；訪客是否可呼叫由 guest_policy 決定（same_as_member 通過、browse_only / no_access 回 403）。',
+    requestBody: {
+      required: true,
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            required: ['query'],
+            properties: {
+              query: {
+                type: 'string',
+                minLength: 1,
+                maxLength: 4000,
+                description: '使用者問題；前後空白會被裁切。',
+              },
+              conversationId: {
+                type: 'string',
+                format: 'uuid',
+                description: '若延續既有對話則帶入；省略則建立新對話。',
+              },
+            },
+          } as never,
+        },
+      },
+    },
+    responses: {
+      '200': { description: 'SSE 串流，逐字送出回答與引用 metadata。' },
+      '400': { description: '請求格式錯誤或 query 超過長度限制。' },
+      '401': { description: '未登入或 session 過期。' },
+      '403': { description: '訪客政策不允許提問。' },
+      '429': { description: '速率限制觸發。' },
+    },
+  },
+})
 
 interface ChatLogFields {
   user: {
@@ -130,6 +174,15 @@ export default defineEventHandler(async function chatHandler(event) {
     const workersAiRuns = createWorkersAiRunRecorder()
     const auditStore = createKnowledgeAuditStore(database)
     const staleResolver = createConversationStaleResolver(database)
+    // §S-OB (change rag-query-rewriting): capture rewriter outcome inside
+    // the retrieve closure and surface it on auditStore.updateQueryLog so
+    // the spec scenario "Successful rewrite records both status and
+    // rewritten query" is satisfied. Self-correction retry overrides on
+    // the second retrieve call — the audit reflects the LAST retrieve in
+    // the chain, which is the one whose evidence shaped the answer.
+    let lastRewriterStatus: string = 'disabled'
+    let lastRewrittenQuery: string | null = null
+
     const runChatRequest = (stream?: {
       onTextDelta?: (delta: string) => Promise<void> | void
       signal?: AbortSignal
@@ -163,6 +216,8 @@ export default defineEventHandler(async function chatHandler(event) {
                   auditStore.updateQueryLog({
                     ...input,
                     workersAiRunsJson: workersAiRuns.serialize(),
+                    rewriterStatus: lastRewriterStatus,
+                    rewrittenQuery: lastRewrittenQuery,
                   })
               : undefined,
           },
@@ -174,12 +229,32 @@ export default defineEventHandler(async function chatHandler(event) {
             getRequiredKvBinding(event, runtimeConfig.bindings.rateLimitKv),
           ),
           resolveStaleness: staleResolver.resolveStaleness,
-          retrieve: (input) =>
-            retrieveVerifiedEvidence(input, {
-              governance: runtimeConfig.governance,
-              search: aiSearchClient.search,
-              store: createKnowledgeEvidenceStore(database),
-            }),
+          retrieve: async (input) => {
+            const rewriterEnabled =
+              input.useRewriter !== false && isQueryRewritingEnabled(runtimeConfig)
+            const result = await retrieveVerifiedEvidence(
+              {
+                allowedAccessLevels: input.allowedAccessLevels,
+                query: input.query,
+              },
+              {
+                governance: runtimeConfig.governance,
+                rewriter: rewriterEnabled
+                  ? (q) =>
+                      rewriteForRetrieval(q, {
+                        ai: workersAiBinding,
+                        runtimeConfig,
+                        onUsage: workersAiRuns.record,
+                      })
+                  : undefined,
+                search: aiSearchClient.search,
+                store: createKnowledgeEvidenceStore(database),
+              },
+            )
+            lastRewriterStatus = result.rewriterStatus
+            lastRewrittenQuery = result.rewrittenQuery
+            return result
+          },
           ...(stream ? { stream } : {}),
         },
       )
