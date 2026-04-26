@@ -50,20 +50,20 @@ function listResolvedVersions(
 }
 
 describe('better-auth passkey hotfix dependency resolution', () => {
-  it('locks the package specifiers and resolved lockfile entries required by the v1.6.7 fix', () => {
+  it('locks the package specifiers and resolved lockfile entries required by the v1.6.9 fix', () => {
     const rootImporter = lockfile.importers?.['.']
 
-    expect(packageJson.dependencies?.['better-auth']).toBe('^1.6.7')
-    expect(packageJson.dependencies?.['@better-auth/passkey']).toBe('^1.6.7')
+    expect(packageJson.dependencies?.['better-auth']).toBe('^1.6.9')
+    expect(packageJson.dependencies?.['@better-auth/passkey']).toBe('^1.6.9')
     expect(packageJson.devDependencies?.['@vitest/coverage-v8']).toBe('4.1.5')
     expect(packageJson.devDependencies?.['vite']).toBe('npm:@voidzero-dev/vite-plus-core@0.1.19')
     expect(packageJson.devDependencies?.['vitest']).toBe('npm:@voidzero-dev/vite-plus-test@0.1.19')
     expect(workspaceConfig.overrides?.['better-call']).toBe('1.3.5')
     expect(rootImporter?.dependencies?.['@better-auth/passkey']).toMatchObject({
-      specifier: '^1.6.7',
+      specifier: '^1.6.9',
     })
     expect(rootImporter?.dependencies?.['better-auth']).toMatchObject({
-      specifier: '^1.6.7',
+      specifier: '^1.6.9',
     })
     expect(rootImporter?.devDependencies?.['@vitest/coverage-v8']).toMatchObject({
       specifier: '4.1.5',
@@ -76,14 +76,14 @@ describe('better-auth passkey hotfix dependency resolution', () => {
     })
 
     expect(listResolvedVersions(lockfile.packages, 'better-call')).toEqual(['1.3.5'])
-    expect(listResolvedVersions(lockfile.packages, '@better-auth/passkey')).toEqual(['1.6.7'])
+    expect(listResolvedVersions(lockfile.packages, '@better-auth/passkey')).toEqual(['1.6.9'])
     expect(listResolvedVersions(lockfile.packages, '@voidzero-dev/vite-plus-core')).toEqual([
       '0.1.19',
     ])
     expect(listResolvedVersions(lockfile.packages, '@voidzero-dev/vite-plus-test')).toEqual([
       '0.1.19',
     ])
-    expect(listResolvedVersions(lockfile.packages, 'better-auth')).toContain('1.6.7')
+    expect(listResolvedVersions(lockfile.packages, 'better-auth')).toContain('1.6.9')
     expect(listResolvedVersions(lockfile.packages, 'better-auth')).not.toContain('1.6.6')
     expect(listResolvedVersions(lockfile.packages, '@vitest/coverage-v8')).toEqual(['4.1.5'])
   })
