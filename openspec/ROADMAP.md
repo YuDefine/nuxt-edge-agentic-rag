@@ -50,9 +50,9 @@ _(見 AUTO Parked Changes 區塊：add-mcp-token-revoke-do-cleanup、passkey-use
 
 ## Active Changes
 
-_last synced: 2026-04-26T01:02:07.881Z_
+_last synced: 2026-04-26T01:23:25.331Z_
 
-1 active change (0 ready · 1 in progress · 0 draft · 0 blocked)
+2 active changes (0 ready · 2 in progress · 0 draft · 0 blocked)
 
 ### Ready to apply
 
@@ -62,6 +62,8 @@ _(none)_
 
 - **add-mcp-token-revoke-do-cleanup** — 17/23 tasks (74%)
   - Specs: `oauth-remote-mcp-auth`
+- **passkey-user-profiles-nullable-email** — 15/22 tasks (68%)
+  - Specs: `auth-storage-consistency`
 
 ### Draft
 
@@ -108,6 +110,7 @@ _(none)_
 ### Independent (can run in parallel)
 
 - `add-mcp-token-revoke-do-cleanup`
+- `passkey-user-profiles-nullable-email`
 
 ### Mutex (same spec touched)
 

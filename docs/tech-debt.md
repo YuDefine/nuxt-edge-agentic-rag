@@ -60,6 +60,8 @@
 | TD-057 | evlog wide event lifecycle 警告 — `log.error()` 在 wide event emit 後呼叫，導致 SSE stream 真實錯誤 keys 被丟棄                                                                                                                                               | mid      | open        | 2026-04-26 production wrangler tail                              | —     |
 | TD-058 | Production `user_profiles` 6 條 orphaned rows（profile.id 不在 user.id）                                                                                                                                                                                      | low      | open        | 2026-04-26 TD-053 production 立即驗收                            | —     |
 | TD-059 | E2E Tests CI workflow 連續 50+ run 全紅 — `nuxt preview` webServer 啟動時 Node ESM loader 撞 `cloudflare:` protocol scheme，整個 webServer exit 1                                                                                                             | high     | done        | 2026-04-26 v0.50.1 E2E run 24940734040                           | —     |
+| TD-060 | Production `agentic-rag` AutoRAG 對 seed acceptance fixture 的 retrieval_score 平均 0.32–0.44，全部低於 `directAnswerMin=0.7`，治理層 100% 走 `no_citation_refuse`                                                                                            | high     | open        | 2026-04-26 main-v0.0.54-acceptance run                           | —     |
+| TD-061 | Production `query_logs` r2 重測批次 28.6%（10/35）觸發 `decision_path=pipeline_error`；同 prompt 重複查詢可能觸發 stateful failure                                                                                                                            | high     | open        | 2026-04-26 main-v0.0.54-acceptance run                           | —     |
 
 ---
 
@@ -2160,3 +2162,107 @@ pnpm exec wrangler dev --config .output/server/wrangler.json --port 3010 --ip 12
 - [ ] CI E2E workflow 至少連續 3 條 run 通過（含 main push + tag push）— 待 commit + push 後驗證
 - [x] webServer 啟動 log 不再出現 `ERR_UNSUPPORTED_ESM_URL_SCHEME`（local smoke 已確認）
 - [x] Fix 的 trade-off（runtime 對齊 / startup 時間 / DB binding 處理）已記錄在本 entry
+
+---
+
+## TD-060 — Production `agentic-rag` AutoRAG 對 seed acceptance fixture 的 retrieval_score 全低於 directAnswer 門檻
+
+**Status**: open
+**Priority**: high
+**Discovered**: 2026-04-26 — `main-v0.0.54-acceptance` run 對 production `https://agentic.yudefine.com.tw/mcp` 跑 35 筆 seed cases，D1 `query_logs` 顯示 `retrieval_score` 平均 0.32–0.44，全部 35 筆都低於 `thresholds.directAnswerMin=0.7`
+**Location**: `production agentic-rag` AutoRAG index、`shared/schemas/knowledge-runtime` thresholds、`server/utils/knowledge-*` retrieval pipeline
+**Related markers**: search `@followup[TD-060]` in repo
+
+### Problem
+
+`main-v0.0.54-acceptance-latency-run-20260426.md` 對 production 跑 35 筆 seed acceptance fixture，`query_logs.retrieval_score` 統計：
+
+- mean ~0.36
+- range 0.28–0.44
+- **全部 35 筆 < `thresholds.directAnswerMin=0.7`**
+- **全部 35 筆 < `thresholds.judgeMin=0.45`**
+
+結果：
+
+- 23 筆 `decision_path=no_citation_refuse`（治理層保守拒答）
+- 10 筆 `decision_path=pipeline_error`（重測批次，見 TD-061）
+- 2 筆 `decision_path=restricted_blocked`（TC-13 / r2，正確 scope 阻擋）
+
+**0 筆**進入 `direct` / `judge_pass` / `self_corrected` 路徑。
+
+影響：
+
+- `main-v0.0.54-acceptance` 報告無法量化「實模型回答品質」（Judge 觸發率、引用正確率、回答正確率）
+- 真實使用者若拿類似中文口語 prompt 問 `askKnowledge`，**也會 100% 走治理拒答路徑**
+- 治理保險機制本身運作正確（不幻覺），但 RAG 實際可用性 = 0%
+
+可能原因：
+
+1. AutoRAG 索引 ingest 的文件主題跟 seed prompts 不對應（seed 是 ERP / SOP 主題）
+2. AutoRAG embedding model（`@cf/qwen/qwen3-embedding-0.6b`）對中文口語匹配能力不足
+3. Chunk 切分策略未讓 score 衝高
+4. `thresholds.directAnswerMin=0.7` 對 AutoRAG score 分布來說設過高
+
+### Fix approach
+
+1. 檢查 production `agentic-rag` 索引內容（CF Dashboard 看 ingested 文件主題、筆數、最後 sync）
+2. 抓最近一週 production `query_logs` 全量 `retrieval_score` 分布，看 P95；若 P95 都低於 0.7，調整 `directAnswerMin` 到實際分布合理值
+3. 跑 AutoRAG re-index 用更精細 chunk size（256 tokens）
+4. 若 1-3 都沒救：考慮換 embedding model 或補 reranker
+
+### Acceptance
+
+- [ ] Production `query_logs` 連續一週新樣本中至少 30% `decision_path != no_citation_refuse`
+- [ ] 重跑 `main-v0.0.54-acceptance` 33 筆 fixture，至少 50% 拿到 direct / judge_pass / self_corrected
+- [ ] thresholds 校正決策寫入 `docs/decisions/YYYY-MM-DD-rag-thresholds.md`
+
+---
+
+## TD-061 — Production `query_logs` 重測批次 `pipeline_error` 28.6%（10/35）
+
+**Status**: open
+**Priority**: high
+**Discovered**: 2026-04-26 — `main-v0.0.54-acceptance` run 對 production 跑 50 筆 fixture（33 unique + 17 重測），D1 `query_logs.decision_path=pipeline_error` 出現 10 次，全部集中在 r2 重測批次
+**Location**: `server/utils/knowledge-*`、`server/api/mcp/**`、production rate-limit、AutoRAG pipeline
+**Related markers**: search `@followup[TD-061]` in repo
+
+### Problem
+
+對 production 跑 50 筆 fixture：
+
+- 第 1–35 筆（33 unique seed + 前 2 筆 r2 重測）皆正常返回（`accepted` / `blocked`）
+- 第 36–50 筆全部觸發 HTTP 429，未進 D1
+- D1 已寫入的 35 筆裡，`pipeline_error` 10 筆全部來自重測批次（caseId 帶 `-r2` 後綴）
+
+`pipeline_error` 樣本特徵：`completion_latency_ms = NULL`、`retrieval_score = NULL`、`judge_score = NULL`、`refusal_reason = pipeline_error`。
+
+10 筆對應的 prompt 包括 TC-05 / TC-06×2 / TC-12 / TC-13 / TC-14 / TC-18×2 / TC-20 / EV-01。
+
+可能原因：
+
+1. 同 prompt 短時間內重複查詢觸發 cache key 競爭
+2. AutoRAG 對重複請求的 rate-limit 軟降級
+3. 某個 retrieval 後續處理 step 不冪等（score normalization、citation snapshot 寫入）
+4. 與 production rate-limit window 競爭
+
+影響：
+
+- 真實使用者短時間重複問同 prompt（refresh、retry），約**每 4 個請求就 1 個拿到 pipeline_error**
+- 治理層保險仍正常（不幻覺、messages.content_text 不寫原文），但**使用者體驗顯示為「服務無回應 / 不穩定」**
+
+### Fix approach
+
+1. 抓 r2 那 10 筆 `query_logs` `id` 對應的 evlog wide-events，看 retrieval / judge / composer 哪個 step 拋錯
+2. 本機重現：local `pnpm dev` + 同一 prompt 連續打 5 次，看是否能重現
+3. 依錯誤類別分流修法：
+   - cache key collision → idempotency_key + dedup window
+   - retrieval pipeline 不冪等 → 確認 `is_current` filter / score normalization 是 pure function
+   - rate-limit 軟降級 → 改成顯式 429 + Retry-After
+4. 加固定錯誤分類：拆 `pipeline_error` 為 `retrieval_error` / `judge_error` / `composer_error` / `rate_limit_soft`
+
+### Acceptance
+
+- [ ] 找出 10 筆 pipeline_error 的根因類別（至少分 2 類）
+- [ ] 連續 50 筆同 prompt 重測，pipeline_error rate < 5%
+- [ ] `decision_path` enum 擴張到分類錯誤（schema migration）
+- [ ] Production 連續一週 pipeline_error rate baseline 寫入 `docs/verify/`
