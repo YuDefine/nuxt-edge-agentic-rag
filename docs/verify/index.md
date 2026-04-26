@@ -21,6 +21,11 @@
 - 適用於驗收、Smoke 測試、debug surface、對話生命週期、響應式與無障礙驗證。
 - 建議先讀 [ACCEPTANCE_RUNBOOK](./ACCEPTANCE_RUNBOOK.md)、[KNOWLEDGE_SMOKE](./KNOWLEDGE_SMOKE.md)、[WEB_CHAT_PERSISTENCE_VERIFICATION](./WEB_CHAT_PERSISTENCE_VERIFICATION.md) 與 [RESPONSIVE_A11Y_VERIFICATION](./RESPONSIVE_A11Y_VERIFICATION.md)。
 
+### Workers AI
+
+- 適用於 Workers AI grounded answering 的成本／延遲基線、accepted-path 驗收與報告口徑。
+- 建議先讀 [WORKERS_AI_ACCEPTED_PATH_VERIFICATION](./WORKERS_AI_ACCEPTED_PATH_VERIFICATION.md) 與 [WORKERS_AI_BASELINE_REPORTING](./WORKERS_AI_BASELINE_REPORTING.md)。
+
 ### 開發與架構
 
 - 適用於 composable、Pinia、快取策略、測試流程與常見 production 問題對照。

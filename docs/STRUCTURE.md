@@ -68,6 +68,7 @@
 
 - onboarding 與文件導覽
 - `verify/`、`runbooks/`、`decisions/` 等正式操作與治理文件
+- `solutions/`、`evals/` 這類除錯解法與評測沉澱
 - `rules/`、`specs/` 這類入口頁
 
 `docs/` 不是所有知識的唯一來源。部分內容只提供入口，不保存原始定義。
@@ -140,8 +141,13 @@
 
 ### `docs/` vs `openspec/`
 
-- `docs/`：可閱讀入口與正式操作文件
+- `docs/`：可閱讀入口、正式操作文件、決策、除錯解法與評測沉澱
 - `openspec/`：規格原文與 change lifecycle
+
+### `docs/decisions/` vs `docs/solutions/`
+
+- `decisions/`：跨任務生效的技術選擇與架構取捨
+- `solutions/`：個案 debug 心得與 workaround 的可重用記錄
 
 ### `.claude/` vs `.agents/` vs `.agent/`
 

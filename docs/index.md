@@ -77,5 +77,7 @@ features:
 - [驗證指南](./verify/index.md)
 - [Runbooks](./runbooks/index.md)
 - [決策紀錄](./decisions/index.md)
+- [Solutions](./solutions/index.md)
+- [Evals](./evals/index.md)
 - [規則入口](./rules/index.md)
 - [規格入口](./specs/index.md)
