@@ -344,31 +344,59 @@ export function createKnowledgeAuditStore(database: D1DatabaseLike) {
       decisionPath?: string | null
       refusalReason?: string | null
       workersAiRunsJson?: string | null
+      /**
+       * workers-ai-grounded-answering §S-OB (change rag-query-rewriting):
+       * rewriter outcome enum. Omit (undefined) on writers that do not
+       * pass through the rewriter step — `query_logs.rewriter_status`
+       * column DEFAULT 'disabled' covers that case at INSERT time, and
+       * undefined here means "do not update the column on this back-fill"
+       * (i.e. preserve the INSERT default).
+       */
+      rewriterStatus?: string | null
+      /**
+       * workers-ai-grounded-answering §S-OB (change rag-query-rewriting):
+       * the rewritten query string when rewriter_status='success'. NULL on
+       * disabled / fallback paths. Same `undefined = leave column alone`
+       * convention as `rewriterStatus`.
+       */
+      rewrittenQuery?: string | null
     }): Promise<void> {
+      const setRewriterStatus = input.rewriterStatus !== undefined
+      const setRewrittenQuery = input.rewrittenQuery !== undefined
+
+      const setClauses = [
+        'first_token_latency_ms = ?',
+        'completion_latency_ms = ?',
+        'retrieval_score = ?',
+        'judge_score = ?',
+        'decision_path = ?',
+        'refusal_reason = ?',
+        'workers_ai_runs_json = ?',
+      ]
+      const bindings: Array<string | number | null> = [
+        input.firstTokenLatencyMs ?? null,
+        input.completionLatencyMs ?? null,
+        input.retrievalScore ?? null,
+        input.judgeScore ?? null,
+        input.decisionPath ?? null,
+        input.refusalReason ?? null,
+        input.workersAiRunsJson ?? '[]',
+      ]
+
+      if (setRewriterStatus) {
+        setClauses.push('rewriter_status = ?')
+        bindings.push(input.rewriterStatus ?? null)
+      }
+      if (setRewrittenQuery) {
+        setClauses.push('rewritten_query = ?')
+        bindings.push(input.rewrittenQuery ?? null)
+      }
+
+      bindings.push(input.queryLogId)
+
       await database
-        .prepare(
-          [
-            'UPDATE query_logs',
-            'SET first_token_latency_ms = ?,',
-            '    completion_latency_ms = ?,',
-            '    retrieval_score = ?,',
-            '    judge_score = ?,',
-            '    decision_path = ?,',
-            '    refusal_reason = ?,',
-            '    workers_ai_runs_json = ?',
-            'WHERE id = ?',
-          ].join('\n'),
-        )
-        .bind(
-          input.firstTokenLatencyMs ?? null,
-          input.completionLatencyMs ?? null,
-          input.retrievalScore ?? null,
-          input.judgeScore ?? null,
-          input.decisionPath ?? null,
-          input.refusalReason ?? null,
-          input.workersAiRunsJson ?? '[]',
-          input.queryLogId,
-        )
+        .prepare(['UPDATE query_logs', `SET ${setClauses.join(', ')}`, 'WHERE id = ?'].join('\n'))
+        .bind(...bindings)
         .run()
     },
   }

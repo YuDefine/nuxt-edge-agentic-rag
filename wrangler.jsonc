@@ -14,6 +14,12 @@
     "NUXT_PASSKEY_RP_NAME": "知識問答系統",
     "NUXT_KNOWLEDGE_AI_GATEWAY_ID": "agentic-rag-production",
     "NUXT_KNOWLEDGE_AI_GATEWAY_CACHE_ENABLED": "true",
+    // workers-ai-grounded-answering §S-FF (change rag-query-rewriting)
+    // Production keeps the rewriter disabled until acceptance evidence
+    // demonstrates ≥50% fixture retrieval_score ≥0.55 + p95 latency
+    // increment <800ms + fallback rate <10%. Ramp tracked as a separate
+    // ops change after this change archives.
+    "NUXT_KNOWLEDGE_FEATURE_QUERY_REWRITING": "false",
     "CLOUDFLARE_ACCOUNT_ID": "0eac599c12df10586d97a78179b9f11f",
   },
   "routes": [{ "pattern": "agentic.yudefine.com.tw", "custom_domain": true }],

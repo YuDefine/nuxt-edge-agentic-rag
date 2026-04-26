@@ -58,6 +58,8 @@ const knowledgeRuntimeConfig = createKnowledgeRuntimeConfig({
     cloudFallback: process.env.NUXT_KNOWLEDGE_FEATURE_CLOUD_FALLBACK,
     mcpSession: process.env.NUXT_KNOWLEDGE_FEATURE_MCP_SESSION,
     passkey: process.env.NUXT_KNOWLEDGE_FEATURE_PASSKEY,
+    // workers-ai-grounded-answering §S-FF (change rag-query-rewriting)
+    queryRewriting: process.env.NUXT_KNOWLEDGE_FEATURE_QUERY_REWRITING,
   },
   mcp: {
     sessionTtlMs: process.env.NUXT_KNOWLEDGE_MCP_SESSION_TTL_MS
@@ -351,6 +353,20 @@ export default defineNuxtConfig({
     },
     experimental: {
       tasks: true,
+      openAPI: true,
+    },
+    openAPI: {
+      production: 'runtime',
+      meta: {
+        title: 'Nuxt Edge Agentic RAG API',
+        description:
+          '對外可呼叫的 HTTP / MCP 端點清單。內部 admin 端點以 tags=internal 標註；MCP streaming endpoint 為 /mcp（不在此 spec 內，由 MCP server 自行宣告）。',
+        version: '0.0.54',
+      },
+      ui: {
+        scalar: { route: '/_scalar' },
+        swagger: { route: '/_swagger' },
+      },
     },
     esbuild: {
       options: {

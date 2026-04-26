@@ -10,6 +10,11 @@
     "NUXT_KNOWLEDGE_ENVIRONMENT": "staging",
     "NUXT_KNOWLEDGE_FEATURE_PASSKEY": "true",
     "NUXT_KNOWLEDGE_FEATURE_MCP_SESSION": "true",
+    // workers-ai-grounded-answering §S-FF (change rag-query-rewriting)
+    // Staging enables the LLM-based query rewriter so the
+    // main-v0.0.54-acceptance fixture can exercise it under realistic
+    // conditions before production ramp.
+    "NUXT_KNOWLEDGE_FEATURE_QUERY_REWRITING": "true",
     "NUXT_PASSKEY_RP_ID": "yudefine.com.tw",
     "NUXT_PASSKEY_RP_NAME": "知識問答系統",
     "NUXT_KNOWLEDGE_AI_GATEWAY_ID": "agentic-rag-staging",

@@ -8,10 +8,15 @@ import {
 import { requireAiBinding } from '#server/utils/ai-binding'
 import { getRequiredD1Binding, getRequiredKvBinding } from '#server/utils/cloudflare-bindings'
 import { createKnowledgeEvidenceStore } from '#server/utils/knowledge-evidence-store'
+import {
+  isQueryRewritingEnabled,
+  rewriteForRetrieval,
+} from '#server/utils/knowledge-query-rewriter'
 import { retrieveVerifiedEvidence } from '#server/utils/knowledge-retrieval'
 import { getAllowedAccessLevels, getKnowledgeRuntimeConfig } from '#server/utils/knowledge-runtime'
 import { requireMcpScope } from '#server/utils/mcp-auth'
 import { searchKnowledge } from '#server/utils/mcp-search'
+import type { WorkersAiBindingLike } from '#server/utils/workers-ai'
 
 import type { McpAuthContext } from '#server/utils/mcp-middleware'
 
@@ -69,16 +74,39 @@ export default defineMcpTool({
         query: args.query,
       },
       {
-        retrieve: (input) =>
-          retrieveVerifiedEvidence(input, {
-            governance: runtimeConfig.governance,
-            search: createCloudflareAiSearchClient({
-              aiBinding,
-              indexName: runtimeConfig.bindings.aiSearchIndex,
-              gatewayConfig: runtimeConfig.aiGateway,
-            }).search,
-            store: createKnowledgeEvidenceStore(database),
-          }),
+        retrieve: async (input) => {
+          const useRewriter = input.useRewriter !== false && isQueryRewritingEnabled(runtimeConfig)
+          // §S-FF (change rag-query-rewriting): only require the Workers AI
+          // binding when the rewriter actually runs. Production keeps the
+          // flag false, so deployments without the binding must not regress.
+          const rewriter = useRewriter
+            ? async function (normalized: string) {
+                const workersAiBinding = getRequiredWorkersAiBinding(event)
+                // searchKnowledge has no audit sink for rewriter telemetry,
+                // so onUsage is omitted here on purpose.
+                return rewriteForRetrieval(normalized, {
+                  ai: workersAiBinding,
+                  runtimeConfig,
+                })
+              }
+            : undefined
+          return retrieveVerifiedEvidence(
+            {
+              allowedAccessLevels: input.allowedAccessLevels,
+              query: input.query,
+            },
+            {
+              governance: runtimeConfig.governance,
+              rewriter,
+              search: createCloudflareAiSearchClient({
+                aiBinding,
+                indexName: runtimeConfig.bindings.aiSearchIndex,
+                gatewayConfig: runtimeConfig.aiGateway,
+              }).search,
+              store: createKnowledgeEvidenceStore(database),
+            },
+          )
+        },
       },
     )
   },
@@ -105,5 +133,14 @@ function getRequiredAiBinding(event: {
   return requireAiBinding<CloudflareAiBindingLike>(event, {
     method: 'autorag',
     message: 'Cloudflare AI binding "AI" is not available',
+  })
+}
+
+function getRequiredWorkersAiBinding(event: {
+  context: Record<string, unknown> & { cloudflare?: { env?: Record<string, unknown> } }
+}): WorkersAiBindingLike {
+  return requireAiBinding<WorkersAiBindingLike>(event, {
+    method: 'run',
+    message: 'Cloudflare Workers AI binding "AI" is not available',
   })
 }

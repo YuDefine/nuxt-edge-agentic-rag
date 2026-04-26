@@ -32,6 +32,19 @@ export interface DebugQueryLogDetail {
   redactionApplied: boolean
   refusalReason: string | null
   retrievalScore: number | null
+  /**
+   * workers-ai-grounded-answering §S-OB (change rag-query-rewriting):
+   * rewriter outcome enum mirrored from `query_logs.rewriter_status`.
+   * Legacy / disabled rows surface as `'disabled'` via column DEFAULT.
+   */
+  rewriterStatus: string
+  /**
+   * workers-ai-grounded-answering §S-OB (change rag-query-rewriting):
+   * rewritten query string, already derived from the redacted query so
+   * surfaces directly through the same debug-safe trust boundary as
+   * `queryRedactedText`. NULL on disabled / fallback paths.
+   */
+  rewrittenQuery: string | null
   riskFlags: string[]
   status: string
 }
@@ -148,6 +161,8 @@ export function createQueryLogDebugStore() {
           judgeScore: schema.queryLogs.judgeScore,
           decisionPath: schema.queryLogs.decisionPath,
           refusalReason: schema.queryLogs.refusalReason,
+          rewriterStatus: schema.queryLogs.rewriterStatus,
+          rewrittenQuery: schema.queryLogs.rewrittenQuery,
         })
         .from(schema.queryLogs)
         .where(eq(schema.queryLogs.id, id))
@@ -173,6 +188,8 @@ export function createQueryLogDebugStore() {
         redactionApplied: Boolean(row.redactionApplied),
         refusalReason: row.refusalReason,
         retrievalScore: row.retrievalScore,
+        rewriterStatus: row.rewriterStatus,
+        rewrittenQuery: row.rewrittenQuery,
         riskFlags: parseStringArrayJson(row.riskFlagsJson),
         status: row.status,
       }

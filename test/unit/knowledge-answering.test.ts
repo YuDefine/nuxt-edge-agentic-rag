@@ -215,6 +215,10 @@ describe('knowledge answering', () => {
     expect(retrieve).toHaveBeenNthCalledWith(2, {
       allowedAccessLevels: ['internal'],
       query: 'quarterly revenue guidance',
+      // §S-RW (change rag-query-rewriting): retry pass MUST opt out of the
+      // rewriter — judge-supplied reformulatedQuery is already an LLM-shaped
+      // query, re-rewriting drifts intent or duplicates cost.
+      useRewriter: false,
     })
     expect(answer).not.toHaveBeenCalled()
     expect(persistCitations).not.toHaveBeenCalled()

@@ -183,7 +183,19 @@ export async function chatWithKnowledge(
      */
     resolveStaleness?: (input: { conversationId: string }) => Promise<StaleResolverResult>
     rateLimitStore: FixedWindowRateLimitStore
-    retrieve: (input: { allowedAccessLevels: string[]; query: string }) => Promise<{
+    /**
+     * §S-RW (change rag-query-rewriting): forwarded to `answerKnowledgeQuery`
+     * which sets `useRewriter: false` on the self-correction retry pass so
+     * the judge-supplied `reformulatedQuery` is not re-rewritten. Caller's
+     * retrieve closure MUST honour `input.useRewriter !== false` when
+     * deciding whether to invoke the rewriter — see entry-point examples in
+     * `server/api/chat.post.ts`.
+     */
+    retrieve: (input: {
+      allowedAccessLevels: string[]
+      query: string
+      useRewriter?: boolean
+    }) => Promise<{
       evidence: VerifiedKnowledgeEvidence[]
       normalizedQuery: string
     }>

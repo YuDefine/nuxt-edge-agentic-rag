@@ -72,6 +72,15 @@ export default defineEventHandler(async function getDebugQueryLogDetailHandler(e
       redactionApplied: row.redactionApplied,
       refusalReason: row.refusalReason,
       retrievalScore: row.retrievalScore,
+      // workers-ai-grounded-answering §S-OB (change rag-query-rewriting):
+      // `retrieveVerifiedEvidence` runs `auditKnowledgeText` on the rewriter
+      // output before persisting `rewritten_query`, so the persisted value
+      // shares the same PII-redaction guarantee as `query_redacted_text`.
+      // The rewriter LLM itself sees the un-redacted normalized query —
+      // same trust boundary as the AI Search call — but that text never
+      // reaches this surface.
+      rewriterStatus: row.rewriterStatus,
+      rewrittenQuery: row.rewrittenQuery,
       riskFlags: row.riskFlags,
       status: row.status,
     },
