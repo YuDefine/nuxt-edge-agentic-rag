@@ -182,7 +182,7 @@ tests:
 
 ### Requirement: User Email Is Nullable With Partial Unique Index
 
-The `user.email` column SHALL allow `NULL` values to support passkey-first users who register without an email. The uniqueness constraint SHALL apply only to non-NULL values via a partial unique index. The same policy SHALL apply to `user_profiles.email_normalized`.
+The `user.email` column SHALL allow `NULL` values to support passkey-first users who register without an email. The uniqueness constraint SHALL apply only to non-NULL values via a partial unique index. The same nullable-with-partial-unique policy SHALL apply to `user_profiles.email_normalized`: passkey-only users SHALL have `email_normalized = NULL`, and the partial unique index SHALL apply only when `email_normalized IS NOT NULL`.
 
 #### Scenario: Migration makes email nullable without dropping uniqueness for non-NULL values
 
@@ -191,97 +191,41 @@ The `user.email` column SHALL allow `NULL` values to support passkey-first users
 - **AND** a partial unique index SHALL exist such that two rows with the same non-NULL email cannot coexist
 - **AND** inserting two rows each with `email = NULL` SHALL succeed without a UNIQUE violation
 
-#### Scenario: user_profiles.email_normalized uses sentinel for passkey-only users in this change
+#### Scenario: user_profiles.email_normalized stores NULL for passkey-only users
 
-- **WHEN** a passkey-only user (whose `user.email IS NULL`) has a `user_profiles` row upserted
-- **THEN** the `email_normalized` column SHALL store the sentinel value `'__passkey__:' || user.id`
-- **AND** the sentinel SHALL be unique per user by construction (user.id is PK)
-- **AND** `isAdminEmailAllowlisted()` SHALL never match a sentinel value (sentinels contain `:` which is not a valid email character)
+- **WHEN** a passkey-only user (whose `user.email IS NULL`) has a `user_profiles` row upserted via `session.create.before`
+- **THEN** the `email_normalized` column SHALL store `NULL`
+- **AND** two passkey-only users SHALL coexist in `user_profiles` without violating any UNIQUE constraint
+- **AND** `isAdminEmailAllowlisted(email_normalized)` SHALL return `false` for `NULL` input via an explicit `IS NOT NULL` guard, not via implicit string-pattern exclusion
 
-Note: Full nullability of `user_profiles.email_normalized` is deferred to a
-follow-up change (tracked as TD-009) because it requires rebuilding the
-`user_profiles` FK child tree (`conversations`, `query_logs`, `messages`,
-`documents`), which combined with the `user` tree rebuild in this migration
-would exceed safe review surface.
+#### Scenario: Sentinel values from previous schema are migrated to NULL on schema rebuild
+
+- **WHEN** the schema rebuild migration runs against a database that contains `user_profiles` rows with `email_normalized LIKE '__passkey__:%'` (the prior workaround sentinel)
+- **THEN** the migration SHALL rebuild `user_profiles` and its FK children atomically within a single transaction
+- **AND** every row whose previous `email_normalized` matched the sentinel pattern SHALL have its `email_normalized` set to `NULL` in the new table
+- **AND** the post-migration `user_profiles` table SHALL contain zero rows whose `email_normalized` matches the sentinel pattern
+- **AND** `PRAGMA foreign_key_check` SHALL return zero rows after the migration commits
+
+#### Scenario: Partial unique index excludes both NULL and residual sentinel values
+
+- **WHEN** the partial unique index on `user_profiles.email_normalized` is created
+- **THEN** the index predicate SHALL include both `email_normalized IS NOT NULL` AND `email_normalized NOT LIKE '__passkey__:%'`
+- **AND** any residual sentinel row left behind by an incomplete data backfill SHALL NOT cause a UNIQUE violation, providing defense-in-depth against backfill regressions
+- **AND** real-email rows SHALL still enforce uniqueness against each other through the partial unique index
 
 <!-- @trace
-source: passkey-authentication
-updated: 2026-04-21
+source: passkey-user-profiles-nullable-email
+updated: 2026-04-26
 code:
-  - app/layouts/default.vue
-  - server/api/admin/documents/[id]/unarchive.post.ts
+  - server/api/chat.post.ts
   - docs/tech-debt.md
-  - server/api/admin/mcp-tokens/index.get.ts
-  - server/api/documents/sync.post.ts
-  - shared/types/admin-members.ts
-  - app/components/auth/PasskeyRegisterDialog.vue
-  - server/api/admin/mcp-tokens/index.post.ts
-  - app/pages/index.vue
-  - server/api/auth/account/delete.post.ts
-  - app/pages/account/settings.vue
-  - shared/types/nickname.ts
-  - server/api/auth/nickname/check.get.ts
-  - server/api/_dev/login.post.ts
-  - server/api/documents/[documentId]/versions/[versionId]/publish.post.ts
-  - .env.example
-  - app/pages/admin/members/index.vue
-  - server/api/admin/settings/guest-policy.patch.ts
-  - server/api/uploads/presign.post.ts
-  - server/api/uploads/finalize.post.ts
-  - main-v0.0.48.md
-  - app/utils/passkey-error.ts
-  - server/auth.config.ts
-  - server/api/admin/dashboard/summary.get.ts
   - package.json
-  - server/api/admin/documents/[id]/archive.post.ts
-  - server/api/admin/documents/[id].get.ts
-  - nuxt.config.ts
-  - server/api/admin/documents/[id]/versions/[versionId]/retry-sync.post.ts
-  - server/api/guest-policy/effective.get.ts
-  - server/api/admin/debug/query-logs/[id].get.ts
-  - app/auth.config.ts
-  - app/components/admin/members/ConfirmRoleChangeDialog.vue
-  - app/components/auth/NicknameInput.vue
-  - CLAUDE.md
-  - app/components/auth/DeleteAccountDialog.vue
-  - app/layouts/chat.vue
-  - server/api/admin/members/[userId].patch.ts
-  - server/api/admin/members/index.get.ts
-  - server/api/auth/me/credentials.get.ts
-  - server/api/documents/[documentId]/versions/[versionId]/index-status.get.ts
-  - server/database/migrations/0009_passkey_and_display_name.sql
-  - server/api/admin/mcp-tokens/[id].delete.ts
-  - server/api/admin/query-logs/[id].get.ts
-  - shared/schemas/nickname.ts
-  - server/api/admin/debug/latency/summary.get.ts
-  - server/api/admin/documents/[id].delete.ts
   - HANDOFF.md
-  - server/utils/display-name-guard.ts
-  - server/api/admin/settings/guest-policy.get.ts
-  - server/plugins/error-sanitizer.ts
-  - server/db/schema.ts
-  - server/api/admin/query-logs/index.get.ts
-  - server/api/admin/documents/index.get.ts
-  - server/api/admin/documents/check-slug.get.ts
-  - server/api/setup/create-admin.post.ts
+  - server/utils/chat-sse-response.ts
+  - server/utils/workers-ai.ts
 tests:
-  - e2e/passkey-login-ui.spec.ts
-  - test/integration/nickname-check.spec.ts
-  - test/integration/admin-members-passkey-columns.spec.ts
-  - e2e/passkey-signin-flow.spec.ts
-  - test/integration/passkey-first-registration.spec.ts
-  - test/integration/three-tier-role-enum.spec.ts
-  - e2e/account-self-delete.spec.ts
-  - test/unit/passkey-session-reconciliation.test.ts
-  - test/unit/admin-members-row-render.test.ts
-  - e2e/passkey-auth-review.spec.ts
-  - test/integration/account-self-delete.spec.ts
-  - test/integration/passkey-authentication-flow.spec.ts
-  - test/integration/credential-binding.spec.ts
-  - test/integration/admin-members-list.spec.ts
-  - test/integration/admin-member-promotion.spec.ts
-  - test/unit/nickname-input.test.ts
-  - e2e/account-settings.spec.ts
+  - test/unit/workers-ai.test.ts
+  - test/integration/chat-route.test.ts
 -->
 
 ---

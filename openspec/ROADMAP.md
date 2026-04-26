@@ -4,7 +4,7 @@
 
 ## Current State
 
-> 狀態（2026-04-26 更新）：branch `main`，最新 tag `v0.50.1`（commit `7868b80`），production runtime `NUXT_KNOWLEDGE_FEATURE_MCP_SESSION = "true"`。MCP Durable Object 主軸已完整上線（DO tool dispatch + SSE channel + auth context HMAC forward）；v0.49.0 完成 SSE heartbeat + `readSseStream` 統一收尾；v0.50.0 持久化 refusal 訊息 + sidebar 「新對話」label + reason-specific copy + markdown 內容渲染；v0.50.1 帶入 migration 0015 explicit-FK rebuild + spec `auth-storage-consistency` 補 `Live DDL Foreign Key References Match Canonical Table Names` requirement（本機真實 libsql 套用 0015 後 FK 文字皆 canonical、`PRAGMA foreign_key_check` 乾淨；production D1 為 no-op，待 deploy 後 wrangler 對照；對應 change 已歸檔，tech-debt entry status 已翻 done）。當前無 active change。
+> 狀態（2026-04-26 更新）：branch `main`，最新 tag `v0.52.0`，production runtime `NUXT_KNOWLEDGE_FEATURE_MCP_SESSION = "true"`。本日 ship 兩個 spectra change：(1) `add-mcp-token-revoke-do-cleanup`（TD-040, v0.51.0）— admin token revoke 串連清空 DO session storage，HMAC `__invalidate` bypass + KV 索引 + best-effort cascade；(2) `passkey-user-profiles-nullable-email`（TD-009, v0.52.0）— migration 0016 8 表 cascade rebuild 把 user_profiles.email_normalized 改 nullable + sentinel→NULL backfill，採 `_v16 → _v16` FK pattern + D1 RENAME-rewrite。兩個 change 均 production smoke test 全綠 + archived。當前無 active change。
 >
 > 歷史 archive 詳情請見 `openspec/changes/archive/<change>/` 各 change 目錄；tech debt 追蹤請見 `docs/tech-debt.md`。
 
@@ -16,7 +16,7 @@ _(目前無 active change)_
 
 ### 已 parked
 
-_(見 AUTO Parked Changes 區塊：add-mcp-token-revoke-do-cleanup、passkey-user-profiles-nullable-email)_
+_(目前無 parked change — 2026-04-26 兩個 parked change 全 unpark + 實作 + archive)_
 
 ### 近期（尚未 propose，可獨立進）
 
@@ -31,7 +31,7 @@ _(見 AUTO Parked Changes 區塊：add-mcp-token-revoke-do-cleanup、passkey-use
   - `conversation-title.ts` `slice(0, 40)` 是 code-unit indexed，emoji 可能斷在 surrogate pair 中間（罕見）
   - `RefusalMessage.vue` `mailto:${adminContactEmail}` 未 URL-encode email 本身（subject 有 encode）
 - [mid] **TD-050** Staging R2 (`agentic-rag-documents-staging`) 為空，缺 RAG content seed / sync schedule — wire-do archive 後可獨立進（驗證 4 個 tool call `citations:[] / results:[]` empty 是否因 R2 缺資料導致）
-- ~~[mid] **TD-009** `user_profiles.email_normalized` nullable migration~~ — **2026-04-26 unparked + active**（claim charles@charlesdeMac-mini.local；改用 migration 0016；不合併 TD-058，後者另案處理）
+- ~~[mid] **TD-009** `user_profiles.email_normalized` nullable migration~~ — **2026-04-26 done**（v0.52.0 ship；migration 0016 8 表 cascade rebuild + sentinel→NULL backfill；採 `_v16 → _v16` FK pattern + D1 RENAME-rewrite；archived 於 `2026-04-26-passkey-user-profiles-nullable-email`）
 - [low] **日期格式 smoke（遺留）** — `/account/settings`、`/admin/documents/:id`、`/admin/members`、`/admin/query-logs` list+detail、`/admin/tokens` 目視確認
 
 ### 長期（DO 主軸 archive 後可進）
@@ -50,9 +50,9 @@ _(見 AUTO Parked Changes 區塊：add-mcp-token-revoke-do-cleanup、passkey-use
 
 ## Active Changes
 
-_last synced: 2026-04-26T01:23:25.331Z_
+_last synced: 2026-04-26T01:56:07.128Z_
 
-2 active changes (0 ready · 2 in progress · 0 draft · 0 blocked)
+_No active changes._
 
 ### Ready to apply
 
@@ -60,10 +60,7 @@ _(none)_
 
 ### In progress
 
-- **add-mcp-token-revoke-do-cleanup** — 17/23 tasks (74%)
-  - Specs: `oauth-remote-mcp-auth`
-- **passkey-user-profiles-nullable-email** — 15/22 tasks (68%)
-  - Specs: `auth-storage-consistency`
+_(none)_
 
 ### Draft
 
@@ -82,22 +79,9 @@ _(none)_
 > 即時 ownership 由 `.spectra/claims/*.json` 提供。
 > 接手 handoff / 開始做 change 時，先 claim，再移除 `HANDOFF.md` 對應項目。
 
-2 claims (0 active · 2 stale)
+_No active claims._
 
-### Live Ownership
-
-_(none)_
-
-### Stale Claims
-
-- **passkey-user-profiles-nullable-email** — unknown:charles@charlesdeMac-mini.local (unknown)
-  - Accepted from: manual
-  - Last heartbeat: 2026-04-25T22:46:11.210Z
-  - Status: stale (last heartbeat 2026-04-25T22:46:11.210Z)
-- **add-mcp-token-revoke-do-cleanup** — unknown:charles@charlesdeMac-mini.local (unknown)
-  - Accepted from: manual
-  - Last heartbeat: 2026-04-25T21:57:18.701Z
-  - Status: stale (last heartbeat 2026-04-25T21:57:18.701Z)
+> 若你要開始做上面的 active change，先跑 `spectra:claim -- <change>`。
 
 <!-- SPECTRA-UX:ROADMAP-AUTO:/claims -->
 
@@ -109,8 +93,7 @@ _(none)_
 
 ### Independent (can run in parallel)
 
-- `add-mcp-token-revoke-do-cleanup`
-- `passkey-user-profiles-nullable-email`
+_(none)_
 
 ### Mutex (same spec touched)
 
