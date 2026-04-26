@@ -64,7 +64,7 @@ _(目前無 parked change — 2026-04-26 兩個 parked change 全 unpark + 實�
 
 ## Active Changes
 
-_last synced: 2026-04-26T06:27:37.535Z_
+_last synced: 2026-04-26T11:25:18.722Z_
 
 1 active change (0 ready · 1 in progress · 0 draft · 0 blocked)
 
@@ -94,9 +94,17 @@ _(none)_
 > 即時 ownership 由 `.spectra/claims/*.json` 提供。
 > 接手 handoff / 開始做 change 時，先 claim，再移除 `HANDOFF.md` 對應項目。
 
-_No active claims._
+1 claim (1 active · 0 stale)
 
-> 若你要開始做上面的 active change，先跑 `spectra:claim -- <change>`。
+### Live Ownership
+
+- **rag-query-rewriting** — unknown:charles@charlesdeMac-mini.local (unknown)
+  - Accepted from: manual
+  - Last heartbeat: 2026-04-26T11:18:10.324Z
+
+### Stale Claims
+
+_(none)_
 
 <!-- SPECTRA-UX:ROADMAP-AUTO:/claims -->
 
