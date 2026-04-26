@@ -42,7 +42,7 @@ tmp/
 
 # Local machine artifacts
 .codex/installation_id
-local/backups/
+local/
 
 # Screenshots (review artifacts)
 screenshots/
