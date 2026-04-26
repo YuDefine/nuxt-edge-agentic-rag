@@ -9,6 +9,29 @@ const paramsSchema = z.object({
   id: z.string().uuid(),
 })
 
+defineRouteMeta({
+  openAPI: {
+    tags: ['conversations'],
+    summary: '刪除對話',
+    description: '硬刪除指定對話與其下所有 messages。僅對話擁有者可刪。',
+    parameters: [
+      {
+        in: 'path',
+        name: 'id',
+        required: true,
+        schema: { type: 'string', format: 'uuid' },
+        description: '要刪除的對話 UUID。',
+      },
+    ],
+    responses: {
+      '204': { description: '刪除成功。' },
+      '401': { description: '未登入。' },
+      '403': { description: '訪客政策不允許。' },
+      '404': { description: '對話不存在或非當前使用者所有。' },
+    },
+  },
+})
+
 export default defineEventHandler(async function deleteConversationHandler(event) {
   const log = useLogger(event)
 

@@ -15,6 +15,43 @@ const requestSchema = z
   })
   .passthrough()
 
+defineRouteMeta({
+  openAPI: {
+    tags: ['mcp-oauth'],
+    summary: 'MCP OAuth 2.0 Token 端點',
+    description:
+      'OAuth 2.0 Authorization Code Flow token 換發端點。以 authorization_code grant 換取 Bearer access_token，後續用於 /mcp streaming endpoint 的 Authorization header。',
+    requestBody: {
+      required: true,
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            required: ['code', 'grantType', 'clientId', 'redirectUri'],
+            properties: {
+              code: { type: 'string', description: 'Authorization code（authorize 端點回傳）。' },
+              codeVerifier: { type: 'string', description: 'PKCE verifier；可選。' },
+              grantType: { type: 'string', enum: ['authorization_code'] },
+              clientId: { type: 'string' },
+              redirectUri: { type: 'string', format: 'uri' },
+              resource: {
+                type: 'string',
+                format: 'uri',
+                description: 'RFC 8707 resource indicator。',
+              },
+            },
+          } as never,
+        },
+      },
+    },
+    responses: {
+      '200': { description: '回傳 { access_token, token_type, expires_in, scope }。' },
+      '400': { description: 'code 過期、不存在，或 PKCE 驗證失敗。' },
+      '401': { description: 'client_id 不存在或 redirect_uri 不匹配。' },
+    },
+  },
+})
+
 export default defineEventHandler(async function mcpTokenHandler(event) {
   const rawBody = (await readBody(event).catch(() => ({}))) ?? {}
   const normalizedBody = {

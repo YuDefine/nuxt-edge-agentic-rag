@@ -11,6 +11,29 @@ const querySchema = z
   })
   .strict()
 
+defineRouteMeta({
+  openAPI: {
+    tags: ['conversations'],
+    summary: '列出當前使用者的對話歷史',
+    description:
+      '回傳目前使用者的對話清單（依最後活動時間排序）。需 member 權限；browse_only / no_access 訪客回 403。',
+    parameters: [
+      {
+        in: 'query',
+        name: 'limit',
+        required: false,
+        schema: { type: 'integer', minimum: 1, maximum: 200 },
+        description: '單次最多回傳筆數，預設由後端決定。',
+      },
+    ],
+    responses: {
+      '200': { description: '對話清單（含 id、title、updated_at）。' },
+      '401': { description: '未登入。' },
+      '403': { description: '訪客政策不允許瀏覽對話。' },
+    },
+  },
+})
+
 export default defineEventHandler(async function listConversationsHandler(event) {
   const log = useLogger(event)
 

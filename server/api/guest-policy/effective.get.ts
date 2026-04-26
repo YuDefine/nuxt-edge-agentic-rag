@@ -14,6 +14,22 @@ import { getGuestPolicy } from '#server/utils/guest-policy'
  * This endpoint is intentionally read-only and only reveals the single
  * enum value — it does not expose `updatedAt` / `updatedBy` metadata.
  */
+defineRouteMeta({
+  openAPI: {
+    tags: ['guest-policy'],
+    summary: '取得當前生效的訪客政策',
+    description:
+      '回傳 same_as_member / browse_only / no_access 三選一 enum。任何已登入使用者皆可呼叫，UI 用此值決定 GuestAccessGate 的視覺與互動狀態。Admin 編輯端點為 /api/admin/settings/guest-policy。',
+    responses: {
+      '200': {
+        description: '回傳 { data: { value: "same_as_member" | "browse_only" | "no_access" } }。',
+      },
+      '401': { description: '未登入。' },
+      '500': { description: '系統設定讀取失敗。' },
+    },
+  },
+})
+
 export default defineEventHandler(async function getEffectiveGuestPolicyHandler(event) {
   const log = useLogger(event)
 
