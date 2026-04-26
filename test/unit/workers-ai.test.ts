@@ -92,6 +92,47 @@ describe('workers ai adapters', () => {
     )
   })
 
+  it('passes max_completion_tokens 1024 to avoid TD-056/061 JSON truncation', async () => {
+    const binding = {
+      run: vi.fn().mockResolvedValue({
+        response: { shouldAnswer: true },
+      }),
+    }
+
+    const judge = createWorkersAiJudgeAdapter({ binding })
+
+    await judge({
+      evidence: evidenceAt(0.56),
+      query: '比較採購流程與請購流程',
+      retrievalScore: 0.56,
+    })
+
+    expect(binding.run).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        max_completion_tokens: 1024,
+      }),
+    )
+  })
+
+  it('throws SyntaxError when judge JSON is truncated mid-string (TD-061 root cause)', async () => {
+    const binding = {
+      run: vi.fn().mockResolvedValue({
+        response: '{"shouldAnswer": true, "reformulatedQuery": "採購流程的詳細步驟，包含請購、',
+      }),
+    }
+
+    const judge = createWorkersAiJudgeAdapter({ binding })
+
+    await expect(
+      judge({
+        evidence: evidenceAt(0.56),
+        query: '請比較採購與請購',
+        retrievalScore: 0.56,
+      }),
+    ).rejects.toThrowError(SyntaxError)
+  })
+
   it('reports latency and usage through the telemetry hook', async () => {
     const onUsage = vi.fn()
     const binding = {

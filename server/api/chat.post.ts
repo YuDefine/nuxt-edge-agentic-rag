@@ -1,4 +1,6 @@
-import { useLogger, type RequestLogger } from 'evlog'
+import { createRequestLogger, useLogger, type RequestLogger, type WideEvent } from 'evlog'
+import { extractSafeHeaders } from 'evlog/toolkit'
+import type { H3Event } from 'h3'
 import { z } from 'zod'
 
 import {
@@ -183,17 +185,63 @@ export default defineEventHandler(async function chatHandler(event) {
       )
 
     if (wantsSseResponse(event)) {
+      // TD-057: SSE responses span past handler return — Nitro's
+      // `afterResponse` hook emits the request's wide event as soon as the
+      // Response is constructed, well before the client consumes the stream.
+      // Anything written via `log.set` / `log.error` from inside
+      // `ReadableStream.start()` lands on a sealed wide event and is
+      // dropped with `[evlog] log.X() called after the wide event was
+      // emitted` warnings.
+      //
+      // Mirror evlog's `forkBackgroundLogger` pattern manually (Nitro does
+      // not attach `RequestLogger.fork`): create a child request logger,
+      // bind it to the SSE lifecycle, and emit it ourselves when the
+      // stream settles. The parent (request-scoped) wide event still emits
+      // normally in `afterResponse` with `operation: 'web-chat'`; the
+      // child carries `operation: 'web-chat-sse-stream'` plus
+      // `_parentRequestId` for correlation, and owns the `result` /
+      // mid-stream `error` fields.
+      const parentCtx = log.getContext()
+      const streamLog = createRequestLogger<ChatLogFields>(
+        {
+          method: typeof parentCtx.method === 'string' ? parentCtx.method : event.method,
+          path: typeof parentCtx.path === 'string' ? parentCtx.path : event.path,
+          requestId: crypto.randomUUID(),
+        },
+        { _deferDrain: true },
+      )
+      streamLog.set({
+        operation: 'web-chat-sse-stream',
+        _parentRequestId: typeof parentCtx.requestId === 'string' ? parentCtx.requestId : undefined,
+        user: {
+          id: session.user.id ?? null,
+        },
+      })
+
       return createSseChatResponse({
         conversationCreated: createdConversation,
         conversationId: effectiveConversationId,
         execute: runChatRequest,
-        log,
+        log: streamLog,
         onResult: (result) =>
-          recordChatResult(log, {
+          recordChatResult(streamLog, {
             conversationCreated: createdConversation,
             conversationId: effectiveConversationId,
             result,
           }),
+        onStreamSettled: ({ error }) => {
+          // Tail sampling: keep stream events that surfaced an unexpected
+          // error so the drain pipeline always carries the failure detail.
+          const emitted = streamLog.emit({ _forceKeep: error !== null })
+          if (!emitted) {
+            return
+          }
+          const drainPromise = runStreamLogDrain(event, emitted)
+          const waitUntil = event.context.cloudflare?.context?.waitUntil ?? event.context.waitUntil
+          if (typeof waitUntil === 'function') {
+            waitUntil(drainPromise)
+          }
+        },
       })
     }
 
@@ -309,4 +357,45 @@ function recordChatResult(
       followUpForcedFreshRetrieval: input.result.followUp?.forcedFreshRetrieval ?? false,
     },
   })
+}
+
+/**
+ * TD-057: Run the same `evlog:enrich` → `evlog:drain` pipeline that the
+ * Nitro plugin uses, but for the SSE-scoped child wide event. Emit happens
+ * in the caller; this helper only runs the post-emit hooks. Errors are
+ * swallowed (and logged) — drain is fire-and-forget by design and must not
+ * affect the user-visible stream.
+ */
+async function runStreamLogDrain(event: H3Event, emittedEvent: WideEvent) {
+  const nitroApp = useNitroApp()
+  const requestHeaders = event.headers ? extractSafeHeaders(event.headers) : undefined
+  const requestInfo = {
+    method: event.method,
+    path: event.path,
+    requestId: typeof emittedEvent.requestId === 'string' ? emittedEvent.requestId : undefined,
+  }
+
+  try {
+    await nitroApp.hooks.callHook('evlog:enrich', {
+      event: emittedEvent,
+      request: requestInfo,
+      headers: requestHeaders,
+    })
+  } catch (error) {
+    // evlog hook 失敗時 fallback 到 stdout（不能用 evlog 自身會遞迴炸）
+    // eslint-disable-next-line no-console
+    console.error('[evlog] enrich failed (sse-stream child):', error)
+  }
+
+  try {
+    await nitroApp.hooks.callHook('evlog:drain', {
+      event: emittedEvent,
+      request: requestInfo,
+      headers: requestHeaders,
+    })
+  } catch (error) {
+    // evlog hook 失敗時 fallback 到 stdout
+    // eslint-disable-next-line no-console
+    console.error('[evlog] drain failed (sse-stream child):', error)
+  }
 }
