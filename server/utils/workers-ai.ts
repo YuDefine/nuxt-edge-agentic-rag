@@ -132,7 +132,9 @@ export function createWorkersAiJudgeAdapter(input: {
     const model = resolveModelId(modelRole, input.modelByRole)
     const startedAt = Date.now()
     const response = await input.binding.run(model, {
-      max_completion_tokens: 200,
+      // TD-056/061: 200 太緊會把 reformulatedQuery 中段截掉導致 JSON parse 失敗 →
+      // pipeline_error。production 樣本顯示 200 在 reasoning-heavy 中文 query 達 100% 截斷。
+      max_completion_tokens: 1024,
       messages: [
         {
           content:

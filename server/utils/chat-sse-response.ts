@@ -1,8 +1,19 @@
 import type { RefusalReason } from '#shared/types/observability'
 import { createAbortError, isAbortError } from '#shared/utils/abort'
 
+/**
+ * Minimum logger surface used by the SSE machinery.
+ *
+ * `set` is included because callers (e.g. `recordChatResult` in `chat.post.ts`)
+ * write the final `result` field via `log.set` from inside `onResult`, which
+ * runs while the stream is still live. The caller is expected to pass a
+ * **child / fork logger** (see `chat.post.ts`) so these post-handler-return
+ * mutations land on a wide event whose lifecycle is bound to the stream's
+ * completion, not to the request handler's return — see TD-057.
+ */
 interface SseChatLogger {
   error: (error: Error, context?: Record<string, unknown>) => void
+  set: (context: Record<string, unknown>) => void
 }
 
 /**
@@ -38,6 +49,15 @@ export interface CreateSseChatResponseInput<TResult extends SseChatRunResult> {
   }) => Promise<TResult>
   log: SseChatLogger
   onResult?: (result: TResult) => void
+  /**
+   * Called exactly once after the stream is fully settled (success, refusal,
+   * abort, or error). The caller uses this to emit the SSE-scoped wide event
+   * whose lifecycle is bound to the stream's completion rather than the HTTP
+   * handler's return. `error` is `null` on success/refusal/abort and the
+   * captured `Error` on unexpected stream failure (already passed to
+   * `log.error`). See TD-057.
+   */
+  onStreamSettled?: (info: { error: Error | null }) => void | Promise<void>
 }
 
 export function createSseChatResponse<TResult extends SseChatRunResult>(
@@ -48,6 +68,11 @@ export function createSseChatResponse<TResult extends SseChatRunResult>(
 
   let closed = false
   let heartbeatHandle: ReturnType<typeof setInterval> | null = null
+  // TD-057: capture the unexpected error (if any) so `onStreamSettled` can
+  // forward it to the caller after the stream is fully closed. Aborts and
+  // refusals are not errors — they leave this `null`.
+  let streamError: Error | null = null
+  let settled = false
 
   const stopHeartbeat = () => {
     if (heartbeatHandle !== null) {
@@ -124,17 +149,38 @@ export function createSseChatResponse<TResult extends SseChatRunResult>(
         }
       } catch (error) {
         if (!isAbortError(error)) {
+          streamError = error as Error
           input.log.error(error as Error, { operation: 'web-chat-stream' })
           enqueue('error', { message: '發生錯誤，請稍後再試' })
         }
       } finally {
         close()
+        // TD-057: emit the SSE-scoped wide event after the stream is fully
+        // closed. Idempotent — `settled` guards against double-emit if both
+        // `start` finally and `cancel` race.
+        if (!settled) {
+          settled = true
+          try {
+            await input.onStreamSettled?.({ error: streamError })
+          } catch {
+            // onStreamSettled failures must not break the response; they are
+            // already a logging-pipeline issue and not user-visible.
+          }
+        }
       }
     },
-    cancel() {
+    async cancel() {
       stopHeartbeat()
       closed = true
       abortController.abort(createAbortError())
+      if (!settled) {
+        settled = true
+        try {
+          await input.onStreamSettled?.({ error: streamError })
+        } catch {
+          // see above
+        }
+      }
     },
   })
 

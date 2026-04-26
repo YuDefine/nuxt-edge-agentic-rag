@@ -57,7 +57,30 @@ vi.mock('evlog', () => ({
   useLogger: () => ({
     error: chatRouteMocks.logError,
     set: chatRouteMocks.logSet,
+    // TD-057: chat handler reads parent context to fork a child SSE-scoped
+    // logger; expose a stable mock context so the SSE branch can build the
+    // child without touching the real evlog runtime.
+    getContext: () => ({
+      method: 'POST',
+      path: '/api/chat',
+      requestId: 'test-request-id',
+    }),
   }),
+  // TD-057: SSE path forks a child request logger that owns the
+  // stream-bound wide event. Tests don't care about emit / drain; surface
+  // a no-op logger so the branch executes end-to-end.
+  createRequestLogger: () => ({
+    set: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: chatRouteMocks.logError,
+    emit: vi.fn(() => null),
+    getContext: () => ({}),
+  }),
+}))
+
+vi.mock('evlog/toolkit', () => ({
+  extractSafeHeaders: () => ({}),
 }))
 
 vi.mock('../../server/utils/ai-search', () => ({
@@ -145,6 +168,14 @@ describe('/api/chat route', () => {
   beforeEach(() => {
     vi.stubGlobal('readValidatedBody', chatRouteMocks.readValidatedBody)
     vi.stubGlobal('requireUserSession', chatRouteMocks.requireUserSession)
+    // TD-057: SSE branch dispatches `evlog:enrich` / `evlog:drain` Nitro
+    // hooks for the stream-scoped child wide event. Surface a no-op
+    // nitroApp so the helper runs without touching real runtime state.
+    vi.stubGlobal('useNitroApp', () => ({
+      hooks: {
+        callHook: vi.fn(async () => undefined),
+      },
+    }))
     chatRouteMocks.auditKnowledgeText.mockReset()
     chatRouteMocks.auditKnowledgeText.mockImplementation((text: string) => ({
       redactedText: text,
