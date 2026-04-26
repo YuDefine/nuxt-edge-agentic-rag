@@ -51,16 +51,34 @@
 -- TD-051 / TD-055 fix in 0012 / 0015).
 --
 -- =========================================================================
--- Strategy (mirrors 0010 / 0015 explicit-FK rebuild pattern)
+-- Strategy (mirrors 0010 _new pattern, NOT 0015 explicit-canonical pattern)
 -- =========================================================================
--- 1. Build all 8 _v16 staging tables, FK clauses against canonical names.
+-- 1. Build all 8 _v16 staging tables, FK clauses pointing at the matching
+--    `*_v16` staging names (not canonical). This is critical for D1: with
+--    explicit-canonical FKs, the cascade DROP of the 8 originals leaves the
+--    still-existing `*_v16` tables holding FK references to the canonical
+--    names that are mid-cascade missing, and D1 wrangler migration apply
+--    aborts with `no such table: main.<dropped-canonical>: SQLITE_ERROR
+--    [code: 7500]` (verified on D1 staging deploy run 24943920951 — initial
+--    explicit-canonical attempt was reverted in commits ab6a86b / 8278d38).
 -- 2. Copy rows. user_profiles backfills sentinel→NULL inline; other tables
 --    copy bit-for-bit.
 -- 3. Children-first DROP of the 8 originals.
--- 4. RENAME _v16 → canonical.
+-- 4. RENAME _v16 → canonical. D1 (and SQLite ≥ 3.25 with
+--    `legacy_alter_table = OFF`) rewrites the `*_v16` FK references on
+--    sibling staging tables to the new canonical names automatically.
+--    libsql defaults to `legacy_alter_table = 1` and does NOT perform that
+--    rewrite even when the PRAGMA is set OFF, so the in-memory libsql
+--    integration test stores `*_v16` references after RENAME (the
+--    integration spec relaxes that assertion accordingly).
 -- 5. Recreate indexes (partial unique index on user_profiles + 9 named
 --    indexes from 0001 / 0010 / 0015).
 -- 6. PRAGMA foreign_key_check.
+--
+-- Local-dev runtime (`pnpm dev`) talks to wrangler's D1 emulator, not the
+-- libsql in-memory used by vitest, so application hot paths see canonical
+-- FKs the same as production. The libsql divergence only affects the
+-- integration test snapshot of `sqlite_master`.
 --
 -- =========================================================================
 -- Column / constraint preservation
@@ -116,7 +134,7 @@ CREATE TABLE user_profiles_v16 (
 -- ------------------------------------------------------------------
 CREATE TABLE conversations_v16 (
   id TEXT PRIMARY KEY,
-  user_profile_id TEXT REFERENCES user_profiles(id),
+  user_profile_id TEXT REFERENCES user_profiles_v16(id),
   access_level TEXT NOT NULL DEFAULT 'internal' CHECK (access_level IN ('internal', 'restricted')),
   title TEXT NOT NULL DEFAULT 'New conversation',
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -131,7 +149,7 @@ CREATE TABLE conversations_v16 (
 CREATE TABLE query_logs_v16 (
   id TEXT PRIMARY KEY,
   channel TEXT NOT NULL CHECK (channel IN ('web', 'mcp')),
-  user_profile_id TEXT REFERENCES user_profiles(id),
+  user_profile_id TEXT REFERENCES user_profiles_v16(id),
   mcp_token_id TEXT REFERENCES mcp_tokens(id) ON DELETE SET NULL,
   environment TEXT NOT NULL CHECK (environment IN ('local', 'staging', 'production')),
   query_redacted_text TEXT NOT NULL,
@@ -156,15 +174,15 @@ CREATE TABLE query_logs_v16 (
 -- ------------------------------------------------------------------
 CREATE TABLE messages_v16 (
   id TEXT PRIMARY KEY,
-  query_log_id TEXT REFERENCES query_logs(id) ON DELETE SET NULL,
-  user_profile_id TEXT REFERENCES user_profiles(id),
+  query_log_id TEXT REFERENCES query_logs_v16(id) ON DELETE SET NULL,
+  user_profile_id TEXT REFERENCES user_profiles_v16(id),
   channel TEXT NOT NULL CHECK (channel IN ('web', 'mcp')),
   role TEXT NOT NULL CHECK (role IN ('system', 'user', 'assistant', 'tool')),
   content_redacted TEXT NOT NULL,
   risk_flags_json TEXT NOT NULL DEFAULT '[]',
   redaction_applied INTEGER NOT NULL DEFAULT 0 CHECK (redaction_applied IN (0, 1)),
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  conversation_id TEXT REFERENCES conversations(id) ON DELETE CASCADE,
+  conversation_id TEXT REFERENCES conversations_v16(id) ON DELETE CASCADE,
   citations_json TEXT NOT NULL DEFAULT '[]',
   content_text TEXT,
   refused INTEGER NOT NULL DEFAULT 0,
@@ -183,19 +201,19 @@ CREATE TABLE documents_v16 (
   access_level TEXT NOT NULL DEFAULT 'internal' CHECK (access_level IN ('internal', 'restricted')),
   status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'active', 'archived')),
   current_version_id TEXT,
-  created_by_user_id TEXT REFERENCES user_profiles(id),
+  created_by_user_id TEXT REFERENCES user_profiles_v16(id),
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   archived_at TEXT
 );
 
 -- ------------------------------------------------------------------
--- (6) document_versions_v16 — FK rebound to documents canonical.
+-- (6) document_versions_v16 — FK rebound to documents_v16.
 --     Mirrors 0001 schema; no column changes.
 -- ------------------------------------------------------------------
 CREATE TABLE document_versions_v16 (
   id TEXT PRIMARY KEY,
-  document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+  document_id TEXT NOT NULL REFERENCES documents_v16(id) ON DELETE CASCADE,
   version_number INTEGER NOT NULL,
   source_r2_key TEXT NOT NULL,
   normalized_text_r2_key TEXT,
@@ -216,7 +234,7 @@ CREATE TABLE document_versions_v16 (
 -- ------------------------------------------------------------------
 CREATE TABLE source_chunks_v16 (
   id TEXT PRIMARY KEY,
-  document_version_id TEXT NOT NULL REFERENCES document_versions(id) ON DELETE CASCADE,
+  document_version_id TEXT NOT NULL REFERENCES document_versions_v16(id) ON DELETE CASCADE,
   chunk_index INTEGER NOT NULL,
   chunk_hash TEXT NOT NULL,
   chunk_text TEXT NOT NULL,
@@ -233,9 +251,9 @@ CREATE TABLE source_chunks_v16 (
 -- ------------------------------------------------------------------
 CREATE TABLE citation_records_v16 (
   id TEXT PRIMARY KEY,
-  query_log_id TEXT NOT NULL REFERENCES query_logs(id) ON DELETE CASCADE,
-  document_version_id TEXT NOT NULL REFERENCES document_versions(id),
-  source_chunk_id TEXT NOT NULL REFERENCES source_chunks(id),
+  query_log_id TEXT NOT NULL REFERENCES query_logs_v16(id) ON DELETE CASCADE,
+  document_version_id TEXT NOT NULL REFERENCES document_versions_v16(id),
+  source_chunk_id TEXT NOT NULL REFERENCES source_chunks_v16(id),
   citation_locator TEXT NOT NULL,
   chunk_text_snapshot TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
