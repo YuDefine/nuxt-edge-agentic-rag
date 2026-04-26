@@ -1,5 +1,14 @@
 import { beforeEach } from 'vitest'
 
+// Nitro auto-imports `defineRouteMeta` at runtime, but vitest's node
+// environment loads server/api/**/*.ts modules directly without that
+// injection. Provide a no-op stub so importing handlers that declare
+// OpenAPI metadata does not crash with ReferenceError.
+const globalScope = globalThis as Record<string, unknown>
+if (typeof globalScope.defineRouteMeta !== 'function') {
+  globalScope.defineRouteMeta = () => {}
+}
+
 type ConsoleArgs = Parameters<typeof console.warn>
 
 function formatConsoleArgs(args: ConsoleArgs): string {
