@@ -30,6 +30,40 @@ const requestSchema = z.object({
   redirect_uris: z.array(z.string().url()).min(1).max(10),
 })
 
+defineRouteMeta({
+  openAPI: {
+    tags: ['mcp-oauth'],
+    summary: 'MCP Dynamic Client Registration（RFC 7591）',
+    description:
+      '對外 MCP 客戶端（如 ChatGPT Desktop、Claude Desktop）動態註冊端點。回傳 client_id 與後續 OAuth 流程所需的 metadata。受 KV 速率限制保護。',
+    requestBody: {
+      required: true,
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            required: ['redirect_uris'],
+            properties: {
+              client_name: { type: 'string', maxLength: 120 },
+              redirect_uris: {
+                type: 'array',
+                items: { type: 'string', format: 'uri' },
+                minItems: 1,
+                maxItems: 10,
+              },
+            },
+          } as never,
+        },
+      },
+    },
+    responses: {
+      '201': { description: '註冊成功，回傳 client_id 與 RFC 7591 metadata。' },
+      '400': { description: '請求格式不符 RFC 7591。' },
+      '429': { description: '速率限制觸發。' },
+    },
+  },
+})
+
 export default defineEventHandler(async function mcpRegisterHandler(event) {
   const knowledgeRuntimeConfig = getKnowledgeRuntimeConfig()
   const kv = getRequiredKvBinding(event, knowledgeRuntimeConfig.bindings.rateLimitKv)

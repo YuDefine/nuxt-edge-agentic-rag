@@ -3,6 +3,32 @@ import { useLogger } from 'evlog'
 import { getD1Database } from '#server/utils/database'
 import { createMcpReplayStore } from '#server/utils/mcp-replay'
 
+defineRouteMeta({
+  openAPI: {
+    tags: ['citations'],
+    summary: '依 citationId 回放單一引用內容',
+    description:
+      '回傳引用的原始 chunk 內容、來源文件 metadata 與版本。需登入；用於 web chat 點擊【引N】卡片時展開、以及離線重現答辯案例。',
+    parameters: [
+      {
+        in: 'path',
+        name: 'citationId',
+        required: true,
+        schema: { type: 'string' },
+        description: '對話流程中產生的引用 ID（短碼）。',
+      },
+    ],
+    responses: {
+      '200': {
+        description: '引用 chunk 全文與來源 metadata（document title、version、category）。',
+      },
+      '400': { description: '缺少 citationId。' },
+      '401': { description: '未登入。' },
+      '404': { description: 'citationId 不存在或已超過保留期限。' },
+    },
+  },
+})
+
 export default defineEventHandler(async function getCitationHandler(event) {
   const log = useLogger(event)
 

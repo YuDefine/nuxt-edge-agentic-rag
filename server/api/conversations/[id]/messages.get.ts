@@ -9,6 +9,29 @@ const paramsSchema = z.object({
   id: z.string().uuid(),
 })
 
+defineRouteMeta({
+  openAPI: {
+    tags: ['conversations'],
+    summary: '取得對話的訊息歷史',
+    description: '依時間順序回傳指定對話內的所有 messages，含使用者問題、助手回答與引用 metadata。',
+    parameters: [
+      {
+        in: 'path',
+        name: 'id',
+        required: true,
+        schema: { type: 'string', format: 'uuid' },
+        description: '對話 UUID。',
+      },
+    ],
+    responses: {
+      '200': { description: '訊息陣列（含 role、content、citations）。' },
+      '401': { description: '未登入。' },
+      '403': { description: '訪客政策不允許。' },
+      '404': { description: '對話不存在或非當前使用者所有。' },
+    },
+  },
+})
+
 export default defineEventHandler(async function listConversationMessagesHandler(event) {
   const log = useLogger(event)
 
