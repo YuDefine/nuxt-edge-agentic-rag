@@ -1633,7 +1633,7 @@ Chat UI 沒有任何顯式的「新對話 / New chat」按鈕或 menu item：
 ## TD-049 — Cloudflare Pages deploy API 拒絕 git HEAD commit message
 
 **Status**: done
-**Resolved**: 2026-04-26 — workaround commit `5ce334c`（顯式傳 <span v-pre>`--commit-message "Deploy ${{ github.sha }}"`</span> + <span v-pre>`--commit-hash "${{ github.sha }}"`</span>）落地後，至 v0.50.1 ship 為止 GitHub Actions Deploy workflow 連續 30 條 run 全綠（過去最近抽查 `gh run list --workflow=Deploy -L 30 -- --jq 'select(.conclusion=="failure")' = 0 hits），workaround 已驗證對普遍 commit message 有效。原 acceptance 第 2 條（v0.43.0 manual rerun）省略 — 後續 30+ 次 deploy 已遠超 acceptance 第 3 條的「3 次穩定」門檻。
+**Resolved**: 2026-04-26 — workaround commit `5ce334c`（顯式傳 `--commit-message "Deploy <SHA>"` 與 `--commit-hash "<SHA>"`，其中 `<SHA>` 為 GitHub Actions `github.sha` context 的 expression 寫法，詳見 `.github/workflows/deploy.yml`）落地後，至 v0.50.1 ship 為止 GitHub Actions Deploy workflow 連續 30 條 run 全綠（過去最近抽查 `gh run list --workflow=Deploy -L 30 -- --jq 'select(.conclusion=="failure")' = 0 hits），workaround 已驗證對普遍 commit message 有效。原 acceptance 第 2 條（v0.43.0 manual rerun）省略 — 後續 30+ 次 deploy 已遠超 acceptance 第 3 條的「3 次穩定」門檻。
 **Priority**: mid
 **Discovered**: 2026-04-25 — v0.43.0 release deploy run [24908303837](https://github.com/YuDefine/nuxt-edge-agentic-rag/actions/runs/24908303837)
 **Location**: `.github/workflows/deploy.yml` `deploy-docs-production`/`deploy-docs-staging`的`Deploy docs to Cloudflare Pages`step
@@ -1667,19 +1667,18 @@ Chat UI 沒有任何顯式的「新對話 / New chat」按鈕或 menu item：
 
 **Short-term (this TD)** — `.github/workflows/deploy.yml` 的兩個 `deploy-docs-*` step 顯式傳：
 
-<div v-pre>
-
 ```yaml
+# 下列 <SHA> 為 GitHub Actions context expression `github.sha`（實際 yaml 寫法
+# 為 dollar 符 + 雙大括號包 github.sha；此處改用占位符，避免 docs site 的
+# Vue SSR compiler 把字面 mustache 誤判為模板表達式）。
 run: pnpm exec wrangler pages deploy docs/.vitepress/dist \
   --project-name "$DOCS_CF_PAGES_PROJECT_NAME" \
   --branch "$DOCS_CF_PAGES_*_BRANCH" \
-  --commit-hash "${{ github.sha }}" \
-  --commit-message "Deploy ${{ github.sha }}"
+  --commit-hash "<SHA>" \
+  --commit-message "Deploy <SHA>"
 ```
 
-</div>
-
-避開 git HEAD commit message 直接作為 CF API 輸入。`--commit-hash` 仍保留 SHA 供 CF dashboard 顯示。
+實際 GitHub Actions expression 以 `.github/workflows/deploy.yml` `deploy-docs-*` job 為準。避開 git HEAD commit message 直接作為 CF API 輸入。`--commit-hash` 仍保留 SHA 供 CF dashboard 顯示。
 
 **Long-term** — 若此問題在其他專案重現、或未來要恢復用 git commit message（保留 dashboard 可讀性），整理：
 
