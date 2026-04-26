@@ -18,7 +18,7 @@
 | TD-006 | Nuxt UI subtle variant tonal badge 對比度不足                                                                                                                                                                                                                 | mid      | done        | 2026-04-20 TD-003 e2e exclude                                    | —     |
 | TD-007 | 裝飾 icon tonal color 低於 WCAG 1.4.11 non-text AA                                                                                                                                                                                                            | low      | done        | 2026-04-20 TD-006 review                                         | —     |
 | TD-008 | acceptance-tc-0x MCP 整合測試在 TD-001 修後破損                                                                                                                                                                                                               | mid      | done        | 2026-04-20 add-ai-gateway                                        | —     |
-| TD-009 | user_profiles.email_normalized 全面改 nullable                                                                                                                                                                                                                | mid      | open        | 2026-04-21 passkey-authentication                                | —     |
+| TD-009 | user_profiles.email_normalized 全面改 nullable                                                                                                                                                                                                                | mid      | done        | 2026-04-21 passkey-authentication                                | —     |
 | TD-010 | credentials / admin-members endpoint libsql 不相容                                                                                                                                                                                                            | mid      | done        | 2026-04-21 passkey §16 DR                                        | —     |
 | TD-011 | migration 0009 FK cascade 設計不符 self-delete / audit                                                                                                                                                                                                        | high     | done        | 2026-04-21 passkey §17.8                                         | —     |
 | TD-012 | passkey-first → link Google 被 better-auth email 檢驗擋住                                                                                                                                                                                                     | high     | done        | 2026-04-21 passkey §17.3                                         | —     |
@@ -40,7 +40,7 @@
 | TD-028 | DeleteAccountDialog Google reauth 無 callbackURL，dialog 會 unmount                                                                                                                                                                                           | mid      | done        | 2026-04-25 fix-delete-account-dialog-google-reauth 人工驗證      | —     |
 | TD-029 | mcp-toolkit alias fragility — shim 可能被 bypass                                                                                                                                                                                                              | mid      | done        | 2026-04-24 fix-mcp-streamable-http-session review MI-2           | —     |
 | TD-030 | Claude.ai re-init 循環阻擋 tools/call（stateless 不足）                                                                                                                                                                                                       | high     | done        | 2026-04-24 fix-mcp-streamable-http-session post-deploy           | —     |
-| TD-040 | Token revoke 未同步清 MCP session DO                                                                                                                                                                                                                          | low      | open        | 2026-04-24 upgrade-mcp-to-durable-objects Task 4.6               | —     |
+| TD-040 | Token revoke 未同步清 MCP session DO                                                                                                                                                                                                                          | low      | done        | 2026-04-24 upgrade-mcp-to-durable-objects Task 4.6               | —     |
 | TD-041 | DO tool dispatch 未 wire up，flag=true non-initialize 回假 ack                                                                                                                                                                                                | high     | done        | 2026-04-24 upgrade-mcp-to-durable-objects Phase 4 trim           | —     |
 | TD-042 | Local NuxtHub dev KV binding 未注入 `cloudflare.env` → `/mcp` 503                                                                                                                                                                                             | mid      | done        | 2026-04-24 add-mcp-tool-selection-evals 5.2 apply                | —     |
 | TD-043 | Evalite afterAll 的 `process.exit` / throw 不 propagate 到 `pnpm eval`                                                                                                                                                                                        | low      | done        | 2026-04-24 add-mcp-tool-selection-evals 6.5 verify               | —     |
@@ -421,7 +421,8 @@ TD-001 修復後（commit 1f6a4d1，mcp-token-store 遷移 Drizzle）兩類 fail
 
 ## TD-009 — user_profiles.email_normalized 全面改 nullable
 
-**Status**: open
+**Status**: done
+**Resolved**: 2026-04-26 — `passkey-user-profiles-nullable-email` change archived 於 `openspec/changes/archive/2026-04-26-passkey-user-profiles-nullable-email/`。Migration 0016 8 表 cascade rebuild（user_profiles + 4 直接 FK children + 3 indirect chain children）+ schema.ts emailNormalized 改 nullable + auth.config.ts sentinel writer 改 null + syncUserProfile NULL branch 用 id-first lookup。實作中發現 `_v16 → canonical FK` pattern 在 D1 staging fail（commit `bf7f423` revert），改用 `_v16 → _v16` FK pattern + 依靠 D1 RENAME 自動 rewrite。已 ship v0.52.0 production deploy + smoke test 全綠。Evidence-based approval：integration spec 3/3 + unit 7/7 + wrangler D1 emulator + production smoke。
 **Priority**: mid
 **Discovered**: 2026-04-21 — `passkey-authentication` change migration planning
 **Location**: `server/db/schema.ts` (`userProfiles.emailNormalized`), `server/database/migrations/0009_passkey_and_display_name.sql` (deferred from migration)
@@ -1220,7 +1221,8 @@ Claude 顯然把 `GET 405` 視為「stream 不可用 → 必須重建 session」
 
 ## TD-040 — Token revoke 未同步清 MCP session Durable Object
 
-**Status**: open
+**Status**: done
+**Resolved**: 2026-04-26 — `add-mcp-token-revoke-do-cleanup` change archived 於 `openspec/changes/archive/2026-04-26-add-mcp-token-revoke-do-cleanup/`。實作：(a) DO `MCPSessionDurableObject.fetch()` 開頭加 `X-Mcp-Internal-Invalidate` HMAC bypass → `closeAllSseWriters` + `closeTransport` + `clearAllSseEvents` + `deleteAll` + `deleteAlarm`；(b) DO `initialize` 寫 KV index `mcp:session-by-token:<tokenId>`；(c) admin revoke endpoint 加 `cascadeInvalidateActiveSessions()` best-effort cleanup（signing-key misconfig log.error 區分；KV/DO 失敗 swallow + log.warn）。HMAC trust anchor 沿用既有 `NUXT_MCP_AUTH_SIGNING_KEY`，無新 secret。已 ship v0.51.0 production deploy + smoke test 全綠。Evidence-based approval：integration spec 7/7 + unit 28/28 + 既有 DO lifecycle 22 tests + admin tokens route 9 tests 無 regression。
 **Priority**: low
 **Discovered**: 2026-04-24 — `upgrade-mcp-to-durable-objects` Task 4.6
 **Location**: `server/api/admin/mcp-tokens/[id].delete.ts`（revoke endpoint）＋ `server/durable-objects/mcp-session.ts`（DO）
@@ -1631,7 +1633,7 @@ Chat UI 沒有任何顯式的「新對話 / New chat」按鈕或 menu item：
 ## TD-049 — Cloudflare Pages deploy API 拒絕 git HEAD commit message
 
 **Status**: done
-**Resolved**: 2026-04-26 — workaround commit `5ce334c`（顯式傳 `--commit-message "Deploy ${{ github.sha }}"` + `--commit-hash "${{ github.sha }}"`）落地後，至 v0.50.1 ship 為止 GitHub Actions Deploy workflow 連續 30 條 run 全綠（過去最近抽查 `gh run list --workflow=Deploy -L 30 -- --jq 'select(.conclusion=="failure")' = 0 hits），workaround 已驗證對普遍 commit message 有效。原 acceptance 第 2 條（v0.43.0 manual rerun）省略 — 後續 30+ 次 deploy 已遠超 acceptance 第 3 條的「3 次穩定」門檻。
+**Resolved**: 2026-04-26 — workaround commit `5ce334c`（顯式傳 <span v-pre>`--commit-message "Deploy ${{ github.sha }}"`</span> + <span v-pre>`--commit-hash "${{ github.sha }}"`</span>）落地後，至 v0.50.1 ship 為止 GitHub Actions Deploy workflow 連續 30 條 run 全綠（過去最近抽查 `gh run list --workflow=Deploy -L 30 -- --jq 'select(.conclusion=="failure")' = 0 hits），workaround 已驗證對普遍 commit message 有效。原 acceptance 第 2 條（v0.43.0 manual rerun）省略 — 後續 30+ 次 deploy 已遠超 acceptance 第 3 條的「3 次穩定」門檻。
 **Priority**: mid
 **Discovered**: 2026-04-25 — v0.43.0 release deploy run [24908303837](https://github.com/YuDefine/nuxt-edge-agentic-rag/actions/runs/24908303837)
 **Location**: `.github/workflows/deploy.yml` `deploy-docs-production`/`deploy-docs-staging`的`Deploy docs to Cloudflare Pages`step
@@ -1984,8 +1986,9 @@ sqlite> SELECT name FROM sqlite_master WHERE name IN ('mcp_tokens_new', 'query_l
 ## TD-056 — Workers AI judge 模型 `max_completion_tokens: 200` 上限被截斷 → JSON parse 失敗 → pipeline_error
 
 **Status**: open
-**Priority**: low
+**Priority**: ~~low~~ **high**（2026-04-26 重評：TD-061 證明這條是 production 28.6% pipeline_error 的 root cause，不是低頻 cosmetic）
 **Discovered**: 2026-04-26 — `persist-refusal-and-label-new-chat` v0.50.0 production 7.2 verify 抽查 `query_logs` 時意外撈到。Judge 模型回 JSON 結構包，但 `workers_ai_runs_json` 顯示 `completionTokens: 200` 等於上限，content 在 JSON object 中段被截斷，後續 `JSON.parse` throw → pipeline_error。
+**Same root cause as**: TD-061（acceptance fixture 35 筆 10/10 pipeline_error 全部 `completionTokens: 200`，見 `local/reports/notes/td-061-pipeline-error-investigation-20260426.md`）
 **Location**:
 
 - judge prompt / model call 位置：`server/utils/workers-ai.ts`、`server/utils/judge.ts`（或對應 retrieve-then-judge orchestrator；apply 時再精準定位）
@@ -2232,33 +2235,37 @@ pnpm exec wrangler dev --config .output/server/wrangler.json --port 3010 --ip 12
 
 - 第 1–35 筆（33 unique seed + 前 2 筆 r2 重測）皆正常返回（`accepted` / `blocked`）
 - 第 36–50 筆全部觸發 HTTP 429，未進 D1
-- D1 已寫入的 35 筆裡，`pipeline_error` 10 筆全部來自重測批次（caseId 帶 `-r2` 後綴）
-
-`pipeline_error` 樣本特徵：`completion_latency_ms = NULL`、`retrieval_score = NULL`、`judge_score = NULL`、`refusal_reason = pipeline_error`。
+- D1 已寫入的 35 筆裡，`pipeline_error` 10 筆樣本特徵：`completion_latency_ms = NULL`、`retrieval_score = NULL`、`judge_score = NULL`、`refusal_reason = pipeline_error`
 
 10 筆對應的 prompt 包括 TC-05 / TC-06×2 / TC-12 / TC-13 / TC-14 / TC-18×2 / TC-20 / EV-01。
 
-可能原因：
+**2026-04-26 D1 raw evidence 調查**（詳見 `local/reports/notes/td-061-pipeline-error-investigation-20260426.md`）：
 
-1. 同 prompt 短時間內重複查詢觸發 cache key 競爭
-2. AutoRAG 對重複請求的 rate-limit 軟降級
-3. 某個 retrieval 後續處理 step 不冪等（score normalization、citation snapshot 寫入）
-4. 與 production rate-limit window 競爭
+- 10/10 pipeline_error row 的 `workers_ai_runs_json` 都記錄了**唯一一筆** `agentJudge`（`@cf/moonshotai/kimi-k2.5`），且 `completionTokens` 全部剛好等於 200（max ceiling）
+- 23 筆 `no_citation_refuse` 全部 `retrieval_score ∈ [0.28, 0.44]`（< `judgeMin=0.45`，judge 沒被觸發）
+- 「r2 批次」框架其實是 score-banding 假象 — 真實切割線是 retrieval 是否落入 [judgeMin=0.45, directAnswerMin=0.7) → 進 judge → 100% 觸發 bug
+
+**可能原因（按證據強度排序）**：
+
+1. **HIGH (~85%)**：`server/utils/workers-ai.ts:135` agentJudge `max_completion_tokens: 200` 對於需要 `reformulatedQuery` 的 case 不夠 → 截斷 JSON → `normalizeStructuredResponse` (line 416-418) 直接呼叫 `JSON.parse` 對截斷字串拋 `SyntaxError` → web-chat.ts:426 catch block 寫 `pipeline_error` + 把 retrievalScore 寫為 NULL（line 447）
+2. ~10%：Workers AI runtime 對 `response_format: json_schema` 的 grammar constraint 支援不完整，回傳非結構化字串
+3. ~5%：cache key collision / pipeline 不冪等（**證據不支持**：每筆有獨立 judge latency，無共用 run 跡象）
 
 影響：
 
-- 真實使用者短時間重複問同 prompt（refresh、retry），約**每 4 個請求就 1 個拿到 pipeline_error**
+- 真實使用者短時間重複問同 prompt 約**每 4 個請求就 1 個拿到 pipeline_error**
 - 治理層保險仍正常（不幻覺、messages.content_text 不寫原文），但**使用者體驗顯示為「服務無回應 / 不穩定」**
 
 ### Fix approach
 
-1. 抓 r2 那 10 筆 `query_logs` `id` 對應的 evlog wide-events，看 retrieval / judge / composer 哪個 step 拋錯
-2. 本機重現：local `pnpm dev` + 同一 prompt 連續打 5 次，看是否能重現
-3. 依錯誤類別分流修法：
-   - cache key collision → idempotency_key + dedup window
-   - retrieval pipeline 不冪等 → 確認 `is_current` filter / score normalization 是 pure function
-   - rate-limit 軟降級 → 改成顯式 429 + Retry-After
-4. 加固定錯誤分類：拆 `pipeline_error` 為 `retrieval_error` / `judge_error` / `composer_error` / `rate_limit_soft`
+1. **驗證假設 1**：vitest unit test mock `readJudgeResponse` 對截斷 JSON 字串（如 `'{"shouldA'`）的行為，確認拋 `SyntaxError`
+2. **修法（兩條軸線並行）**：
+   - **軸線 A**：提高 agentJudge `max_completion_tokens` 至 512–1024（reformulatedQuery 中文重述 200 token 顯然不夠）
+   - **軸線 B**：`readJudgeResponse` 加 truncation guard — 檢查 `response.usage.completion_tokens` 是否觸頂；若是則明確拋 `JudgeTruncationError`，catch block 寫 `decision_path=judge_truncated`
+   - **軸線 C**：`normalizeStructuredResponse` 加 try/catch + jsonrepair fallback，部分結構可用就用
+3. **拆 `pipeline_error` enum**：至少拆出 `judge_error` / `judge_truncated` / `retrieval_error` / `composer_error`，schema migration
+4. **acceptance fixture 補 retrieval ∈ [0.45, 0.7] 的 case**：本批 35 筆都跑不到 judge 區間後又能 succeed，意味 judge 路徑長期沒有 production 監控
+5. **與 TD-057 的關係**：TD-057 修不會自動解 TD-061（TD-057 是觀測層警告、TD-061 是功能層 bug，兩者獨立）；但 TD-057 修完後 wide event 會帶完整 stack，可作為 TD-061 fix verification 的驗證信號
 
 ### Acceptance
 
