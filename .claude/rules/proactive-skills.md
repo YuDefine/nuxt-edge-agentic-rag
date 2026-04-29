@@ -1,3 +1,10 @@
+<!--
+🔒 LOCKED — managed by clade
+Source: rules/core/proactive-skills.md
+Edit at: <clade-central-repo>
+Local edits will be reverted by the next sync.
+-->
+
 # Proactive Skill Orchestra
 
 所有 Spectra sub-skill 與 Design skill 應在適當情境下**主動調用**，不需使用者手動指定。此規則優先於個別 SKILL.md 的指示。
@@ -80,14 +87,14 @@ Task 涉及 UI？
 
 根據 `/design improve` 的診斷結果選擇，不要盲目全跑：
 
-| UI 類型                | 常見需要的 skill             | 通常不需要                    |
-| ---------------------- | ---------------------------- | ----------------------------- |
-| 表單密集（CRUD、輸入） | /layout, /clarify, /harden   | /overdrive, /bolder           |
-| 資料表格（列表、搜尋） | /layout, /typeset, /adapt    | /delight, /animate            |
-| 儀表板/圖表            | /colorize, /layout, /typeset | /quieter, /harden             |
-| 首次體驗/空狀態        | /harden, /clarify, /delight  | /optimize                     |
-| 複雜互動流程           | /animate, /clarify, /harden  | /bolder                       |
-| 登入/認證頁            | /typeset, /colorize          | /impeccable extract, /distill |
+| UI 類型                | 常見需要的 skill              | 通常不需要          |
+| ---------------------- | ----------------------------- | ------------------- |
+| 表單密集（CRUD、輸入） | /layout, /clarify, /harden    | /overdrive, /bolder |
+| 資料表格（列表、搜尋） | /layout, /typeset, /adapt     | /delight, /animate  |
+| 儀表板/圖表            | /colorize, /layout, /typeset  | /quieter, /harden   |
+| 首次體驗/空狀態        | /harden, /clarify, /delight   | /optimize           |
+| 複雜互動流程           | /animate, /clarify, /harden   | /bolder             |
+| 登入/認證頁            | /typeset, /colorize           | /impeccable extract, /distill |
 
 ### Mutual Exclusivity
 
@@ -99,24 +106,26 @@ Task 涉及 UI？
 
 ```
 /impeccable teach       ← 專案首次（無 .impeccable.md 時）
+/impeccable shape       ← （選用）code 前需求釐清
   ↓
-/polish              ← 對齊 design system（若偏移）
+/impeccable craft       ← 主要建置流程（shape-then-build）
 /distill                ← 先簡化（若雜亂）
   ↓
-/layout                ← 結構與佈局
+/layout                 ← 結構與佈局（v2.1 從 /arrange 改名）
 /typeset                ← 字型與層次
 /colorize | /bolder | /quieter  ← 色彩與強度（擇一）
   ↓
 /animate                ← 動效
 /clarify                ← 文案與訊息
 /delight                ← 個性與驚喜
-/harden                ← 首次體驗（如適用）
+/harden                 ← 韌性、邊界情況、首次體驗（v2.1 併入原 /onboard）
   ↓
-/harden                 ← 韌性與邊界情況
 /optimize               ← 效能
 /adapt                  ← 跨裝置（如需要）
+/impeccable extract     ← 萃取為 design system（如適用）
   ↓
-/polish                 ← 永遠最後
+/audit                  ← 診斷驗收（Critical 必須為 0）
+/polish                 ← 永遠最後（v2.1 併入原 /normalize 的對齊角色）
 ```
 
 ## Design Review Task Template
@@ -133,8 +142,6 @@ Task 涉及 UI？
 - [ ] N.2 執行 /design improve [affected pages/components]（含 Design Fidelity Report）
 - [ ] N.3 修復所有 DRIFT 項目（Fidelity Score < 8/8 時必做，loop 直到 DRIFT = 0）
 - [ ] N.4 依 /design 計劃按 canonical order 執行 targeted skills
-- [ ] N.4.1 響應式 viewport 測試（xs 360 / md 768 / xl 1280 截圖並人工核對）
-- [ ] N.4.2 無障礙檢查（@nuxt/a11y dev report 無 error + 鍵盤 Tab / Esc walkthrough）
 - [ ] N.5 執行 /audit — 確認 Critical = 0
 - [ ] N.6 執行 review-screenshot — 視覺 QA
 - [ ] N.7 Fidelity 確認 — design-review.md 中無 DRIFT 項
@@ -227,7 +234,7 @@ Design 工作可能發現 spec 未涵蓋的問題。發現時不停下，按以�
 
 ## 非 UI Change 的例外
 
-若 change 純後端（data model、API、config），不觸發 Design Checkpoint，直接走 Spectra 標準流程。判斷依據：change 的 tasks artifact 中是否有任何 task 涉及 `.vue` / `pages/` / `components/` / `layouts/` 檔案，且 git diff 中無 `.vue` 檔案。
+若 change 純後端（migration、API、RLS、config），不觸發 Design Checkpoint，直接走 Spectra 標準流程。判斷依據：change 的 tasks artifact 中是否有任何 task 涉及 `.vue` / `pages/` / `components/` / `layouts/` 檔案，且 git diff 中無 `.vue` 檔案。
 
 <!-- SPECTRA-UX:START v1.13.4 -->
 
@@ -294,10 +301,10 @@ Apply 階段中偵測到以下任一信號 → 必須立即處理：
 
 ### 決策規則（明確直接做、模糊再詢問）
 
-| 情況                                                                         | 動作                                                                           |
-| ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| 情況 | 動作 |
+| --- | --- |
 | 信號明確（migration 新增未紀錄欄位、使用者直白改需求、journey 遺漏具體 URL） | Claude **直接跑** `spectra-ingest`，口頭告知「偵測到 X，已觸發 ingest 更新 Y」 |
-| 信號模糊（不確定是否達結構性落差門檻、可能只是 task 字句微調）               | 先口頭詢問使用者，描述信號並列出選項（ingest vs. 在當前 tasks 微調）讓使用者選 |
+| 信號模糊（不確定是否達結構性落差門檻、可能只是 task 字句微調） | 先口頭詢問使用者，描述信號並列出選項（ingest vs. 在當前 tasks 微調）讓使用者選 |
 
 **NEVER** 偵測到信號卻靜默繼續實作 — 會導致 proposal / tasks 與實作永久不同步。
 
@@ -396,7 +403,7 @@ Apply 階段中偵測到以下任一信號 → 必須立即處理：
 ## UX Completeness Gate（補充 Design Gate）
 
 **Design Gate 檢查 UI 視覺品質；UX Completeness Gate 檢查 UI 功能覆蓋**。
-兩者並存，都必須通過。完整規則見 [`.claude/rules/ux-completeness.md`](.claude/rules/ux-completeness.md)。
+兩者並存，都必須通過。完整規則見 [`docs/rules/ux-completeness.md`](docs/rules/ux-completeness.md)。
 
 ### Propose 階段
 
@@ -440,14 +447,14 @@ Apply 階段中偵測到以下任一信號 → 必須立即處理：
 
 ### 心智模型
 
-| 錯誤直覺                            | 正確認識                   |
-| ----------------------------------- | -------------------------- |
-| DB migration 過了就是 feature ready | DB allow ≠ feature ready   |
-| API test 綠就是 UX 完成             | Tests pass ≠ UX done       |
-| 既有頁面有了就不用改                | Branching logic 要更多改動 |
-| 記得住改了什麼                      | 列舉比記憶可靠             |
-| Kiosk/主流程做完就收工              | Admin 管理路徑同等重要     |
-| 感覺完成就是完成                    | 差的那一哩通常是 UI        |
+| 錯誤直覺 | 正確認識 |
+| --- | --- |
+| DB migration 過了就是 feature ready | DB allow ≠ feature ready |
+| API test 綠就是 UX 完成 | Tests pass ≠ UX done |
+| 既有頁面有了就不用改 | Branching logic 要更多改動 |
+| 記得住改了什麼 | 列舉比記憶可靠 |
+| Kiosk/主流程做完就收工 | Admin 管理路徑同等重要 |
+| 感覺完成就是完成 | 差的那一哩通常是 UI |
 
 ## Spectra Roadmap Maintenance
 
@@ -457,12 +464,12 @@ Apply 階段中偵測到以下任一信號 → 必須立即處理：
 
 ### AUTO 區塊內容
 
-| 區塊              | 來源                           | 說明                                                     |
-| ----------------- | ------------------------------ | -------------------------------------------------------- |
-| `Active Changes`  | `openspec/changes/**` 掃描     | stage / 進度 / 觸動的 specs                              |
-| `Active Claims`   | `.spectra/claims/*.json`       | 誰正在做哪個 change、最後 heartbeat、哪些 claim 已 stale |
-| `Parallel Tracks` | spec collision 分析            | independent / mutex / blocked                            |
-| `Parked Changes`  | `spectra list --parked --json` | park 後檔案不在 disk，但 metadata 仍要可見以免遺忘       |
+| 區塊 | 來源 | 說明 |
+| --- | --- | --- |
+| `Active Changes` | `openspec/changes/**` 掃描 | stage / 進度 / 觸動的 specs |
+| `Active Claims` | `.spectra/claims/*.json` | 誰正在做哪個 change、最後 heartbeat、哪些 claim 已 stale |
+| `Parallel Tracks` | spec collision 分析 | independent / mutex / blocked |
+| `Parked Changes` | `spectra list --parked --json` | park 後檔案不在 disk，但 metadata 仍要可見以免遺忘 |
 
 v1.6+: `spectra:roadmap` 每次執行都是完整操作（無 mtime fast-path、無 `--force`
 flag）。park / unpark 後直接跑 `pnpm spectra:roadmap` 即可。
@@ -471,11 +478,11 @@ flag）。park / unpark 後直接跑 `pnpm spectra:roadmap` 即可。
 
 每次 sync 時會另外掃 MANUAL 區塊，對照以下三種 ground truth 找出過時內容：
 
-| Drift 類型           | 偵測條件                                                               | Ground truth                     |
-| -------------------- | ---------------------------------------------------------------------- | -------------------------------- |
+| Drift 類型 | 偵測條件 | Ground truth |
+| --- | --- | --- |
 | `archived-as-active` | MANUAL 提到某 change 名稱，語意又稱之為「進行中 / draft / open / wip」 | `openspec/changes/archive/` 目錄 |
-| `td-status-mismatch` | MANUAL 提到 `TD-NNN` + active 語意詞，但 register 標 done/wontfix      | `docs/tech-debt.md` Status       |
-| `version-mismatch`   | MANUAL 以「Production 跑 vX.Y.Z」/「目前 vX.Y.Z」敘述版本              | `package.json` `version`         |
+| `td-status-mismatch` | MANUAL 提到 `TD-NNN` + active 語意詞，但 register 標 done/wontfix | `docs/tech-debt.md` Status |
+| `version-mismatch` | MANUAL 以「Production 跑 vX.Y.Z」/「目前 vX.Y.Z」敘述版本 | `package.json` `version` |
 
 **Drift 不自動改寫 MANUAL**（避免誤刪人寫內容），以 stderr 警告提示。Claude 看到
 drift warning 時**必須**主動更新 MANUAL 區塊（Current State / Next Moves），
@@ -483,12 +490,12 @@ drift warning 時**必須**主動更新 MANUAL 區塊（Current State / Next Mov
 
 ### 自動觸發點
 
-| 時機                                   | 機制                                                         | 保底                                                       |
-| -------------------------------------- | ------------------------------------------------------------ | ---------------------------------------------------------- |
-| 新 session 開始                        | `session-start-roadmap-sync.sh`                              | 永遠對齊 roadmap + claims                                  |
-| Edit/Write                             | `post-edit-roadmap-sync.sh`                                  | 有 claim heartbeat 或改到 `openspec/changes/**` 時即時反映 |
-| `spectra park` / `spectra unpark` 之後 | **你必須手動** `pnpm spectra:roadmap`                        | hook 沒監聽 `.spectra/spectra.db`                          |
-| `/assign /spectra-*` 結束後            | **你必須手動** `pnpm spectra:roadmap && pnpm spectra:claims` | 外部 runtime 不觸發 hook                                   |
+| 時機 | 機制 | 保底 |
+| --- | --- | --- |
+| 新 session 開始 | `session-start-roadmap-sync.sh` | 永遠對齊 roadmap + claims |
+| Edit/Write | `post-edit-roadmap-sync.sh` | 有 claim heartbeat 或改到 `openspec/changes/**` 時即時反映 |
+| `spectra park` / `spectra unpark` 之後 | **你必須手動** `pnpm spectra:roadmap` | hook 沒監聽 `.spectra/spectra.db` |
+| `/assign /spectra-*` 結束後 | **你必須手動** `pnpm spectra:roadmap && pnpm spectra:claims` | 外部 runtime 不觸發 hook |
 
 ### Work Claim 規則（v1.10+）
 
@@ -531,11 +538,11 @@ Claude **必須**在以下時機更新 `## Next Moves` 區塊（MANUAL block）�
 
 使用者講下列任一關鍵字 → **立即**執行完整「sync → Read → 回報」流程：
 
-| 類別     | 關鍵字（中文／英文）                                                                                               |
-| -------- | ------------------------------------------------------------------------------------------------------------------ |
-| 現況類   | 「roadmap 現況」/「專案現況」/「現在做到哪」/「現在在做什麼」/ "roadmap status" / "current state" / "where are we" |
-| 下一步類 | 「接下來該做什麼」/「下一步」/「還有什麼要做」/ "what's next" / "next moves"                                       |
-| 刷新類   | 「看 roadmap」/「刷 roadmap」/「更新 roadmap」/ "show roadmap" / "refresh roadmap"                                 |
+| 類別 | 關鍵字（中文／英文） |
+| --- | --- |
+| 現況類 | 「roadmap 現況」/「專案現況」/「現在做到哪」/「現在在做什麼」/ "roadmap status" / "current state" / "where are we" |
+| 下一步類 | 「接下來該做什麼」/「下一步」/「還有什麼要做」/ "what's next" / "next moves" |
+| 刷新類 | 「看 roadmap」/「刷 roadmap」/「更新 roadmap」/ "show roadmap" / "refresh roadmap" |
 
 **完整流程**（三步、不可跳）：
 
@@ -570,11 +577,11 @@ tasks.md 內未解決或延後項目 **MUST** 用 `@followup[TD-NNN]` 標註，�
 
 ### 自動化流程
 
-| 時機                 | 機制                            | 動作                                       |
-| -------------------- | ------------------------------- | ------------------------------------------ |
-| 新 session 開始      | `session-start-roadmap-sync.sh` | 跑 `pnpm spectra:followups` 摘要 open 數量 |
-| `spectra-archive` 前 | `pre-archive-followup-gate.sh`  | marker 未登記 register → `exit 2` 阻擋     |
-| 手動                 | `pnpm spectra:followups`        | 詳細報告；`--fail-on-drift` 給 CI          |
+| 時機 | 機制 | 動作 |
+| --- | --- | --- |
+| 新 session 開始 | `session-start-roadmap-sync.sh` | 跑 `pnpm spectra:followups` 摘要 open 數量 |
+| `spectra-archive` 前 | `pre-archive-followup-gate.sh` | marker 未登記 register → `exit 2` 阻擋 |
+| 手動 | `pnpm spectra:followups` | 詳細報告；`--fail-on-drift` 給 CI |
 
 ### Claude 主動維護的時機
 
@@ -598,11 +605,11 @@ tasks.md 內未解決或延後項目 **MUST** 用 `@followup[TD-NNN]` 標註，�
 
 ### AUTO 區塊內容
 
-| 區塊              | 來源                           | 說明                                               |
-| ----------------- | ------------------------------ | -------------------------------------------------- |
-| `Active Changes`  | `openspec/changes/**` 掃描     | stage / 進度 / 觸動的 specs                        |
-| `Parallel Tracks` | spec collision 分析            | independent / mutex / blocked                      |
-| `Parked Changes`  | `spectra list --parked --json` | park 後檔案不在 disk，但 metadata 仍要可見以免遺忘 |
+| 區塊 | 來源 | 說明 |
+| --- | --- | --- |
+| `Active Changes` | `openspec/changes/**` 掃描 | stage / 進度 / 觸動的 specs |
+| `Parallel Tracks` | spec collision 分析 | independent / mutex / blocked |
+| `Parked Changes` | `spectra list --parked --json` | park 後檔案不在 disk，但 metadata 仍要可見以免遺忘 |
 
 v1.6+: `pnpm spectra:roadmap` 每次執行都是完整操作（無 mtime fast-path、無 `--force`
 flag）。park / unpark 後直接跑 `pnpm spectra:roadmap` 即可。
@@ -611,11 +618,11 @@ flag）。park / unpark 後直接跑 `pnpm spectra:roadmap` 即可。
 
 每次 sync 時會另外掃 MANUAL 區塊，對照以下三種 ground truth 找出過時內容：
 
-| Drift 類型           | 偵測條件                                                               | Ground truth                     |
-| -------------------- | ---------------------------------------------------------------------- | -------------------------------- |
+| Drift 類型 | 偵測條件 | Ground truth |
+| --- | --- | --- |
 | `archived-as-active` | MANUAL 提到某 change 名稱，語意又稱之為「進行中 / draft / open / wip」 | `openspec/changes/archive/` 目錄 |
-| `td-status-mismatch` | MANUAL 提到 `TD-NNN` + active 語意詞，但 register 標 done/wontfix      | `docs/tech-debt.md` Status       |
-| `version-mismatch`   | MANUAL 以「Production 跑 vX.Y.Z」/「目前 vX.Y.Z」敘述版本              | `package.json` `version`         |
+| `td-status-mismatch` | MANUAL 提到 `TD-NNN` + active 語意詞，但 register 標 done/wontfix | `docs/tech-debt.md` Status |
+| `version-mismatch` | MANUAL 以「Production 跑 vX.Y.Z」/「目前 vX.Y.Z」敘述版本 | `package.json` `version` |
 
 **Drift 不自動改寫 MANUAL**（避免誤刪人寫內容），以 stderr 警告提示。Claude 看到
 drift warning 時**必須**主動更新 MANUAL 區塊（Current State / Next Moves），
@@ -623,12 +630,12 @@ drift warning 時**必須**主動更新 MANUAL 區塊（Current State / Next Mov
 
 ### 自動觸發點
 
-| 時機                                   | 機制                                  | 保底                              |
-| -------------------------------------- | ------------------------------------- | --------------------------------- |
-| 新 session 開始                        | `session-start-roadmap-sync.sh`       | 永遠對齊                          |
-| Edit/Write 到 `openspec/changes/**`    | `post-edit-roadmap-sync.sh`           | 即時反映                          |
+| 時機 | 機制 | 保底 |
+| --- | --- | --- |
+| 新 session 開始 | `session-start-roadmap-sync.sh` | 永遠對齊 |
+| Edit/Write 到 `openspec/changes/**` | `post-edit-roadmap-sync.sh` | 即時反映 |
 | `spectra park` / `spectra unpark` 之後 | **你必須手動** `pnpm spectra:roadmap` | hook 沒監聽 `.spectra/spectra.db` |
-| `/assign /spectra-*` 結束後            | **你必須手動** `pnpm spectra:roadmap` | 外部 runtime 不觸發 hook          |
+| `/assign /spectra-*` 結束後 | **你必須手動** `pnpm spectra:roadmap` | 外部 runtime 不觸發 hook |
 
 ### Claude 主動維護的時機
 
@@ -658,11 +665,11 @@ Claude **必須**在以下時機更新 `## Next Moves` 區塊（MANUAL block）�
 
 使用者講下列任一關鍵字 → **立即**執行完整「sync → Read → 回報」流程：
 
-| 類別     | 關鍵字（中文／英文）                                                                                               |
-| -------- | ------------------------------------------------------------------------------------------------------------------ |
-| 現況類   | 「roadmap 現況」/「專案現況」/「現在做到哪」/「現在在做什麼」/ "roadmap status" / "current state" / "where are we" |
-| 下一步類 | 「接下來該做什麼」/「下一步」/「還有什麼要做」/ "what's next" / "next moves"                                       |
-| 刷新類   | 「看 roadmap」/「刷 roadmap」/「更新 roadmap」/ "show roadmap" / "refresh roadmap"                                 |
+| 類別 | 關鍵字（中文／英文） |
+| --- | --- |
+| 現況類 | 「roadmap 現況」/「專案現況」/「現在做到哪」/「現在在做什麼」/ "roadmap status" / "current state" / "where are we" |
+| 下一步類 | 「接下來該做什麼」/「下一步」/「還有什麼要做」/ "what's next" / "next moves" |
+| 刷新類 | 「看 roadmap」/「刷 roadmap」/「更新 roadmap」/ "show roadmap" / "refresh roadmap" |
 
 **完整流程**（三步、不可跳）：
 

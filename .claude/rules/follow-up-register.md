@@ -1,3 +1,10 @@
+<!--
+🔒 LOCKED — managed by clade
+Source: rules/core/follow-up-register.md
+Edit at: <clade-central-repo>
+Local edits will be reverted by the next sync.
+-->
+
 ---
 description: Follow-up Register 規則——強制 tasks.md 的未解決項目使用 @followup[TD-xxx] marker 並在 docs/tech-debt.md 留下可追蹤 entry；archive gate 攔截未登記 marker
 globs: ['openspec/changes/**/tasks.md', 'docs/tech-debt.md']
@@ -44,9 +51,9 @@ tasks.md 中**任何未解決或延後處理的項目**（deferred、local block
 
 ## Index
 
-| ID     | Title                         | Priority | Status | Discovered         | Owner |
-| ------ | ----------------------------- | -------- | ------ | ------------------ | ----- |
-| TD-001 | mcp-token-store libsql 不相容 | low      | open   | 2026-04-20 B16 #10 | —     |
+| ID | Title | Priority | Status | Discovered | Owner |
+| --- | --- | --- | --- | --- | --- |
+| TD-001 | mcp-token-store libsql 不相容 | low | open | 2026-04-20 B16 #10 | — |
 
 ---
 
@@ -75,21 +82,21 @@ mcp-token-store 使用 D1 `$client.prepare()` raw API，local dev libsql 不相�
 
 ### Status 欄位語意
 
-| Status        | 意義                                            |
-| ------------- | ----------------------------------------------- |
-| `open`        | 待處理，archive gate 允許此 marker 通過         |
-| `in-progress` | 某 change 正在解，archive gate 允許             |
-| `done`        | 已完成，留下條目作歷史。archive gate 允許       |
-| `wontfix`     | 明確放棄；**必須** 寫 Reason。archive gate 允許 |
+| Status | 意義 |
+| --- | --- |
+| `open` | 待處理，archive gate 允許此 marker 通過 |
+| `in-progress` | 某 change 正在解，archive gate 允許 |
+| `done` | 已完成，留下條目作歷史。archive gate 允許 |
+| `wontfix` | 明確放棄；**必須** 寫 Reason。archive gate 允許 |
 
 ### Priority 欄位語意
 
-| Priority   | 意義                                         |
-| ---------- | -------------------------------------------- |
+| Priority | 意義 |
+| --- | --- |
 | `critical` | 影響正式使用者或阻擋功能。下一個 sprint 必解 |
-| `high`     | 影響開發體驗或未來功能。Quarterly 內解       |
-| `mid`      | 有機會就解                                   |
-| `low`      | 留存備忘，時間允許即解                       |
+| `high` | 影響開發體驗或未來功能。Quarterly 內解 |
+| `mid` | 有機會就解 |
+| `low` | 留存備忘，時間允許即解 |
 
 ---
 

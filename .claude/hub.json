@@ -1,0 +1,14 @@
+{
+  "version": "0.1.1",
+  "modules": {
+    "auth": "better-auth",
+    "db-schema": "supabase",
+    "db-runtime": "cf-workers",
+    "runtime": "cf-workers",
+    "framework": "nuxt",
+    "domain": []
+  },
+  "localHooks": [
+    "post-migration-gen-types.sh"
+  ]
+}
