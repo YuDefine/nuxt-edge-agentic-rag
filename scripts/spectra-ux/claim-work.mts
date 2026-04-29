@@ -102,8 +102,7 @@ function heartbeat(pathArg: string | null, json: boolean): void {
   for (const view of collectClaims(config)) {
     if (view.stale) continue
     if (view.record.owner !== identity.owner) continue
-    if (identity.sessionId && view.record.sessionId && view.record.sessionId !== identity.sessionId)
-      continue
+    if (identity.sessionId && view.record.sessionId && view.record.sessionId !== identity.sessionId) continue
     if (!claimMatchesPath(config, view.record, pathArg)) continue
 
     const nextPaths =
@@ -164,7 +163,7 @@ function main(): void {
     !opts.takeover
   ) {
     throw new Error(
-      `change ${opts.change} is already claimed by ${existing.owner}; use --takeover only after confirming handoff/stale state`,
+      `change ${opts.change} is already claimed by ${existing.owner}; use --takeover only after confirming handoff/stale state`
     )
   }
 

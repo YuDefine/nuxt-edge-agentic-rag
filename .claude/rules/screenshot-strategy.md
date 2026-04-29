@@ -1,3 +1,10 @@
+<!--
+🔒 LOCKED — managed by clade
+Source: rules/core/screenshot-strategy.md
+Edit at: /Users/charles/offline/clade
+Local edits will be reverted by the next sync.
+-->
+
 ---
 description: Screenshot strategy 規則——根據互動深度、跨裝置、跨瀏覽器與是否要沉澱成回歸測試，選擇 browser-use 或 Playwright CLI
 globs: ['screenshots/**', 'tests/e2e/**', 'openspec/changes/**/design-review.md']
@@ -11,9 +18,9 @@ globs: ['screenshots/**', 'tests/e2e/**', 'openspec/changes/**/design-review.md'
 
 ## 工具選擇
 
-| 工具                  | 何時優先使用                                   | 特性           |
-| --------------------- | ---------------------------------------------- | -------------- |
-| `browser-use` 類工具  | 一次性驗收、探索、debug、人工檢查              | 快、互動成本低 |
+| 工具 | 何時優先使用 | 特性 |
+| --- | --- | --- |
+| `browser-use` 類工具 | 一次性驗收、探索、debug、人工檢查 | 快、互動成本低 |
 | Playwright CLI / spec | 響應式、多 viewport、跨瀏覽器、多分頁、CI 回歸 | 可重現、可沉澱 |
 
 ## 決策樹
@@ -26,13 +33,13 @@ globs: ['screenshots/**', 'tests/e2e/**', 'openspec/changes/**/design-review.md'
 
 ## 場景對照
 
-| 場景                           | 建議工具                                  |
-| ------------------------------ | ----------------------------------------- |
-| 人工檢查逐項驗收               | `browser-use`                             |
-| Design Review 視覺 QA          | `browser-use` 起步，必要時升級 Playwright |
-| Mobile / tablet / desktop 對照 | Playwright                                |
-| Safari / Firefox 驗證          | Playwright                                |
-| 重複第 3 次以上的截圖回歸      | Playwright spec                           |
+| 場景 | 建議工具 |
+| --- | --- |
+| 人工檢查逐項驗收 | `browser-use` |
+| Design Review 視覺 QA | `browser-use` 起步，必要時升級 Playwright |
+| Mobile / tablet / desktop 對照 | Playwright |
+| Safari / Firefox 驗證 | Playwright |
+| 重複第 3 次以上的截圖回歸 | Playwright spec |
 
 ## 存放方式
 

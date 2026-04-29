@@ -1,3 +1,10 @@
+<!--
+🔒 LOCKED — managed by clade
+Source: rules/core/testing-anti-patterns.md
+Edit at: /Users/charles/offline/clade
+Local edits will be reverted by the next sync.
+-->
+
 ---
 description: Testing anti-patterns to avoid — mock 濫用、test-only production methods、不完整 mock
 globs: ['test/**/*.ts']
@@ -131,9 +138,11 @@ BEFORE adding any method to production class:
 // ❌ BAD: Mock breaks test logic
 test('detects duplicate entry', () => {
   // Mock prevents side effect that test depends on!
-  vi.mock('~/server/utils/database', () => ({
-    getDbClient: vi.fn().mockReturnValue({
-      query: vi.fn().mockResolvedValue({ data: [], error: null }),
+  vi.mock('~/server/utils/supabase', () => ({
+    getServiceClient: vi.fn().mockReturnValue({
+      from: vi.fn().mockReturnValue({
+        select: vi.fn().mockResolvedValue({ data: [], error: null }),
+      }),
     }),
   }))
 
@@ -154,11 +163,11 @@ test('detects duplicate entry', () => {
 // ✅ GOOD: Mock at correct level
 test('detects duplicate entry', () => {
   // Mock only the network call, preserve state management
-  vi.mock('~/server/utils/database', () => ({
-    getDbClient: vi.fn().mockReturnValue(
-      createMockDbClient({
+  vi.mock('~/server/utils/supabase', () => ({
+    getServiceClient: vi.fn().mockReturnValue(
+      createMockSupabaseClient({
         initialData: existingEntries,
-      }),
+      })
     ),
   }))
 

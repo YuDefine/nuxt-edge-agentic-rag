@@ -10,6 +10,9 @@ typecheck_targets=()
 
 while IFS= read -r -d '' file; do
   [[ -f "$file" ]] || continue
+  case "$file" in
+    .claude/rules/*|.claude/skills/*|.claude/hooks/*) continue ;;
+  esac
 
   case "$file" in
     *.js | *.ts | *.vue)

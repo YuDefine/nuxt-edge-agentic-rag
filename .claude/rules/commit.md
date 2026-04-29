@@ -1,10 +1,13 @@
+<!--
+🔒 LOCKED — managed by clade
+Source: rules/core/commit.md
+Edit at: /Users/charles/offline/clade
+Local edits will be reverted by the next sync.
+-->
+
 # Commit
 
 所有 commit **MUST** 透過 `/commit` command 執行。**NEVER** 直接 `git commit`（例外見下）。
-
-`git add` 也是 `/commit` 流程的一部分：**任何 `git add` 都 MUST 在 `/commit` 流程中執行**，在 0-A / 0-B / 0-C 品質閘門跑過之後、`git commit` 之前那步。**NEVER** 在 `/commit` 流程外獨立 `git add`（例外見下）。
-
-**`/spectra-commit` 一律禁用**。本專案統一走 `/commit`，不接受以 spectra-commit 繞過閘門。如需只 commit 某個 change 的相關檔，在 `/commit` 流程的 Step 2 分組階段自行限定檔案範圍即可。
 
 ## 理由
 
@@ -22,41 +25,38 @@
 **同時只能有一個 session 跑 `/commit`**。由 `.claude/scripts/commit-lock.mjs` 實作，鎖檔 `.claude/.commit.lock`（已 gitignored）：
 
 - Command 流程 **Step 0-Lock** 必跑 `node .claude/scripts/commit-lock.mjs acquire`；若失敗（另一 session 佔用）→ **停下**回報使用者，不自行 `rm` 清鎖
-- **Step 7** 必跑 `release`；即便中間失敗、使用者中止，也要釋放，**NEVER** 讓鎖長期遺留
+- **Final Step** 必跑 `release`；即便中間失敗、使用者中止，也要釋放，**NEVER** 讓鎖長期遺留
 - Stale 閾值預設 30 分鐘（`COMMIT_LOCK_STALE_MINUTES` 可調），超過即自動清除
 
-**理由**：commit 流程同時跑兩次會撞 staging、0-C `pnpm check` 互踩、版本號升級競態、tag push 衝突；一次抓牢節省整體 token。
+**理由**：commit 流程同時跑兩次會撞 staging、品質檢查互踩、版本號升級競態、tag push 衝突；一次抓牢節省整體 token。
 
 ## WIP 預設範圍
 
-**預設所有 `git status` 顯示的 uncommitted 變更都納入本次 `/commit`**，在 Step 2 依功能分組成獨立 commit。
+**預設所有 `git status` 顯示的 uncommitted 變更都納入本次 `/commit`**，在分組階段依功能拆成獨立 commit。
 
-- 看到不認得的變更 → 先 `git diff` 確認內容合理 → 納入讓 Step 2 分組，**NEVER** `git restore --staged` / `git checkout --` 清場
+- 看到不認得的變更 → 先 `git diff` 確認內容合理 → 納入讓分組階段處理，**NEVER** `git restore --staged` / `git checkout --` 清場
 - **排除條件（唯一）**：使用者在 `$ARGUMENTS` 中明確指名排除（例如「排除 .env.local」「只 commit app/」）
-- **NEVER** 以「這個不在我 scope」「看起來是別的 session 做的」自行排除 — 依兩條黃金守則：先假設是使用者並行工作 + 一律保留
+- **NEVER** 以「這個不在我 scope」「看起來是別的 session 做的」自行排除 — 先假設是使用者並行工作 + 一律保留
 
-**理由**：0-A / 0-B / 0-C 閘門成本高，把 WIP 分次 commit 等於多跑一次閘門，浪費時間與 token。`/commit` 的 Step 2 就是設計來把「主線工作 + 並行 WIP」自然分類到不同 commit group。
+**理由**：品質閘門成本高，把 WIP 分次 commit 等於多跑一次閘門，浪費時間與 token。`/commit` 的分組階段就是設計來把「主線工作 + 並行 WIP」自然分類到不同 commit group。
 
 ## 禁止事項
 
 - **NEVER** `git commit` / `git commit -m` — 繞過 0-A / 0-B 品質閘門
 - **NEVER** `git commit --amend` 修改已 push 的 commit — 會破壞遠端 history
 - **NEVER** `git commit --no-verify` — 繞過 pre-commit hook
-- **NEVER** 在 `/commit` 流程外獨立 `git add`（含 `git add -p`、`git add .`、`git add <file>`）— 會讓「看起來還沒進入 commit 流程」的變更偷偷堆 staging
-- **NEVER** 呼叫 `/spectra-commit`（或對應 skill）— 本專案一律走 `/commit`
 - **NEVER** 以「變更很小」「只是 typo」「趕時間」為由跳過 `/commit`
-- **NEVER** 讓 subagent 自主執行 `git commit` / `git add` — 主線 agent 在 `/commit` 流程內執行即可，不需要再經使用者逐一確認分組
+- **NEVER** 讓 agent / subagent 自主執行 `git commit` — commit 必須在主線經過使用者確認分組
 - **NEVER** 在 lock 被佔用時自行 `rm .claude/.commit.lock` — 必須回報使用者由其判斷對方是否真的卡住
-- **NEVER** 漏跑 Step 7 `release` — 即使前面失敗也要釋放，avoid 下次 session 卡在 stale lock
+- **NEVER** 漏跑 Final Step `release` — 即使前面失敗也要釋放，避免下次 session 卡在 stale lock
 
 ## 例外（極少）
 
-以下情境允許直接 `git commit` / `git add`，**MUST** 在 commit message 註明理由：
+以下情境允許直接 `git commit`，**MUST** 在 commit message 註明理由：
 
 1. **`/commit` 本身壞掉** — command 檔被改壞、依賴的 agent 不可用時的救火
-2. **Merge commit / rebase resolution** — `git merge` / `git rebase --continue` 的自動 commit 與其前置 `git add`
+2. **Merge commit / rebase resolution** — `git merge` / `git rebase --continue` 的自動 commit
 3. **`git revert`** — 還原既有 commit，無需重跑品質檢查
-4. **`git reset` / `git restore --staged`** — **只**用於把錯誤 staged 的檔案移出 staging，不是 `git add` 的替代
 
 例外情境外，一律走 `/commit`。
 

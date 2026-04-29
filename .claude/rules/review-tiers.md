@@ -1,3 +1,10 @@
+<!--
+🔒 LOCKED — managed by clade
+Source: rules/core/review-tiers.md
+Edit at: /Users/charles/offline/clade
+Local edits will be reverted by the next sync.
+-->
+
 ---
 description: Review tiers 規則——依變更規模與風險決定 self-review、spectra-audit、code-review 的最低要求
 globs: ['**/*']
@@ -17,20 +24,20 @@ globs: ['**/*']
 
 ## 觸發判斷
 
-| 條件                                                                           | Tier |
-| ------------------------------------------------------------------------------ | ---- |
-| 只改 docs / comments / README                                                  | 1    |
-| 小型非敏感重構或功能修補（約 < 50 行）                                         | 1    |
-| 功能變更 ≥ 50 行、跨多個模組、可見行為改動                                     | 2    |
-| 動到 migration / schema / auth / permission / raw SQL / security-critical code | 3    |
+| 條件 | Tier |
+| --- | --- |
+| 只改 docs / comments / README | 1 |
+| 小型非敏感重構或功能修補（約 < 50 行） | 1 |
+| 功能變更 ≥ 50 行、跨多個模組、可見行為改動 | 2 |
+| 動到 migration / schema / auth / permission / raw SQL / security-critical code | 3 |
 
 ## 最低要求
 
-| Tier | 最低 review 要求                                            |
-| ---- | ----------------------------------------------------------- |
-| 1    | 作者 inline self-review                                     |
-| 2    | `spectra-audit` + code review                               |
-| 3    | `spectra-audit` + code review，必要時補手動驗證與更嚴格測試 |
+| Tier | 最低 review 要求 |
+| --- | --- |
+| 1 | 作者 inline self-review |
+| 2 | `spectra-audit` + code review |
+| 3 | `spectra-audit` + code review，必要時補手動驗證與更嚴格測試 |
 
 ## 額外規則
 

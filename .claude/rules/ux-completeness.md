@@ -1,3 +1,10 @@
+<!--
+🔒 LOCKED — managed by clade
+Source: rules/core/ux-completeness.md
+Edit at: /Users/charles/offline/clade
+Local edits will be reverted by the next sync.
+-->
+
 ---
 description: UX 完整性規則——定義 "feature complete"、強制列舉 user-facing surface、防止 DB+API 完成但 UI 缺失
 globs: ['openspec/changes/**', 'app/**/*.vue', 'shared/types/**/*.ts', 'supabase/migrations/**']
@@ -195,11 +202,37 @@ function getBindingIcon(cardType: NfcCardType): string {
 6. **「Admin 路徑同等重要」**——Kiosk 流程是秀場、admin 管理是舞台，兩者都不能少
 7. **「Completion momentum is a liar」**——感覺完成時離真正完成還差一哩，那一哩通常是 UI
 
+## Workflow Integration
+
+| Spectra phase                       | Gate script                                              | When to run                                                     |
+| ----------------------------------- | -------------------------------------------------------- | --------------------------------------------------------------- |
+| Before `spectra-propose`            | `bash scripts/spectra-ux/pre-propose-scan.sh`            | 注入 blast radius 要求，提醒必填區塊                            |
+| After `spectra-propose`             | `bash scripts/spectra-ux/post-propose-check.sh <change>` | 驗證 proposal 完整性                                            |
+| After `spectra-propose`             | `bash scripts/spectra-ux/design-inject.sh <change>`      | 若有 UI scope，提醒補上 `## Design Review` 區塊                 |
+| Before `spectra-apply`              | `bash scripts/spectra-ux/pre-apply-brief.sh <change>`    | 簡報 user journeys                                              |
+| During UI edits                     | `bash scripts/spectra-ux/ui-qa-reminder.sh <file>`       | 中途提醒 design / screenshot review，不要等到 archive 才檢查    |
+| Before `spectra-archive`            | `bash scripts/spectra-ux/design-gate.sh <change>`        | 阻擋未完成人工檢查或缺設計審查證據的 UI change                  |
+| Before `spectra-archive`            | `bash scripts/spectra-ux/archive-gate.sh <change>`       | 驗證 journey URL touch、schema drift、exhaustiveness            |
+| Before `spectra-archive` (v1.5+)    | `bash scripts/spectra-ux/followup-gate.sh <change>`      | 驗證 tasks.md 的 `@followup[TD-NNN]` 都在 `docs/tech-debt.md` 登記 |
+| **Session start / after `/assign`** | `pnpm spectra:roadmap` && `pnpm spectra:claims` && `pnpm spectra:followups` | 重算 ROADMAP、查看 active claims、摘要 follow-up 狀態 |
+
+**Claude Code 使用者**：上述由 `.claude/hooks/` 自動觸發，無需手動。
+**Codex / Cursor 使用者**：必須在對應 spectra 階段手動呼叫這些腳本，session 開始時也必須手動跑一次 `pnpm spectra:roadmap`、`pnpm spectra:claims`、`pnpm spectra:followups`。
+
+## 必禁事項
+
+- **NEVER** 寫空洞的 User Journeys 為通過 gate
+- **NEVER** 用 Non-Goals 隱藏忘記做的 surface（必須有具體理由）
+- **NEVER** 把 `if/else if/else` 用在 enum 分支
+- **NEVER** 新增 route 但不在 navigation 加入口（除非明確宣告 internal-only）
+- **NEVER** 把「tasks 全勾 + tests 綠」當作 feature complete 的充分條件
+- **NEVER** 手編 `openspec/ROADMAP.md` 的 `<!-- SPECTRA-UX:ROADMAP-AUTO:* -->` 區塊
+- **NEVER** 未 claim 就開始做 active spectra change
 ## 與既有規則的關係
 
 - **`proactive-skills.md` Design Gate**：本規則**擴充**而非取代。Design Gate 檢查 UI 視覺品質；UX Completeness 檢查 UI 功能覆蓋
 - **`development.md` UI Reuse**：本規則**補充**。Reuse 檢查「是否重複寫了」；UX Completeness 檢查「是否漏改了既有的」
-- **專案自訂的 database / migration 規則**：本規則**串聯**。migration 只是起點，後面還有 types + API + UI + navigation 四層
+- **`migration.md`**：本規則**串聯**。migration 只是起點，後面還有 types + API + UI + navigation 四層
 
 ## 違反時的回報方式
 

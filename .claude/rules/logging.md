@@ -1,3 +1,10 @@
+<!--
+🔒 LOCKED — managed by clade
+Source: rules/core/logging.md
+Edit at: /Users/charles/offline/clade
+Local edits will be reverted by the next sync.
+-->
+
 ---
 description: Server API logging 與錯誤記錄規範（evlog）
 globs: ['server/api/**/*.ts']
@@ -78,18 +85,18 @@ log.error(fetchError.value as Error) // null → runtime error or no-op
 
 ## 搜尋字串消毒
 
-所有會插值到 query builder / filter expression 的搜尋字串，都**必須先經過對應的 escaping helper**：
+所有 `.or()` / `.ilike` 搜尋 **MUST** 使用 `sanitizePostgrestSearch()`：
 
 ```typescript
 // ✅ 消毒後插值
-const safeSearch = sanitizeSearchTerm(search.trim())
-query.where('name', 'like', `%${safeSearch}%`)
+const s = sanitizePostgrestSearch(search.trim())
+query.or(`name.ilike.%${s}%,code.ilike.%${s}%`)
 
-// ❌ 直接插值 — filter injection + wildcard 注入
-query.where('name', 'like', `%${search}%`)
+// ❌ 直接插值 — filter injection + ILIKE 萬用字元注入
+query.or(`name.ilike.%${search}%`)
 ```
 
-Escaping helper 至少要處理資料層使用的 wildcard 與保留字元。
+`sanitizePostgrestSearch` 處理 `,` `.` `(` `)` `%` `_` 六種特殊字元。
 
 ## log.set 時機
 

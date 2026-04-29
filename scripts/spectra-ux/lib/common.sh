@@ -188,6 +188,25 @@ sux_extract_section() {
   sed -n "/^## ${heading}/,/^## /p" "$file" 2>/dev/null | sed '$d'
 }
 
+# Check whether a tasks / proposal file appears to include UI scope.
+# This is a lightweight heuristic used by design-related gates and reminders.
+sux_tasks_has_ui_scope() {
+  local file=$1 ui_dir
+  [ -f "$file" ] || return 1
+
+  if grep -qiE "(${SUX_UI_EXT_RE})|pages/|components/|layouts/" "$file" 2>/dev/null; then
+    return 0
+  fi
+
+  for ui_dir in $SUX_UI_DIRS; do
+    if grep -qiF "${ui_dir}/" "$file" 2>/dev/null; then
+      return 0
+    fi
+  done
+
+  return 1
+}
+
 # Count occurrences of a bypass marker in tasks.md (or any file), defaulting
 # to 0 if the file is missing or the marker is absent. Avoids the repetitive
 # `grep -c ... 2>/dev/null || true; VAR=${VAR:-0}` idiom.
@@ -247,6 +266,10 @@ sux_url_has_page() {
 sux_path_is_ui_related() {
   local path=$1 ui_dir
   [ -n "$path" ] || return 1
+
+  case "$path" in
+    *".md"|*".json"|*".yml"|*".yaml") ;;
+  esac
 
   if echo "$path" | grep -qE "(${SUX_UI_EXT_RE})$" 2>/dev/null; then
     return 0

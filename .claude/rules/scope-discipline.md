@@ -1,3 +1,10 @@
+<!--
+🔒 LOCKED — managed by clade
+Source: rules/core/scope-discipline.md
+Edit at: /Users/charles/offline/clade
+Local edits will be reverted by the next sync.
+-->
+
 ---
 description: Scope discipline 規則——不擴散、必登記、不擅改他人成果，避免 AI 工作流吞掉 WIP 或把範圍外問題靜默遺失
 globs: ['openspec/**', 'docs/tech-debt.md', 'docs/decisions/**', 'HANDOFF.md']
@@ -17,23 +24,23 @@ globs: ['openspec/**', 'docs/tech-debt.md', 'docs/decisions/**', 'HANDOFF.md']
 
 ## 正確的 scope discipline
 
-| 要素               | 意思                                    | 反例                                           |
-| ------------------ | --------------------------------------- | ---------------------------------------------- |
-| **不擴散**         | 當前 task 範圍外的檔案 / 模組，不順手改 | 改 A 檔順便重構 B 檔                           |
-| **必登記**         | 途中發現的問題、技術債、改進點一律登記  | 「這不在 scope，先不管」然後永遠消失           |
+| 要素 | 意思 | 反例 |
+| --- | --- | --- |
+| **不擴散** | 當前 task 範圍外的檔案 / 模組，不順手改 | 改 A 檔順便重構 B 檔 |
+| **必登記** | 途中發現的問題、技術債、改進點一律登記 | 「這不在 scope，先不管」然後永遠消失 |
 | **不擅改他人成果** | 看到未知 / 未提交 / 跨 session 變更先問 | `git reset --hard`、`git checkout --` 直接清場 |
 
 ## 意外發現的登記路徑（強制）
 
 發現範圍外問題時，**MUST** 選一條路徑登記：
 
-| 發現類型                         | 登記位置                               | 做法                                                                                                |
-| -------------------------------- | -------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| 技術債 / bug / 邊界情況          | `docs/tech-debt.md`                    | 建 `TD-NNN` entry，並在當前 change `tasks.md` 加 `@followup[TD-NNN]`                                |
-| session 尚未完成的 WIP / blocker | `HANDOFF.md`                           | 留下目前狀態、阻擋原因、下一步                                                                      |
-| 未來要做但尚未 propose 的工作    | `openspec/ROADMAP.md` `## Next Moves`  | 以 `high/mid/low` + 依賴關係記錄                                                                    |
-| 當前 change 本身的 scope 漏項    | `spectra-ingest`                       | **主動觸發**（見 `proactive-skills.md` → Ingest Triggers），更新 proposal / tasks / design artifact |
-| 架構層級決策                     | `docs/decisions/YYYY-MM-DD-<topic>.md` | 用 ADR 格式記錄                                                                                     |
+| 發現類型 | 登記位置 | 做法 |
+| --- | --- | --- |
+| 技術債 / bug / 邊界情況 | `docs/tech-debt.md` | 建 `TD-NNN` entry，並在當前 change `tasks.md` 加 `@followup[TD-NNN]` |
+| session 尚未完成的 WIP / blocker | `HANDOFF.md` | 留下目前狀態、阻擋原因、下一步 |
+| 未來要做但尚未 propose 的工作 | `openspec/ROADMAP.md` `## Next Moves` | 以 `high/mid/low` + 依賴關係記錄 |
+| 當前 change 本身的 scope 漏項 | `spectra-ingest` | 更新 proposal / tasks / design artifact |
+| 架構層級決策 | `docs/decisions/YYYY-MM-DD-<topic>.md` | 用 ADR 格式記錄 |
 
 **登記後才能回到當前 task。**
 

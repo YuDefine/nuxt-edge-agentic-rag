@@ -1,3 +1,10 @@
+<!--
+🔒 LOCKED — managed by clade
+Source: rules/core/manual-review.md
+Edit at: /Users/charles/offline/clade
+Local edits will be reverted by the next sync.
+-->
+
 ---
 description: 人工檢查規則——`## 人工檢查` 只能在截圖驗證並取得使用者確認後勾選，不得由 agent 自行代勾
 globs: ['openspec/changes/**/tasks.md', 'docs/manual-review-archive.md']
@@ -22,10 +29,10 @@ globs: ['openspec/changes/**/tasks.md', 'docs/manual-review-archive.md']
 
 ## 人工檢查與靜態 QA 的差別
 
-| 類型                            | 目的                       | 能否直接勾選人工檢查 |
-| ------------------------------- | -------------------------- | -------------------- |
-| screenshot review / 靜態截圖 QA | 確認畫面、文案、佈局、狀態 | **不能直接代勾**     |
-| 使用者確認                      | 確認功能與結果符合期待     | **可以**             |
+| 類型 | 目的 | 能否直接勾選人工檢查 |
+| --- | --- | --- |
+| screenshot review / 靜態截圖 QA | 確認畫面、文案、佈局、狀態 | **不能直接代勾** |
+| 使用者確認 | 確認功能與結果符合期待 | **可以** |
 
 截圖是證據，不是使用者確認本身。
 
