@@ -23,7 +23,7 @@
     "hub:check": "node ${CLADE_HOME:-$HOME/offline/clade}/scripts/sync-rules.mjs --check",
     "hub:doctor": "node ${CLADE_HOME:-$HOME/offline/clade}/scripts/sync-rules.mjs --check",
     "hub:prune": "node ${CLADE_HOME:-$HOME/offline/clade}/scripts/sync-rules.mjs --prune",
-    "hub:sync": "node ${CLADE_HOME:-$HOME/offline/clade}/scripts/sync-rules.mjs",
+    "hub:sync": "node ${CLADE_HOME:-$HOME/offline/clade}/scripts/hub-sync.mjs",
     "lint": "vp lint --deny-warnings",
     "mcp:acceptance:staging": "node scripts/mcp/staging-sse-acceptance.mts",
     "mint:dev-mcp-token": "node --env-file=.env scripts/mint-dev-mcp-token.mts",
@@ -52,7 +52,10 @@
     "test:watch": "vp test watch --config ./vitest.config.ts",
     "test:workers-ai-accepted-path": "vp test run --config ./vitest.config.ts test/integration/acceptance-tc-01.test.ts test/integration/acceptance-tc-06.test.ts",
     "typecheck": "nuxt typecheck",
-    "verify:acceptance": "pnpm test:acceptance && pnpm test:contracts"
+    "verify:acceptance": "pnpm test:acceptance && pnpm test:contracts",
+    "hub:vendor": "node ${CLADE_HOME:-$HOME/offline/clade}/scripts/sync-vendor.mjs",
+    "hub:vendor:check": "node ${CLADE_HOME:-$HOME/offline/clade}/scripts/sync-vendor.mjs --check",
+    "hub:vendor:force": "node ${CLADE_HOME:-$HOME/offline/clade}/scripts/sync-vendor.mjs --force"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1037.0",
