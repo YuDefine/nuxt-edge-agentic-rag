@@ -1,5 +1,5 @@
 {
-  "version": "0.1.9",
+  "version": "0.3.0",
   "modules": {
     "auth": "better-auth",
     "db-schema": "supabase",
@@ -8,5 +8,7 @@
     "framework": "nuxt",
     "domain": []
   },
-  "localHooks": ["post-migration-gen-types.sh"]
+  "localHooks": [
+    "post-migration-gen-types.sh"
+  ]
 }
