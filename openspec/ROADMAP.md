@@ -16,7 +16,7 @@
 
 ### 進行中（active，見 AUTO Active Changes 區塊）
 
-- **rag-query-rewriting** — 16/29 tasks done。code 已隨 v0.53.0 ship 到 production（feature flag `NUXT_KNOWLEDGE_FEATURE_QUERY_REWRITING=false` ramp gate）。剩 13 個 staging 驗收 / 人工檢查 tasks，依賴 staging `features.queryRewriting=true` 已生效。Acceptance evidence 待填 `docs/decisions/2026-04-26-rag-query-rewriting.md`
+- **rag-query-rewriting** — 16/34 tasks (47%)。code 已隨 v0.53.0 ship 到 production（feature flag `NUXT_KNOWLEDGE_FEATURE_QUERY_REWRITING=false` ramp gate）；staging `features.queryRewriting=true` 已生效。**6.1 partial pass**（2026-05-02）：flag wiring + audit 寫入機制 + fallback safety 三層 ✅，`rewriter_status='success'` path 與 `rewritten_query` 內容受 local Workers AI binding 限制，待 6.4 staging 驗。剩餘 task：3.3 prompt validation / 6.3 staging deploy / 6.4-6.6 staging acceptance / 7.1-7.5 follow-ups。Acceptance evidence 待填 `docs/decisions/2026-04-26-rag-query-rewriting.md`
 
 ### 已 parked
 
