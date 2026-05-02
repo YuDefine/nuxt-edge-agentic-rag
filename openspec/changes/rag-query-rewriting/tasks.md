@@ -44,7 +44,7 @@
 
 ## 6. Acceptance & Verification（[S-FF]）
 
-- [ ] 6.1 Local smoke：`pnpm dev` + 在瀏覽器 / curl 打 2 條 chat（一條子知識問答 form、一條題目複述 form），確認 `query_log_debug.rewriter_status` 寫入、`rewritten_query` 內容合理
+- [ ] 6.1 Local smoke：`pnpm dev` + 在瀏覽器 / curl 打 2 條 chat（一條子知識問答 form、一條題目複述 form），確認 `query_log_debug.rewriter_status` 寫入、`rewritten_query` 內容合理 — **partial pass**：flag wiring + audit 寫入機制 + fallback safety 三層 ✅；`rewriter_status='success'` path 與 `rewritten_query` 內容受 local Workers AI binding 環境限制，需待 6.4 staging 驗。Evidence: `local/reports/notes/rag-query-rewriting-6.1-local-smoke-20260426.md`
 - [x] 6.2 `pnpm check` 全綠（format / lint / typecheck / test）
 - [ ] 6.3 Deploy staging（依既有 `gh workflow run deploy.yml -f target=staging` 流程，確認 migration apply + staging flag enabled）
 - [ ] 6.4 對 staging 跑 main-v0.0.54-acceptance 35 筆 fixture，記錄到 `local/reports/notes/main-v0.0.54-acceptance-rewriter-staging-{date}.md`
