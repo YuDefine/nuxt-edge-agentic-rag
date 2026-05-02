@@ -56,6 +56,7 @@ Changes can be parked（暫存）— temporarily moved out of `openspec/changes/
 
 ### All Rules（自動生成，source 在 `.claude/rules/`；請勿手編此區塊）
 
+- `.claude/rules/agent-routing.md`
 - `.claude/rules/api-patterns.md`
 - `.claude/rules/auth.md`
 - `.claude/rules/code-style.md`

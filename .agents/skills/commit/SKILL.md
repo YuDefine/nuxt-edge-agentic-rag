@@ -18,39 +18,105 @@ node .claude/scripts/commit-lock.mjs acquire
 
 失敗（exit 1）代表另一個 session 正在跑 `/commit` → **停下**，向使用者回報鎖資訊，**不要**自行 `rm` 清鎖或重試。
 
-成功後此 session 取得獨占權，直到 Step 7 釋放。**中斷處理**：若 `/commit` 流程中途失敗 / 使用者中斷，仍**必須**在終止前呼叫 `node .claude/scripts/commit-lock.mjs release`；漏釋放的鎖會在 30 分鐘後被下次 acquire 自動清除（可用 `COMMIT_LOCK_STALE_MINUTES` 調整）。
+成功後此 session 取得獨占權，直到最後一步釋放。**中斷處理**：若 `/commit` 流程中途失敗 / 使用者中斷，仍**必須**在終止前呼叫 `node .claude/scripts/commit-lock.mjs release`；漏釋放的鎖會在 30 分鐘後被下次 acquire 自動清除（可用 `COMMIT_LOCK_STALE_MINUTES` 調整）。
 
-## Step 0-Scope: WIP 預設全部納入
+## Step 0-Scope: WIP 預設全部納入（果斷，不徵詢）
 
-**預設行為**：所有 `git status` 顯示的 uncommitted 變更（含與本次工作無關、其他 session 並行的 WIP）**一律**列入本次 `/commit` 流程，在 Step 2 依功能自然分組成不同 commit。
+**預設行為**：所有 `git status` 顯示的 uncommitted 變更（含與本次工作無關、其他 session 並行的 WIP、不認得的檔案）**一律無條件**列入本次 `/commit` 流程，照常跑 0-A review、在 Step 3 依功能分組成獨立 commit。
 
-**理由**：`/commit` 已付出 0-A / 0-B / 0-C 閘門的完整成本。把 WIP 排除在外等於下次 `/commit` 要重跑一次，浪費時間與 token，還會讓 WIP 長期積著。
+**這是預設動作，不需要徵詢使用者意見。** Step 0-Scope 不是「決定要不要納入」的判斷步驟，而是「確認預設已生效」的紀錄步驟。看到 `git status` 任何輸出 → 直接進 0-A，**NEVER** 在這一步停下來問使用者「XX 看起來不在本次 scope，要不要排除？」。
 
-**排除條件（唯一）**：使用者在 `$ARGUMENTS` 中**明確**指名要排除的檔案 / 路徑 / scope，例如：
+**理由**：`/commit` 已付出品質閘門的完整成本。把 WIP 排除在外等於下次 `/commit` 要重跑一次閘門，浪費時間與 token。Step 3 分組階段就是設計來把「主線工作 + 並行 WIP」自然分到不同 commit，**根本不需要在 Step 0 預先排除任何東西**。
+
+### 唯一允許的排除路徑
+
+**A. 使用者在 `$ARGUMENTS` 明確指名排除**（白紙黑字、語意無歧義）：
 
 - 「排除 `.env.local`」
 - 「不要動 `reports/`」
 - 「只 commit `app/` 底下」
 
-**NEVER** 自行判定「這個不在我 scope」而排除。若看到不認得的變更 → 走 `scope-discipline.md` 的「意外發現」流程：`git diff` 確認內容合理 → 納入流程讓 Step 2 分組。**NEVER** `git restore --staged` 或 `git checkout --` 清場。
+**B. WIP 確實構成阻礙時的 stash + handoff 流程**（見下節）
+
+除 A、B 外**一律全包**。
+
+### 阻礙處理：stash + HANDOFF（唯一允許脫離預設的方式）
+
+當某個 WIP 檔案**確實**會卡住流程（例：壞掉的實驗碼讓 0-A 過不了、debug print 還沒清掉、明顯與本次主題完全互斥的半成品），**唯一允許**的處置是：
+
+```bash
+git stash push -u -- <具體檔案路徑>  # 只 stash 阻礙檔，不要 stash 全部
+# 或必要時整批：
+git stash push -u -m "WIP: <簡述為何 stash> — see HANDOFF.md"
+```
+
+接著**立即**更新 `HANDOFF.md`（依 `.claude/rules/handoff.md` 格式），在 `In Progress` 或 `Next Steps` 寫入：
+
+- stash 訊息對應（用 `git stash list` 能找到）
+- 為何 stash（哪個檔、為何不能納入本次 commit）
+- 接手指引（`git stash pop` 後該怎麼收尾）
+
+寫完 HANDOFF 才繼續 0-A。
+
+### 嚴格禁令
+
+- **NEVER** 提議 / 暗示 / 委婉建議任何形式的丟棄 WIP 動作：
+  - **NEVER** `git restore` / `git restore --staged` / `git checkout --` / `git checkout <path>`
+  - **NEVER** `git reset --hard` / `git clean -fd`
+  - **NEVER** 在輸出寫「可以 revert XX」「要不要還原 XX」「先 revert 這部分」「discard 這個變更」「回到乾淨狀態」「清掉 XX」 — 這些都會誘導使用者毀掉自己的 WIP
+- **NEVER** 把上述動作包裝成「清理 / 重置 / 回到 baseline / 還原成乾淨狀態」等委婉說法
+- **NEVER** 以「這變更看起來壞掉 / 不該存在 / 不在 scope，是否要還原？」徵詢使用者意見 — 阻礙的唯一解法是 stash + HANDOFF
+- **NEVER** 自行判定「這個不在我 scope」「這看起來像別的 session 的殘留」而要求使用者決定要不要丟 — 一律假設使用者並行工作中
+
+**唯一例外**：使用者在 `$ARGUMENTS` **明確、主動**寫出 `git restore` / `git checkout --` / `revert <commit>` 等指令或具體變更名稱，且語意完全無歧義時，才能執行。從模糊語氣（「不要這個」「這個怪怪的」）解讀為「使用者想丟棄」**一律禁止** — 必須先確認是「排除本次 commit」（→ stash）還是「丟棄變更」（→ 拒絕，請使用者明確下指令）。
 
 ## Step 0: 品質檢查
 
-### 0-A. 程式碼審查（平行）
+### 0-A. 程式碼審查（委託 codex GPT 5.5，最多 2 輪：High → xHigh）
 
-**在同一訊息內**平行派兩個 subagent，等兩者都回報：
+**審查由 codex 執行，修正由 AI Agent 主線執行**。原本主線自跑的 `simplify` skill / `code-review` agent **不再使用**。
 
-1. **general-purpose agent** — 於 agent 內透過 Skill tool 呼叫 `simplify` skill，審查重用性、品質、效率
-2. **code-review agent**（`agent_type: code-review`）— 審查邏輯與安全
+兩輪採**漸進加深 reasoning effort**：Round 1 用 `high` 抓常見問題（速度與成本最佳化），Round 2 用 `xhigh` 抓 Round 1 漏網的深層問題（最高推理）。
 
-**所有回報的問題必須修正**。完成後明確輸出：
+#### Round 1 — codex review (high)
 
-```text
-✅ 0-A-1 simplify 通過
-✅ 0-A-2 code-review 通過
+```bash
+codex review --uncommitted \
+  -c model="gpt-5.5" \
+  -c model_reasoning_effort="high"
 ```
 
-兩個 ✅ 都出現才進入 0-B。
+讀完 codex 輸出後判斷：
+
+- **無問題** → 輸出 `✅ 0-A Round 1 通過（codex high 無 issue）`，跳到 0-B
+- **有問題** → AI Agent 主線**逐一修正 codex 列出的所有問題**，修完進入 Round 2
+
+#### Round 2 — codex review (xhigh，僅在 Round 1 有問題時執行)
+
+```bash
+codex review --uncommitted \
+  -c model="gpt-5.5" \
+  -c model_reasoning_effort="xhigh"
+```
+
+讀完輸出後判斷：
+
+- **無問題** → 輸出 `✅ 0-A Round 2 通過（codex xhigh 無 issue）`，進入 0-B
+- **仍有問題** → AI Agent 主線再次修正所有問題，修完**直接進入 0-B**（最多 2 輪 review，不做第 3 次）
+
+完成後明確輸出：
+
+```text
+✅ 0-A 通過（codex review 已完成 {1|2} 輪）
+```
+
+**禁止**：
+
+- **NEVER** 改用其他模型（必須 `gpt-5.5`）
+- **NEVER** 顛倒兩輪的 reasoning effort 或兩輪都用同一檔（Round 1 必為 `high`、Round 2 必為 `xhigh`）
+- **NEVER** 把 codex 列出的問題判定為「建議性質」「不在本次範圍」而跳過 — 一律修
+- **NEVER** 做第 3 輪 review（會無限拖長 commit 流程；2 輪內處理不完代表變更太大，應先 split）
+- **NEVER** 跳過 Round 2 — 只要 Round 1 有任何修正，**MUST** 跑 Round 2 用 `xhigh` 驗證
 
 ### 0-B. UI Design Review（條件觸發）
 
@@ -79,18 +145,37 @@ pnpm check
 
 通過後輸出 `✅ 0-C 通過`。
 
-## Step 1: 檢查變更狀態
+## Step 1: Schema 同步檢查（條件觸發）
+
+```bash
+git diff --name-only | grep -q "database.types.ts" && echo HAS || echo NO
+```
+
+若 `database.types.ts` 有變更：
+
+```bash
+supabase db reset
+supabase gen types typescript --local > /tmp/types-from-migration.ts
+diff app/types/database.types.ts /tmp/types-from-migration.ts
+```
+
+有差異 → **停止 commit**，提示使用者建立對應 migration。
+
+> 若專案改用遠端 LXC Supabase，將上述指令改為 `pnpm db:reset` / `pnpm db:types`（見 `.claude/rules/migration.md`）
+
+## Step 2: 檢查變更狀態
 
 ```bash
 git status
 git diff --stat
 ```
 
-若 `.gitignore` 有變更 → `git checkout .gitignore` 還原。
+若 `.gitignore` 有變更：
 
-## Step 2: 分析變更並分組
+- **允許保留**：僅新增 Clade 管理的 installation artifact / runtime state ignore 條目（例如 `.claude/.commit.lock`、`codex/`）
+- **其他任何變更** → `git stash push -- .gitignore` 並寫入 `HANDOFF.md`，**NEVER** `git checkout .gitignore` 直接還原（會毀掉使用者的 WIP）
 
-**分組前提**：Step 0-Scope 已宣告所有 uncommitted 變更都納入流程。這裡的任務是**分類到正確的 commit group**，不是二次過濾要不要納入。
+## Step 3: 分析變更並分組
 
 依功能/目的分組並輸出：
 
@@ -101,16 +186,7 @@ git diff --stat
 - path/to/file.ts
 ```
 
-**典型分組模式**（供參考，不強制）：
-
-- 與本次主要工作直接相關 → 一組（主 commit）
-- 其他 session 並行編輯的獨立工作（如 `.claude/` 規範、文件、設定檔） → 獨立一組，類型照實（通常 📝 docs / 🔨 refactor / 🧹 chore）
-- Formatter / lint 自動修復副作用 → 併入最相關的 group
-- 純 rename / 移動 → 獨立一組標 🔨 refactor
-
-若分組完發現某個 group 與主 commit 完全無關且無法合理歸類，**先停下回報使用者**，不要硬塞或默默排除。
-
-## Step 3: 逐一執行 Commit
+## Step 4: 逐一執行 Commit
 
 對每個分組：
 
@@ -125,7 +201,7 @@ EOF
 git log -1 --oneline
 ```
 
-## Step 4: 版本號升級、Staging 驗證、Tag Production
+## Step 5: 版本號升級與 Deploy Commit
 
 判斷升級類型：
 
@@ -145,49 +221,12 @@ git commit -m "$(cat <<'EOF'
 Co-Authored-By: Claude <noreply@anthropic.com>
 EOF
 )"
-```
-
-### 4-A. Push main → 觸發 staging 自動部署
-
-```bash
-git push origin main
-```
-
-`.github/workflows/deploy.yml` 的 `push: branches: [main]` 會觸發 `deploy-staging` + `smoke-test-staging`（以及 docs 對應 job）。
-
-若 `git push origin main` 因 non-fast-forward 被擋，停下處理 upstream 漂移（pull / rebase），**不要**跳過 staging 直接 tag。
-
-### 4-B. 自動等 staging 綠燈（`gh run watch`）
-
-取得剛才 push 觸發的 Deploy workflow run id，`gh run watch` 阻塞等結果：
-
-```bash
-# 取當前 HEAD commit 對應的 Deploy workflow run
-RUN_ID=$(gh run list --workflow=deploy.yml --branch=main --commit=$(git rev-parse HEAD) \
-  --limit=1 --json databaseId --jq '.[0].databaseId')
-
-test -n "$RUN_ID" || { echo "找不到 Deploy workflow run；確認 push 已觸發"; exit 1; }
-
-gh run watch "$RUN_ID" --exit-status
-```
-
-`--exit-status` 讓 `gh run watch` 在 run failure 時 exit 非 0。若失敗：
-
-1. 停下不 tag
-2. 修復問題（push 新 commit 會觸發新 staging run）
-3. 重跑 4-B
-
-### 4-C. Staging 綠 → 建 tag 推 production
-
-```bash
 pnpm tag
 ```
 
-`pnpm tag` 現在只做 `git tag v{版本號} && git push origin --tags`（main 已在 4-A push）。tag push 觸發 `deploy-production`：workflow 內的 `verify-ci-gate` + `verify-staging-gate`（跑 `scripts/check-staging-gate.mjs`）會 double-check 此 SHA 有對應的 staging success；若沒有 → production 被擋下。
+`pnpm tag` 會建立 `v{版本號}` tag 並推送到 origin。
 
-tag 推完後可選擇 `gh run watch` 等 production 完成，或讓 Step 6 的 HANDOFF 提醒使用者追蹤部署進度。
-
-## Step 5: 完成報告
+## Step 6: 完成報告
 
 ```text
 ✅ Commit 完成！
@@ -201,11 +240,11 @@ tag 推完後可選擇 `gh run watch` 等 production 完成，或讓 Step 6 的 
 Tag：v1.8.0 已建立並推送
 ```
 
-## Step 6: 更新 HANDOFF.md 與 ROADMAP
+## Step 7: 更新 HANDOFF.md 與 ROADMAP
 
 遵守 `.claude/rules/handoff.md`：commit 完成後**必須**更新 `HANDOFF.md`，把**所有可延續且尚未被接手的後續工作**寫入 —— 不限於 spectra change。同時同步 Spectra ROADMAP。
 
-### 6-A. 判斷是否需要 handoff
+### 7-A. 判斷是否需要 handoff
 
 檢查以下任一條件成立 → 需要 handoff：
 
@@ -217,9 +256,9 @@ Tag：v1.8.0 已建立並推送
 - 使用者曾提過但還沒做的事（在本 session 或前 session 出現過的 backlog）
 - 使用者明確表達接下來要交接 / 暫停
 
-全部不成立（真正什麼都沒得做了）→ 跳到 6-D：若 `HANDOFF.md` 存在且內容已過時，清空或刪除。
+全部不成立（真正什麼都沒得做了）→ 跳到 7-D：若 `HANDOFF.md` 存在且內容已過時，清空或刪除。
 
-### 6-B. 收集下一步資訊
+### 7-B. 收集下一步資訊
 
 從本次 session 脈絡、`git log`、`docs/tech-debt.md`、`openspec/ROADMAP.md` 的 Next Moves 萃取：
 
@@ -232,7 +271,7 @@ Tag：v1.8.0 已建立並推送
   - 跨 session backlog：使用者提過的待辦、roadmap 的 near-term 項目
   - 注意事項 / 陷阱：下一人接手前需要知道的隱性脈絡
 
-### 6-C. 寫入 `HANDOFF.md`
+### 7-C. 寫入 `HANDOFF.md`
 
 依 `.claude/rules/handoff.md` 格式覆寫：
 
@@ -260,7 +299,7 @@ Tag：v1.8.0 已建立並推送
 - 只寫 openspec 相關內容而漏掉其他可延續工作
 - 為了「填滿」區塊灌水 —— 真沒有就省略該區塊
 
-### 6-D. 同步 Spectra ROADMAP
+### 7-D. 同步 Spectra ROADMAP
 
 ```bash
 pnpm spectra:roadmap
@@ -268,7 +307,7 @@ pnpm spectra:roadmap
 
 重算 `openspec/ROADMAP.md` 的 AUTO 區塊（Active Changes / Active Claims / Parallel Tracks / Parked Changes）。
 
-若 6-B 收集到的 **Next Steps** 中包含跨 session backlog（不只是「commit 後立刻要做」的驗證動作），依 `.claude/rules/proactive-skills.md` 的「Spectra Roadmap Maintenance」**手動**更新 MANUAL 區塊的 `## Next Moves`，格式：
+若 7-B 收集到的 **Next Steps** 中包含跨 session backlog（不只是「commit 後立刻要做」的驗證動作），依 `.claude/rules/proactive-skills.md` 的「Spectra Roadmap Maintenance」**手動**更新 MANUAL 區塊的 `## Next Moves`，格式：
 
 ```text
 - [priority] 描述 — 依賴：xxx / 獨立 / 互斥：yyy
@@ -276,7 +315,7 @@ pnpm spectra:roadmap
 
 **禁止**：手編 `<!-- SPECTRA-UX:ROADMAP-AUTO:* -->` 區塊（會被下次 sync 覆寫）。
 
-### 6-E. 報告
+### 7-E. 報告
 
 ```text
 ✅ HANDOFF.md 已更新
@@ -284,7 +323,7 @@ pnpm spectra:roadmap
 （或：無可延續工作，HANDOFF.md 已清空 / 未建立）
 ```
 
-## Step 7: 釋放 /commit lock（**必做最後一步**）
+## Final Step: 釋放 /commit lock（**必做最後一步**）
 
 ```bash
 node .claude/scripts/commit-lock.mjs release
@@ -292,8 +331,8 @@ node .claude/scripts/commit-lock.mjs release
 
 **必須執行**，即使前面任何 step 失敗：
 
-- ✅ 正常完成 → 於 Step 6 後釋放
-- ⚠️ 中途失敗（0-A / 0-B / 0-C 修不動、staging 出問題、deploy workflow 紅燈）→ 回報使用者後**仍要**釋放 lock，再等使用者指示
+- ✅ 正常完成 → 釋放
+- ⚠️ 中途失敗（品質閘門修不動、staging 出問題、deploy workflow 紅燈）→ 回報使用者後**仍要**釋放 lock，再等使用者指示
 - ⛔ 使用者明確中止 → 釋放 lock
 
 **NEVER** 讓鎖長期遺留；stale lock 雖然 30 分鐘後會自動清，但中間其他 session 要跑 /commit 會被卡住。
