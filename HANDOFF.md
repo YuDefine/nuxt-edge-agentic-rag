@@ -20,9 +20,11 @@
 
 ## Next Steps
 
-1. **v0.55.0 production verify**（剛 ship，run 25254588577 in_progress）
-   - 確認 production deploy + smoke-test 通過後再進 acceptance 動作
-   - 順帶確認 production worker `features.queryRewriting=false` 仍生效（不啟用 rewriter）
+1. **v0.55.1 production verify**（剛 ship，run 25255949622 已 conclusion=success；production deploy +
+   smoke-test 通過）
+   - 實質為純 chore + docs：clade routing 規則同步 + HANDOFF/ROADMAP drift 修；user-facing 行為不變
+   - 主要驗 deploy 沒打破 build pipeline；確認 production worker `features.queryRewriting=false` 仍生效
+   - **注意**：v0.55.1 不含 rag-query-rewriting code 變更，不能視為 6.3 staging deploy 完成憑據；6.3 仍須獨立觸發 staging deploy 以便 6.4 acceptance 跑真實 rewriter
 2. 主動發 1-2 條 production chat 觸發 judge path 驗 TD-056 / TD-057 behavior
    （登入 `agentic.yudefine.com.tw` 或拿 admin token）
 3. **rag-query-rewriting 6.3**：`gh workflow run deploy.yml -f target=staging` 觸發 staging 部署
@@ -35,10 +37,15 @@
 
 ## Notes / Pitfalls
 
+- **v0.55.1 commit 範圍**（`d9acba3` chore + `7bcf9f6` docs + `9a0a64c` deploy）：
+  - chore 同步 clade v0.2.6 routing 規則（commit 0-A 改派 codex review、agent-routing.md 集中 routing
+    table、spectra-discuss/propose 加 A/B handoff、commit WIP 處置禁令強化）
+  - docs 整理 HANDOFF + ROADMAP MANUAL drift（16/29→16/34）
+  - 對齊修正：agent-routing.md:24 路徑、rules/commit.md:19 step 編號漂移
 - v0.55.0 commit `8b8b3ce` 帶兩條 polish：(a) Clade rules / spectra-\* skill 全套同步、commit-lock race fix、
   oxc 工具鏈整合（package.json `format` 加 negation pattern 排除 chmod 444 治理目錄）；
   (b) 新增 dev-only `/api/_dev/chat-smoke.post`（雙重守護：env=local + admin session）
-- ROADMAP MANUAL 行 19 已修 16/29 → 16/34（隨本次 commit 修正）；其餘 MANUAL 區塊（Current State 寫
+- ROADMAP MANUAL block：本次修了 rag-query-rewriting 行 16/29→16/34；其餘 MANUAL 區塊（Current State 寫
   「v0.52.0」、Next Moves 中 v0.53.0 verify 條目）仍偏舊，但不阻擋下一個 session
 - `local/mock-documents/` 已有 4 份 seed 檔（採購流程辦法、員工請假辦法、差旅費用報銷規範、新人入職指南）
 - TD-050 staging seed 部分已落地（5 份 fixture 在 R2）但 TD entry 仍 open；缺 AutoRAG indexing
@@ -49,3 +56,7 @@
   不影響 staging / production 真實環境
 - vue-tsc stack trace `vue-router/volar/sfc-route-blocks Cannot find module` 是 vue-tsc@3.2.7 對舊
   vue-router optional plugin 的解析錯誤，**typecheck exit 0**，不影響 commit / deploy
+- **`pnpm tag` 推 tags rejection noise**：`git push origin --tags` 一次推所有 local tags，撞到 8 個歷史
+  tag (v0.47.x ~ v0.50.x) local/remote 不一致 → exit 1。新 tag（如本次 v0.55.1）仍會成功 push，可用
+  `git ls-remote --tags origin v<version>` 驗證。下次有空可清 stale local tags 或改用 `git push origin v<version>`
+  只推單一 tag
