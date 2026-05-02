@@ -206,6 +206,7 @@ function getBindingIcon(cardType: NfcCardType): string {
 
 | Spectra phase                       | Gate script                                              | When to run                                                     |
 | ----------------------------------- | -------------------------------------------------------- | --------------------------------------------------------------- |
+| Before `spectra-propose` (handoff)  | **AskUserQuestion**：A. Codex GPT-5.5 xhigh / B. Claude Code 繼續做；A 路徑由主線 Claude 自己派背景 `codex exec`（**禁止**叫使用者切 CLI） | discuss 結束、進入 propose 前必詢問；由 `spectra-propose` Step 0 統一分流，詳見 `agent-routing.md` |
 | Before `spectra-propose`            | `bash scripts/spectra-ux/pre-propose-scan.sh`            | 注入 blast radius 要求，提醒必填區塊                            |
 | After `spectra-propose`             | `bash scripts/spectra-ux/post-propose-check.sh <change>` | 驗證 proposal 完整性                                            |
 | After `spectra-propose`             | `bash scripts/spectra-ux/design-inject.sh <change>`      | 若有 UI scope，提醒補上 `## Design Review` 區塊                 |
@@ -214,7 +215,7 @@ function getBindingIcon(cardType: NfcCardType): string {
 | Before `spectra-archive`            | `bash scripts/spectra-ux/design-gate.sh <change>`        | 阻擋未完成人工檢查或缺設計審查證據的 UI change                  |
 | Before `spectra-archive`            | `bash scripts/spectra-ux/archive-gate.sh <change>`       | 驗證 journey URL touch、schema drift、exhaustiveness            |
 | Before `spectra-archive` (v1.5+)    | `bash scripts/spectra-ux/followup-gate.sh <change>`      | 驗證 tasks.md 的 `@followup[TD-NNN]` 都在 `docs/tech-debt.md` 登記 |
-| **Session start / after `/assign`** | `pnpm spectra:roadmap` && `pnpm spectra:claims` && `pnpm spectra:followups` | 重算 ROADMAP、查看 active claims、摘要 follow-up 狀態 |
+| **Session start / 外部 runtime 跑完 spectra 後** | `pnpm spectra:roadmap` && `pnpm spectra:claims` && `pnpm spectra:followups` | 重算 ROADMAP、查看 active claims、摘要 follow-up 狀態 |
 
 **Claude Code 使用者**：上述由 `.claude/hooks/` 自動觸發，無需手動。
 **Codex / Cursor 使用者**：必須在對應 spectra 階段手動呼叫這些腳本，session 開始時也必須手動跑一次 `pnpm spectra:roadmap`、`pnpm spectra:claims`、`pnpm spectra:followups`。
