@@ -47,6 +47,14 @@ Local edits will be reverted by the next sync.
 | Archive 完成 + change 有 UI（design review findings） | `design-retro`    | 分析 findings、識別重複模式、建議改善 |
 | Findings 累積達 5 的倍數（5、10、15…）                | `design-retro`    | 週期性全量分析                        |
 
+### Sub-skill 禁用清單（永不觸發）
+
+| Sub-skill        | 規則                | 替代方式                                                              |
+| ---------------- | ------------------- | --------------------------------------------------------------------- |
+| `spectra-commit` | **NEVER** 主動觸發  | 走 `rules/core/commit.md` 規範的標準 commit 工序（含 hooks / 訊息格式） |
+
+**原因**：spectra-commit 是 spectra CLI 上游帶來的薄殼，本治理範圍下 commit 必須統一走 `rules/core/commit.md`。Claude 偵測到使用者要 commit Spectra change 的相關檔案時，**MUST** 直接走標準 git / `/commit` 流程，**NEVER** 改派 spectra-commit。
+
 ## Design Skill 自主觸發
 
 ### 觸發條件
@@ -62,9 +70,9 @@ Task 涉及 UI？
   │
   └─ 是 → Design Checkpoint：
        │
-       ├─ 1. 檢查 .impeccable.md
-       │     存在？→ 繼續
-       │     不存在？→ 先跑 /impeccable teach
+       ├─ 1. 檢查 PRODUCT.md（必要）+ DESIGN.md（建議）
+       │     PRODUCT.md 存在？→ 繼續（DESIGN.md 缺則建議跑 /impeccable document）
+       │     PRODUCT.md 不存在？→ 先跑 /impeccable teach
        │
        ├─ 2. 跑 /design improve [affected pages/components]
        │     → 取得診斷報告 + Design Fidelity Report
@@ -76,7 +84,7 @@ Task 涉及 UI？
        ├─ 3. 按 canonical order 執行計劃中的 design skill
        │     （結構 → 視覺 → 體驗 → 韌性 → polish）
        │
-       ├─ 4. 跑 /audit [affected pages]
+       ├─ 4. 跑 /impeccable audit [affected pages]
        │     Critical > 0？→ 修復後重跑
        │     Critical = 0？→ 繼續
        │
@@ -89,43 +97,45 @@ Task 涉及 UI？
 
 | UI 類型                | 常見需要的 skill              | 通常不需要          |
 | ---------------------- | ----------------------------- | ------------------- |
-| 表單密集（CRUD、輸入） | /layout, /clarify, /harden    | /overdrive, /bolder |
-| 資料表格（列表、搜尋） | /layout, /typeset, /adapt     | /delight, /animate  |
-| 儀表板/圖表            | /colorize, /layout, /typeset  | /quieter, /harden   |
-| 首次體驗/空狀態        | /harden, /clarify, /delight   | /optimize           |
-| 複雜互動流程           | /animate, /clarify, /harden   | /bolder             |
-| 登入/認證頁            | /typeset, /colorize           | /impeccable extract, /distill |
+| 表單密集（CRUD、輸入） | /impeccable layout, /impeccable clarify, /impeccable harden    | /impeccable overdrive, /impeccable bolder |
+| 資料表格（列表、搜尋） | /impeccable layout, /impeccable typeset, /impeccable adapt     | /impeccable delight, /impeccable animate  |
+| 儀表板/圖表            | /impeccable colorize, /impeccable layout, /impeccable typeset  | /impeccable quieter, /impeccable harden   |
+| 首次體驗/空狀態        | /impeccable harden, /impeccable clarify, /impeccable delight   | /impeccable optimize           |
+| 複雜互動流程           | /impeccable animate, /impeccable clarify, /impeccable harden   | /impeccable bolder             |
+| 登入/認證頁            | /impeccable typeset, /impeccable colorize           | /impeccable extract, /impeccable distill |
 
 ### Mutual Exclusivity
 
-- `/bolder` vs `/quieter`——選一個方向
-- `/distill` 先於 `/bolder`——簡化後才放大
-- `/colorize` vs `/quieter`——減弱時不加色
+- `/impeccable bolder` vs `/impeccable quieter`——選一個方向
+- `/impeccable distill` 先於 `/impeccable bolder`——簡化後才放大
+- `/impeccable colorize` vs `/impeccable quieter`——減弱時不加色
 
 ### Canonical Order（偏離需說明理由）
 
 ```
-/impeccable teach       ← 專案首次（無 .impeccable.md 時）
+/impeccable teach       ← 專案首次（無 PRODUCT.md 時）
+/impeccable document    ← 已有 code 但無 DESIGN.md 時，從 code 反推
 /impeccable shape       ← （選用）code 前需求釐清
   ↓
 /impeccable craft       ← 主要建置流程（shape-then-build）
-/distill                ← 先簡化（若雜亂）
+/impeccable distill     ← 先簡化（若雜亂）
   ↓
-/layout                 ← 結構與佈局（v2.1 從 /arrange 改名）
-/typeset                ← 字型與層次
-/colorize | /bolder | /quieter  ← 色彩與強度（擇一）
+/impeccable layout      ← 結構與佈局
+/impeccable typeset     ← 字型與層次
+/impeccable colorize | /impeccable bolder | /impeccable quieter  ← 色彩與強度（擇一）
   ↓
-/animate                ← 動效
-/clarify                ← 文案與訊息
-/delight                ← 個性與驚喜
-/harden                 ← 韌性、邊界情況、首次體驗（v2.1 併入原 /onboard）
+/impeccable animate     ← 動效
+/impeccable clarify     ← 文案與訊息
+/impeccable delight     ← 個性與驚喜
+/impeccable harden      ← 韌性、邊界情況
+/impeccable onboard     ← 首次體驗、空狀態、activation
   ↓
-/optimize               ← 效能
-/adapt                  ← 跨裝置（如需要）
+/impeccable optimize    ← 效能
+/impeccable adapt       ← 跨裝置（如需要）
 /impeccable extract     ← 萃取為 design system（如適用）
   ↓
-/audit                  ← 診斷驗收（Critical 必須為 0）
-/polish                 ← 永遠最後（v2.1 併入原 /normalize 的對齊角色）
+/impeccable audit       ← 診斷驗收（Critical 必須為 0）
+/impeccable polish      ← 永遠最後
 ```
 
 ## Design Review Task Template
@@ -138,11 +148,11 @@ Task 涉及 UI？
 ```markdown
 ## N. Design Review
 
-- [ ] N.1 檢查 .impeccable.md 是否存在，若無則執行 /impeccable teach
+- [ ] N.1 檢查 PRODUCT.md（必要）+ DESIGN.md（建議）；缺 PRODUCT.md 跑 /impeccable teach、缺 DESIGN.md 跑 /impeccable document
 - [ ] N.2 執行 /design improve [affected pages/components]（含 Design Fidelity Report）
 - [ ] N.3 修復所有 DRIFT 項目（Fidelity Score < 8/8 時必做，loop 直到 DRIFT = 0）
 - [ ] N.4 依 /design 計劃按 canonical order 執行 targeted skills
-- [ ] N.5 執行 /audit — 確認 Critical = 0
+- [ ] N.5 執行 /impeccable audit — 確認 Critical = 0
 - [ ] N.6 執行 review-screenshot — 視覺 QA
 - [ ] N.7 Fidelity 確認 — design-review.md 中無 DRIFT 項
 ```
@@ -157,7 +167,7 @@ Design Review 過程中若發現問題過多（例如需要列修正計劃讓使
 
 > 完成上述修正後，需要**重新跑一次完整 Design Review**（從 N.2 `/design improve` 開始），確認所有問題都已修復且未引入新問題。
 
-**規則**：Design Review 的 N.4 `/audit` 必須在**所有修正完成後**才執行。若中途停下修正，恢復後從 N.2 重新開始，不得跳過。
+**規則**：Design Review 的 N.4 `/impeccable audit` 必須在**所有修正完成後**才執行。若中途停下修正，恢復後從 N.2 重新開始，不得跳過。
 
 ## Design Review Findings Log
 
@@ -172,9 +182,9 @@ Design Review 過程中若發現問題過多（例如需要列修正計劃讓使
 
 | #   | 類別    | 問題摘要        | 嚴重度   | 發現來源  |
 | --- | ------- | --------------- | -------- | --------- |
-| 1   | spacing | 卡片間距不一致  | warning  | /layout   |
-| 2   | a11y    | 缺少 aria-label | critical | /audit    |
-| 3   | color   | 對比度不足      | critical | /colorize |
+| 1   | spacing | 卡片間距不一致  | warning  | /impeccable layout   |
+| 2   | a11y    | 缺少 aria-label | critical | /impeccable audit    |
+| 3   | color   | 對比度不足      | critical | /impeccable colorize |
 ```
 
 ### 類別定義
@@ -204,7 +214,7 @@ Design 工作可能發現 spec 未涵蓋的問題。發現時不停下，按以�
 | 情境                                                                    | 動作                                        |
 | ----------------------------------------------------------------------- | ------------------------------------------- |
 | /design 發現 spec 未涵蓋的 UX 需求（如缺 empty state、缺 loading 狀態） | `spectra-ingest` 更新 design artifact       |
-| /audit 發現需要新元件或新 API endpoint                                  | `spectra-ingest` 更新 tasks（加新 task）    |
+| /impeccable audit 發現需要新元件或新 API endpoint                                  | `spectra-ingest` 更新 tasks（加新 task）    |
 | Design 決策影響資料模型或 API schema                                    | `spectra-discuss` → 決定後 `spectra-ingest` |
 | /design 改動範圍超出原 change scope                                     | 停下，通知使用者，可能需要拆 change         |
 
@@ -255,7 +265,7 @@ Design 工作可能發現 spec 未涵蓋的問題。發現時不停下，按以�
 1. 檢查設計脈絡是否存在；沒有就先建立
 2. 執行 `/design improve [affected pages/components]`
 3. 依計劃按 canonical order 執行 targeted design skills
-4. 執行 `/audit`，確認 Critical = 0
+4. 執行 `/impeccable audit`，確認 Critical = 0
 5. 執行 screenshot review，將證據補到 `design-review.md`
 6. 對 UI change，archive 前必須通過 Design Gate
 
@@ -269,7 +279,7 @@ Design 工作可能發現 spec 未涵蓋的問題。發現時不停下，按以�
 - [ ] N.1 檢查設計脈絡是否存在，若無則先建立
 - [ ] N.2 執行 /design improve [affected pages/components]
 - [ ] N.3 依計劃按 canonical order 執行 targeted design skills
-- [ ] N.4 執行 /audit，確認 Critical = 0
+- [ ] N.4 執行 /impeccable audit，確認 Critical = 0
 - [ ] N.5 執行 screenshot review，補 design-review.md / 視覺 QA 證據
 ```
 
