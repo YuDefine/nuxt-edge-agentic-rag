@@ -8,7 +8,7 @@
 
 - `.claude/` 是本專案唯一真理。
 - 規則 source 在 `.claude/rules/`。
-- workflow / skills source 在 `.agents/skills/` 與 `.agents/skills/`。
+- workflow / skills source 在 `.agents/skills/` 與 `.agents/commands/`。
 - hooks / agents / settings source 在 `.claude/` 內對應路徑。
 - `AGENTS.md`、`.agents/`、`.codex/` 都是投影；若需調整內容，先改 `.claude/`，再用 `sync-to-agents` 同步。
 
@@ -50,14 +50,17 @@ Changes can be parked（暫存）— temporarily moved out of `openspec/changes/
 - 專題報告治理：`.claude/rules/project-report.md`
 - UX / Spectra workflow：`.claude/rules/ux-completeness.md`、`.claude/rules/proactive-skills.md`
 - 其餘 shared rules：`.claude/rules/`
-- workflow / skills：`.agents/skills/`、`.agents/skills/`
+- workflow / skills：`.agents/skills/`、`.agents/commands/`
 
 <!-- AUTO-SYNCED-RULE-INDEX:START -->
 
 ### All Rules（自動生成，source 在 `.claude/rules/`；請勿手編此區塊）
 
 - `.claude/rules/api-patterns.md`
+- `.claude/rules/auth.md`
+- `.claude/rules/code-style.md`
 - `.claude/rules/commit.md`
+- `.claude/rules/database-access.md`
 - `.claude/rules/development.md`
 - `.claude/rules/error-handling.md`
 - `.claude/rules/follow-up-register.md`
@@ -66,12 +69,16 @@ Changes can be parked（暫存）— temporarily moved out of `openspec/changes/
 - `.claude/rules/logging.md`
 - `.claude/rules/manual-review.md`
 - `.claude/rules/mcp-remote.md`
+- `.claude/rules/migration.md`
 - `.claude/rules/proactive-skills.md`
-- `.claude/rules/project-report.md`
+- `.claude/rules/query-optimization.md`
 - `.claude/rules/review-tiers.md`
+- `.claude/rules/rls-policy.md`
 - `.claude/rules/scope-discipline.md`
 - `.claude/rules/screenshot-strategy.md`
+- `.claude/rules/storage.md`
 - `.claude/rules/testing-anti-patterns.md`
+- `.claude/rules/trigger.md`
 - `.claude/rules/truth-layers.md`
 - `.claude/rules/unused-features.md`
 - `.claude/rules/ux-completeness.md`
@@ -81,7 +88,7 @@ Changes can be parked（暫存）— temporarily moved out of `openspec/changes/
 
 ## Codex Projection
 
-- 定期執行 `node ~/.codex/scripts/sync-to-agents.mjs`，讓 Codex surface 與 `.claude/` 保持一致。
+- 定期執行 `node ~/.claude/scripts/sync-to-agents.mjs`，讓 Codex surface 與 `.claude/` 保持一致。
 - 專案特化 promotion 規則放在 `.claude/sync-to-agents.config.json`。
 - 若 source 與投影不一致，以 `.claude/` 為準，之後再同步生成。
 

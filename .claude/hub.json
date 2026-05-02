@@ -8,7 +8,5 @@
     "framework": "nuxt",
     "domain": []
   },
-  "localHooks": [
-    "post-migration-gen-types.sh"
-  ]
+  "localHooks": ["post-migration-gen-types.sh"]
 }
