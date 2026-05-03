@@ -67,6 +67,7 @@
 | TD-064 | `test/integration/retrieve-verified-evidence-with-rewriter.spec.ts` 同時 mock `search` 與 `resolveCurrentEvidence`，違反「no mocking DB in integration tests」；應 relocate 或補真實 D1 round-trip 覆蓋 audit dynamic UPDATE                                  | mid      | open        | 2026-04-26 `/commit` 0-A code-review                             | —     |
 | TD-065 | `UpdateQueryLog.rewriterStatus` 型別 `string \| null` 與 `query_logs.rewriter_status` NOT NULL 不一致；潛在 5xx                                                                                                                                               | low      | open        | 2026-04-26 `/commit` 0-A code-review                             | —     |
 | TD-066 | `retrieveVerifiedEvidence` 用 `=== 'success'` 比對 `RewriterStatus`，違反專案 `switch + assertNever` exhaustiveness rule；新增 enum 值時不會 compiler error                                                                                                   | low      | open        | 2026-04-26 `/commit` 0-A code-review                             | —     |
+| TD-067 | `test/tsconfig.json` baseline 191 errors（component module not found + fixture type drift + Nitro route key excessive depth + `allowImportingTsExtensions` 缺 + middleware signature 漂移）                                                                   | mid      | open        | 2026-05-04 clade v0.3.10 cutover pre-push test-typecheck 揭露    | —     |
 
 ---
 
@@ -2420,3 +2421,55 @@ switch (rewriteResult.status) {
 - 新增 `RewriterStatus` 值（暫測 `fallback_blocked`）時 typecheck 立刻 fail
 - 移除測試後既有 4 個 status 全綠
 - `pnpm audit:ux-drift` 不報新漂移
+
+---
+
+## TD-067 — `test/tsconfig.json` baseline 191 errors
+
+**Status**: open
+**Priority**: mid
+**Discovered**: 2026-05-04 — clade v0.3.10 cutover 把 test typecheck 加到 pre-push 階段時揭露
+**Location**: `test/tsconfig.json` + 63 個 test files
+**Related markers**: search `@followup[TD-067]` in repo
+
+### Problem
+
+`pnpm exec tsc -p test/tsconfig.json --noEmit` 跑出 **191 errors in 63 files**，分類：
+
+- **Component module not found**（最大宗，TS2307）
+  - `~/components/chat/MarkdownContent.vue`、`~/components/chat/ConversationHistory.vue`、`~/components/chat/RefusalMessage.vue`、`~/components/auth/DeleteAccountDialog.vue`、`~~/app/components/admin/usage/TimelineChart.vue`、`~~/app/components/debug/OutcomeBreakdown.vue` 等
+  - 真實檔案存在，但 test path resolver 找不到（alias / Nuxt auto-import gap，`.nuxt/` types 或 test tsconfig paths 沒涵蓋）
+- **Mock/fixture type drift**（TS2352）
+  - `acceptance-auth/bindings/fixtures.test.ts`、`chat-route-heartbeat.spec.ts` 等的 fixture 跟 `ChatConversationMessage` 型別漂移（後者新增 `refused`、`refusalReason` 欄位）
+- **Nitro route key inference 撞「excessive stack depth」**（TS2321）
+  - `create-chat-conversation-history.spec.ts` — Nitro 端 type generic 太深
+- **`legacy-test-roots.test.ts(6,8)` TS5097**
+  - 缺 `allowImportingTsExtensions: true`
+- **`middleware-admin.test.ts` 函式簽名漂移**
+  - middleware 業務 signature 改成 2 args，test 只給 1
+- **47× TS2345、22× TS18048** 跨 mcp/integration tests
+- **`vitest.config.ts:130,140` TS2345**
+  - vitest 4.x `TestProjectInlineConfiguration.plugins` 不接受 `unknown[]`，需顯式 cast 或 import 正確 type
+- **`test/unit/sse-parser.spec.ts` TS2322**
+  - `onBlock` callback 隱式 return widening（`Promise<string>` vs `Promise<'continue' | 'terminate'>`），需 `return 'continue' as const` 或顯式 type annotation
+
+clade v0.3.10 把 test-tsconfig 放 pre-push 後立即擋下；clade v0.3.11 把該 check 從中央倉移除（因 5 家 consumer 中有 test/tsconfig.json 的 3 家裡 2/3 baseline 紅，hit rate 過高）。**目前不擋 push**，但 baseline 仍存在，是真實 type safety gap。
+
+### Fix approach
+
+按錯誤類型分批：
+
+1. **Component module not found**（先做，最大宗）
+   - 確認 path alias（`~/`、`@/`、`~~/`、`#shared/`）在 `test/tsconfig.json` paths 設定不全，或 Nuxt auto-import 沒對 test scope 生效
+   - 修 `test/tsconfig.json` paths 或 `extends` 的 base map
+2. **Mock/fixture type drift**：grep `ChatConversationMessage` fixture，補上新增欄位
+3. **`legacy-test-roots.test.ts`**：加 `allowImportingTsExtensions: true` 到 test tsconfig
+4. **`vitest.config.ts`**：plugins 加 `as PluginOption[]` cast，或 import 正確 type
+5. **`sse-parser.spec.ts`**：onBlock callback return `'continue' as const` 或顯式 annotation
+6. **Nitro route key excessive depth**：用 `as any` workaround 或升級 Nitro
+7. **`middleware-admin.test.ts`**：找 middleware 真實 signature，補第二個 arg
+8. **47× TS2345 / 22× TS18048**：per-file 分析（mock signature drift / `Object is possibly undefined` 補 narrow）
+
+### Acceptance
+
+`pnpm exec tsc -p test/tsconfig.json --noEmit` 0 errors。完成後可向 clade 中央倉爭取「opt-in 重啟 test-tsconfig pre-push check（hub.json flag）」— 但需先驗證至少 2 家 consumer baseline 也綠。
