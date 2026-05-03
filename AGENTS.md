@@ -1,6 +1,5 @@
 <!-- AUTO-GENERATED from .claude/ — 請勿手動編輯 -->
 
-
 ## Language
 
 - 一律使用繁體中文，不要使用簡體中文。
@@ -95,6 +94,7 @@ Changes can be parked（暫存）— temporarily moved out of `openspec/changes/
 - 若 source 與投影不一致，以 `.claude/` 為準，之後再同步生成。
 
 <!-- CLADE:SNIPPET:post-push-ci-watch:START -->
+
 ## Post-Push CI Watcher
 
 當主線執行 `git push --tags`（或推單一 tag、或 push commit 觸發發版 workflow）**成功**後，**若**該 repo 含 `.github/workflows/*.yml` 且 `gh` CLI 可用：
@@ -122,17 +122,21 @@ Subagent 任務應包含（cwd 設為 push 發生的 repo path）：
 - **fail / timeout** → **MUST** 用 `request_user_input` 給使用者二選一：
   - `[1] 立刻 root-cause + 修` — 讀 `logExcerpt` 找根因，進除錯流程；修完前 **NEVER** 主動 push
   - `[2] 登記 HANDOFF.md` — 在 repo root 的 `HANDOFF.md` 末尾 append：
+
     ```
     - [ ] [<YYYY-MM-DD>] v<version> CI <fail|timeout> — <failedJob>
       - Run: <runUrl>
       - 根因猜測: <一行>
     ```
+
     若 `HANDOFF.md` 不存在 → 先建立骨架：
+
     ```
     # HANDOFF
 
     ## CI 紅燈待辦
     ```
+
 - **unavailable** → 一行報「watcher 無法啟動（<原因>），略過」結束，**NEVER** 追問使用者
 
 ### 禁忌
