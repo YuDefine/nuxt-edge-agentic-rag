@@ -13,6 +13,13 @@ set -euo pipefail
 PROJECT_ROOT="$(git rev-parse --show-toplevel)"
 cd "$PROJECT_ROOT"
 
+# Auto-detect vite-plus 是否裝在此 consumer
+# 沒裝就 skip（graceful — 適用 non-vite-plus consumer 如純 nuxt + eslint 專案）
+if ! pnpm exec vp --version >/dev/null 2>&1; then
+  echo "⊘ vp 未安裝 — skip vp-staged check（如為 vite-plus 專案請 pnpm add -D vite-plus）"
+  exit 0
+fi
+
 # clade 治理副本 — 永遠不該被 lint/fmt 處理（會被 chmod 444 擋住寫入，且行為應跟中央倉一致）
 CLADE_MANAGED_PREFIXES=(
   '.claude/rules/'
@@ -53,13 +60,27 @@ while IFS= read -r -d '' file; do
   esac
 done < <(git diff --cached --name-only --diff-filter=ACM -z)
 
+# vp 在 staged paths 全被 vite.config.lint.ignorePatterns 過濾後會 exit 1 +
+# 印「No files found to lint」— 視為 success（不是真正的 lint error）
+run_vp_with_empty_tolerance() {
+  local out exit_code=0
+  out="$(pnpm exec "$@" 2>&1)" || exit_code=$?
+  echo "$out"
+  if ((exit_code != 0)); then
+    if echo "$out" | grep -qE "No files found to (lint|format)"; then
+      return 0
+    fi
+    return "$exit_code"
+  fi
+}
+
 if ((${#lint_targets[@]} > 0)); then
   echo "🔍 vp lint --fix (${#lint_targets[@]} files)..."
-  pnpm exec vp lint --fix --no-error-on-unmatched-pattern "${lint_targets[@]}"
+  run_vp_with_empty_tolerance vp lint --fix "${lint_targets[@]}"
 fi
 
 if ((${#fmt_targets[@]} > 0)); then
   echo "🎨 vp fmt (${#fmt_targets[@]} files)..."
-  pnpm exec vp fmt --no-error-on-unmatched-pattern "${fmt_targets[@]}"
+  run_vp_with_empty_tolerance vp fmt "${fmt_targets[@]}"
   git add -- "${fmt_targets[@]}"
 fi
