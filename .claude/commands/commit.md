@@ -1,6 +1,13 @@
 ---
 description: 依功能分類變更並逐步完成 commit，遵循 commitlint 規範
 ---
+<!--
+🔒 LOCKED — managed by clade
+Source: plugins/hub-core/commands/commit.md
+Edit at: /Users/charles/offline/clade
+Local edits will be reverted by the next sync.
+-->
+
 
 ## User Input
 
@@ -78,13 +85,23 @@ git stash push -u -m "WIP: <簡述為何 stash> — see HANDOFF.md"
 
 兩輪採**漸進加深 reasoning effort**：Round 1 用 `high` 抓常見問題（速度與成本最佳化），Round 2 用 `xhigh` 抓 Round 1 漏網的深層問題（最高推理）。
 
+#### 執行方式：背景跑 + 每 ~5 分鐘確認進度
+
+`codex review` 在 `high` / `xhigh` 推理下常需數分鐘。**MUST** 用 Bash `run_in_background: true` 啟動，並**每 ~5 分鐘**讀一次背景輸出確認進度（process 還活著、有沒有錯訊、跑到哪一檔）。建議用 `ScheduleWakeup({delaySeconds: 270})` 排隔，避開 prompt cache 5 分鐘 TTL 邊界（300s 是 cache miss 最差解）。
+
+- **NEVER** 把 codex review 用 foreground 同步阻塞主線 — 等下去什麼事都做不了
+- **NEVER** 連續多次 sleep <60s 短輪詢 — 會把 cache 燒光也吵
+- **NEVER** 就乾等到 codex 自己結束才看一眼 — 中途卡住（codex auth 過期、context 超量、模型拒答）會白等
+- **NEVER** wake 起來只回報「還在跑」— 每次 poll **MUST** 讀實際輸出有具體狀態（哪一步、哪個檔、有沒有 issue 浮現）才算數
+- 結束條件：背景 process 結束、輸出含完成標記、或使用者叫停 — 才進入後續判斷
+
 #### Round 1 — codex review (high)
 
 ```bash
-codex review --uncommitted \
-  -c model="gpt-5.5" \
-  -c model_reasoning_effort="high"
+.claude/scripts/codex-review-safe.sh high
 ```
+
+> ℹ️ wrapper 暫時把 `~/.codex/config.toml` 移開避開 MCP server hang（codex CLI 對 nested TOML override 是 merge 不是 replace；MCP 載入 + 卡死是已知問題）。`trap EXIT` 確保不論 codex 怎麼結束 config 都會還原。**不要**改回 `codex review --uncommitted` 直接跑 — 在配 codebase-memory-mcp 的環境會卡 70 秒 fetch failed 死掉。
 
 讀完 codex 輸出後判斷：
 
@@ -94,9 +111,7 @@ codex review --uncommitted \
 #### Round 2 — codex review (xhigh，僅在 Round 1 有問題時執行)
 
 ```bash
-codex review --uncommitted \
-  -c model="gpt-5.5" \
-  -c model_reasoning_effort="xhigh"
+.claude/scripts/codex-review-safe.sh xhigh
 ```
 
 讀完輸出後判斷：
@@ -135,33 +150,78 @@ git diff --name-only
 
 ### 0-C. CI 等效檢查（Fix-Verify Loop）
 
+跑下列指令確保 **format / lint / typecheck / test 全部 0 errors + 0 warnings + 0 test failures**：
+
 ```bash
 pnpm check
 ```
 
-失敗時進入 loop：修復 → `vp fmt` → `pnpm check` → 重複直到 0 errors + 0 warnings。
+**檢查 `pnpm check` 是否真的包含 test**（多數 consumer 的 `check` 只有 format/lint/typecheck，**CI 才跑完整 test**，本地不補跑就會在 push 後才看到測試失敗）：
 
-**禁止**用 `npx vitest run` / `npx eslint` 等個別工具替代 `pnpm check`。若 `.claude/worktrees/` 干擾結果，先清理再跑。
+```bash
+node -e "const s=require('./package.json').scripts.check||''; console.log(/test|vitest/.test(s)?'check-includes-test':'check-missing-test')"
+```
 
-通過後輸出 `✅ 0-C 通過`。
+若輸出 `check-missing-test`，**必須**額外跑：
+
+```bash
+pnpm test          # 或 vp test run / pnpm test:unit，依 consumer 設定
+```
+
+失敗時進入 loop：修復 → `vp fmt` → 重跑上述兩步 → 直到全綠。
+
+**禁止**用 `npx vitest run` / `npx eslint` 等個別工具替代 `pnpm check` / `pnpm test`。若 `.claude/worktrees/` 干擾結果，先清理再跑。
+
+通過後輸出 `✅ 0-C 通過（format/lint/typecheck/test 全綠）`。
 
 ## Step 1: Schema 同步檢查（條件觸發）
 
-```bash
-git diff --name-only | grep -q "database.types.ts" && echo HAS || echo NO
-```
-
-若 `database.types.ts` 有變更：
+**觸發條件**：types 檔或任一 migration 有變更（含 staged + unstaged）。
 
 ```bash
-supabase db reset
-supabase gen types typescript --local > /tmp/types-from-migration.ts
-diff app/types/database.types.ts /tmp/types-from-migration.ts
+# 從 package.json 讀 types 路徑（若有自訂路徑）；fallback 到 conventional locations
+# 避開頂層 return（Node script 不允許）— 用 if/else 與 .find()
+TYPES=$(node -e "
+  const fs = require('fs');
+  const pkg = require('./package.json');
+  const custom = pkg.config && pkg.config.dbTypesPath;
+  const candidates = [
+    'packages/core/app/types/database.types.ts',
+    'app/types/database.types.ts',
+    'shared/types/database.types.ts',
+    'src/types/database.types.ts',
+  ];
+  const path = custom || candidates.find(function(p) { return fs.existsSync(p); }) || 'app/types/database.types.ts';
+  console.log(path);
+")
+
+# 檢查 types 或 migrations 是否變更（HEAD diff 含 staged）
+git diff --name-only HEAD -- "$TYPES" supabase/migrations/ | grep -q . && echo HAS || echo NO
 ```
 
-有差異 → **停止 commit**，提示使用者建立對應 migration。
+若 HAS（types 檔或 migrations 有變更）：
 
-> 若專案改用遠端 LXC Supabase，將上述指令改為 `pnpm db:reset` / `pnpm db:types`（見 `.claude/rules/migration.md`）
+```bash
+# 1. 先把 working tree 的版本（含 staged + unstaged）拷一份備查
+cp "$TYPES" /tmp/types-before-reset.ts
+
+# 2. 重置 DB + 從 migrations 重新生成 types（自動偵測 LXC/Docker 模式）
+if node -e "process.exit(require('./package.json').scripts?.['db:reset'] ? 0 : 1)" 2>/dev/null; then
+  # LXC / 遠端 Supabase 模式：consumer 提供 pnpm db:reset wrapper（會 reset DB + 跑 db:types 寫到 $TYPES）
+  pnpm db:reset
+else
+  # 本機 Docker Supabase 模式
+  supabase db reset
+  supabase gen types typescript --local > "$TYPES"
+fi
+
+# 3. 比對：working tree 版本 vs migrations 推導版本
+diff /tmp/types-before-reset.ts "$TYPES"
+```
+
+有差異 → **停止 commit**，提示使用者依差異建立對應 migration 或還原 `$TYPES`。
+
+> **遠端 LXC 模式注意**：`pnpm db:types` 通常**直接寫入** `$TYPES` 不輸出 stdout，所以**不能**用 `> /tmp/...` 重導向取值（一定要先 `cp` 備份再 `pnpm db:reset`）。
 
 ## Step 2: 檢查變更狀態
 
@@ -315,13 +375,52 @@ pnpm spectra:roadmap
 
 **禁止**：手編 `<!-- SPECTRA-UX:ROADMAP-AUTO:* -->` 區塊（會被下次 sync 覆寫）。
 
-### 7-E. 報告
+### 7-E. 把 HANDOFF/ROADMAP 變更納入 commit
+
+7-C/7-D 修改的是 tracked 檔（`HANDOFF.md`、`openspec/ROADMAP.md`），**MUST** 在 Step 8 `/ship` 之前 commit 進去，否則 working tree 會 dirty、`/ship` 開出的 PR 也不含這次的交接狀態。
+
+```bash
+# 只 stage 7-C/7-D 動到的檔，避免誤包其他 WIP（commit 流程預設不該再撿東西）
+git add HANDOFF.md openspec/ROADMAP.md 2>/dev/null || true
+
+# 若沒實際變動（HANDOFF 不需更新、ROADMAP 已 current），跳過 commit
+if ! git diff --cached --quiet -- HANDOFF.md openspec/ROADMAP.md 2>/dev/null; then
+  git commit -m "$(cat <<'EOF'
+📝 docs(handoff): 更新 commit 後交接狀態
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+EOF
+)"
+  git log -1 --oneline
+fi
+```
+
+> 注意：這個 commit **不**重新 bump 版本（不是 deploy），只是把 HANDOFF/ROADMAP 落入 history。Tag 仍指向 Step 5 的 deploy commit；後續 fresh clone 想拉最新交接資訊時，看 main 即可。
+
+### 7-F. 報告
 
 ```text
-✅ HANDOFF.md 已更新
-✅ ROADMAP 已同步
+✅ HANDOFF.md 已更新（已入 commit / 無變更略過）
+✅ ROADMAP 已同步（已入 commit / 無變更略過）
 （或：無可延續工作，HANDOFF.md 已清空 / 未建立）
 ```
+
+## Step 8: 自動銜接 /ship（條件觸發）
+
+```bash
+git branch --show-current
+```
+
+**觸發條件**：當前**不在 main / master 分支**，且 consumer 提供 `/ship` skill（會 push branch 並開 PR）。
+
+```text
+🚀 Commit 完成！要繼續執行 /ship 推送並建立 PR 嗎？
+```
+
+- 同意 → 執行 `/ship` skill
+- 拒絕或已在 main / master → 跳過
+
+**不觸發**：在 main / master 分支，或 consumer 沒有 `/ship` skill。
 
 ## Final Step: 釋放 /commit lock（**必做最後一步**）
 

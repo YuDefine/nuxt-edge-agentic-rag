@@ -1,6 +1,13 @@
 ---
 description: 同步更新 docs/verify/ 文件，確保文件反映當前系統狀態
 ---
+<!--
+🔒 LOCKED — managed by clade
+Source: plugins/hub-core/commands/doc-sync.md
+Edit at: /Users/charles/offline/clade
+Local edits will be reverted by the next sync.
+-->
+
 
 ## User Input
 
@@ -95,6 +102,7 @@ $ARGUMENTS
 - PINIA_ARCHITECTURE.md - Pinia 架構
 - REMOTE_DEPLOYMENT.md - 遠端部署
 - RLS_PERFORMANCE_OPTIMIZATION.md - RLS 效能
+- SENTRY_CONFIGURATION.md - Sentry 設定
 - SUPABASE_ARCH_GUIDELINES.md - Supabase 架構
 - SUPABASE_BACKUP_RESTORE.md - 備份還原
 - SUPABASE_MIGRATION_GUIDE.md - Migration 指南
