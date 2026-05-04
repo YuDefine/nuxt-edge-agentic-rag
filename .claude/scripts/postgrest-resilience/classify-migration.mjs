@@ -87,7 +87,7 @@ const rank = {
 
 function highest(severities) {
   if (severities.length === 0) return 'review_required'
-  return severities.sort((a, b) => rank[b] - rank[a])[0]
+  return severities.toSorted((a, b) => rank[b] - rank[a])[0]
 }
 
 const findings = statements.map((statement, index) => {
