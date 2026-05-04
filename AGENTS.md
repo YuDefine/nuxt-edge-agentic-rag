@@ -77,6 +77,7 @@ Changes can be parked（暫存）— temporarily moved out of `openspec/changes/
 - `.claude/rules/rls-policy.md`
 - `.claude/rules/scope-discipline.md`
 - `.claude/rules/screenshot-strategy.md`
+- `.claude/rules/session-tasks.md`
 - `.claude/rules/storage.md`
 - `.claude/rules/testing-anti-patterns.md`
 - `.claude/rules/trigger.md`
