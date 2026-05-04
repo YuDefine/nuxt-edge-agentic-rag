@@ -68,6 +68,27 @@ pnpm typecheck                          # 類型檢查
 
 > `supabase db advisors` 需 CLI v2.81.3+。若版本不足，可用 MCP `get_advisors` 替代。
 
+## Production Resilience Classification
+
+Self-host Supabase production migration 前，先分類 migration 風險：
+
+| Classification | Examples | Required action |
+| --- | --- | --- |
+| `online_safe` | add nullable column, create table, create function v2, create index concurrently, add FK/check `NOT VALID` | 可在線上跑，但仍需 PostgREST `/ready` gate 與 smoke |
+| `expand_contract_required` | rename/drop column, change type, drop function signature, replace exposed RPC | 拆成 expand → app rollout → contract，不可一次 deploy |
+| `maintenance_required` | unavoidable `ACCESS EXCLUSIVE`, table rewrite, large blocking DML, non-concurrent hot-table index | hard stop；需 rollback/maintenance decision |
+
+規則：
+
+- **NEVER** 宣稱所有 migration 都能零停機。
+- **NEVER** 把 app code retry/session fix 當成 migration safety。
+- **MUST** 區分 PostgREST schema cache reload 與 DB lock；split surface 不能解除同一張 table 的 blocking lock。
+- **MUST** 在 self-host production deploy 保存 `/ready` evidence、traffic smoke summary、PostgREST logs。
+- 可用 clade script prototype（consumer sync 後位於 `.codex/scripts/postgrest-resilience/`）：
+  - `.codex/scripts/postgrest-resilience/classify-migration.mjs <migration.sql>`
+  - `.codex/scripts/postgrest-resilience/ready-watch.mjs --url=<admin-ready-url>`
+  - `.codex/scripts/postgrest-resilience/smoke-runner.mjs --endpoint=<name=url>`
+
 ## Schema 規範
 
 ### Schema 邊界
@@ -109,5 +130,7 @@ SELECT setval(
 - [ ] **SECURITY DEFINER 函式不在 `public` schema**（放 private schema + GRANT）
 - [ ] 所有 View 有 `security_invoker = true`
 - [ ] 表格/函式引用使用 schema 前綴
+- [ ] Production migration 已分類：online-safe / expand-contract / maintenance-required
+- [ ] Self-host production reload 有 PostgREST `/ready` gate 與 smoke evidence
 - [ ] `supabase db reset` + `db lint` + `db advisors` + `pnpm typecheck` 通過
 - [ ] RLS 已設定（如適用）
