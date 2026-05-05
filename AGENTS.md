@@ -71,6 +71,7 @@ Changes can be parked（暫存）— temporarily moved out of `openspec/changes/
 - `.claude/rules/manual-review.md`
 - `.claude/rules/mcp-remote.md`
 - `.claude/rules/migration.md`
+- `.claude/rules/nuxt-security.md`
 - `.claude/rules/proactive-skills.md`
 - `.claude/rules/query-optimization.md`
 - `.claude/rules/review-tiers.md`
