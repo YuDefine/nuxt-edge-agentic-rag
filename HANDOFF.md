@@ -15,8 +15,6 @@
 - **TD-056 / TD-061 / TD-057 behavior 驗收**：v0.52.1 fix code 已 ship 且 root cause 完美對應
   （3/3 ship 前 pipeline_error 都是 judge `completionTokens=200` 截斷），但 production 24h
   只 1 筆 traffic 沒走 judge / SSE chat path → 需要主動發 chat 才能驗證 fix 生效
-- **rag-query-rewriting 6.4 staging acceptance**：依賴 staging RAG retrieve 有真實 results
-  （staging R2 已 seed 5 份 fixture，但需確認 AutoRAG indexing 完成）
 
 ## Next Steps
 
@@ -28,7 +26,7 @@
 2. 主動發 1-2 條 production chat 觸發 judge path 驗 TD-056 / TD-057 behavior
    （登入 `agentic.yudefine.com.tw` 或拿 admin token）
 3. **rag-query-rewriting 6.3**：`gh workflow run deploy.yml -f target=staging` 觸發 staging 部署
-4. **rag-query-rewriting 6.4 / 6.5**：對 staging 跑 35 筆 acceptance fixture，記證據到
+4. **rag-query-rewriting 6.4 / 6.5**：staging RAG 資料已就緒；對 staging 跑 35 筆 acceptance fixture，記證據到
    `local/reports/notes/main-v0.0.54-acceptance-rewriter-staging-{date}.md`；6.1 的 success path
    會在 staging 驗到，可順帶確認
 5. **rag-query-rewriting 3.3**：5 條 fixture prompt validation（建議在 staging 跑，因為 local Workers AI
@@ -47,9 +45,9 @@
   (b) 新增 dev-only `/api/_dev/chat-smoke.post`（雙重守護：env=local + admin session）
 - ROADMAP MANUAL block：本次修了 rag-query-rewriting 行 16/29→16/34；其餘 MANUAL 區塊（Current State 寫
   「v0.52.0」、Next Moves 中 v0.53.0 verify 條目）仍偏舊，但不阻擋下一個 session
-- `local/mock-documents/` 已有 4 份 seed 檔（採購流程辦法、員工請假辦法、差旅費用報銷規範、新人入職指南）
-- TD-050 staging seed 部分已落地（5 份 fixture 在 R2）但 TD entry 仍 open；缺 AutoRAG indexing
-  完成驗證 + 4 個 tool call 重跑 acceptance
+- Production / staging demo seed 已補齊（TD-050 done）：`pnpm demo-seed <staging|production> --apply`
+  寫入 12 docs / 14 versions / 94 source chunks / 16 query logs / 5 users / 4 MCP tokens，並觸發 AI
+  Search sync；維護方式見 `docs/runbooks/demo-seed.md`
 - **csrf-token wiring**（curl 對 `/api/chat` 用）：`GET /` parse `<meta name="csrf-token" content="...">`
   → POST 帶 `csrf-token: <token>` header + cookie jar（含 `csrf=...` + `better-auth.session_token=...`）
 - Local Workers AI binding 跑 rewriter judge model 會 fallback_error；fallback safety 機制工作正常，

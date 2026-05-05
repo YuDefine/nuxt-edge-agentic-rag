@@ -50,7 +50,7 @@
 | TD-047 | `/api/chat` SSE `ready` 後階段 error 時 Container 未 emit `conversation-persisted` → DB 已建 conv 但 UI 不更新                                                                                                                                                | mid      | done        | 2026-04-25 consolidate-conversation-history-config §7.4 人工檢查 | —     |
 | TD-048 | 聊天 UI 缺顯式「新對話」入口 — sessionStorage 記住 active id 後只能靠刪除或 DevTools 清才能開新對話                                                                                                                                                           | mid      | done        | 2026-04-25 consolidate-conversation-history-config §7.2 人工檢查 | —     |
 | TD-049 | Cloudflare Pages deploy API 拒絕 git HEAD commit message（`Invalid commit message UTF-8 string [8000111]`）                                                                                                                                                   | mid      | done        | 2026-04-25 v0.43.0 deploy run 24908303837                        | —     |
-| TD-050 | Staging R2 (`agentic-rag-documents-staging`) 為空 — staging RAG content 缺 seed / 無 sync schedule                                                                                                                                                            | mid      | open        | 2026-04-25 wire-do-tool-dispatch §7.1 post-fix observation       | —     |
+| TD-050 | Production / staging demo seed 已具備完整 D1 evidence、R2 metadata 與 AI Search active/current retrieval                                                                                                                                                      | mid      | done        | 2026-05-04 production / staging mock data audit                  | —     |
 | TD-051 | libsql `legacy_alter_table=1` 與 0007/0009 RENAME-rewrite 假設衝突 → account/session/passkey FK 在 fresh local DB 殘留 `user_new` ref，OAuth login 報 `unable_to_link_account`                                                                                | high     | done        | 2026-04-25 dev server 報 `unable_to_link_account`                | —     |
 | TD-052 | `passkey-first-link-google.spec.ts` 的 `hubDb.transaction` stub 沒覆蓋 `syncUserProfile` migrate path 的 `tx.update().set().where()` chain                                                                                                                    | low      | done        | 2026-04-25 wire-do §5.x SSE Tests cross-spec failure             | —     |
 | TD-053 | `fix-user-profile-id-drift` production observation — 立即採樣 `wrangler tail --env production` 5-10 分鐘 + 撈最近 24h logs 搜 `user_profiles sync failed` 確認無預期外觸發                                                                                    | low      | done        | 2026-04-25 fix-user-profile-id-drift archive                     | —     |
@@ -1701,20 +1701,30 @@ run: pnpm exec wrangler pages deploy docs/.vitepress/dist \
 
 ---
 
-## TD-050 — Staging R2 (`agentic-rag-documents-staging`) 為空，缺 RAG content seed / sync schedule
+## TD-050 — Production / staging demo seed evidence bridge
 
-**Status**: open
+**Status**: done
+**Resolved**: 2026-05-04 — 新增 `scripts/demo-seed/` + `pnpm demo-seed <staging|production>`，並已套用到 staging 與 production。兩個環境都有 12 份 demo documents、14 個 versions、94 個 source chunks、12 筆 citation_records、16 筆 query_logs、18 筆 messages、5 個 demo users、4 個 MCP token rows；R2 寫入 108 個 demo objects；AI Search sync job 完成（staging `ae14e71d-d066-45e5-87b2-e44c41a9f3d4`、production `20d8bc95-e45f-44a0-99e7-1318c1fea922`）。`pnpm demo-seed <env> --verify-only` 透過 Worker AI binding structured filters 驗證 internal / restricted 查詢各回 5 筆 active/current 且含 `document_version_id` / `citation_locator` / `access_level` metadata 的 chunks。
 **Priority**: mid
 **Discovered**: 2026-04-25 — `wire-do-tool-dispatch` §7.1 post-fix observation（TD-046 修復後 4 個 tool call `isError: false` 但 `citations:[] / results:[]` empty）
-**Location**: R2 bucket `agentic-rag-documents-staging`（CF account `0eac599c12df10586d97a78179b9f11f`）、`agentic-rag-staging` AutoRAG instance
+**Location**: `scripts/demo-seed/`, `docs/runbooks/demo-seed.md`, R2 buckets `agentic-rag-documents-staging` / `agentic-rag-documents`, AI Search instances `agentic-rag-staging` / `agentic-rag`, D1 `agentic-rag-db-staging` / `agentic-rag-db`
 **Related markers**: search `@followup[TD-050]` in repo
 
 ### Problem
 
-TD-046 修復後 staging `agentic-rag-staging` AutoRAG binding 已可正常呼叫，但因 `agentic-rag-documents-staging` R2 bucket **完全為空**（CF API 確認 `result: []`），所有 staging RAG retrieval 都回 empty / refused：
+TD-046 修復後 staging `agentic-rag-staging` binding 已可正常呼叫。2026-04-25 已上傳 5 份 fixture 到 R2；2026-05-04 live audit 進一步確認 `wrangler ai-search stats agentic-rag-staging` 顯示 `Indexed=5`、R2 bucket `object_count=5` / `bucket_size=18 kB`。
+
+但 staging app 仍無法當成完整 RAG demo 環境，因為 D1 `agentic-rag-db-staging` 當時沒有對應文件中繼資料：
+
+- `documents=0`
+- `document_versions=0`
+- `source_chunks=0`
+- `query_logs` 40 筆中 33 筆是 `decision_path='no_citation_refuse'`
+
+目前直接打 `wrangler ai-search search agentic-rag-staging` 可以查到 `staging-seed/procurement-manual.md`，但結果沒有 app 所需的 `document_version_id` / `citation_locator` metadata；而 app retrieval pipeline 會在 AI Search 後做 D1 post-verification。缺 D1 evidence bridge 時，所有 staging RAG retrieval 仍會回 empty / refused：
 
 - `askKnowledge` → `{"citations":[],"refused":true}`（無 evidence ⇒ refused，符合 retrieve-then-answer 設計）
-- `searchKnowledge` → `{"results":[]}`（empty index ⇒ empty hits）
+- `searchKnowledge` → `{"results":[]}`（無 D1 verified evidence ⇒ empty hits）
 
 對於 `wire-do-tool-dispatch` §7.1 immediate validation 而言，這仍滿足「非 501 / 非 re-init / `isError: false`」門檻，**不阻擋 archive**；但若使用者：
 
@@ -1724,21 +1734,24 @@ TD-046 修復後 staging `agentic-rag-staging` AutoRAG binding 已可正常呼�
 
 都會發現實質上「拿不到答案」。
 
+2026-05-04 已改成 production / staging 共用的 demo seed contract，並補齊 app 所需的 D1 evidence bridge 與 R2 chunk metadata。Production 也同步擴充，避免正式展示環境只有採購流程與少量 smoke docs。
+
 ### Fix approach
 
-兩條路徑，需 trade-off：
+已落地：
 
-1. **Seed sample docs（手動）** — 上傳 5–10 個 staging-only sample docs 到 `agentic-rag-documents-staging`（例如 production 文件的子集或特意造的 fixture）；觸發 AutoRAG indexing job；待 indexing 完成驗證 retrieval 回真實 results。優點：staging 與 production 可隔離，不污染 production cache。缺點：需要維護 sample docs，與 production 內容會漂移。
-2. **Daily sync from production**（自動） — 寫一個 cron / Worker scheduled trigger，每天從 `agentic-rag-documents` 同步到 `agentic-rag-documents-staging`（或子集；視 staging 規模 / 成本）。優點：與 production 內容對齊。缺點：staging 非真正獨立資料集；需評估 PII / 隱私風險。
-
-建議走 1 + 文檔化「staging seed = static fixture」，待 staging 真實使用情境出現再評估升級到 2。
+- `scripts/demo-seed/demo-seed-data.ts` 定義 deterministic seed contract 與 feature coverage。
+- `scripts/demo-seed/demo-seed-worker.ts` 用 remote Wrangler worker 寫入正式 D1 / R2 binding，R2 chunk object 帶 `status`、`version_state`、`access_level`、`document_version_id`、`citation_locator`。
+- `scripts/demo-seed/run-demo-seed.ts` 封裝 dry-run、apply、AI Search sync、AI binding structured-filter verification。
+- `docs/runbooks/demo-seed.md` 記錄重跑與驗證方式。
 
 ### Acceptance
 
-- [x] `agentic-rag-documents-staging` R2 bucket 至少含 5 個可索引文件
-- [ ] AutoRAG `agentic-rag-staging` indexing job 完成（CF dashboard 顯示文件數 > 0）
-- [ ] `wire-do-tool-dispatch` §7.1 4 tool call 重跑 → `askKnowledge` 回 `citations: [...]` 含至少 1 筆、`searchKnowledge` 回 `results: [...]` 含至少 1 筆
-- [ ] Notion Secret 頁 staging 區塊紀錄 seed 來源 + 維護週期（手動 / cron）
+- [x] Staging / production D1 具備 demo 文件：各 `documents=12`、`document_versions=14`、`source_chunks=94`、current versions `11`。
+- [x] Staging / production R2 具備 demo source + normalized chunks：各 108 個 demo objects；末端 chunk `normalized-text/demo-<env>-ver-legacy-procurement-2024-v1/0006.txt` 可下載。
+- [x] AI Search sync 完成：staging job `ae14e71d-d066-45e5-87b2-e44c41a9f3d4`、production job `20d8bc95-e45f-44a0-99e7-1318c1fea922`。
+- [x] Worker AI binding structured filters 驗證：internal 查詢「PR 和 PO 的差別」與 restricted 查詢「restricted access 可以查哪些預算資料」在兩個環境各回 5 筆 active/current chunks，且 metadata 完整。
+- [x] Seed 來源與維護方式記錄於 `docs/runbooks/demo-seed.md`。
 
 ### Progress
 
@@ -1750,7 +1763,14 @@ TD-046 修復後 staging `agentic-rag-staging` AutoRAG binding 已可正常呼�
 - `system-faq.txt`
 - `procurement-manual-v2.md`
 
-尚未關閉本 TD：Wrangler 目前沒有 AutoRAG / AI Search sync 子命令；需透過 Cloudflare API token 呼叫 `POST /accounts/{account_id}/ai-search/instances/agentic-rag-staging/jobs`，或等待 AutoRAG `sync_interval` 自動索引後，再重跑 tool call 驗證。
+2026-05-04 live audit：`agentic-rag-staging` AI Search 已有 `Indexed=5`，但 D1 `agentic-rag-db-staging` 仍是 `documents=0` / `source_chunks=0`；staging search 對「採購流程操作手冊」可命中 `staging-seed/procurement-manual.md`，但對「員工請假辦法」、「差旅費用報銷」、「新人入職指南」也只回同一份 procurement 檔，且無 metadata。尚未關閉本 TD：下一步不是單純等 indexing，而是把 staging fixture 補進 app 的 D1 evidence / current-version 鏈，再重跑 tool call 驗證。
+
+2026-05-04 resolution：已補 production / staging 共用 demo seed，並在兩個環境驗證 D1 / R2 / AI Search / HTTP：
+
+- D1：兩環境各 `documents=12`、`active_documents=11`、`archived_documents=1`、`versions=14`、`current_versions=11`、`chunks=94`、`citations=12`、`query_logs=16`、`messages=18`、`conversations=5`、`tokens=4`、`users=5`、`role_changes=4`。
+- R2：兩環境末端 normalized chunk 可下載，內容為封存文件稽核用途片段。
+- AI Search binding：兩環境 internal / restricted probe 都只回 active/current chunks，且包含 app 所需 citation metadata。
+- HTTP：`https://agentic.yudefine.com.tw` 與 `https://agentic-staging.yudefine.com.tw` 皆回 200。
 
 ---
 
