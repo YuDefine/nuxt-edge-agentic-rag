@@ -12,6 +12,7 @@
 
 - [remote-mcp-connectors](./remote-mcp-connectors.md)
 - [guest-policy](./guest-policy.md)
+- [demo-seed](./demo-seed.md)
 
 ## 與驗證指南的差異
 
