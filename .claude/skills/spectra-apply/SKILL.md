@@ -199,11 +199,9 @@ Run `spectra analyze <change-name> --json` to check cross-artifact consistency (
 
    **Codex phase dispatch template**（per `agent-routing.md` 「Codex 派工的標準流程」+「Spectra Apply Phase Dispatch」）:
 
-   1. Write prompt to `/tmp/codex-spectra-apply-<change>-phase-<N>-prompt.md`，內容固定包含（**第一行 MUST 是 `[DELEGATED-BY-CLAUDE-CODE]` marker** — Codex 端 Runtime Gate 會驗，缺 marker 會被擋掉，見 `agent-routing.md` 「Codex `$spectra-apply` Runtime Gate」）：
+   1. Write prompt to `/tmp/codex-spectra-apply-<change>-phase-<N>-prompt.md`，內容固定包含：
 
       ```
-      [DELEGATED-BY-CLAUDE-CODE]
-
       請執行本 repo 的 spectra-apply phase <N>（<phase-title>）的全部 tasks。
 
       Change: <change-name>
