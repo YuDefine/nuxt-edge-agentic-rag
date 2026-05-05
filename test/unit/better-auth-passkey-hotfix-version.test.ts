@@ -26,6 +26,7 @@ interface LockfileDocument {
 }
 
 interface WorkspaceDocument {
+  catalog?: Record<string, string>
   overrides?: Record<string, string>
 }
 
@@ -56,8 +57,10 @@ describe('better-auth passkey hotfix dependency resolution', () => {
     expect(packageJson.dependencies?.['better-auth']).toBe('^1.6.9')
     expect(packageJson.dependencies?.['@better-auth/passkey']).toBe('^1.6.9')
     expect(packageJson.devDependencies?.['@vitest/coverage-v8']).toBe('4.1.5')
-    expect(packageJson.devDependencies?.['vite']).toBe('npm:@voidzero-dev/vite-plus-core@0.1.19')
-    expect(packageJson.devDependencies?.['vitest']).toBe('npm:@voidzero-dev/vite-plus-test@0.1.19')
+    expect(packageJson.devDependencies?.['vite']).toBe('catalog:')
+    expect(packageJson.devDependencies?.['vitest']).toBe('catalog:')
+    expect(workspaceConfig.catalog?.['vite']).toBe('npm:@voidzero-dev/vite-plus-core@^0.1.20')
+    expect(workspaceConfig.catalog?.['vitest']).toBe('npm:@voidzero-dev/vite-plus-test@^0.1.20')
     expect(workspaceConfig.overrides?.['better-call']).toBe('1.3.5')
     expect(rootImporter?.dependencies?.['@better-auth/passkey']).toMatchObject({
       specifier: '^1.6.9',
@@ -69,19 +72,19 @@ describe('better-auth passkey hotfix dependency resolution', () => {
       specifier: '4.1.5',
     })
     expect(rootImporter?.devDependencies?.['vite']).toMatchObject({
-      specifier: 'npm:@voidzero-dev/vite-plus-core@0.1.19',
+      specifier: 'npm:@voidzero-dev/vite-plus-core@^0.1.20',
     })
     expect(rootImporter?.devDependencies?.['vitest']).toMatchObject({
-      specifier: 'npm:@voidzero-dev/vite-plus-test@0.1.19',
+      specifier: 'npm:@voidzero-dev/vite-plus-test@^0.1.20',
     })
 
     expect(listResolvedVersions(lockfile.packages, 'better-call')).toEqual(['1.3.5'])
     expect(listResolvedVersions(lockfile.packages, '@better-auth/passkey')).toEqual(['1.6.9'])
     expect(listResolvedVersions(lockfile.packages, '@voidzero-dev/vite-plus-core')).toEqual([
-      '0.1.19',
+      '0.1.20',
     ])
     expect(listResolvedVersions(lockfile.packages, '@voidzero-dev/vite-plus-test')).toEqual([
-      '0.1.19',
+      '0.1.20',
     ])
     expect(listResolvedVersions(lockfile.packages, 'better-auth')).toContain('1.6.9')
     expect(listResolvedVersions(lockfile.packages, 'better-auth')).not.toContain('1.6.6')
