@@ -12,29 +12,36 @@
 
 ## Blocked / Waiting
 
+- **v0.56.0 deploy run 25405616391 已 fail**：`verify-ci-gate` 找不到 SHA `bb741e3` 的成功 CI run。根因：main branch 落後 origin/main 13 commit，`bb741e3` 沒推上 origin → 沒 ci.yml run 對應 → verify-ci-gate 死循環 attempt 1~44 後 fail。**修法**：先 `git push origin main`（觸發 ci.yml），等 CI 綠燈後 deploy.yml 應可手動 rerun。
 - **TD-056 / TD-061 / TD-057 behavior 驗收**：v0.52.1 fix code 已 ship 且 root cause 完美對應
   （3/3 ship 前 pipeline_error 都是 judge `completionTokens=200` 截斷），但 production 24h
   只 1 筆 traffic 沒走 judge / SSE chat path → 需要主動發 chat 才能驗證 fix 生效
+- **Clade upstream issue（codex Round 1+2 P1）**：`hub v0.3.39` sync 把 `.claude/skills/spectra-apply/SKILL.md` 的 phase dispatch template 第一行 `[DELEGATED-BY-CLAUDE-CODE]` marker 移除，但 `.claude/rules/agent-routing.md` 「Codex `$spectra-apply` Runtime Gate」仍要求 marker，造成 Codex spectra-apply phase dispatch 會被 gate 擋掉。SKILL 是 LOCKED 投影檔（chmod 444 + hook 自動還原），本地反向修無效，需在 `~/offline/clade` 的 `plugins/hub-core/skills/spectra-apply/` upstream 修並 publish v0.3.40。
 
 ## Next Steps
 
-1. **v0.56.0 production verify**（剛 ship；CI watcher 監看 v0.56.0 deploy workflow run）
+1. **`git push origin main`** ← **最高優先**：本次 13 個 commit（v0.56.0 + v0.56.1 兩波）尚未 push 到 origin/main；v0.56.0 deploy 已因此 fail，先 push main 觸發 ci.yml，再手動 rerun v0.56.0 / v0.56.1 deploy run
+2. **修 clade upstream `[DELEGATED-BY-CLAUDE-CODE]` marker 不一致**：到 `~/offline/clade/plugins/hub-core/skills/spectra-apply/SKILL.md` 把 marker hint + prompt body 第一行加回，publish hub v0.3.40，propagate 到 consumers
+3. **v0.56.x production verify**（push + deploy 綠燈後）
    - 主要驗 deploy 沒打破 build pipeline
    - 確認 production worker `features.queryRewriting=false` 仍生效
    - production / staging demo seed 系統已可用：`pnpm demo-seed <env> --apply` 寫入 + AI Search sync + structured filter verification（失敗會 fail loudly，不再靜默 exit 0）
-2. **`git push origin main`**：本次 8 個 group commit + 1 個 deploy commit + 1 個 docs(handoff) 還沒 push 到 origin/main（v0.56.0 tag 已上 remote 但 main branch 落後 ~10 個 commit）。確認 v0.56.0 deploy workflow 綠燈後再 push
-3. 主動發 1-2 條 production chat 觸發 judge path 驗 TD-056 / TD-057 behavior
+4. 主動發 1-2 條 production chat 觸發 judge path 驗 TD-056 / TD-057 behavior
    （登入 `agentic.yudefine.com.tw` 或拿 admin token）
-4. **rag-query-rewriting 6.3**：`gh workflow run deploy.yml -f target=staging` 觸發 staging 部署
-5. **rag-query-rewriting 6.4 / 6.5**：staging RAG 資料已就緒；對 staging 跑 35 筆 acceptance fixture，記證據到
+5. **rag-query-rewriting 6.3**：`gh workflow run deploy.yml -f target=staging` 觸發 staging 部署
+6. **rag-query-rewriting 6.4 / 6.5**：staging RAG 資料已就緒；對 staging 跑 35 筆 acceptance fixture，記證據到
    `local/reports/notes/main-v0.0.54-acceptance-rewriter-staging-{date}.md`；6.1 的 success path
    會在 staging 驗到，可順帶確認
-6. **rag-query-rewriting 3.3**：5 條 fixture prompt validation（建議在 staging 跑，因為 local Workers AI
+7. **rag-query-rewriting 3.3**：5 條 fixture prompt validation（建議在 staging 跑，因為 local Workers AI
    會 fallback_error 看不到改寫結果）
-7. TD-027 MCP connector first-time auth 實測（DO archive 已完成，可隨時實測 Claude.ai OAuth flow）
+8. TD-027 MCP connector first-time auth 實測（DO archive 已完成，可隨時實測 Claude.ai OAuth flow）
 
 ## Notes / Pitfalls
 
+- **v0.56.1 commit 範圍**（2 chore + 1 deploy）：
+  - `chore`: clade hub v0.3.38 → v0.3.39 sync（spectra-apply / design-gate / post-propose-check / collect-followups / roadmap-sync / upgrade-design-review）
+  - `chore`: roadmap-sync.mts 修正 `--check` 缺 spectra CLI 整體早退 bug（codex Round 1 P2）—— 缺 CLI 時 Active Changes / Active Claims / Parallel Tracks / MANUAL drift 都還能跑，只 preserve existing Parked block
+  - `chore`: 還原 design-gate.sh executable bit（Edit 工具誤改 100644）
 - **v0.56.0 commit 範圍**（8 group + 1 deploy + 1 handoff，分別為）：
   - `feat`: production / staging demo seed 系統（+ TD-050 done closeout）
   - `feat`: 統一 codex review 派工流程（commit 0-A 兩輪 high → xhigh、spectra propose draft + cross-check、apply phase dispatch、Codex `$spectra-apply` Runtime Gate）
