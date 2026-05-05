@@ -18,36 +18,33 @@
 
 ## Next Steps
 
-1. **v0.55.1 production verify**（剛 ship，run 25255949622 已 conclusion=success；production deploy +
-   smoke-test 通過）
-   - 實質為純 chore + docs：clade routing 規則同步 + HANDOFF/ROADMAP drift 修；user-facing 行為不變
-   - 主要驗 deploy 沒打破 build pipeline；確認 production worker `features.queryRewriting=false` 仍生效
-   - **注意**：v0.55.1 不含 rag-query-rewriting code 變更，不能視為 6.3 staging deploy 完成憑據；6.3 仍須獨立觸發 staging deploy 以便 6.4 acceptance 跑真實 rewriter
-2. 主動發 1-2 條 production chat 觸發 judge path 驗 TD-056 / TD-057 behavior
+1. **v0.56.0 production verify**（剛 ship；CI watcher 監看 v0.56.0 deploy workflow run）
+   - 主要驗 deploy 沒打破 build pipeline
+   - 確認 production worker `features.queryRewriting=false` 仍生效
+   - production / staging demo seed 系統已可用：`pnpm demo-seed <env> --apply` 寫入 + AI Search sync + structured filter verification（失敗會 fail loudly，不再靜默 exit 0）
+2. **`git push origin main`**：本次 8 個 group commit + 1 個 deploy commit + 1 個 docs(handoff) 還沒 push 到 origin/main（v0.56.0 tag 已上 remote 但 main branch 落後 ~10 個 commit）。確認 v0.56.0 deploy workflow 綠燈後再 push
+3. 主動發 1-2 條 production chat 觸發 judge path 驗 TD-056 / TD-057 behavior
    （登入 `agentic.yudefine.com.tw` 或拿 admin token）
-3. **rag-query-rewriting 6.3**：`gh workflow run deploy.yml -f target=staging` 觸發 staging 部署
-4. **rag-query-rewriting 6.4 / 6.5**：staging RAG 資料已就緒；對 staging 跑 35 筆 acceptance fixture，記證據到
+4. **rag-query-rewriting 6.3**：`gh workflow run deploy.yml -f target=staging` 觸發 staging 部署
+5. **rag-query-rewriting 6.4 / 6.5**：staging RAG 資料已就緒；對 staging 跑 35 筆 acceptance fixture，記證據到
    `local/reports/notes/main-v0.0.54-acceptance-rewriter-staging-{date}.md`；6.1 的 success path
    會在 staging 驗到，可順帶確認
-5. **rag-query-rewriting 3.3**：5 條 fixture prompt validation（建議在 staging 跑，因為 local Workers AI
+6. **rag-query-rewriting 3.3**：5 條 fixture prompt validation（建議在 staging 跑，因為 local Workers AI
    會 fallback_error 看不到改寫結果）
-6. TD-027 MCP connector first-time auth 實測（DO archive 已完成，可隨時實測 Claude.ai OAuth flow）
+7. TD-027 MCP connector first-time auth 實測（DO archive 已完成，可隨時實測 Claude.ai OAuth flow）
 
 ## Notes / Pitfalls
 
-- **v0.55.1 commit 範圍**（`d9acba3` chore + `7bcf9f6` docs + `9a0a64c` deploy）：
-  - chore 同步 clade v0.2.6 routing 規則（commit 0-A 改派 codex review、agent-routing.md 集中 routing
-    table、spectra-discuss/propose 加 A/B handoff、commit WIP 處置禁令強化）
-  - docs 整理 HANDOFF + ROADMAP MANUAL drift（16/29→16/34）
-  - 對齊修正：agent-routing.md:24 路徑、rules/commit.md:19 step 編號漂移
-- v0.55.0 commit `8b8b3ce` 帶兩條 polish：(a) Clade rules / spectra-\* skill 全套同步、commit-lock race fix、
-  oxc 工具鏈整合（package.json `format` 加 negation pattern 排除 chmod 444 治理目錄）；
-  (b) 新增 dev-only `/api/_dev/chat-smoke.post`（雙重守護：env=local + admin session）
-- ROADMAP MANUAL block：本次修了 rag-query-rewriting 行 16/29→16/34；其餘 MANUAL 區塊（Current State 寫
-  「v0.52.0」、Next Moves 中 v0.53.0 verify 條目）仍偏舊，但不阻擋下一個 session
-- Production / staging demo seed 已補齊（TD-050 done）：`pnpm demo-seed <staging|production> --apply`
-  寫入 12 docs / 14 versions / 94 source chunks / 16 query logs / 5 users / 4 MCP tokens，並觸發 AI
-  Search sync；維護方式見 `docs/runbooks/demo-seed.md`
+- **v0.56.0 commit 範圍**（8 group + 1 deploy + 1 handoff，分別為）：
+  - `feat`: production / staging demo seed 系統（+ TD-050 done closeout）
+  - `feat`: 統一 codex review 派工流程（commit 0-A 兩輪 high → xhigh、spectra propose draft + cross-check、apply phase dispatch、Codex `$spectra-apply` Runtime Gate）
+  - `feat`: spectra design review 7 步 template 結構性強制（含 DR_TASK_LINES ≥ 7 條件）+ `pnpm spectra:upgrade-design-review` 升級工具
+  - `feat`: 新增 `.claude/rules/nuxt-security.md` baseline rule + nuxt.config.ts 對齊
+  - `chore`: vite/vitest 升級至 0.1.20 catalog 模式（`pnpm-workspace.yaml` catalog + `package.json` 用 `catalog:` 引用 + lockfile rebuild + `better-auth-passkey-hotfix-version.test.ts` 同步更新期望）
+  - `ci`: e2e workflow 補 `NUXT_KNOWLEDGE_ENVIRONMENT` / `NUXT_MCP_AUTH_SIGNING_KEY` env，playwright wrangler dev 加 `--local`
+  - `chore`: 雜項（rule reference、ROADMAP TD-050 strikethrough、vitepress nav、design-gate.sh 100755 還原）
+- Production / staging demo seed：`pnpm demo-seed <staging|production> --apply` 寫入 12 docs / 14 versions / 94 source chunks / 16 query logs / 5 users / 4 MCP tokens，並觸發 AI Search sync；維護方式見 `docs/runbooks/demo-seed.md`。**新行為**：AI Search sync 失敗或 verifyDemoSearches matched=0 會 throw（exit 1），不再靜默 exit 0
+- `demo-seed-worker.ts` 缺 `DEMO_SEED_TOKEN` binding 時 fail closed（500），不再繞過 auth 直接寫 D1/R2
 - **csrf-token wiring**（curl 對 `/api/chat` 用）：`GET /` parse `<meta name="csrf-token" content="...">`
   → POST 帶 `csrf-token: <token>` header + cookie jar（含 `csrf=...` + `better-auth.session_token=...`）
 - Local Workers AI binding 跑 rewriter judge model 會 fallback_error；fallback safety 機制工作正常，
@@ -55,6 +52,7 @@
 - vue-tsc stack trace `vue-router/volar/sfc-route-blocks Cannot find module` 是 vue-tsc@3.2.7 對舊
   vue-router optional plugin 的解析錯誤，**typecheck exit 0**，不影響 commit / deploy
 - **`pnpm tag` 推 tags rejection noise**：`git push origin --tags` 一次推所有 local tags，撞到 8 個歷史
-  tag (v0.47.x ~ v0.50.x) local/remote 不一致 → exit 1。新 tag（如本次 v0.55.1）仍會成功 push，可用
+  tag (v0.47.x ~ v0.50.x) local/remote 不一致 → exit 1。新 tag（如本次 v0.56.0）仍會成功 push，可用
   `git ls-remote --tags origin v<version>` 驗證。下次有空可清 stale local tags 或改用 `git push origin v<version>`
   只推單一 tag
+- **Codex `$spectra-apply` Runtime Gate**：Codex 端收到 `$spectra-apply` 必須先驗 prompt body 第一行是 `[DELEGATED-BY-CLAUDE-CODE]`，缺 marker 立即 STOP。Claude Code 主線派 Codex 跑 spectra apply phase 時 prompt 第一行 MUST 加此 marker（已寫進 spectra-apply SKILL 模板）
