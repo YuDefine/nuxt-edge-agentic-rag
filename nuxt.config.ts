@@ -35,6 +35,7 @@ const nitroCloudflareDefaultEntry = fileURLToPath(
 )
 const devMcpAuthSigningKey = 'dev-only-mcp-auth-context-signing-key-keep-out-of-production'
 const isLocalEnvironment = (process.env.NUXT_KNOWLEDGE_ENVIRONMENT ?? 'local') === 'local'
+const useLocalFsKv = isLocalEnvironment && process.env.CI !== 'true'
 
 // https://nuxt.com/docs/api/configuration/nuxt-config
 const knowledgeRuntimeConfig = createKnowledgeRuntimeConfig({
@@ -116,7 +117,7 @@ export default defineNuxtConfig({
   // - Production: D1 + KV + R2 via wrangler.jsonc bindings
   hub: {
     db: 'sqlite',
-    kv: isLocalEnvironment ? { driver: 'fs-lite', base: '.data/kv' } : true,
+    kv: useLocalFsKv ? { driver: 'fs-lite', base: '.data/kv' } : true,
     blob: true,
     dir: '.data',
   },
