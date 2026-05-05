@@ -36,7 +36,7 @@ _(目前無 parked change — 2026-04-26 兩個 parked change 全 unpark + 實�
   - `MessageList.vue` assistant content 改 markdown 渲染（已落地，視覺驗收通過——標記為「已超出 persist-refusal 原 scope 但決定保留」）
   - `conversation-title.ts` `slice(0, 40)` 是 code-unit indexed，emoji 可能斷在 surrogate pair 中間（罕見）
   - `RefusalMessage.vue` `mailto:${adminContactEmail}` 未 URL-encode email 本身（subject 有 encode）
-- [mid] **TD-050** Staging R2 (`agentic-rag-documents-staging`) 為空，缺 RAG content seed / sync schedule — wire-do archive 後可獨立進（驗證 4 個 tool call `citations:[] / results:[]` empty 是否因 R2 缺資料導致）
+- ~~[mid] **TD-050** Production / staging demo seed evidence bridge~~ — **2026-05-04 done**：`pnpm demo-seed staging --apply` + `pnpm demo-seed production --apply` 已寫入兩環境；各 D1 `documents=12` / `document_versions=14` / `source_chunks=94` / `citation_records=12` / `query_logs=16`，R2 各 108 demo objects，AI Search sync jobs completed，Worker AI binding structured filters 對 internal / restricted probes 各回 5 筆 active/current chunks；runbook 見 `docs/runbooks/demo-seed.md`
 - ~~[mid] **TD-009** `user_profiles.email_normalized` nullable migration~~ — **2026-04-26 done**（v0.52.0 ship；migration 0016 8 表 cascade rebuild + sentinel→NULL backfill；採 `_v16 → _v16` FK pattern + D1 RENAME-rewrite；archived 於 `2026-04-26-passkey-user-profiles-nullable-email`）
 - [low] **日期格式 smoke（遺留）** — `/account/settings`、`/admin/documents/:id`、`/admin/members`、`/admin/query-logs` list+detail、`/admin/tokens` 目視確認
 - [mid] **v0.53.0 ship 後 follow-up tech-debt**（已 register，獨立進）：
