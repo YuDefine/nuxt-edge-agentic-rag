@@ -131,6 +131,7 @@ export default defineConfig({
             { text: '總覽', link: '/runbooks/' },
             { text: 'Remote MCP Connectors', link: '/runbooks/remote-mcp-connectors' },
             { text: 'Guest Policy', link: '/runbooks/guest-policy' },
+            { text: 'Demo Seed', link: '/runbooks/demo-seed' },
           ],
         },
       ],
