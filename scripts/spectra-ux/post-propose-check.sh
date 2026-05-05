@@ -218,6 +218,54 @@ $(printf '  - %s\n' "${UNMAPPED[@]}")
   fi
 fi
 
+# --- Check 4b: Design Review section structural completeness (7-step template) ---
+if [ -f "$TASKS_FILE" ] && [ "$HAS_UI_SCOPE" = true ]; then
+  DESIGN_SECTION=$(sed -n '/^## .*Design Review/,/^## /p' "$TASKS_FILE" 2>/dev/null | sed '$d')
+
+  if [ -z "$DESIGN_SECTION" ]; then
+    FINDINGS+=("缺 \`## N. Design Review\` 區塊 — change 包含 UI scope，但 tasks.md 沒有 Design Review section。
+
+請在最後一個功能區塊之後、\`## 人工檢查\` 之前加入完整 7 步 template：
+
+\`\`\`markdown
+## N. Design Review
+
+- [ ] N.1 檢查 PRODUCT.md（必要）+ DESIGN.md（建議）；缺 PRODUCT.md 跑 /impeccable teach、缺 DESIGN.md 跑 /impeccable document
+- [ ] N.2 執行 /design improve [affected pages/components]，產出 Design Fidelity Report
+- [ ] N.3 修復所有 DRIFT 項目（Fidelity Score < 8/8 時必做，loop 直到 DRIFT = 0，max 2 輪）
+- [ ] N.4 依 /design improve 計劃按 canonical order 執行 targeted impeccable skills（layout / typeset / clarify / harden / colorize 等）
+- [ ] N.5 執行 /impeccable audit，確認 Critical = 0
+- [ ] N.6 執行 review-screenshot，補 design-review.md / 視覺 QA 證據
+- [ ] N.7 Fidelity 確認 — design-review.md 中無 DRIFT 項
+\`\`\`")
+  else
+    DR_TASK_LINES=$(printf '%s\n' "$DESIGN_SECTION" | grep -cE '^\- \[[ x]\]' || true)
+    DR_TASK_LINES=${DR_TASK_LINES:-0}
+
+    DR_MISSING=()
+    printf '%s\n' "$DESIGN_SECTION" | grep -qiE 'PRODUCT\.md|DESIGN\.md|impeccable teach|impeccable document' || DR_MISSING+=('N.1 PRODUCT.md / DESIGN.md 檢查')
+    printf '%s\n' "$DESIGN_SECTION" | grep -qiE '/design improve|design improve|Fidelity Report' || DR_MISSING+=('N.2 /design improve + Fidelity Report')
+    printf '%s\n' "$DESIGN_SECTION" | grep -qiE 'DRIFT|loop|修復.*DRIFT|fix.*DRIFT' || DR_MISSING+=('N.3 修復 DRIFT loop')
+    printf '%s\n' "$DESIGN_SECTION" | grep -qiE 'canonical order|targeted.*skills|impeccable skills|layout.*typeset|typeset.*colorize' || DR_MISSING+=('N.4 按 canonical order 跑 targeted impeccable skills')
+    printf '%s\n' "$DESIGN_SECTION" | grep -qiE '/impeccable audit|impeccable audit|Critical = 0|Critical=0' || DR_MISSING+=('N.5 /impeccable audit Critical = 0')
+    printf '%s\n' "$DESIGN_SECTION" | grep -qiE 'review-screenshot|screenshot review|視覺 QA' || DR_MISSING+=('N.6 review-screenshot 視覺 QA')
+    printf '%s\n' "$DESIGN_SECTION" | grep -qiE 'Fidelity 確認|Fidelity check|無 DRIFT 項|無 DRIFT|DRIFT = 0' || DR_MISSING+=('N.7 Fidelity 確認')
+
+    if [ "${#DR_MISSING[@]}" -gt 0 ]; then
+      FINDINGS+=("\`## Design Review\` 區塊缺 7 步 template 中的：
+$(printf '  - %s\n' "${DR_MISSING[@]}")
+
+完整 7 步 template 見 \`ux-completeness.md\` 的 Design Review Task Template 段落。**MUST** 全部 N.1~N.7，不可裁減。")
+    fi
+
+    if [ "$DR_TASK_LINES" -lt 7 ]; then
+      FINDINGS+=("\`## Design Review\` 區塊只有 ${DR_TASK_LINES} 個 checkbox（應有 7 個）。
+
+請補齊 N.1~N.7 完整 7 步 template — 完整規格見 \`ux-completeness.md\`。")
+    fi
+  fi
+fi
+
 # --- Check 5: Enum expansion needs types sync ---
 if [ -f "$TASKS_FILE" ]; then
   HAS_MIGRATION_TASK=$(grep -cE "${SUX_MIGRATIONS_DIR}|migration new|ADD COLUMN|CHECK.*IN" "$TASKS_FILE" 2>/dev/null || true)

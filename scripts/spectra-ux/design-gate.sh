@@ -76,12 +76,48 @@ if [ "$HAS_UI" = true ]; then
   fi
 
   DESIGN_SECTION=$(sed -n '/^## .*Design Review/,/^## /p' "$TASKS_FILE" 2>/dev/null | sed '$d')
+
+  # Structural check: Design Review section must have 7-step template (N.1~N.7)
+  STRUCTURAL_DRIFT=()
+  if [ -n "$DESIGN_SECTION" ]; then
+    DR_TASK_LINES=$(printf '%s\n' "$DESIGN_SECTION" | grep -cE '^\- \[[ x]\]' || true)
+    DR_TASK_LINES=${DR_TASK_LINES:-0}
+
+    printf '%s\n' "$DESIGN_SECTION" | grep -qiE 'PRODUCT\.md|DESIGN\.md|impeccable teach|impeccable document' || STRUCTURAL_DRIFT+=('N.1 PRODUCT.md / DESIGN.md 檢查')
+    printf '%s\n' "$DESIGN_SECTION" | grep -qiE '/design improve|design improve|Fidelity Report' || STRUCTURAL_DRIFT+=('N.2 /design improve + Fidelity Report')
+    printf '%s\n' "$DESIGN_SECTION" | grep -qiE 'DRIFT|loop|修復.*DRIFT|fix.*DRIFT' || STRUCTURAL_DRIFT+=('N.3 修復 DRIFT loop')
+    printf '%s\n' "$DESIGN_SECTION" | grep -qiE 'canonical order|targeted.*skills|impeccable skills|layout.*typeset|typeset.*colorize' || STRUCTURAL_DRIFT+=('N.4 按 canonical order 跑 targeted impeccable skills')
+    printf '%s\n' "$DESIGN_SECTION" | grep -qiE '/impeccable audit|impeccable audit|Critical = 0|Critical=0' || STRUCTURAL_DRIFT+=('N.5 /impeccable audit Critical = 0')
+    printf '%s\n' "$DESIGN_SECTION" | grep -qiE 'review-screenshot|screenshot review|視覺 QA' || STRUCTURAL_DRIFT+=('N.6 review-screenshot 視覺 QA')
+    printf '%s\n' "$DESIGN_SECTION" | grep -qiE 'Fidelity 確認|Fidelity check|無 DRIFT 項|無 DRIFT|DRIFT = 0' || STRUCTURAL_DRIFT+=('N.7 Fidelity 確認')
+  fi
+
   if [ "$DESIGN_PASSED" = false ] && [ -n "$DESIGN_SECTION" ]; then
     DR_UNCHECKED=$(printf '%s\n' "$DESIGN_SECTION" | grep -c '^\- \[ \]' || true)
     DR_UNCHECKED=${DR_UNCHECKED:-0}
-    if [ "$DR_UNCHECKED" -eq 0 ]; then
+    if [ "$DR_UNCHECKED" -eq 0 ] && [ "${#STRUCTURAL_DRIFT[@]}" -eq 0 ] && [ "$DR_TASK_LINES" -ge 7 ]; then
       DESIGN_PASSED=true
     fi
+  fi
+
+  # Block if Design Review section structure is incomplete (independent of completion)
+  if [ -n "$DESIGN_SECTION" ] && { [ "${#STRUCTURAL_DRIFT[@]}" -gt 0 ] || [ "$DR_TASK_LINES" -lt 7 ]; }; then
+    BLOCKED=true
+    MESSAGES+=("[Design Gate] tasks.md 的 \`## Design Review\` 區塊不符合 7 步 template，缺以下步驟：
+
+$(printf '  - %s\n' "${STRUCTURAL_DRIFT[@]}")
+
+請補齊 N.1~N.7 完整 7 步 template（完整規格見 \`ux-completeness.md\` Design Review Task Template）：
+
+  - [ ] N.1 檢查 PRODUCT.md（必要）+ DESIGN.md（建議）；缺 PRODUCT.md 跑 /impeccable teach、缺 DESIGN.md 跑 /impeccable document
+  - [ ] N.2 執行 /design improve [affected pages/components]，產出 Design Fidelity Report
+  - [ ] N.3 修復所有 DRIFT 項目（Fidelity Score < 8/8 時必做，loop 直到 DRIFT = 0，max 2 輪）
+  - [ ] N.4 依 /design improve 計劃按 canonical order 執行 targeted impeccable skills
+  - [ ] N.5 執行 /impeccable audit，確認 Critical = 0
+  - [ ] N.6 執行 review-screenshot，補 design-review.md / 視覺 QA 證據
+  - [ ] N.7 Fidelity 確認 — design-review.md 中無 DRIFT 項
+
+可跑 \`pnpm spectra:upgrade-design-review\` 自動補齊既有 change。")
   fi
 
   if [ "$DESIGN_PASSED" = false ]; then
