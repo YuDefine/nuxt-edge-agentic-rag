@@ -11,7 +11,7 @@ throw new Error('Failed')
 throw new Error('Invalid input')
 
 // ❌ Missing context
-throw new Error('Payment failed') // Why? How do I fix it?
+throw new Error('Payment failed')  // Why? How do I fix it?
 ```
 
 When these errors reach your logs or monitoring, you have no idea:
@@ -27,14 +27,13 @@ When these errors reach your logs or monitoring, you have no idea:
 import { createError } from 'evlog'
 
 throw createError({
-  message: 'Payment failed', // What happened
-  status: 402, // HTTP status code
-  why: 'Card declined by issuer', // Why it happened
-  fix: 'Try a different payment method', // How to fix it
-  link: 'https://docs.example.com/...', // More information
-  cause: originalError, // Original error
-  internal: {
-    // Optional: backend / logs only
+  message: 'Payment failed',              // What happened
+  status: 402,                            // HTTP status code
+  why: 'Card declined by issuer',         // Why it happened
+  fix: 'Try a different payment method',  // How to fix it
+  link: 'https://docs.example.com/...',   // More information
+  cause: originalError,                   // Original error
+  internal: {                             // Optional: backend / logs only
     correlationId: 'pay_abc',
     processorCode: 'card_declined',
   },
@@ -270,7 +269,7 @@ async function processPayment(cart, user) {
       source: user.paymentMethodId,
     })
   } catch (error) {
-    throw new Error('Payment failed') // ❌ No context
+    throw new Error('Payment failed')  // ❌ No context
   }
 }
 ```
@@ -441,9 +440,9 @@ try {
 
 Common patterns -- adapt fields to each specific case:
 
-| Pattern                  | Status | Fields                                                                                      |
-| ------------------------ | ------ | ------------------------------------------------------------------------------------------- |
-| Resource not found       | 404    | `why`: what's missing, `fix`: verify identifier                                             |
-| External service failure | 503    | `why`: service error, `fix`: actionable step, `link`: service docs, `cause`: original error |
-| Validation failure       | 400    | `why`: what's invalid, `fix`: expected format                                               |
-| Permission denied        | 403    | `why`: what's required, `fix`: how to get access                                            |
+| Pattern | Status | Fields |
+|---------|--------|--------|
+| Resource not found | 404 | `why`: what's missing, `fix`: verify identifier |
+| External service failure | 503 | `why`: service error, `fix`: actionable step, `link`: service docs, `cause`: original error |
+| Validation failure | 400 | `why`: what's invalid, `fix`: expected format |
+| Permission denied | 403 | `why`: what's required, `fix`: how to get access |
