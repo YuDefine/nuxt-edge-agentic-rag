@@ -1,12 +1,12 @@
 ## Why
 
-`deploy.yml` notify job inlines a ~70-line Discord webhook step that currently uses a degraded variant of the canonical implementation: missing the `icon()` helper, no per-job fields, English-only status strings. Replacing it with `YuDefine/discord-deploy-notify@v1` (1) shrinks the workflow body, (2) adopts the standardized `[Prod]` / `[Stg]` title format, (3) regains per-job fields with status icons, (4) standardizes language to `zh` to match the rest of the consumer fleet (yuntech, TDMS).
+`deploy.yml` notify job inlines a ~70-line Discord webhook step that currently uses a degraded variant of the canonical implementation: missing the `icon()` helper, no per-job fields, English-only status strings. Replacing it with `./.github/actions/discord-deploy-notify` (1) shrinks the workflow body, (2) adopts the standardized `[Prod]` / `[Stg]` title format, (3) regains per-job fields with status icons, (4) standardizes language to `zh` to match the rest of the consumer fleet (yuntech, TDMS).
 
 ## What Changes
 
 - Replace the entire shell-script body of `Notify Discord` step in `.github/workflows/deploy.yml` with a 2-step composition:
   1. New "Build results" pre-step that resolves `target` (using existing `workflow_dispatch.inputs.target` || tag-detection fallback) and assembles a 5-entry `results` JSON for the active target (CI / Deploy / Smoke / Docs Deploy / Docs Smoke).
-  2. `uses: YuDefine/discord-deploy-notify@v1` step consuming the pre-step's outputs.
+  2. `uses: ./.github/actions/discord-deploy-notify` step consuming the pre-step's outputs.
 - Drop the `if: env.WEBHOOK_URL != ''` guard — action's built-in empty-webhook skip behavior covers it.
 - Standardize `language: zh` (was English-inline). Title format becomes `✅ 部署成功 — Deploy [Prod] — <tag>` (consistent with yuntech).
 - Preserve the `notify` job wrapper unchanged: `runs-on: ubuntu-latest`, `if: always()`, `needs: [...9 jobs]`, `timeout-minutes: 1`.

@@ -2,12 +2,12 @@
 
 ### Requirement: Notify job uses two-step composition
 
-The `notify` job in `.github/workflows/deploy.yml` SHALL contain exactly two steps: a "Build results JSON" pre-step that computes `target` and `results` outputs, followed by a `Notify Discord` step that calls `uses: YuDefine/discord-deploy-notify@v1`. No inline `curl` / `jq` payload assembly is permitted in the notify job body.
+The `notify` job in `.github/workflows/deploy.yml` SHALL contain exactly two steps: a "Build results JSON" pre-step that computes `target` and `results` outputs, followed by a `Notify Discord` step that calls `uses: ./.github/actions/discord-deploy-notify`. No inline `curl` / `jq` payload assembly is permitted in the notify job body.
 
 #### Scenario: notify job structure
 
 - **WHEN** GitHub Actions parses `deploy.yml`
-- **THEN** the `notify` job has exactly two steps in `steps:` — one with `id: build` (or equivalent identifier) and one with `uses: YuDefine/discord-deploy-notify@v1`
+- **THEN** the `notify` job has exactly two steps in `steps:` — one with `id: build` (or equivalent identifier) and one with `uses: ./.github/actions/discord-deploy-notify`
 
 #### Scenario: original wrapper structure preserved
 
@@ -118,7 +118,7 @@ Inputs `title` and `tag` SHALL be omitted, accepting defaults (`title=Deploy`, `
     } >> "$GITHUB_OUTPUT"
 
 - name: Notify Discord
-  uses: YuDefine/discord-deploy-notify@v1
+  uses: ./.github/actions/discord-deploy-notify
   with:
     webhook_url: ${{ secrets.DISCORD_WEBHOOK_URL }}
     target: ${{ steps.build.outputs.target }}
