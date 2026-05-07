@@ -58,6 +58,7 @@ Changes can be parked（暫存）— temporarily moved out of `openspec/changes/
 
 - `.claude/rules/agent-routing.md`
 - `.claude/rules/api-patterns.md`
+- `.claude/rules/audit-pattern.md`
 - `.claude/rules/auth.md`
 - `.claude/rules/code-style.md`
 - `.claude/rules/commit.md`
