@@ -517,7 +517,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Notify Discord
-        uses: YuDefine/clade/.github/actions/discord-deploy-notify@v1
+        uses: YuDefine/discord-deploy-notify@v1
         with:
           webhook_url: ${{ secrets.DISCORD_WEBHOOK_URL }}
           target: ${{ steps.build.outputs.target }}
