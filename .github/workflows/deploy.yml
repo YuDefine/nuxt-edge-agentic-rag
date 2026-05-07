@@ -482,48 +482,44 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 1
     steps:
-      - name: Notify Discord
-        if: env.WEBHOOK_URL != ''
+      - name: Build results JSON
+        id: build
         env:
-          WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           TARGET: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.target || (startsWith(github.ref, 'refs/tags/v') && 'production' || 'staging') }}
           CI_RESULT: ${{ needs.verify-ci-gate.result }}
-          PROD_DEPLOY_RESULT: ${{ needs.deploy-production.result }}
-          PROD_SMOKE_RESULT: ${{ needs.smoke-test.result }}
-          PROD_DOCS_DEPLOY_RESULT: ${{ needs.deploy-docs-production.result }}
-          PROD_DOCS_SMOKE_RESULT: ${{ needs.smoke-test-docs-production.result }}
-          STAGING_DEPLOY_RESULT: ${{ needs.deploy-staging.result }}
-          STAGING_SMOKE_RESULT: ${{ needs.smoke-test-staging.result }}
-          STAGING_DOCS_DEPLOY_RESULT: ${{ needs.deploy-docs-staging.result }}
-          STAGING_DOCS_SMOKE_RESULT: ${{ needs.smoke-test-docs-staging.result }}
+          PROD_DEPLOY: ${{ needs.deploy-production.result }}
+          PROD_SMOKE: ${{ needs.smoke-test.result }}
+          PROD_DOCS_DEPLOY: ${{ needs.deploy-docs-production.result }}
+          PROD_DOCS_SMOKE: ${{ needs.smoke-test-docs-production.result }}
+          STG_DEPLOY: ${{ needs.deploy-staging.result }}
+          STG_SMOKE: ${{ needs.smoke-test-staging.result }}
+          STG_DOCS_DEPLOY: ${{ needs.deploy-docs-staging.result }}
+          STG_DOCS_SMOKE: ${{ needs.smoke-test-docs-staging.result }}
         run: |
-          TAG="${GITHUB_REF_NAME}"
-
+          set -euo pipefail
           if [ "$TARGET" = "staging" ]; then
-            DEPLOY_RESULT="$STAGING_DEPLOY_RESULT"
-            SMOKE_RESULT="$STAGING_SMOKE_RESULT"
-            DOCS_DEPLOY_RESULT="$STAGING_DOCS_DEPLOY_RESULT"
-            DOCS_SMOKE_RESULT="$STAGING_DOCS_SMOKE_RESULT"
+            DEPLOY="$STG_DEPLOY"; SMOKE="$STG_SMOKE"
+            DOCS_DEPLOY="$STG_DOCS_DEPLOY"; DOCS_SMOKE="$STG_DOCS_SMOKE"
           else
-            DEPLOY_RESULT="$PROD_DEPLOY_RESULT"
-            SMOKE_RESULT="$PROD_SMOKE_RESULT"
-            DOCS_DEPLOY_RESULT="$PROD_DOCS_DEPLOY_RESULT"
-            DOCS_SMOKE_RESULT="$PROD_DOCS_SMOKE_RESULT"
+            DEPLOY="$PROD_DEPLOY"; SMOKE="$PROD_SMOKE"
+            DOCS_DEPLOY="$PROD_DOCS_DEPLOY"; DOCS_SMOKE="$PROD_DOCS_SMOKE"
           fi
+          RESULTS=$(jq -nc \
+            --arg ci "$CI_RESULT" \
+            --arg deploy "$DEPLOY" --arg smoke "$SMOKE" \
+            --arg docs_deploy "$DOCS_DEPLOY" --arg docs_smoke "$DOCS_SMOKE" \
+            '[{name:"CI",result:$ci},{name:"Deploy",result:$deploy},{name:"Smoke",result:$smoke},{name:"Docs Deploy",result:$docs_deploy},{name:"Docs Smoke",result:$docs_smoke}]')
+          {
+            echo "target=$TARGET"
+            echo "results<<EOF"
+            echo "$RESULTS"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
 
-          if [ "$CI_RESULT" = "success" ] && [ "$DEPLOY_RESULT" = "success" ] && [ "$SMOKE_RESULT" = "success" ] && [ "$DOCS_DEPLOY_RESULT" = "success" ] && [ "$DOCS_SMOKE_RESULT" = "success" ]; then
-            COLOR=3066993; STATUS="Deploy succeeded (${TARGET}) — ${TAG}"
-          else
-            COLOR=15158332; STATUS="Deploy failed (${TARGET}) — ${TAG}"
-          fi
-
-          RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-          PAYLOAD=$(jq -n \
-            --arg title "${STATUS}" \
-            --arg url "$RUN_URL" \
-            --argjson color "$COLOR" \
-            --arg footer "$GITHUB_REPOSITORY" \
-            --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            '{ embeds: [{ title: $title, url: $url, color: $color, footer: { text: $footer }, timestamp: $ts }] }')
-
-          curl -sf -X POST "$WEBHOOK_URL" -H "Content-Type: application/json" -d "$PAYLOAD" || true
+      - name: Notify Discord
+        uses: YuDefine/clade/.github/actions/discord-deploy-notify@v1
+        with:
+          webhook_url: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          target: ${{ steps.build.outputs.target }}
+          language: zh
+          results: ${{ steps.build.outputs.results }}
