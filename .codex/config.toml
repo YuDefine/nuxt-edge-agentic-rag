@@ -10,4 +10,4 @@ includeGitInstructions = false
 "hub-framework-nuxt@clade" = true
 
 [features]
-codex_hooks = true
+hooks = true
