@@ -105,8 +105,8 @@
 
 ## 8. Manual review
 
-- [ ] #1 D1 binding 在 `nuxt.config.ts` 已 wire，`@evlog/nuxthub` module 自動加 server plugin + cron
-- [ ] #2 `PRICING` 表覆蓋實際使用所有 model id
-- [ ] #3 SSE / MCP `emitChildLogger` 在 try / catch / finally 三條都呼叫
-- [ ] #4 Better Auth hook 內注入 evlog identity 對 passkey flow 也生效
-- [ ] #5 cost-based sampling threshold 對 consumer 實際流量 reasonable（不亂 drop expensive call、不全 keep cheap embedding）
+- [x] #1 D1 binding 在 `nuxt.config.ts` 已 wire，`@evlog/nuxthub` module 自動加 server plugin + cron — `nuxt.config.ts:96-114,119-124` modules + `hub.db: 'sqlite'`；`:343,397-400` retention `'90d'` + scheduledTasks `0 3 * * *`
+- [x] #2 `PRICING` 表覆蓋實際使用所有 model id — `server/utils/ai-logger.ts:63-73` 對應 runtime models in `server/utils/workers-ai.ts:54-57`（kimi-k2.5 + llama-4-scout）；AutoRAG 內處理 embedding，無 standalone embedding call
+- [x] #3 SSE / MCP `emitChildLogger` 在 try / catch / finally 三條都呼叫 — `server/api/chat.post.ts:280-308` + `server/utils/chat-sse-response.ts:112-184` settled flag idempotent；DO MCP `mcp-event-shim.ts:82-99` 是 documented deferred (no-op logger)
+- [x] #4 Better Auth hook 內注入 evlog identity 對 passkey flow 也生效 — `server/middleware/00-evlog-actor.ts:21-45` global path-prefix middleware（passkey/OAuth/email 都涵蓋；H3 event 不可達 better-auth hook 是 0.0.2-alpha.19 限制，已記在 `auth.config.ts:256-263`）
+- [ ] #5 cost-based sampling threshold 對 consumer 實際流量 reasonable — **NEEDS_USER**: `server/plugins/evlog-cost-keep.ts:18-25` threshold `0.001` 合理；但 `recordPrimaryAiGeneration` (`chat.post.ts:436-465`) 目前不寫 `cost_usd`（Workers AI 免費），cost-keep 是 dark-launch 直到 paid-tier 上線。user 認可此狀態即可勾
