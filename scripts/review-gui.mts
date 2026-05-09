@@ -1146,18 +1146,24 @@ function renderReviewHtml(): string {
     };
 
     // 從截圖檔名擷取 item id token。支援 #N-、#N.M-、Nb-、N.Ma- 等變體。
+    // 同時回傳是否為 legacy 格式（無 # 前綴）— legacy fallback 只能套用在 legacy
+    // 檔名，不能讓 canonical scoped 檔（如 #3.1-）誤配到 parent #1。
+    // regex 用 [0-9] / [.] 而非 \\d / \\. — oxlint no-useless-escape 對 template
+    // literal 內字串字面 regex 誤判，這寫法等價且 lint clean。
     function extractFilenameId(name) {
-      const m = name.match(/^#?(\d+(?:\.\d+)?)([a-z]?)(?=[-._])/i);
-      return m ? m[1] : null;
+      const m = name.match(/^(#?)([0-9]+(?:[.][0-9]+)?)([a-z]?)(?=[-._])/i);
+      if (!m) return null;
+      return { id: m[2], legacy: m[1] === '' };
     }
     function fileMatchesItem(filename, itemId) {
-      const fileId = extractFilenameId(filename);
-      if (!fileId) return false;
+      const extracted = extractFilenameId(filename);
+      if (!extracted) return false;
       const target = itemId.replace(/^#/, '');
-      if (fileId === target) return true;
-      // legacy section.item 命名（如 8.1-...）對應 parent item
-      if (!target.includes('.') && fileId.includes('.')) {
-        const parts = fileId.split('.');
+      if (extracted.id === target) return true;
+      // legacy section.item（如 8.1-...，無 #）對應 parent item — 只給 legacy 檔名用。
+      // canonical #N.M-（有 #）不走 fallback，避免 #3.1-mobile.png 被 parent #1 抓到。
+      if (extracted.legacy && !target.includes('.') && extracted.id.includes('.')) {
+        const parts = extracted.id.split('.');
         if (parts.length === 2 && parts[1] === target) return true;
       }
       return false;
