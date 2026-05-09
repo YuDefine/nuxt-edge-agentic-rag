@@ -221,12 +221,17 @@ export function applyReviewActionToContent(
 }
 
 function applyActionToLine(line: string, action: 'ok' | 'issue' | 'skip', note: string): string {
-  if (action === 'ok') return setCheckbox(line, true)
+  // 切換 action 前先剝離舊 annotation，避免 stale 殘留（例：先 issue 後改 ok 會留 (issue: ...)）
+  const stripped = stripAnnotations(line)
+  if (action === 'ok') {
+    const base = setCheckbox(stripped, true)
+    return note.trim() ? appendAnnotation(base, 'note', note) : base
+  }
   if (action === 'issue') {
-    const base = setCheckbox(line, false)
+    const base = setCheckbox(stripped, false)
     return appendAnnotation(base, 'issue', note || 'needs follow-up')
   }
-  const base = setCheckbox(line, true)
+  const base = setCheckbox(stripped, true)
   return appendAnnotation(base, 'skip', note)
 }
 
@@ -234,17 +239,23 @@ function setCheckbox(line: string, checked: boolean): string {
   return line.replace(/^(\s*- \[)[ xX](\])/, `$1${checked ? 'x' : ' '}$2`)
 }
 
-function appendAnnotation(line: string, kind: 'issue' | 'skip', note: string): string {
-  if (kind === 'skip' && /（skip(?::[^）]*)?）/.test(line)) return line
-  if (kind === 'issue' && /（issue:[^）]*）/.test(line)) {
-    return line.replace(/（issue:[^）]*）/g, `（issue: ${sanitizeNote(note)}）`)
+function stripAnnotations(line: string): string {
+  return line
+    .replace(/（issue:[^）]*）/g, '')
+    .replace(/（skip(?::[^）]*)?）/g, '')
+    .replace(/（note:[^）]*）/g, '')
+    .replace(/[ \t]+$/, '')
+}
+
+function appendAnnotation(line: string, kind: 'issue' | 'skip' | 'note', note: string): string {
+  let label: string
+  if (kind === 'skip') {
+    label = note.trim() ? `（skip: ${sanitizeNote(note)}）` : '（skip）'
+  } else if (kind === 'issue') {
+    label = `（issue: ${sanitizeNote(note)}）`
+  } else {
+    label = `（note: ${sanitizeNote(note)}）`
   }
-  const label =
-    kind === 'skip'
-      ? note.trim()
-        ? `（skip: ${sanitizeNote(note)}）`
-        : '（skip）'
-      : `（issue: ${sanitizeNote(note)}）`
   return `${line.trimEnd()} ${label}`
 }
 
@@ -297,7 +308,10 @@ export async function createReviewApp(repoRoot = process.cwd()): Promise<any> {
   const { Hono } = await loadHono()
   const app = new Hono()
 
-  app.get('/review', (c: any) => c.html(renderReviewHtml()))
+  app.get('/review', (c: any) => {
+    c.header('Cache-Control', 'no-store')
+    return c.html(renderReviewHtml())
+  })
 
   app.get('/api/health', (c: any) => c.json({ ok: true, repoRoot }))
 
@@ -653,7 +667,8 @@ function renderReviewHtml(): string {
     .app {
       display: grid;
       grid-template-columns: minmax(260px, 340px) minmax(0, 1fr);
-      min-height: 100vh;
+      height: 100vh;
+      overflow: hidden;
     }
     .sidebar {
       border-right: 1px solid var(--line);
@@ -703,8 +718,10 @@ function renderReviewHtml(): string {
     .metric.bad { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 50%, var(--line)); }
     main {
       min-width: 0;
+      min-height: 0;
       display: grid;
       grid-template-columns: minmax(0, 1fr) minmax(260px, 360px);
+      overflow: hidden;
     }
     .review-pane {
       min-width: 0;
@@ -786,6 +803,37 @@ function renderReviewHtml(): string {
     .ok { background: #e6f3ea; border-color: #a7cdb4; }
     .issue { background: #fff3e2; border-color: #d8ad68; }
     .skip { background: #f0eee8; }
+    .task-item.decision-ok { border-left: 4px solid #6aa181; }
+    .task-item.decision-issue { border-left: 4px solid #c97a2c; }
+    .task-item.decision-skip { border-left: 4px solid #8a8275; }
+    .task-item.collapsed { padding: 8px 12px; opacity: 0.78; }
+    .task-item.collapsed .note,
+    .task-item.collapsed .actions { display: none; }
+    .task-item.collapsed .task-desc {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .task-item.collapsed.active { opacity: 1; }
+    .state-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .state-badge.ok { background: #d6ecdf; color: #1e6042; }
+    .state-badge.issue { background: #fce4c8; color: #8a4f0a; }
+    .state-badge.skip { background: #e7e1d3; color: #5a5341; }
+    .reopen {
+      padding: 0 8px;
+      margin-left: 6px;
+      font-size: 12px;
+      background: transparent;
+    }
     .note {
       width: 100%;
       min-height: 58px;
@@ -1126,6 +1174,12 @@ function renderReviewHtml(): string {
       changes: [],
       current: null,
       activeIndex: 0,
+      expanded: new Set(),
+      // draftNotes: 使用者在 textarea 輸入但尚未 saveAction 的內容；以 itemId 為 key。
+      // renderTasks 會整個重設 innerHTML 觸發 textarea 重建，沒這層 cache 會把
+      // 使用者打字內容沖掉（renderTasks 由點 task / j/k / saveAction / reopen
+      // 等多處觸發）。saveAction 成功後清掉該 id（server 已存進 raw）。
+      draftNotes: {},
     };
     const el = {
       changeStatus: document.getElementById('changeStatus'),
@@ -1155,6 +1209,36 @@ function renderReviewHtml(): string {
       if (!m) return null;
       return { id: m[2], legacy: m[1] === '' };
     }
+    // 從 raw tasks.md 行解析使用者已下的決定 + 之前填的 note。
+    // appendAnnotation 用全形「（）」夾標籤，例：
+    //   - [x] #1 ... （issue: 圖片載不出）
+    //   - [x] #2 ... （skip: 不適用）
+    //   - [x] #3 ...（純通過、無 annotation）
+    // regex 用 [ ] 等價字符集而非 \\s — oxlint no-useless-escape 對 template
+    // literal 內字串字面 regex 誤判（同 extractFilenameId 處理方式）。
+    // server-side sanitizeNote 已 normalize whitespace 為單一 space，所以
+    // [ ]* 足夠覆蓋所有實際輸入。
+    function parseDecision(raw) {
+      const issueMatch = raw.match(/（issue:[ ]*([^）]*)）/);
+      if (issueMatch) return { kind: 'issue', note: issueMatch[1].trim() };
+      const skipMatch = raw.match(/（skip(?::[ ]*([^）]*))?）/);
+      if (skipMatch) return { kind: 'skip', note: (skipMatch[1] || '').trim() };
+      // 用 startsWith 避開 oxlint no-useless-escape 對 regex \\[ / \\] 的誤判
+      const trimmed = raw.replace(/^[ \t]+/, '');
+      const checked = trimmed.startsWith('- [x]') || trimmed.startsWith('- [X]');
+      if (checked) {
+        const noteMatch = raw.match(/（note:[ ]*([^）]*)）/);
+        return { kind: 'ok', note: noteMatch ? noteMatch[1].trim() : '' };
+      }
+      return { kind: 'pending', note: '' };
+    }
+    function decisionLabel(kind) {
+      if (kind === 'ok') return '✓ 已通過';
+      if (kind === 'issue') return '⚠ 有問題';
+      if (kind === 'skip') return '⤵ 已跳過';
+      return '待檢查';
+    }
+
     function fileMatchesItem(filename, itemId) {
       const extracted = extractFilenameId(filename);
       if (!extracted) return false;
@@ -1227,6 +1311,8 @@ function renderReviewHtml(): string {
       state.current = data.change;
       state.activeIndex = Math.max(0, (state.current.items || []).findIndex(function (item) { return !item.checked; }));
       if (state.activeIndex < 0) state.activeIndex = 0;
+      state.expanded = new Set();
+      state.draftNotes = {};
       renderChanges();
       renderCurrent();
     }
@@ -1257,13 +1343,27 @@ function renderReviewHtml(): string {
       }).join('');
       const items = change.items.map(function (item, index) {
         const active = index === state.activeIndex;
-        return '<article class="task-item' + (active ? ' active' : '') + (item.scoped ? ' scoped' : '') + '" data-item="' + esc(item.id) + '">' +
+        const decision = parseDecision(item.raw);
+        const handled = decision.kind !== 'pending';
+        const collapsed = handled && !state.expanded.has(item.id);
+        const decisionClass = handled ? ' decision-' + decision.kind : '';
+        let stateHtml;
+        if (handled) {
+          stateHtml = '<span class="state-badge ' + decision.kind + '">' + decisionLabel(decision.kind) + '</span>';
+          if (collapsed) {
+            stateHtml += '<button class="reopen" data-action="reopen" data-id="' + esc(item.id) + '" type="button" title="重新編輯此項">↻ 編輯</button>';
+          }
+        } else {
+          stateHtml = '待檢查';
+        }
+        const noteValue = decision.note ? esc(decision.note) : '';
+        return '<article class="task-item' + (active ? ' active' : '') + (item.scoped ? ' scoped' : '') + decisionClass + (collapsed ? ' collapsed' : '') + '" data-item="' + esc(item.id) + '">' +
           '<div class="task-head">' +
           '<span class="task-id">' + esc(item.id) + '</span>' +
           '<span class="task-desc">' + esc(item.description) + '</span>' +
-          '<span class="task-state">' + (item.checked ? '已通過' : '待檢查') + '</span>' +
+          '<span class="task-state">' + stateHtml + '</span>' +
           '</div>' +
-          '<textarea class="note" data-note="' + esc(item.id) + '" placeholder="填寫說明（「有問題」必填、「跳過」可選填）"></textarea>' +
+          '<textarea class="note" data-note="' + esc(item.id) + '" placeholder="填寫說明（「有問題」必填、「跳過」可選填）">' + noteValue + '</textarea>' +
           '<div class="actions">' +
           '<button class="ok" data-action="ok" data-id="' + esc(item.id) + '" type="button" title="標記此項通過 (O)">✓ 通過</button>' +
           '<button class="issue" data-action="issue" data-id="' + esc(item.id) + '" type="button" title="標記此項有問題，需填寫說明 (I)">⚠ 有問題</button>' +
@@ -1283,7 +1383,30 @@ function renderReviewHtml(): string {
         });
       });
       el.taskList.querySelectorAll('[data-action]').forEach(function (button) {
-        button.addEventListener('click', function () { saveAction(button.dataset.id, button.dataset.action); });
+        button.addEventListener('click', function (event) {
+          event.stopPropagation();
+          if (button.dataset.action === 'reopen') {
+            state.expanded.add(button.dataset.id);
+            renderTasks();
+            const node = el.taskList.querySelector('[data-note="' + CSS.escape(button.dataset.id) + '"]');
+            if (node) {
+              node.focus();
+              const len = node.value.length;
+              node.setSelectionRange(len, len);
+            }
+            return;
+          }
+          saveAction(button.dataset.id, button.dataset.action);
+        });
+      });
+      // textarea draft cache：使用者打字 → 寫進 state.draftNotes（key by itemId），
+      // renderTasks 之後 restore；沒這層使用者輸入會被下次 innerHTML reset 沖掉。
+      el.taskList.querySelectorAll('textarea[data-note]').forEach(function (textarea) {
+        const id = textarea.dataset.note;
+        if (state.draftNotes[id] !== undefined) textarea.value = state.draftNotes[id];
+        textarea.addEventListener('input', function () {
+          state.draftNotes[id] = textarea.value;
+        });
       });
     }
 
@@ -1407,6 +1530,25 @@ function renderReviewHtml(): string {
           }),
         });
         state.current = data.change;
+        state.expanded.delete(itemId);
+        delete state.draftNotes[itemId];
+        // sidebar metrics 是 state.changes 的 cache，saveAction 不會自動更新
+        // 對應 entry，會跟 right pane 的 state.current 不一致。把 detail 的 summary
+        // 欄位 patch 回 list，避免使用者看到「sidebar 1/6 已通過、right pane 4 ok」這種矛盾。
+        const idx = state.changes.findIndex(function (c) { return c.name === data.change.name; });
+        if (idx >= 0) {
+          state.changes[idx] = {
+            name: data.change.name,
+            tasksPath: data.change.tasksPath,
+            total: data.change.total,
+            checked: data.change.checked,
+            pending: data.change.pending,
+            malformed: data.change.malformed,
+            screenshotTopicCount: data.change.screenshotTopicCount,
+            screenshotTopics: data.change.screenshotTopics,
+          };
+          renderChanges();
+        }
         if (data.archive && data.archive.status === 'success') {
           showBanner('已儲存，Review archive 完成', '');
         } else if (data.archive && data.archive.status === 'failed') {
