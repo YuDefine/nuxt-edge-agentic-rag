@@ -8,6 +8,9 @@ const mocks = vi.hoisted(() => ({
   dbSelect: vi.fn(),
   dbSelectResults: [] as Array<Array<Record<string, string>>>,
   getRuntimeAdminAccess: vi.fn(),
+  loggerError: vi.fn(),
+  loggerInfo: vi.fn(),
+  loggerSet: vi.fn(),
   readValidatedBody: vi.fn(),
   signInEmail: vi.fn(),
   signUpEmail: vi.fn(),
@@ -22,6 +25,14 @@ vi.mock('drizzle-orm', () => ({
 
 vi.mock('#server/utils/knowledge-runtime', () => ({
   getRuntimeAdminAccess: mocks.getRuntimeAdminAccess,
+}))
+
+vi.mock('evlog', () => ({
+  useLogger: () => ({
+    error: mocks.loggerError,
+    info: mocks.loggerInfo,
+    set: mocks.loggerSet,
+  }),
 }))
 
 vi.mock('hub:db', () => {
@@ -74,6 +85,9 @@ describe('POST /api/_dev/login', () => {
     }))
     mocks.dbSelectResults.splice(0, mocks.dbSelectResults.length)
     mocks.getRuntimeAdminAccess.mockReset()
+    mocks.loggerError.mockReset()
+    mocks.loggerInfo.mockReset()
+    mocks.loggerSet.mockReset()
     mocks.readValidatedBody.mockReset()
     mocks.serverAuth.mockReset()
     mocks.signInEmail.mockReset()
@@ -163,5 +177,124 @@ describe('POST /api/_dev/login', () => {
       },
       asResponse: true,
     })
+  })
+
+  it('returns 404 in non-local environment', async () => {
+    mocks.useRuntimeConfig.mockReturnValue({
+      knowledge: { environment: 'staging' },
+      devLoginPassword: 'fallback-pass',
+    })
+
+    const { default: handler } = await import('../../server/api/_dev/login.post')
+    await expect(handler(createRouteEvent())).rejects.toMatchObject({
+      statusCode: 404,
+    })
+    expect(mocks.signInEmail).not.toHaveBeenCalled()
+    expect(mocks.signUpEmail).not.toHaveBeenCalled()
+  })
+
+  it('rejects as=admin when email is not in ADMIN_EMAIL_ALLOWLIST', async () => {
+    mocks.readValidatedBody.mockResolvedValue({
+      email: 'not-admin@test.local',
+      password: undefined,
+      as: 'admin',
+    })
+    mocks.getRuntimeAdminAccess.mockReturnValue(false)
+
+    const { default: handler } = await import('../../server/api/_dev/login.post')
+    await expect(handler(createRouteEvent())).rejects.toMatchObject({
+      statusCode: 403,
+      message: expect.stringMatching(/ADMIN_EMAIL_ALLOWLIST/),
+    })
+    expect(mocks.signInEmail).not.toHaveBeenCalled()
+    expect(mocks.signUpEmail).not.toHaveBeenCalled()
+  })
+
+  it('signs in as=member for a non-allowlisted email', async () => {
+    mocks.readValidatedBody.mockResolvedValue({
+      email: 'someone@test.local',
+      password: undefined,
+      as: 'member',
+    })
+    mocks.getRuntimeAdminAccess.mockReturnValue(false)
+    mocks.signInEmail.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({ user: { id: 'user-2', email: 'someone@test.local', role: 'member' } }),
+        { status: 200, headers: { 'set-cookie': 'session=xyz; Path=/; HttpOnly' } },
+      ),
+    )
+
+    const { default: handler } = await import('../../server/api/_dev/login.post')
+    const result = (await handler(createRouteEvent())) as {
+      action: string
+      user: { role: string; email: string }
+    }
+
+    expect(result).toMatchObject({
+      action: 'signed_in',
+      user: { email: 'someone@test.local', role: 'member' },
+    })
+    expect(mocks.loggerInfo).toHaveBeenCalledWith(
+      '[dev-login]',
+      expect.objectContaining({
+        route: '/api/_dev/login',
+        requestedAs: 'member',
+        requestedEmail: 'someone@test.local',
+        resolvedRole: 'member',
+        action: 'session_created',
+        environment: 'local',
+      }),
+    )
+  })
+
+  it('signs in as=admin for an allowlisted email', async () => {
+    mocks.readValidatedBody.mockResolvedValue({
+      email: 'admin@test.local',
+      password: undefined,
+      as: 'admin',
+    })
+    mocks.getRuntimeAdminAccess.mockReturnValue(true)
+    mocks.signInEmail.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({ user: { id: 'user-3', email: 'admin@test.local', role: 'admin' } }),
+        { status: 200, headers: { 'set-cookie': 'session=adm; Path=/; HttpOnly' } },
+      ),
+    )
+
+    const { default: handler } = await import('../../server/api/_dev/login.post')
+    const result = (await handler(createRouteEvent())) as {
+      action: string
+      user: { role: string; email: string }
+    }
+
+    expect(result).toMatchObject({
+      action: 'signed_in',
+      user: { email: 'admin@test.local', role: 'admin' },
+    })
+    expect(mocks.loggerInfo).toHaveBeenCalledWith(
+      '[dev-login]',
+      expect.objectContaining({
+        requestedAs: 'admin',
+        resolvedRole: 'admin',
+        action: 'session_created',
+      }),
+    )
+  })
+
+  it('rejects as=guest with 400 (not yet implemented)', async () => {
+    mocks.readValidatedBody.mockResolvedValue({
+      email: 'guest@test.local',
+      password: undefined,
+      as: 'guest',
+    })
+    mocks.getRuntimeAdminAccess.mockReturnValue(false)
+
+    const { default: handler } = await import('../../server/api/_dev/login.post')
+    await expect(handler(createRouteEvent())).rejects.toMatchObject({
+      statusCode: 400,
+      message: expect.stringMatching(/guest/i),
+    })
+    expect(mocks.signInEmail).not.toHaveBeenCalled()
+    expect(mocks.signUpEmail).not.toHaveBeenCalled()
   })
 })

@@ -100,7 +100,10 @@ const bodySchema = z.object({
   email: z.string().email('Invalid email'),
   password: z.string().min(8, 'Password must be at least 8 characters').optional(),
   name: z.string().min(1).optional(),
+  as: z.enum(['admin', 'member', 'guest']).optional(),
 })
+
+type DevLoginRole = 'admin' | 'member' | 'guest'
 
 type DevLoginUser = {
   id: string
@@ -150,10 +153,16 @@ async function trySignInEmail(
 async function finishSignedInResponse(
   event: Parameters<typeof appendResponseHeader>[0],
   response: Response,
-  role: string,
+  role: DevLoginRole,
   action: 'signed_in' | 'created_and_signed_in',
+  context: {
+    requestedAs: DevLoginRole | undefined
+    requestedEmail: string
+    environment: string
+  },
   log: {
     error: (error: Error, context?: Record<string, unknown>) => void
+    info?: (message: string, context?: Record<string, unknown>) => void
   },
 ) {
   const data = (await response.json()) as DevLoginAuthPayload
@@ -176,6 +185,16 @@ async function finishSignedInResponse(
     appendResponseHeader(event, 'set-cookie', setCookieHeader)
   }
 
+  const logAction = action === 'created_and_signed_in' ? 'session_signed_up' : 'session_created'
+  log.info?.('[dev-login]', {
+    route: '/api/_dev/login',
+    requestedAs: context.requestedAs,
+    requestedEmail: context.requestedEmail,
+    resolvedRole: role,
+    action: logAction,
+    environment: context.environment,
+  })
+
   return {
     success: true,
     action,
@@ -197,9 +216,12 @@ export default defineEventHandler(async (event) => {
   const knowledgeEnv = runtimeConfig.knowledge?.environment ?? 'local'
 
   if (knowledgeEnv !== 'local') {
+    // Avoid disclosing route existence in non-local environments — return 404
+    // rather than 403 so probes cannot distinguish "exists but blocked" from
+    // "does not exist".
     throw createError({
-      statusCode: 403,
-      message: 'Dev login is only available in local environment',
+      statusCode: 404,
+      message: 'Not Found',
     })
   }
 
@@ -208,13 +230,41 @@ export default defineEventHandler(async (event) => {
 
   const auth = serverAuth(event)
 
-  // Determine role based on admin allowlist.
+  // Determine role. ADMIN_EMAIL_ALLOWLIST (via getRuntimeAdminAccess) remains
+  // the single source of truth for admin promotion. The optional `as` body
+  // field lets callers explicitly request a role, but `as=admin` MUST still
+  // pass the allowlist check — never bypass it.
+  //
   // Non-admin dev accounts default to `'member'` (B16 three-tier canonical
   // value). Legacy `'user'` was retired by migration 0006 — writing it here
   // would pollute the DB with values the rest of the app rejects.
   const isAdmin = getRuntimeAdminAccess(body.email)
-  const role = isAdmin ? 'admin' : 'member'
+
+  if (body.as === 'admin' && !isAdmin) {
+    throw createError({
+      statusCode: 403,
+      message: 'as=admin requires an email in ADMIN_EMAIL_ALLOWLIST',
+    })
+  }
+
+  if (body.as === 'guest') {
+    // The canonical design reserves `as=guest` for future scenarios that
+    // intentionally exercise unauthenticated/guest UX. No current caller
+    // requires it; reject explicitly so speculative guest plumbing stays
+    // out of the dev-login fast path.
+    throw createError({
+      statusCode: 400,
+      message: 'guest scenario not implemented',
+    })
+  }
+
+  const role: DevLoginRole = body.as ?? (isAdmin ? 'admin' : 'member')
   const displayName = body.name ?? (body.email.split('@')[0] as string)
+  const logContext = {
+    requestedAs: body.as,
+    requestedEmail: body.email,
+    environment: knowledgeEnv,
+  }
 
   try {
     await ensureCredentialAccount(body.email, password)
@@ -232,7 +282,7 @@ export default defineEventHandler(async (event) => {
     const signInResponse = await trySignInEmail(auth, body.email, password)
 
     if (signInResponse.ok) {
-      return await finishSignedInResponse(event, signInResponse, role, 'signed_in', log)
+      return await finishSignedInResponse(event, signInResponse, role, 'signed_in', logContext, log)
     }
   } catch {
     // Sign in failed, try to create user
@@ -261,7 +311,14 @@ export default defineEventHandler(async (event) => {
         try {
           const retrySignInResponse = await trySignInEmail(auth, body.email, password)
           if (retrySignInResponse.ok) {
-            return await finishSignedInResponse(event, retrySignInResponse, role, 'signed_in', log)
+            return await finishSignedInResponse(
+              event,
+              retrySignInResponse,
+              role,
+              'signed_in',
+              logContext,
+              log,
+            )
           }
         } catch (retryError) {
           log.error(retryError as Error, { step: 'dev-login-signin-after-conflict' })
@@ -274,7 +331,14 @@ export default defineEventHandler(async (event) => {
       })
     }
 
-    return await finishSignedInResponse(event, signUpResponse, role, 'created_and_signed_in', log)
+    return await finishSignedInResponse(
+      event,
+      signUpResponse,
+      role,
+      'created_and_signed_in',
+      logContext,
+      log,
+    )
   } catch (error: unknown) {
     if (error instanceof Error && 'statusCode' in error) {
       throw error
