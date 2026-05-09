@@ -29,6 +29,7 @@ logs
 app/types/database.types.ts
 supabase/.branches/
 supabase/.temp/
+.nuxtrc
 
 # Wrangler build artifacts
 .wrangler/
