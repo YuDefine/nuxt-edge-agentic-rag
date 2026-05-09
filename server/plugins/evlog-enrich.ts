@@ -53,6 +53,16 @@ export default defineNitroPlugin((nitroApp) => {
   // tenant enricher（multi-tenant 必裝；single-tenant 可註解）
   // 必在 auth middleware **之後**，才能讀到 e.context.tenantId
   // nitroApp.hooks.hook('request', tenantEnricher)
+
+  // ── audit forceKeep（evlog 2.16 無內建，必由 consumer wire 此 hook）──
+  // sampling.keep[{kind: 'audit'}] type 不接（TailSamplingCondition 只接
+  // status/duration/path），故走 'evlog:emit:keep' Nitro hook：對 audit-class
+  // event mutate ctx.shouldKeep = true。
+  // 詳見 master plan § 14「audit forceKeep wiring」row。
+  nitroApp.hooks.hook('evlog:emit:keep', (ctx) => {
+    const kind = (ctx.context as { kind?: string }).kind
+    if (kind === 'audit') ctx.shouldKeep = true
+  })
 })
 
 // ────────────────────────────────────────────────────────────────────────
