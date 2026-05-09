@@ -1,0 +1,13 @@
+schema: spec-driven
+template: evlog-adopt-cfworkers-nuxthub-ai
+template_version: 1
+template_source: ~/offline/clade/openspec/templates/evlog-adopt-cfworkers-nuxthub-ai/
+stack: cf-workers + NuxtHub D1 + AI
+depth: '1+AI → NuxtHub complete'
+target_consumers:
+  - nuxt-edge-agentic-rag
+target_consumer: nuxt-edge-agentic-rag
+estimated_effort: 1 day
+created: 2026-05-09
+created_by: charles <abcd854884@gmail.com>
+created_with: claude
