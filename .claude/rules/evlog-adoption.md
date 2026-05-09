@@ -149,15 +149,15 @@ rg -n "createPipeline\\(|pipeline\\.wrap" server/plugins
 rg -n "userAgentEnricher\\(|geoEnricher\\(|traceContextEnricher\\(|requestSizeEnricher\\(|tenantEnricher\\(" server/plugins
 
 # Depth 5：sampling + redaction
-rg -n "samplingPolicy\\(" server/plugins
-rg -n "redactionPolicy\\(" server/plugins
+rg -nM "sampling:\\s*\\{[\\s\\S]*?rates:" nuxt.config.ts packages/**/nuxt.config.ts
+rg -n "redact:\\s*(?:true|\\{)" nuxt.config.ts packages/**/nuxt.config.ts
 
 # Depth 6：client transport + typed fields
-rg -n "evlog:[\\s\\S]*client:[\\s\\S]*enabled:\\s*true" nuxt.config.ts
-rg -n "defineFields\\(" server/utils
+rg -nM "transport:\\s*\\{[\\s\\S]{0,200}?enabled:\\s*true" nuxt.config.ts
+rg -n "interface .*EvlogFields" server/utils packages/**/server/utils
 
 # O1：audit signed
-rg -n "signed\\(\\{|auditEnricher\\(|auditOnly\\(" server/plugins
+rg -n "signed\\(\\{|auditEnricher\\(|auditOnly\\(" server/plugins packages/**/server/plugins
 ```
 
 ## Migration 順序建議
