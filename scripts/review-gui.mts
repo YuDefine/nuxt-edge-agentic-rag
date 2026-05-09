@@ -9,7 +9,7 @@
 
 import { createHash } from 'node:crypto'
 import { createReadStream, existsSync } from 'node:fs'
-import { readFile, readdir, stat, writeFile } from 'node:fs/promises'
+import { mkdir, open as openFd, readFile, readdir, stat, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import net from 'node:net'
 import { join, normalize, resolve, sep } from 'node:path'
@@ -317,12 +317,17 @@ export async function createReviewApp(repoRoot = process.cwd()): Promise<any> {
 
   app.get('/api/health', (c: any) => c.json({ ok: true, repoRoot }))
 
+  // GET /api/changes 與 /api/changes/:change 都不能讓瀏覽器 cache：
+  // change detail 含 version.hash + mtime，cache 後 reload 會拿到 stale version
+  // 而下一次 saveAction 仍用舊 version → server 端永遠回 409。
   app.get('/api/changes', async (c: any) => {
+    c.header('Cache-Control', 'no-store')
     const changes = await listPendingChanges(repoRoot)
     return c.json({ changes })
   })
 
   app.get('/api/changes/:change', async (c: any) => {
+    c.header('Cache-Control', 'no-store')
     const detail = await readChangeDetail(repoRoot, c.req.param('change'))
     return c.json({ change: detail })
   })
@@ -394,8 +399,12 @@ async function summarizeChange(
   const parsed = parseManualReviewSections(content)
   if (parsed.sections.length === 0) return null
 
-  const checked = parsed.items.filter((item) => item.checked).length
+  // 「真的通過」= [x] 且沒有 issue annotation。`[x]` + `（issue: ...）` 並存
+  // 是舊版時代的 stale state，語義上應算 issue 待解，不能算通過。
   const issued = parsed.items.filter((item) => /（issue:[^）]*）/.test(item.raw)).length
+  const checked = parsed.items.filter(
+    (item) => item.checked && !/（issue:[^）]*）/.test(item.raw),
+  ).length
   return {
     name,
     tasksPath,
@@ -465,8 +474,12 @@ async function persistReviewAction(repoRoot: string, change: string, body: any):
   await writeFile(tasksPath, updated.content, 'utf8')
 
   const detail = await readChangeDetail(repoRoot, change)
+  // 與 summarizeChange 的 checked 算法同義：[x] 且沒 issue annotation 才算完成。
+  // 否則 stale `[x] + （issue: ...）` 會誤觸發 archive。
   const complete =
-    detail.malformed === 0 && detail.items.length > 0 && detail.items.every((item) => item.checked)
+    detail.malformed === 0 &&
+    detail.items.length > 0 &&
+    detail.items.every((item) => item.checked && !/（issue:[^）]*）/.test(item.raw))
   const archive = complete ? await invokeReviewArchive(repoRoot, change) : { status: 'not-ready' }
   return {
     ok: true,
@@ -485,32 +498,42 @@ async function invokeReviewArchive(repoRoot: string, change: string): Promise<an
   const command = configured || findDefaultArchiveCommand()
   if (!command) {
     return {
-      status: 'failed',
+      status: 'unavailable',
       message:
         'No review-archive command is available. Run /review-archive all manually or set REVIEW_GUI_ARCHIVE_CMD.',
     }
   }
 
+  // Fire-and-forget：archive 命令（如 `claude -p "/review-archive all"`）會跑很久，
+  // 同步等它收尾會讓 review GUI 的「✓ 通過」按鈕看起來 hung 住。
+  // 改成 detached spawn，stdout/stderr 寫到 log file，response 立刻回。
   const rendered = command.replaceAll('{change}', shellQuote(change))
-  const result = spawnSync(rendered, {
-    cwd: repoRoot,
-    shell: true,
-    encoding: 'utf8',
-    maxBuffer: 4 * 1024 * 1024,
-  })
-  if (result.status === 0) {
+  const logDir = join(repoRoot, '.review-gui')
+  const ts = new Date().toISOString().replaceAll(':', '-').replaceAll('.', '-')
+  const logPath = join(logDir, `archive-${change}-${ts}.log`)
+  try {
+    await mkdir(logDir, { recursive: true })
+    const fd = await openFd(logPath, 'a')
+    const child = spawn(rendered, {
+      cwd: repoRoot,
+      shell: true,
+      stdio: ['ignore', fd.fd, fd.fd],
+      detached: true,
+    })
+    child.unref()
+    await fd.close()
     return {
-      status: 'success',
+      status: 'started',
       command: rendered,
-      stdout: result.stdout.trim(),
+      logPath,
+      pid: child.pid,
     }
-  }
-  return {
-    status: 'failed',
-    command: rendered,
-    exitCode: result.status,
-    stdout: result.stdout.trim(),
-    stderr: result.stderr.trim(),
+  } catch (err) {
+    return {
+      status: 'failed',
+      command: rendered,
+      message: err instanceof Error ? err.message : String(err),
+    }
   }
 }
 
@@ -796,6 +819,41 @@ function renderReviewHtml(): string {
     }
     .banner.show { display: block; }
     .banner.error { border-color: color-mix(in srgb, var(--bad) 55%, var(--line)); color: var(--bad); }
+    .banner.pending {
+      border-color: color-mix(in srgb, var(--accent) 35%, var(--line));
+      color: var(--accent);
+      background: color-mix(in srgb, var(--accent) 6%, var(--panel));
+    }
+    .banner.pending::before {
+      content: '';
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      margin-right: 8px;
+      border: 2px solid currentColor;
+      border-right-color: transparent;
+      border-radius: 50%;
+      vertical-align: -1px;
+      animation: rg-spin .8s linear infinite;
+    }
+    @keyframes rg-spin { to { transform: rotate(360deg); } }
+    .task-item.saving {
+      position: relative;
+      pointer-events: none;
+    }
+    .task-item.saving::after {
+      content: '儲存中…';
+      position: absolute;
+      top: 8px;
+      right: 12px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--accent) 12%, var(--panel));
+      color: var(--accent);
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .task-item.saving > * { opacity: 0.6; }
     .task-list {
       display: grid;
       gap: 10px;
@@ -1592,6 +1650,8 @@ function renderReviewHtml(): string {
       return button;
     }
 
+    // 防止 double-click 在 server 還沒回前重複送出（每按一次就多一次 conflict 機會）
+    const inflightSaves = new Set();
     async function saveAction(itemId, action) {
       const change = state.current;
       if (!change) return;
@@ -1599,6 +1659,7 @@ function renderReviewHtml(): string {
         showBanner('寫入前需先修正格式錯誤', 'error');
         return;
       }
+      if (inflightSaves.has(itemId)) return;
       const noteNode = el.taskList.querySelector('[data-note="' + CSS.escape(itemId) + '"]');
       const note = noteNode ? noteNode.value : '';
       if (action === 'issue' && !note.trim()) {
@@ -1606,6 +1667,13 @@ function renderReviewHtml(): string {
         if (noteNode) noteNode.focus();
         return;
       }
+      // visual feedback：立即把 task-item disable + 顯示「儲存中…」banner，
+      // 讓使用者知道 click 收到了，不會以為 hung。
+      inflightSaves.add(itemId);
+      const itemNode = el.taskList.querySelector('[data-item="' + CSS.escape(itemId) + '"]');
+      if (itemNode) itemNode.classList.add('saving');
+      itemNode?.querySelectorAll('button[data-action], textarea').forEach(function (n) { n.disabled = true; });
+      showBanner('儲存中…', 'pending');
       try {
         const data = await api('/api/changes/' + encodeURIComponent(change.name) + '/action', {
           method: 'POST',
@@ -1638,17 +1706,45 @@ function renderReviewHtml(): string {
           };
           renderChanges();
         }
-        if (data.archive && data.archive.status === 'success') {
-          showBanner('已儲存，Review archive 完成', '');
+        if (data.archive && data.archive.status === 'started') {
+          showBanner('已儲存且全部通過，Review archive 已在背景執行（log: ' + (data.archive.logPath || 'see .review-gui/') + '）', '');
+        } else if (data.archive && data.archive.status === 'unavailable') {
+          showBanner('已儲存且全部通過，但找不到 review-archive 命令，請手動跑 /review-archive all', 'error');
         } else if (data.archive && data.archive.status === 'failed') {
-          showBanner('已儲存，但 Review archive 失敗：' + (data.archive.message || data.archive.stderr || '需手動處理'), 'error');
+          showBanner('已儲存，但無法觸發 Review archive：' + (data.archive.message || '需手動處理'), 'error');
         } else {
           showBanner('已將 ' + itemId + ' 標記為 ' + action, '');
         }
         renderCurrent();
       } catch (err) {
-        if (err.status === 409) showBanner('寫入衝突，請先重新載入再儲存', 'error');
-        else showBanner(err.message || String(err), 'error');
+        if (err.status === 409) {
+          // server 在 body.currentVersion 回新 hash；直接同步到 state.current.version，
+          // 讓下次按按鈕用最新 version 不再撞 409。tasks.md 真有 out-of-band 修改時，
+          // 內容也用 server 那邊重新拿，避免 client 顯示與 raw 不一致。
+          if (err.body && err.body.currentVersion && state.current) {
+            try {
+              const fresh = await api('/api/changes/' + encodeURIComponent(state.current.name));
+              state.current = fresh.change;
+              renderCurrent();
+              showBanner('版本已自動同步（其他人或上一次操作改過 tasks.md），請再按一次', 'error');
+            } catch (reloadErr) {
+              showBanner('版本衝突且自動同步失敗：' + (reloadErr.message || String(reloadErr)), 'error');
+            }
+          } else {
+            showBanner('寫入衝突，請點「重新載入」再儲存', 'error');
+          }
+        } else {
+          showBanner(err.message || String(err), 'error');
+        }
+      } finally {
+        inflightSaves.delete(itemId);
+        // success path renderCurrent 已重建整個 task list，新 DOM 沒 saving class；
+        // error path 留在原 DOM，主動把 disable / saving class 拿掉避免使用者卡死。
+        const itemNode2 = el.taskList.querySelector('[data-item="' + CSS.escape(itemId) + '"]');
+        if (itemNode2) {
+          itemNode2.classList.remove('saving');
+          itemNode2.querySelectorAll('button[data-action], textarea').forEach(function (n) { n.disabled = false; });
+        }
       }
     }
 
