@@ -2,6 +2,15 @@
 
 ## In Progress
 
+- [ ] **dev-login canonical migration**（clade v0.5.10 設計同步） — 已實作未 commit（2026-05-09 由 perno session 主線派 subagent 完成）
+  - `server/api/_dev/login.post.ts` (+50/-10): 加 `as` body param（`z.enum(['admin','member','guest']).optional()`）、`DevLoginRole` 型別、403→404、`as=admin` 必須 ALLOWLIST 否則 403、`as=guest` 400 stub、結構化 `log.info('[dev-login]', {...})` 含 route/requestedAs/requestedEmail/resolvedRole/action/environment
+  - `e2e/helpers.ts` (+24/-9): `devLogin(page, email, options?: { as? })` 接 optional `as` field
+  - `test/integration/dev-login-route.test.ts` (+106/-1): 5 個新 test，7/7 pass
+  - **Verify**: lint 0/0、typecheck 0、7/7 test pass
+  - **Risks**: `as=guest` 是 400 stub 待 caller 實作；log action 命名（`session_created` / `session_signed_up`）跨 consumer 對齊待視；allowlisted email + `as=member` 允許（讓 admin email 測 member UX）
+  - **Next**: `git status` → `/commit`，主題建議 `✨ feat(auth/dev-login): align with canonical — 403→404 + as body param + ALLOWLIST guard`
+  - **Source of Truth**: `~/offline/clade/openspec/discussions/dev-login-canonical-design.md` § Migration Plan E（lines 1104-1136）；rule 已 propagate 到 `.claude/rules/modules/auth/better-auth/dev-login.md`
+
 - [ ] **rag-query-rewriting** (16/34 tasks, 47% — 6.1 standing as **partial pass**)
   - Code 已隨 v0.53.0 ship 到 production；staging `features.queryRewriting=true` 已生效
   - **6.1 partial pass**（commit `b5eca44`）：flag wiring + audit 寫入機制 + fallback safety 三層 ✅；
