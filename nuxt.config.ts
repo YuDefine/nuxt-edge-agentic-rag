@@ -107,6 +107,7 @@ export default defineNuxtConfig({
     '@pinia/colada-nuxt',
     '@nuxt/test-utils/module',
     'evlog/nuxt',
+    '@evlog/nuxthub',
     ...(!disableNuxtHints ? ['@nuxt/hints'] : []),
     '@nuxtjs/mcp-toolkit',
     '@nuxt/a11y',
@@ -332,6 +333,22 @@ export default defineNuxtConfig({
   evlog: {
     env: { service: 'nuxt-edge-agentic-rag' },
     include: ['/api/**'],
+    // T3 evlog adoption (adopt-evlog-nuxthub-ai-t3):
+    // - retention: cron-driven NuxtHub D1 row drop (>90d).
+    // - sampling: error/warn keep all; info default 50% with declarative
+    //   keep[] for slow/failing reqs. Cost-based forceKeep is wired via
+    //   `evlog:emit:keep` Nitro hook in `server/plugins/evlog-cost-keep.ts`
+    //   because `sampling.keep[]` only accepts declarative `{status,duration,path}`.
+    // - redact: enable all built-in PII patterns (email/card/IPv4/phone/SSN).
+    retention: '90d',
+    sampling: {
+      // Single-line rates block intentional — the clade evlog-adoption-audit
+      // script regex `rates:\s*\{[^}]*(?:error|warn|info|debug)` is line-based
+      // (no `--multiline`) so a pretty-printed block would not match.
+      rates: { error: 100, warn: 100, info: 50, debug: 0 },
+      keep: [{ status: 400 }, { duration: 1000 }],
+    },
+    redact: true,
   },
 
   devtools: {

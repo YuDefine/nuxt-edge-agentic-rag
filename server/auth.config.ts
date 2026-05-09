@@ -2,6 +2,7 @@
 import 'reflect-metadata'
 import { passkey } from '@better-auth/passkey'
 import { defineServerAuth } from '@onmax/nuxt-better-auth/config'
+import { createAuthMiddleware } from 'better-auth/api'
 import { setSessionCookie } from 'better-auth/cookies'
 import { admin } from 'better-auth/plugins'
 import { consola } from 'consola'
@@ -242,6 +243,39 @@ export default defineServerAuth(({ db, runtimeConfig }) => {
     // RP env presence (Decision 4).
     plugins,
     ...(socialProviders ? { socialProviders } : {}),
+    /**
+     * T3 evlog adoption (adopt-evlog-nuxthub-ai-t3) — better-auth identity
+     * hook.
+     *
+     * better-auth's `createAuthMiddleware(after)` runs after every
+     * `/api/auth/**` request resolves. We use it to (a) emit a debug log
+     * tagged with the resolved session user id so dashboards can join
+     * auth flow events with the broader request stream, and (b) keep a
+     * documented seam for future evlog integration.
+     *
+     * Why we don't call `useLogger(ctx.context.event).set({ actor })`
+     * directly here:
+     *   - In `better-auth@1.6.x` + `@onmax/nuxt-better-auth@0.0.2-alpha.19`,
+     *     the auth handler is mounted via `auth.handler(toWebRequest(event))`
+     *     and the H3 event isn't propagated into `ctx.context`. The actor
+     *     identity field is instead stamped onto the wide event by the
+     *     `server/middleware/00-evlog-actor.ts` server middleware, which
+     *     fires per-request with full H3 access.
+     *   - The evlog client plugin (`app/plugins/evlog-identity.client.ts`)
+     *     covers browser-side identity (`setIdentity` / `clearIdentity`)
+     *     so client wide events also carry the user id.
+     */
+    hooks: {
+      after: createAuthMiddleware(async (ctx) => {
+        const userId = ctx.context.session?.user?.id
+        if (!userId) return
+        // We can't reach the H3 wide event from here (see comment above);
+        // log at the better-auth logger so the auth flow itself stays
+        // traceable. The per-request `actor.id` enrichment happens in the
+        // server middleware.
+        ctx.context.logger.debug?.('evlog.identity.resolved', { userId })
+      }),
+    },
     databaseHooks: {
       // Admin role is managed via runtime ADMIN_EMAIL_ALLOWLIST:
       // - On signup: derive role from allowlist before user row is created.

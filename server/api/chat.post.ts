@@ -1,7 +1,8 @@
-import { createRequestLogger, useLogger, type RequestLogger, type WideEvent } from 'evlog'
-import { extractSafeHeaders } from 'evlog/toolkit'
-import type { H3Event } from 'h3'
+import { useLogger, type RequestLogger } from 'evlog'
 import { z } from 'zod'
+
+import { recordAIGeneration } from '#server/utils/ai-logger'
+import { emitChildLogger, forkChildLogger } from '#server/utils/sse-child-logger'
 
 import {
   createCloudflareAiSearchClient,
@@ -268,29 +269,17 @@ export default defineEventHandler(async function chatHandler(event) {
       // dropped with `[evlog] log.X() called after the wide event was
       // emitted` warnings.
       //
-      // Mirror evlog's `forkBackgroundLogger` pattern manually (Nitro does
-      // not attach `RequestLogger.fork`): create a child request logger,
-      // bind it to the SSE lifecycle, and emit it ourselves when the
-      // stream settles. The parent (request-scoped) wide event still emits
-      // normally in `afterResponse` with `operation: 'web-chat'`; the
-      // child carries `operation: 'web-chat-sse-stream'` plus
-      // `_parentRequestId` for correlation, and owns the `result` /
-      // mid-stream `error` fields.
-      const parentCtx = log.getContext()
-      const streamLog = createRequestLogger<ChatLogFields>(
-        {
-          method: typeof parentCtx.method === 'string' ? parentCtx.method : event.method,
-          path: typeof parentCtx.path === 'string' ? parentCtx.path : event.path,
-          requestId: crypto.randomUUID(),
-        },
-        { _deferDrain: true },
-      )
-      streamLog.set({
+      // T3 evlog adoption (adopt-evlog-nuxthub-ai-t3): switched the inline
+      // `createRequestLogger` / `runStreamLogDrain` pair to the canonical
+      // `forkChildLogger` + `emitChildLogger` helpers from
+      // `#server/utils/sse-child-logger`. The parent (request-scoped) wide
+      // event still emits normally in `afterResponse` with
+      // `operation: 'web-chat'`; the child carries
+      // `operation: 'web-chat-sse-stream'` plus `_parentRequestId` for
+      // correlation, and owns the `result` / mid-stream `error` fields.
+      const streamLog = forkChildLogger<ChatLogFields>(event, {
         operation: 'web-chat-sse-stream',
-        _parentRequestId: typeof parentCtx.requestId === 'string' ? parentCtx.requestId : undefined,
-        user: {
-          id: session.user.id ?? null,
-        },
+        user: { id: session.user.id ?? null },
       })
 
       return createSseChatResponse({
@@ -298,25 +287,24 @@ export default defineEventHandler(async function chatHandler(event) {
         conversationId: effectiveConversationId,
         execute: runChatRequest,
         log: streamLog,
-        onResult: (result) =>
+        onResult: (result) => {
           recordChatResult(streamLog, {
             conversationCreated: createdConversation,
             conversationId: effectiveConversationId,
             result,
-          }),
-        onStreamSettled: ({ error }) => {
-          // Tail sampling: keep stream events that surfaced an unexpected
-          // error so the drain pipeline always carries the failure detail.
-          const emitted = streamLog.emit({ _forceKeep: error !== null })
-          if (!emitted) {
-            return
-          }
-          const drainPromise = runStreamLogDrain(event, emitted)
-          const waitUntil = event.context.cloudflare?.context?.waitUntil ?? event.context.waitUntil
-          if (typeof waitUntil === 'function') {
-            waitUntil(drainPromise)
-          }
+          })
+          // Surface AI generation telemetry (Workers AI runs collected by
+          // the chat pipeline via `workersAiRuns`) onto the child wide
+          // event. We pick the dominant generation (longest duration) as
+          // the primary `ai.*` summary; per-run detail still lives in the
+          // audit log via `workersAiRunsJson`.
+          recordPrimaryAiGeneration(streamLog, workersAiRuns.snapshot())
         },
+        // T3: emit in try/catch/finally — onStreamSettled already handles
+        // both success and error; emitChildLogger is idempotent so a second
+        // call (e.g. from createSseChatResponse error path) is a no-op.
+        onStreamSettled: ({ error }) =>
+          emitChildLogger(event, streamLog, { error: error ?? undefined }),
       })
     }
 
@@ -327,6 +315,7 @@ export default defineEventHandler(async function chatHandler(event) {
       conversationId: effectiveConversationId,
       result,
     })
+    recordPrimaryAiGeneration(log, workersAiRuns.snapshot())
 
     return {
       data: {
@@ -435,42 +424,42 @@ function recordChatResult(
 }
 
 /**
- * TD-057: Run the same `evlog:enrich` → `evlog:drain` pipeline that the
- * Nitro plugin uses, but for the SSE-scoped child wide event. Emit happens
- * in the caller; this helper only runs the post-emit hooks. Errors are
- * swallowed (and logged) — drain is fire-and-forget by design and must not
- * affect the user-visible stream.
+ * T3 evlog adoption: pick the dominant Workers AI run (longest latency, by
+ * convention the answer-generation call) and surface it as the primary
+ * `ai.*` summary on the wide event. Returns silently when no runs were
+ * recorded (e.g. fail-fast on auth / rate-limit before reaching the model).
+ *
+ * Per-run detail (judge / answer / rewriter together) still lives in the
+ * audit row via `workersAiRunsJson` — wide event only carries the
+ * highest-cost slice so dashboards aggregate cleanly.
  */
-async function runStreamLogDrain(event: H3Event, emittedEvent: WideEvent) {
-  const nitroApp = useNitroApp()
-  const requestHeaders = event.headers ? extractSafeHeaders(event.headers) : undefined
-  const requestInfo = {
-    method: event.method,
-    path: event.path,
-    requestId: typeof emittedEvent.requestId === 'string' ? emittedEvent.requestId : undefined,
-  }
-
-  try {
-    await nitroApp.hooks.callHook('evlog:enrich', {
-      event: emittedEvent,
-      request: requestInfo,
-      headers: requestHeaders,
-    })
-  } catch (error) {
-    // evlog hook 失敗時 fallback 到 stdout（不能用 evlog 自身會遞迴炸）
-    // eslint-disable-next-line no-console
-    console.error('[evlog] enrich failed (sse-stream child):', error)
-  }
-
-  try {
-    await nitroApp.hooks.callHook('evlog:drain', {
-      event: emittedEvent,
-      request: requestInfo,
-      headers: requestHeaders,
-    })
-  } catch (error) {
-    // evlog hook 失敗時 fallback 到 stdout
-    // eslint-disable-next-line no-console
-    console.error('[evlog] drain failed (sse-stream child):', error)
-  }
+function recordPrimaryAiGeneration(
+  log: RequestLogger<ChatLogFields>,
+  runs: readonly {
+    latencyMs: number
+    model: string
+    modelRole: string
+    usage: {
+      cachedPromptTokens: number | null
+      completionTokens: number | null
+      promptTokens: number | null
+      totalTokens: number | null
+    } | null
+  }[],
+) {
+  const [first, ...rest] = runs
+  if (!first) return
+  const primary = rest.reduce((acc, r) => (r.latencyMs > acc.latencyMs ? r : acc), first)
+  recordAIGeneration(log as unknown as Parameters<typeof recordAIGeneration>[0], {
+    provider: 'workers-ai',
+    model: primary.model,
+    promptTokens: primary.usage?.promptTokens ?? undefined,
+    completionTokens: primary.usage?.completionTokens ?? undefined,
+    durationMs: primary.latencyMs,
+    cached: (primary.usage?.cachedPromptTokens ?? 0) > 0,
+    // Workers AI free tier — cost stays at undefined; PRICING table in
+    // ai-logger.ts maps `@cf/...` models to 0 explicitly. Once we move to
+    // paid tier, `estimateCostUsd(primary.model, primary.usage)` is the
+    // one-line swap-in.
+  })
 }

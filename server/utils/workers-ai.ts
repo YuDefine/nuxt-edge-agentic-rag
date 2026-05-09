@@ -29,6 +29,14 @@ export function createWorkersAiRunRecorder() {
     serialize(): string {
       return serializeWorkersAiRunTelemetry(runs)
     },
+    /**
+     * Read-only snapshot of recorded runs. Used by `recordAIGeneration` (T3
+     * evlog adoption) to push per-run cost / token / model into the wide
+     * event without mutating the recorder's internal state.
+     */
+    snapshot(): readonly WorkersAiRunTelemetry[] {
+      return runs.slice()
+    },
   }
 }
 
