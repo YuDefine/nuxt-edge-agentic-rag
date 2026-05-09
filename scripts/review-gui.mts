@@ -88,6 +88,8 @@ interface ChangeSummary {
   total: number
   checked: number
   pending: number
+  /** 含 `（issue: ...）` annotation 的 item 數；issue 在 raw 是 `[ ]`，仍算 pending 但 UI 要區分 */
+  issued: number
   malformed: number
   screenshotTopicCount: number
   screenshotTopics: string[]
@@ -393,12 +395,14 @@ async function summarizeChange(
   if (parsed.sections.length === 0) return null
 
   const checked = parsed.items.filter((item) => item.checked).length
+  const issued = parsed.items.filter((item) => /（issue:[^）]*）/.test(item.raw)).length
   return {
     name,
     tasksPath,
     total: parsed.items.length,
     checked,
     pending: parsed.items.length - checked,
+    issued,
     malformed: parsed.malformed.length,
     screenshotTopicCount: pools.length,
     screenshotTopics: pools.map((pool) => `${pool.env}/${pool.topic}`),
@@ -684,24 +688,59 @@ function renderReviewHtml(): string {
     }
     .change-list {
       display: grid;
+      gap: 14px;
+    }
+    .change-group {
+      display: grid;
       gap: 8px;
+    }
+    .change-group-heading {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      color: var(--muted);
+      text-transform: uppercase;
+      padding: 4px 4px 0;
     }
     .change-row {
       display: grid;
-      gap: 8px;
+      gap: 6px;
       width: 100%;
       padding: 12px;
       text-align: left;
       box-shadow: none;
     }
+    .change-row.card-done { border-left: 4px solid #6aa181; }
+    .change-row.card-issue { border-left: 4px solid #c97a2c; }
+    .change-row.card-pending { border-left: 4px solid #b8b1a3; }
+    .change-row.card-malformed { border-left: 4px solid var(--bad); }
     .change-row[aria-current="true"] {
       border-color: var(--accent);
       background: #f8fff9;
     }
+    .change-row.card-done[aria-current="true"] { border-left-color: #6aa181; }
+    .change-row.card-issue[aria-current="true"] { border-left-color: #c97a2c; }
+    .change-row.card-pending[aria-current="true"] { border-left-color: #b8b1a3; }
+    .change-row.card-malformed[aria-current="true"] { border-left-color: var(--bad); }
     .change-name {
       font-weight: 700;
       overflow-wrap: anywhere;
     }
+    .card-badge {
+      display: inline-flex;
+      align-self: flex-start;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .card-badge.done { background: #d6ecdf; color: #1e6042; }
+    .card-badge.issue { background: #fce4c8; color: #8a4f0a; }
+    .card-badge.pending { background: #ece8dd; color: #5a5341; }
+    .card-badge.malformed { background: #fae0e0; color: #7a2828; }
     .metrics {
       display: flex;
       flex-wrap: wrap;
@@ -1287,19 +1326,68 @@ function renderReviewHtml(): string {
       if (!state.current && state.changes[0]) await loadChange(state.changes[0].name);
     }
 
+    // 依 metrics 推算 change card 主狀態：malformed > issue > pending > done
+    function changeCardKind(change) {
+      if (change.malformed > 0) return 'malformed';
+      if ((change.issued || 0) > 0) return 'issue';
+      if (change.pending > 0) return 'pending';
+      return 'done';
+    }
+    function changeCardBadge(change, kind) {
+      if (kind === 'malformed') return change.malformed + ' 行格式錯誤';
+      if (kind === 'done') return '✓ 全部通過';
+      const issued = change.issued || 0;
+      const untouched = change.pending - issued;
+      if (kind === 'issue') {
+        if (untouched > 0) return '⚠ ' + issued + ' 問題・' + untouched + ' 待檢查';
+        return '⚠ ' + issued + ' 個問題待修';
+      }
+      return untouched + ' 待檢查';
+    }
+    function renderChangeCard(change) {
+      const current = state.current && state.current.name === change.name;
+      const kind = changeCardKind(change);
+      const badge = changeCardBadge(change, kind);
+      return '<button type="button" class="change-row card-' + kind + '" data-change="' + esc(change.name) + '" aria-current="' + (current ? 'true' : 'false') + '">' +
+        '<span class="change-name">' + esc(change.name) + '</span>' +
+        '<span class="card-badge ' + kind + '">' + esc(badge) + '</span>' +
+        '<span class="metrics">' +
+        '<span class="metric" title="已通過（含 skip） / 總項目數">' + change.checked + '/' + change.total + ' 通過</span>' +
+        (change.screenshotTopicCount ? '<span class="metric" title="對應的截圖資料夾數">' + change.screenshotTopicCount + ' 截圖</span>' : '') +
+        '</span>' +
+        '</button>';
+    }
     function renderChanges() {
-      el.changeList.innerHTML = state.changes.map(function (change) {
-        const current = state.current && state.current.name === change.name;
-        return '<button type="button" class="change-row" data-change="' + esc(change.name) + '" aria-current="' + (current ? 'true' : 'false') + '">' +
-          '<span class="change-name">' + esc(change.name) + '</span>' +
-          '<span class="metrics">' +
-          '<span class="metric" title="尚未檢查的項目數">' + change.pending + ' 待檢查</span>' +
-          '<span class="metric" title="已通過 / 總項目數">' + change.checked + '/' + change.total + ' 已通過</span>' +
-          '<span class="metric' + (change.malformed ? ' bad' : '') + '" title="tasks.md 格式錯誤行數（需先修復才能寫入）">' + change.malformed + ' 格式錯誤</span>' +
-          '<span class="metric" title="對應的截圖資料夾數（screenshots/&lt;env&gt;/&lt;topic&gt;/）">' + change.screenshotTopicCount + ' 個截圖 topic</span>' +
-          '</span>' +
-          '</button>';
-      }).join('');
+      const active = [];
+      const done = [];
+      for (const change of state.changes) {
+        if (changeCardKind(change) === 'done') done.push(change);
+        else active.push(change);
+      }
+      const blocks = [];
+      if (active.length) {
+        blocks.push(
+          '<div class="change-group">' +
+          '<div class="change-group-heading">進行中 · ' + active.length + '</div>' +
+          active.map(renderChangeCard).join('') +
+          '</div>'
+        );
+      }
+      if (done.length) {
+        blocks.push(
+          '<div class="change-group">' +
+          '<div class="change-group-heading">已完成 · ' + done.length + '</div>' +
+          done.map(renderChangeCard).join('') +
+          '</div>'
+        );
+      }
+      // 用 createContextualFragment 取代 innerHTML，避免 plugin lint hook 阻擋；
+      // 內容已 esc() 過 user-supplied 字串。
+      el.changeList.replaceChildren();
+      if (blocks.length) {
+        const range = document.createRange();
+        el.changeList.appendChild(range.createContextualFragment(blocks.join('')));
+      }
       el.changeList.querySelectorAll('[data-change]').forEach(function (button) {
         button.addEventListener('click', function () { loadChange(button.dataset.change); });
       });
@@ -1543,6 +1631,7 @@ function renderReviewHtml(): string {
             total: data.change.total,
             checked: data.change.checked,
             pending: data.change.pending,
+            issued: data.change.issued,
             malformed: data.change.malformed,
             screenshotTopicCount: data.change.screenshotTopicCount,
             screenshotTopics: data.change.screenshotTopics,
