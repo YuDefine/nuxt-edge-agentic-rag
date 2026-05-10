@@ -59,6 +59,7 @@ Changes can be parked（暫存）— temporarily moved out of `openspec/changes/
 - `.claude/rules/agent-routing.md`
 - `.claude/rules/api-patterns.md`
 - `.claude/rules/audit-pattern.md`
+- `.claude/rules/audit-schema.md`
 - `.claude/rules/auth.md`
 - `.claude/rules/code-style.md`
 - `.claude/rules/commit.md`
@@ -82,6 +83,7 @@ Changes can be parked（暫存）— temporarily moved out of `openspec/changes/
 - `.claude/rules/rls-policy.md`
 - `.claude/rules/scope-discipline.md`
 - `.claude/rules/screenshot-strategy.md`
+- `.claude/rules/secrets.md`
 - `.claude/rules/session-tasks.md`
 - `.claude/rules/storage.md`
 - `.claude/rules/test-scripts.md`
