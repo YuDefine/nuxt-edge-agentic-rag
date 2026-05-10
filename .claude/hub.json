@@ -1,5 +1,5 @@
 {
-  "version": "0.5.21",
+  "version": "0.5.26",
   "modules": {
     "auth": "better-auth",
     "db-schema": "supabase",
