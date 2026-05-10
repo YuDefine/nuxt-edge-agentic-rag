@@ -1,6 +1,7 @@
 ---
 name: spectra-discuss
 description: "Have a focused discussion about a topic and reach a conclusion"
+effort: medium
 disallowedTools: [Edit, Write]
 license: MIT
 compatibility: Requires spectra CLI.
@@ -9,14 +10,21 @@ metadata:
   version: "1.0"
   generatedBy: "Spectra"
 ---
+<!--
+🔒 LOCKED — managed by clade
+Source: plugins/hub-core/skills/spectra-discuss/
+Edit at: /Users/charles/offline/clade
+Local edits will be reverted by the next sync.
+-->
+
 
 Have a focused discussion about a topic and reach a conclusion.
 
-**IMPORTANT: Discuss mode is for thinking, not implementing.** You may read files, search code, and investigate the codebase, but you must NEVER write code or implement features. If the user asks you to implement something, remind them to exit discuss mode first (e.g., start a change with `$spectra-propose`). You MAY create Spectra artifacts (proposals, designs, specs) if the user asks—that's capturing thinking, not implementing.
+**IMPORTANT: Discuss mode is for thinking, not implementing.** You may read files, search code, and investigate the codebase, but you must NEVER write code or implement features. If the user asks you to implement something, remind them to exit discuss mode first (e.g., start a change with `/spectra-propose`). You MAY create Spectra artifacts (proposals, designs, specs) if the user asks—that's capturing thinking, not implementing.
 
 **This is a task-oriented discussion.** Every discussion has a topic, works toward a goal, and ends with a clear conclusion. Unlike open-ended exploration, discuss mode converges.
 
-**Input**: The argument after `$spectra-discuss` is the topic. Could be:
+**Input**: The argument after `/spectra-discuss` is the topic. Could be:
 
 - A design question: "should we use WebSockets or SSE?"
 - A problem to solve: "the auth system is getting unwieldy"
@@ -225,10 +233,25 @@ Present the summary and say something like "I'll capture this to design.md unles
 
 ### Transition to action
 
-When the discussion converges on building something:
+When the discussion converges on building something, **MUST** ask via **request_user_input** who runs propose before invoking anything:
 
-- "Ready to formalize this? `$spectra-propose`"
-- Or capture the decision in existing artifacts and continue
+| Option                           | 行為                                                                                       | 適用場景                                                                 |
+| -------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------ |
+| **A. Codex（GPT-5.5 xhigh）**    | 主線 Claude 自己派 Codex 在背景跑（不要使用者切 CLI）                                      | propose 牽涉高度抽象決策、想要更高思考預算、或想用另一個模型獨立審視     |
+| **B. AI Agent 繼續做**        | 當前 session 直接接 `/spectra-propose` 走 Step 1-11                                        | discuss 上下文已成熟、想保持單一 session 連續性                          |
+| **Stay**                         | 不進 propose，繼續 capture 到既有 artifacts                                                | 結論還沒到「值得開 change」的程度，先存進 design.md / spec.md            |
+
+統一處理：**選 A 或 B 都 invoke `/spectra-propose <change-name>`**，並在呼叫前的訊息明示使用者選擇，讓 spectra-propose Step 0 統一分流——discuss 自己**不**派 codex、**不**印 handoff 純文字訊息。
+
+- 選 **A** → 主線**先**輸出 `▶ 使用者在 discuss 選擇 A（Codex GPT-5.5 xhigh）— 接下來由 spectra-propose Step 0 派 Codex 在背景執行` → 接著 invoke `/spectra-propose <change-name>`
+- 選 **B** → 主線輸出 `▶ 使用者在 discuss 選擇 B（AI Agent 繼續）— spectra-propose Step 0 會 skip 詢問，直接走 Step 1` → 接著 invoke `/spectra-propose <change-name>`
+- 選 **Stay** → 把 conclusion 寫進對應 artifact，繼續討論（不 invoke propose）
+
+**禁止事項**：
+- **NEVER** 在 A 路徑印「請開啟 Codex CLI」「Stop here」「請貼 prompt 到 Codex」之類的純文字 handoff — 主線必須自己派背景 codex
+- **NEVER** 自己重複 spectra-propose Step 0 的派發邏輯，要 invoke `/spectra-propose` 讓 Step 0 統一處理
+
+If **request_user_input** is unavailable, present the same three options as plain text and wait for the user's reply.
 
 ---
 

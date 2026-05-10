@@ -1,6 +1,7 @@
 ---
 name: spectra-propose
 description: "Create a change proposal with all required artifacts"
+effort: xhigh
 license: MIT
 compatibility: Requires spectra CLI.
 metadata:
@@ -8,14 +9,21 @@ metadata:
   version: "1.0"
   generatedBy: "Spectra"
 ---
+<!--
+🔒 LOCKED — managed by clade
+Source: plugins/hub-core/skills/spectra-propose/
+Edit at: /Users/charles/offline/clade
+Local edits will be reverted by the next sync.
+-->
+
 
 Create a complete Spectra change proposal — from requirement to validated artifacts — in a single workflow.
 
-**Input**: The argument after `$spectra-propose` is the requirement description. Examples:
+**Input**: The argument after `/spectra-propose` is the requirement description. Examples:
 
-- `$spectra-propose add dark mode`
-- `$spectra-propose fix the login page crash`
-- `$spectra-propose improve search performance`
+- `/spectra-propose add dark mode`
+- `/spectra-propose fix the login page crash`
+- `/spectra-propose improve search performance`
 
 If no argument is provided, the workflow will extract requirements from conversation context or ask.
 
@@ -23,14 +31,142 @@ If no argument is provided, the workflow will extract requirements from conversa
 
 **Steps**
 
+0. **Dispatch Codex draft + 主線 cross-check**（預設流程，無 A/B 詢問）
+
+   **預設行為**：本 skill 一律走「Codex GPT-5.5 xhigh draft + 主線 Claude Opus xhigh cross-check」流程。**禁止** request_user_input 問 A/B。
+
+   **唯一例外**：使用者**明確**說「不要派 codex」「我要純 Claude propose」「直接你做」等指令 → 跳過 Step 0，直接走 Step 1~11（純 Claude 路徑，但 Step 8 必須補 7 步 Design Review check）。**否則一律走以下流程**。
+
+   ### Phase 0a：派 Codex 在背景跑
+
+   依以下順序執行（每一步都是主線 Claude 自己做，不需使用者介入）：
+
+   1. **解析 change name + requirement**：從 argument / discuss artifacts / 對話脈絡萃取，導出 kebab-case `<change-name>` 與一句話 requirement
+   2. **Write prompt 檔到 `/tmp/codex-spectra-propose-<change-name>-prompt.md`**，內容固定包含：
+
+      ```
+      請以本 repo 的 spectra-propose 流程建立 change `<change-name>`。
+      Requirement：<一句話需求>
+
+      讀取以下檔案理解流程後執行：
+      - .agents/skills/spectra-propose/SKILL.md（**只執行 Step 1 ~ 11**，**跳過** Step 0 — 已決定由你執行）
+      - .claude/rules/ux-completeness.md（必填區塊：Affected Entity Matrix / User Journeys / Implementation Risk Plan + Fixtures / Seed Plan + Design Review 7 步 template）
+      - .claude/rules/agent-routing.md
+      - 任何 discuss 階段已捕獲的 design.md / spec.md（位置：openspec/changes/<change-name>/，若已存在）
+
+      若 change 包含 UI scope 且 proposal 有 ## Affected Entity Matrix（= entity 動且有 UI 展示），tasks.md **必須**包含 `## N. Fixtures / Seed Plan` section（每個有 Surfaces 的 entity 一條 task，或 `**Existing seed sufficient**` 宣告 + 一行理由）。
+
+      **Phase Purity（UI view vs 非 view 必須切成獨立 phase）**：
+      若 change 同時涉及 UI view 層（`.vue` / `.tsx` / `.jsx` / `app/pages/` / `app/components/` / `pages/` / `components/` / `views/` / `layouts/` / `.css` / `.scss`）與**非 view 工作**（schema / migration / API server / store / hook / API client / type / util / 純 backend），tasks.md **必須**把這兩類切成不同的 `## N.` phase：
+      - 例：`## 1. Database Schema` + `## 2. API Endpoints` + `## 3. Pinia Store + Composables` + `## 4. UI View Implementation` + `## 5. Fixtures / Seed Plan` + `## 6. Design Review`
+      - **禁止**把 view 層改動（`.vue` / `app/pages/` 等）與非 view 工作混進同一 phase
+      - 理由：spectra-apply 會把 UI view phase 由主線 AI Agent 自己做、其他 phase 派給 codex；混雜 phase 會破壞 dispatch 規則
+      - frontend 但非 view 的（store / hook / API client / type / util / unit test）算非 view，可以與 backend 工作放同 phase 或自己一個 phase 都可
+
+      若 change 包含 UI scope（tasks 涉及 .vue / pages/ / components/ / layouts/），tasks.md **必須**包含完整 7 步 Design Review section（N.1~N.7）：
+        - N.1 檢查 PRODUCT.md / DESIGN.md
+        - N.2 /design improve + Fidelity Report
+        - N.3 修復 DRIFT loop
+        - N.4 按 canonical order 跑 targeted impeccable skills
+        - N.5 /impeccable audit Critical = 0
+        - N.6 review-screenshot 視覺 QA
+        - N.7 Fidelity 確認
+
+      完成標準：`spectra park <change-name>` 執行成功。
+      不要呼叫 /spectra-apply。產出後在 stdout 摘要 artifacts 列表 + `spectra validate` 結果。
+      ```
+   3. **背景啟動 codex exec**（**Bash** tool 加 `run_in_background=true`）：
+
+      ```bash
+      cd <consumer-repo-root> && codex exec \
+        --model gpt-5.5 \
+        --dangerously-bypass-approvals-and-sandbox \
+        --skip-git-repo-check \
+        -c model_reasoning_effort=xhigh \
+        < /tmp/codex-spectra-propose-<change-name>-prompt.md 2>&1
+      ```
+
+   4. **立刻**簡短回報給使用者：「已派 Codex GPT-5.5 xhigh 在背景 draft `/spectra-propose <change-name>`（bash job `<id>`），完成後主線會 cross-check 並補 Design Review template」
+   5. 啟動 **Codex Watch Protocol**（見 `agent-routing.md`）— `ScheduleWakeup(180, "...")` 監看進度
+
+   ### Phase 0b：主線 Cross-Check（codex 完成後**立刻**執行）
+
+   收到 `<task-notification> status=completed` 時**立刻**依序執行：
+
+   1. **Read codex stdout** 摘要：BashOutput 讀完整 stdout，回報 artifacts list / `spectra validate` 結果
+
+   2. **若 codex 已 `spectra park <change-name>`**：先 `spectra unpark <change-name>` 才能繼續 cross-check
+
+   3. **跑 post-propose-check.sh**（檢查 User Journeys / Affected Entity Matrix / Implementation Risk Plan / Design Review 7 步）：
+
+      ```bash
+      bash scripts/spectra-ux/post-propose-check.sh <change-name>
+      ```
+
+      若有 FINDINGS → 主線**自己**直接 Edit proposal.md / tasks.md 補齊（**不要**回 codex 修，太慢）
+
+   4. **跑 design-inject.sh**（若 UI scope，提醒 7 步 template）：
+
+      ```bash
+      bash scripts/spectra-ux/design-inject.sh <change-name>
+      ```
+
+   5. **若 Design Review section 缺或不完整 7 步 → 主線自己 Edit tasks.md 補齊**：
+
+      位置：tasks.md 最後一個功能區塊之後、`## 人工檢查` 之前。N = 上一個功能區塊的序號 + 1。
+
+      ```markdown
+      ## N. Design Review
+
+      - [ ] N.1 檢查 PRODUCT.md（必要）+ DESIGN.md（建議）；缺 PRODUCT.md 跑 /impeccable teach、缺 DESIGN.md 跑 /impeccable document
+      - [ ] N.2 執行 /design improve [affected pages/components]，產出 Design Fidelity Report
+      - [ ] N.3 修復所有 DRIFT 項目（Fidelity Score < 8/8 時必做，loop 直到 DRIFT = 0，max 2 輪）
+      - [ ] N.4 依 /design improve 計劃按 canonical order 執行 targeted impeccable skills（layout / typeset / clarify / harden / colorize 等實際所需項目）
+      - [ ] N.5 執行 /impeccable audit，確認 Critical = 0
+      - [ ] N.6 執行 review-screenshot，補 design-review.md / 視覺 QA 證據
+      - [ ] N.7 Fidelity 確認 — design-review.md 中無 DRIFT 項
+      ```
+
+      `[affected pages/components]` 替換為此 change 實際涉及的 UI 檔案/頁面。
+
+   6. **掃 design.md 的 Open Questions**（不論前面摘要多漂亮，這步**不能省略**）：
+      - Read `openspec/changes/<change-name>/design.md`
+      - grep 找 `## Open Questions`（或同義變體：`## Open Question`、`## 待決問題`、`## Unresolved Questions`）
+      - 若標題存在且區塊內容非空（不是 `(none)` / `N/A` / `無` / 只剩空 bullet / 只剩註解）：
+        - **立刻**用 **request_user_input** 把每一題列給使用者（一次最多 5 題，超過分批問）
+        - **NEVER** 把「要不要回答 open questions」包成 A/B/C/D 選單裡的一個選項
+        - **NEVER** 自行假設答案、自行標 wontfix、或推給未來
+        - 拿到答案後 Edit design.md 把 `## Open Questions` 改為 `## Resolved Questions`，每題下補 `**Answer:** <使用者回答>`
+
+   7. **跑 `spectra analyze <change-name> --json`** 確認無 Critical/Warning（max 2 輪 fix loop，與 Step 9 邏輯相同）
+
+   8. **`spectra validate <change-name>`** 確認 artifacts 結構合法
+
+   9. **`spectra park <change-name>`** 結束流程
+
+   10. 回報使用者：artifacts list + cross-check 結果（補了什麼、Design Review 7 步 OK 與否、analyze/validate 結果）+ `/spectra-apply <change-name>` 提示
+
+   **禁止事項**（重點重申）：
+
+   - **NEVER** 在 Step 0 用 request_user_input 問 A/B（已預設 codex draft）— 除非使用者**明確**要求純 Claude propose
+   - **NEVER** 派 codex 後不跑 cross-check（post-propose-check + design-inject + 主線補 Design Review 7 步 + spectra analyze）
+   - **NEVER** 把 cross-check 的修補工作丟回 codex（太慢、來回成本高）— 主線**自己** Edit 修
+   - **NEVER** 沉默等使用者來問進度；通知一到自己讀檔 + cross-check 完整流程
+
+   **本 session 不再執行任何 Step 1 ~ 11**（避免雙重生產）— Step 0 結束本 skill。
+
+   ### 純 Claude 路徑（使用者明確要求時）
+
+   continue to Step 1 below.
+
 1. **Determine the requirement source**
 
    a. **Argument provided** (e.g., "add dark mode") → use it as the requirement description, skip to deriving the change name below.
 
    b. **Plan file available**:
-   - Check if the conversation context mentions a plan file path (plan mode system messages include the path like `<name>.md`)
-   - If found, check if the file exists at ``
-   - If a plan file is found, use the **AskUserQuestion tool** to ask:
+   - Check if the conversation context mentions a plan file path (plan mode system messages include the path like `~/.claude/plans/<name>.md`)
+   - If found, check if the file exists at `~/.claude/plans/`
+   - If a plan file is found, use the **request_user_input 工具** to ask:
      - Option 1: Use the plan file
      - Option 2: Use conversation context
    - If conversation context has no relevant discussion, mention this when presenting the choice
@@ -42,7 +178,7 @@ If no argument is provided, the workflow will extract requirements from conversa
    - If the user picks conversation context → fall through to (c)
 
    c. **Conversation context** → attempt to extract requirements from conversation history
-   - If context is insufficient, use the **AskUserQuestion tool** to ask what they want to build
+   - If context is insufficient, use the **request_user_input 工具** to ask what they want to build
 
    From the resolved description, derive a kebab-case change name (e.g., "add dark mode" → `add-dark-mode`).
 
@@ -76,7 +212,7 @@ If no argument is provided, the workflow will extract requirements from conversa
 4. **Create the change directory**
 
    ```bash
-   spectra new change "<name>" --agent codex
+   spectra new change "<name>" --agent claude
    ```
 
    If a change with that name already exists, suggest continuing the existing change instead of creating a new one.
@@ -263,7 +399,7 @@ If no argument is provided, the workflow will extract requirements from conversa
    - Stop when all `applyRequires` artifacts are done
 
    c. **If an artifact requires user input** (unclear context):
-   - Use **AskUserQuestion tool** to clarify
+   - Use **request_user_input 工具** to clarify
    - Then continue with creation
 
 8. **Inline Self-Review** (before CLI analysis)
@@ -295,6 +431,34 @@ If no argument is provided, the workflow will extract requirements from conversa
    - Are success/failure conditions testable and specific?
    - Are boundary conditions defined (empty input, max limits, error cases)?
    - Could "the system" refer to multiple components? Be explicit.
+
+   **Check 5: Design Review 7-step template (UI scope only)**
+
+   If `tasks.md` references any `.vue` / `pages/` / `components/` / `layouts/` files:
+   - tasks.md **MUST** contain a `## N. Design Review` section before `## 人工檢查` (with N = last functional section number + 1)
+   - The section **MUST** have all 7 checkboxes (N.1 through N.7) covering: PRODUCT.md/DESIGN.md check, /design improve + Fidelity Report, DRIFT fix loop, canonical-order targeted impeccable skills, /impeccable audit Critical = 0, review-screenshot, Fidelity confirmation
+   - Verify by running `bash scripts/spectra-ux/post-propose-check.sh <change-name>` and acting on its FINDINGS
+   - If anything is missing, fix tasks.md inline now — do NOT let an incomplete Design Review section through. Archive gate will block it later anyway.
+
+   **Check 6: Fixtures / Seed Plan (UI scope + Affected Entity Matrix)**
+
+   If `tasks.md` has UI scope **AND** `proposal.md` contains `## Affected Entity Matrix` (= entity-level changes that surface in UI):
+   - tasks.md **MUST** contain a `## N. Fixtures / Seed Plan` section before `## Design Review` (with N = last functional section number + 1)
+   - Either include at least one `- [ ]` task line per entity-with-Surfaces (entity name, minimum row count, target seed file path) **OR** an explicit `**Existing seed sufficient**` declaration with one-line justification
+   - Detected seed-file conventions (in order): `supabase/seed.sql` / `db/seed.sql` / `prisma/seed.ts` / `drizzle/seed.ts`
+   - Reason: UI pages displaying empty data on dev/staging make `review-screenshot` worthless. Fixtures are part of feature completeness, not a review-time afterthought.
+   - Verify by running `bash scripts/spectra-ux/post-propose-check.sh <change-name>` and acting on Check 6 FINDINGS
+   - Full template + exemption rules see `ux-completeness.md` 「必填 Fixtures / Seed Plan」section
+
+   **Check 7: Phase Purity (UI view vs 非 view 必須切成獨立 phase)**
+
+   If `tasks.md` includes UI view scope (any task references `.vue` / `.tsx` / `.jsx` / `app/pages/` / `app/components/` / `pages/` / `components/` / `views/` / `layouts/` / `.css` / `.scss`):
+   - For each functional `## N. <title>` phase in tasks.md (excluding `## N. Design Review` and `## N. Fixtures / Seed Plan`):
+     - **MUST NOT** mix view-layer file references with non-view work (schema / migration / API server / store / hook / API client / type / util / 純 backend)
+     - 一個 phase 要嘛純 view 工作（component / page / view / layout / styling），要嘛純非 view 工作；混雜 phase 違規
+   - Verify by running `bash scripts/spectra-ux/post-propose-check.sh <change-name>` and acting on Check 4c FINDINGS
+   - If a mixed phase is detected, **MUST** split inline now into independent phases — do NOT defer to ingest. spectra-apply Phase Dispatch 規則仰賴 phase purity；混雜 phase 在 apply 時會被擋下要求重 ingest，propose 階段就修掉成本最低
+   - Reason: spectra-apply 把 UI view phase 由主線 AI Agent 自己做、其他 phase 派給 codex GPT-5.5 high；phase 混雜會破壞 dispatch 邊界，要嘛讓 codex 碰 view 層、要嘛讓主線吞下原本可以 offload 的 mechanical 工作
 
 ---
 
@@ -345,9 +509,9 @@ If no argument is provided, the workflow will extract requirements from conversa
     spectra park "<name>"
     ```
 
-    Inform the user that the change is parked and that running `$spectra-apply <change-name>` when ready will auto-unpark the change and start implementation.
+    Inform the user that the change is parked and that running `/spectra-apply <change-name>` when ready will auto-unpark the change and start implementation.
 
-    The propose workflow ENDS here. Do NOT invoke `$spectra-apply`. Do NOT call **AskUserQuestion** to ask whether to park or apply. This behavior is identical across Auto Mode, interactive mode, and any other agent mode — parking is unconditional and does not depend on `AskUserQuestion` availability or UI auto-accept settings.
+    The propose workflow ENDS here. Do NOT invoke `/spectra-apply`. Do NOT call **request_user_input** to ask whether to park or apply. This behavior is identical across Auto Mode, interactive mode, and any other agent mode — parking is unconditional and does not depend on `request_user_input` availability or UI auto-accept settings.
 
 **Artifact Creation Guidelines**
 
@@ -369,5 +533,5 @@ If no argument is provided, the workflow will extract requirements from conversa
 - **NEVER** write application code or implement features during this workflow
 - **NEVER** skip the artifact workflow to write code directly
 - **NEVER** reinterpret requirements by ignoring the proposal file
-- **NEVER** invoke `$spectra-apply` — this workflow ends after artifact creation. The user decides when to start implementation
-- If **AskUserQuestion tool** is not available, ask the same questions as plain text and wait for the user's response
+- **NEVER** invoke `/spectra-apply` — this workflow ends after artifact creation. The user decides when to start implementation
+- If **request_user_input 工具** is not available, ask the same questions as plain text and wait for the user's response

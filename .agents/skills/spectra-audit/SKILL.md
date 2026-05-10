@@ -1,6 +1,7 @@
 ---
 name: spectra-audit
 description: "Audit changed code for security sharp edges — dangerous defaults, type confusion, and silent failures"
+effort: xhigh
 license: MIT
 compatibility: Requires spectra CLI.
 metadata:
@@ -8,6 +9,13 @@ metadata:
   version: "1.0"
   generatedBy: "Spectra"
 ---
+<!--
+🔒 LOCKED — managed by clade
+Source: plugins/hub-core/skills/spectra-audit/
+Edit at: /Users/charles/offline/clade
+Local edits will be reverted by the next sync.
+-->
+
 
 Audit changed code for security sharp edges — API design traps, dangerous defaults, and interfaces that make it easy to do the wrong thing.
 
@@ -19,8 +27,8 @@ Good APIs don't require developers to "be careful" to stay secure. If the correc
 
 This skill operates in two modes depending on how it's invoked:
 
-- **Standalone** (`$spectra-audit`): Full 3-agent parallel analysis on current git diff. See [Standalone Mode](#standalone-mode).
-- **Discipline** (via `$spectra-apply` when `audit: true`): Condensed checklist applied during implementation. See [Discipline Mode](#discipline-mode).
+- **Standalone** (`/spectra-audit`): Full 3-agent parallel analysis on current git diff. See [Standalone Mode](#standalone-mode).
+- **Discipline** (via `/spectra-apply` when `audit: true`): Condensed checklist applied during implementation. See [Discipline Mode](#discipline-mode).
 
 Both modes share the same [Core Framework](#core-framework).
 
@@ -28,7 +36,7 @@ Both modes share the same [Core Framework](#core-framework).
 
 ## Standalone Mode
 
-When invoked directly as `$spectra-audit`:
+When invoked directly as `/spectra-audit`:
 
 ### Phase 1: Gather Changes
 
@@ -90,7 +98,7 @@ End with a brief summary of what was fixed (or confirm the code is clean).
 
 ## Discipline Mode
 
-When referenced by `$spectra-apply` (via `spectra instructions --skill audit`), do NOT launch the 3-agent workflow above. Instead, apply this condensed checklist continuously during implementation.
+When referenced by `/spectra-apply` (via `spectra instructions --skill audit`), do NOT launch the 3-agent workflow above. Instead, apply this condensed checklist continuously during implementation.
 
 ### Quick 3-Role Check
 

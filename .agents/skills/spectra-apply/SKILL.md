@@ -1,6 +1,7 @@
 ---
 name: spectra-apply
 description: "Implement or resume tasks from a Spectra change"
+effort: xhigh
 license: MIT
 compatibility: Requires spectra CLI.
 metadata:
@@ -8,10 +9,17 @@ metadata:
   version: "1.0"
   generatedBy: "Spectra"
 ---
+<!--
+🔒 LOCKED — managed by clade
+Source: plugins/hub-core/skills/spectra-apply/
+Edit at: /Users/charles/offline/clade
+Local edits will be reverted by the next sync.
+-->
+
 
 Implement tasks from a Spectra change.
 
-**Input**: Optionally specify a change name (e.g., `$spectra-apply add-auth`). If omitted, check if it can be inferred from conversation context. If vague or ambiguous you MUST prompt for available changes.
+**Input**: Optionally specify a change name (e.g., `/spectra-apply add-auth`). If omitted, check if it can be inferred from conversation context. If vague or ambiguous you MUST prompt for available changes.
 
 **Task tracking is file-based only.** The tasks file's markdown checkboxes (`- [ ]` / `- [x]`) are the single source of truth for progress. Do NOT use any external task management system, built-in task tracker, or todo tool. When a task is done, edit the checkbox in the tasks file — that is the only way to record progress.
 
@@ -24,9 +32,9 @@ Implement tasks from a Spectra change.
    If a name is provided, use it. Otherwise:
    - Infer from conversation context if the user mentioned a change
    - Auto-select if only one active change exists
-   - If ambiguous, run `spectra list --json` AND `spectra list --parked --json` to get all available changes (including parked ones). Parked changes should be annotated with "(parked)" in the selection list. Use the **AskUserQuestion tool** to let the user select
+   - If ambiguous, run `spectra list --json` AND `spectra list --parked --json` to get all available changes (including parked ones). Parked changes should be annotated with "(parked)" in the selection list. Use the **request_user_input 工具** to let the user select
 
-   Always announce: "Using change: <name>" and how to override (e.g., `$spectra-apply <other>`).
+   Always announce: "Using change: <name>" and how to override (e.g., `/spectra-apply <other>`).
 
 2. **Check status to understand the schema**
 
@@ -45,7 +53,7 @@ Implement tasks from a Spectra change.
    Look for the change name in the `parked` array of the JSON output.
    - **If the change IS in the parked list** (it's parked):
      Inform the user that this change is currently parked（暫存）.
-     Use the **AskUserQuestion tool** to ask whether to continue.
+     Use the **request_user_input 工具** to ask whether to continue.
      Two options:
      - **Continue**: Unpark the change and proceed with apply
      - **Cancel**: Stop the workflow
@@ -66,7 +74,7 @@ Implement tasks from a Spectra change.
 
      Then re-run `spectra status --change "<name>" --json` and continue normally.
 
-     If there is no AskUserQuestion tool available (non-Claude-Code environment):
+     If there is no request_user_input 工具 available (non-Claude-Code environment):
      Inform the user that this change is currently parked（暫存）and ask via plain text whether to unpark and continue, or cancel.
      Wait for the user's response. If the user confirms, run `spectra unpark "<name>"`, then set `spectra in-progress add "<name>"`, and continue normally.
 
@@ -95,7 +103,7 @@ Implement tasks from a Spectra change.
    - Dynamic instruction based on current state
 
    **Handle states:**
-   - If `state: "blocked"` (missing artifacts): show message, suggest using `$spectra-propose` to create the change artifacts first
+   - If `state: "blocked"` (missing artifacts): show message, suggest using `/spectra-propose` to create the change artifacts first
    - If `state: "all_done"`: congratulate, suggest archive
    - Otherwise: proceed to implementation
 
@@ -112,7 +120,7 @@ If the apply instructions JSON includes a `preflight` field, act on its `status`
   Continuing...
   ```
   Only show the lines that are relevant (skip drifted if none, skip staleness if not stale).
-- **`"critical"`**: display missing files with their source artifact, then use the **AskUserQuestion tool** to ask the user:
+- **`"critical"`**: display missing files with their source artifact, then use the **request_user_input 工具** to ask the user:
 
   ```
   ⚠ Preflight: missing files detected
@@ -124,7 +132,7 @@ If the apply instructions JSON includes a `preflight` field, act on its `status`
   Options: "Continue anyway" / "Stop"
   If the user chooses "Stop", end the workflow.
 
-  If there is no AskUserQuestion tool available:
+  If there is no request_user_input 工具 available:
   Display the same information as plain text and ask whether to continue or stop.
   Wait for the user's response.
 
@@ -136,12 +144,12 @@ Run `spectra analyze <change-name> --json` to check cross-artifact consistency (
 
 - **Zero findings**: silently continue.
 - **Warning/Suggestion only**: display a one-line summary (e.g., "⚠ Artifact analysis: 2 warnings found") and continue automatically.
-- **Critical findings**: display each Critical finding (summary + location + recommendation), then use the **AskUserQuestion tool**:
+- **Critical findings**: display each Critical finding (summary + location + recommendation), then use the **request_user_input 工具**:
   - **Fix and continue** — fix the artifact issues inline, then proceed
   - **Continue anyway** — skip fixes and start implementation
   - **Stop** — end the workflow
 
-  If there is no AskUserQuestion tool available, present options as plain text and wait for the user's response.
+  If there is no request_user_input 工具 available, present options as plain text and wait for the user's response.
 
 4. **Read context files**
 
@@ -174,9 +182,99 @@ Run `spectra analyze <change-name> --json` to check cross-artifact consistency (
    - Remaining tasks overview
    - Dynamic instruction from CLI
 
+6b. **Phase Dispatch Decision**（per `agent-routing.md`）
+
+   Before implementing tasks, decide dispatch model **per phase**（`## N. <phase>` section in tasks.md）:
+
+   1. **Read tasks.md** and identify all `## N.` phase sections
+   2. **For each phase, classify into one of three categories**（依序判定，命中即停）:
+      - **A. Design Review phase** — title contains "Design Review" OR phase body references `/design improve` / `/impeccable audit` / `/impeccable *` / `review-screenshot` / `/design *`
+        → **主線 Claude Opus 4.7 xhigh 自己做**，**永不**派 codex
+        → Design skill is AI Agent first-class; codex tooling weak in this domain
+      - **B. UI view phase** — phase 內任一 task 描述/路徑指涉 view 層檔案：`.vue` / `.tsx` / `.jsx` / `app/pages/` / `app/components/` / `pages/` / `components/` / `views/` / `layouts/` / `.css` / `.scss` / Tailwind class 變動，**且**該 phase 沒有摻入非 view 的 frontend / backend 工作（store / hook / API client / type / util / migration / API server）
+        → **主線 Claude Opus 4.7 xhigh 自己做**，**永不**派 codex
+        → UI view 層的視覺 / 互動 / a11y 細節需要與 Design skill 緊耦合；frontend 但非 view 的工作（store / hook / API client / type / util）不在此範圍，走 C 類
+      - **C. Other phase** — 上述兩類以外（schema / migration / API server / CLI / 純 backend / frontend 但非 view 的 store / hook / API client / type / util / unit test / docs）
+        → **派 background codex GPT-5.5 high**（**不要** medium）
+        → Phase 粒度避免大量 codex round-trip
+   3. **Mixed-phase fallback**（A、B 都不是純 view、又混雜 view 與非 view 工作）:
+      - **看該 phase 是否已開工**（任一 task `[x]`，或 git history 顯示 phase 內檔案已被改）:
+        - **已開工** → **主線整個 phase 自己做**（safety fallback；不重切、不派 codex；該 phase 內的 codex 工作量由主線吸收）
+        - **未開工** → **STOP**，回覆使用者:
+          ```
+          phase `<N>. <title>` 同時混雜 UI view 與非 UI 工作，違反新版 Phase Dispatch 規則。
+          請改跑 `/spectra-ingest <change-name>` 把 UI view tasks 與其他 tasks 切成獨立 phase 後再 `/spectra-apply`。
+          ```
+          **NEVER** 主線自行修改 tasks.md phase 結構 — 該交給 `/spectra-ingest`，避免 propose / apply / ingest 邊界混淆
+   4. **NEVER** dispatch with `medium` effort — schema drift / cross-file refactor / enum exhaustiveness require `high` minimum
+   5. **NEVER** dispatch task-by-task — phase-level only
+
+   **Codex phase dispatch template**（C 類專用，per `agent-routing.md` 「Codex 派工的標準流程」+「Spectra Apply Phase Dispatch」）:
+
+   1. Write prompt to `/tmp/codex-spectra-apply-<change>-phase-<N>-prompt.md`，內容固定包含：
+
+      ```
+      [DELEGATED-BY-CLAUDE-CODE]
+
+      請執行本 repo 的 spectra-apply phase <N>（<phase-title>）的全部 tasks。
+
+      Change: <change-name>
+      Phase: <N>. <phase-title>
+      Tasks（請依序完成並用 `spectra task done <change> <task-id>` 標記）：
+
+      <每個 task 的編號 + 描述，從 tasks.md 抓>
+
+      讀取以下檔案了解上下文：
+      - openspec/changes/<change-name>/proposal.md
+      - openspec/changes/<change-name>/design.md
+      - openspec/changes/<change-name>/specs/*/spec.md
+      - openspec/changes/<change-name>/tasks.md
+      - .claude/rules/（相關 rule，例如 server-api / pinia-store / supabase-* / development）
+
+      View-layer guard（**MUST**）：
+      禁止修改 view 層檔案：
+      - 副檔名：`.vue` / `.tsx` / `.jsx` / `.css` / `.scss`
+      - 目錄：`app/pages/` / `app/components/` / `pages/` / `components/` / `views/` / `layouts/`
+      若 task 需要 view 層改動，回報 "view layer change required, defer to main thread" 並跳過該 task（不要勾 checkbox），主線會自己處理。
+
+      Acceptance：所有 phase <N> 的 tasks 完成、checkbox 已勾、相關 typecheck / unit test 通過、git diff 對應預期變更。
+      不要動 phase <N> 以外的 tasks。不要碰 ## Design Review 區塊（主線會自己做）。
+      不要呼叫 /spectra-archive。
+      ```
+
+   2. Background bash:
+
+      ```bash
+      cd <consumer-repo-root> && codex exec \
+        --model gpt-5.5 \
+        --dangerously-bypass-approvals-and-sandbox \
+        --skip-git-repo-check \
+        -c model_reasoning_effort=high \
+        < /tmp/codex-spectra-apply-<change>-phase-<N>-prompt.md 2>&1
+      ```
+
+   3. Inform user briefly + start Codex Watch Protocol（見 `agent-routing.md`）
+
+   4. After `<task-notification status=completed>`:
+      - BashOutput → read full stdout
+      - Read tasks.md → confirm phase <N> all checkboxes are `[x]`
+      - Sanity check: `pnpm typecheck` (or equivalent), relevant tests, `git diff` review
+      - **MUST view-layer drift check**: `git diff --name-only HEAD~? -- '*.vue' '*.tsx' '*.jsx' '*.css' '*.scss' 'app/pages/**' 'app/components/**' 'pages/**' 'components/**' 'views/**' 'layouts/**'`（取自上次 codex dispatch 之前 commit 為 base；若無 commit 用 working tree diff）。**若有任何 view 層檔案被 codex 動過** → request_user_input: [1] 主線 revert view 改動 + 重派 codex（剝除 view 改動）/ [2] 接受並由主線自己重跑該 view phase / [3] 中止
+      - **If gaps detected** → request_user_input: [1] 主線補齊 / [2] 重派 codex / [3] 中止
+
+   5. Move to next phase (re-classify and dispatch or self-execute)
+
+   6. After ALL C 類 phases complete → **主線自己**執行所有 A、B 類 phases（Design Review / UI view），用 `/design improve`, /impeccable skills, /impeccable audit, review-screenshot 等 AI Agent first-class 工具
+
 7. **Implement tasks (loop until done or blocked)**
 
    **Reminder: Track progress by editing checkboxes in the tasks file only. Do not use any built-in task tracker.**
+
+   **Dispatch reminder**: For each phase, follow Step 6b's three-way classification:
+   - Class C（Other）→ dispatch codex GPT-5.5 high (phase granularity)
+   - Class A（Design Review）→ 主線 self-execute (NEVER dispatch)
+   - Class B（UI view: component / page / view / layout / styling）→ 主線 self-execute (NEVER dispatch)
+   - Mixed phase（UI view + 非 view 摻同 phase）→ 已開工主線吸收、未開工 STOP 提示 `/spectra-ingest`
 
    For each pending task:
    - Show which task is being worked on
@@ -233,6 +331,22 @@ Run `spectra analyze <change-name> --json` to check cross-artifact consistency (
 
    Confirm `state: "all_done"`. If not, review remaining tasks and complete them.
 
+8b. **Manual review handoff**
+
+   When tasks.md still contains unchecked items in the `## 人工檢查` section (typical at this point — implementation tasks `[x]` but manual-review items `[ ]`), **MUST** hand off to the local manual-review GUI rather than walking through items inline in chat.
+
+   - **DEFAULT path**: Reply to the user with something like:
+     > Implementation 完成，剩 `<N>` 項 `## 人工檢查`。請在 consumer repo root 執行 `pnpm review:ui` 開本地 GUI 驗收 — 自動依 `#N` / `#N.M` 檔名配對截圖、鍵盤 OK / Issue / SKIP、conflict-aware 寫回 tasks.md。完成後回報，我繼續 Step 9 status。
+   - Wait for the user to complete the GUI flow and report back. Do NOT proceed to Step 9 / propose archive until the user signals manual review is done.
+   - **NEVER** default to `request_user_input` chat dialog walking items one-by-one — it burns tokens, ignores the screenshot pool, and contradicts `rules/core/manual-review.md` 標準流程.
+
+   **Fallback to chat-based confirmation only when**:
+   - Consumer lacks the `review:ui` script (offer to run `pnpm hub:check` or propagate from clade first)
+   - User explicitly says "skip the GUI, just confirm in chat"
+   - Pure-backend change with 1–2 yes/no items and zero screenshot evidence needed
+
+   Once manual review is complete (all `## 人工檢查` items resolved with user confirmation), proceed to Step 9.
+
 9. **On completion or pause, show status**
 
    Display:
@@ -269,7 +383,7 @@ Working on task 4/7: <task description>
 - [x] Task 2
 ...
 
-All tasks complete! You can archive this change with `$spectra-archive`.
+All tasks complete! You can archive this change with `/spectra-archive`.
 ```
 
 **Output On Pause (Issue Encountered)**
@@ -303,7 +417,16 @@ What would you like to do?
 - Pause on errors, blockers, or unclear requirements - don't guess
 - Use contextFiles from CLI output, don't assume specific file names
 - **No external task tracking** — do not use any built-in task management, todo list, or progress tracking tool; the tasks file is the only system
-- If **AskUserQuestion tool** is not available, ask the same questions as plain text and wait for the user's response
+- **Phase dispatch discipline**（per `agent-routing.md`）:
+  - **NEVER** dispatch Design Review phase to codex — Design skill is AI Agent first-class
+  - **NEVER** dispatch UI view phase（component / page / view / layout / styling）to codex — UI view 層的視覺 / 互動 / a11y 細節必須跟 Design skill 緊耦合，主線自己做。Frontend 但非 view 的（store / hook / API client / type / util）仍走 codex
+  - **NEVER** dispatch with `medium` effort — use `high` minimum
+  - **NEVER** dispatch task-by-task — phase granularity only
+  - **NEVER** dispatch a codex phase without including the「view-layer guard」instruction in the prompt — without it, codex tends to incidentally touch `.vue` / `.tsx` files
+  - **NEVER** skip view-layer drift check after codex completion — `git diff --name-only` filtered by view paths is the primary quality gate
+  - **NEVER** auto-fix mixed phases by editing tasks.md mid-apply — that belongs to `/spectra-ingest`; for未開工 mixed phase, STOP and instruct the user to run ingest
+  - **NEVER** skip cross-check after codex phase completion — read tasks.md, confirm checkboxes, run typecheck/test, review diff
+- If **request_user_input 工具** is not available, ask the same questions as plain text and wait for the user's response
 
 **Fluid Workflow Integration**
 

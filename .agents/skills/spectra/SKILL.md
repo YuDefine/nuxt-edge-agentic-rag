@@ -1,7 +1,15 @@
 ---
 name: spectra
 description: 'Spectra orchestrator — auto-detect which spectra sub-skill to invoke based on project state and user intent'
+effort: low
 ---
+<!--
+🔒 LOCKED — managed by clade
+Source: plugins/hub-core/skills/spectra/
+Edit at: /Users/charles/offline/clade
+Local edits will be reverted by the next sync.
+-->
+
 
 # Spectra Orchestrator
 
@@ -32,6 +40,8 @@ Ask the user what they want to do. Use **request_user_input** with these options
 4. **除錯（Debug）** — 我遇到問題想系統性排查 → invoke `/spectra-debug`
 
 After the user picks, invoke the corresponding skill with the Skill tool.
+
+> **Note**：選到 `Propose` 時，`spectra-propose` 入口的 Step 0 會再問一次「A. Codex GPT-5.5 xhigh / B. AI Agent 繼續做」。orchestrator **不要**在這裡先問，避免雙重詢問。
 
 ### Step 3: Active changes exist — Determine next action
 
