@@ -79,6 +79,12 @@ If no argument is provided, the workflow will extract requirements from conversa
         - N.6 review-screenshot 視覺 QA
         - N.7 Fidelity 確認
 
+      **Backend-only Manual Review 規約**（適用 `## User Journeys` 為 `**No user-facing journey (backend-only)**` 的 change）：
+      tasks.md 的 `## 人工檢查` **只**允許三類項目：(1) production 授權 (2) 商業判斷 (3) production 觀察。**禁止**把 SSH / psql / `\d <table>` / `SELECT FROM` / `curl` 觸發 endpoint / `SET session_replication_role` / 受控 drift 製造 / migration 存在性驗證等 evidence collection 寫進 `## 人工檢查` — 這些 **MUST** 寫進新的 `## N. Backend Verification Evidence` section 由 apply 階段 Claude 自跑自貼。若三類都沒有，`## 人工檢查` 寫成固定文字 `_本 change 為 backend-only，所有驗證由 apply 階段 Claude 自跑（見 `## N. Backend Verification Evidence`）；deploy 前無使用者人工檢查項目。_`。完整規約見 `.claude/rules/ux-completeness.md` 「必填 Backend-only Manual Review 規約」。
+
+      **Artifact 語言遵循**：
+      開工前先 `grep -lE "繁體|繁中|不要使用簡體" AGENTS.md .claude/rules/*.md 2>/dev/null`。若命中（consumer 規定繁體中文），**全部** artifact（proposal.md / design.md / tasks.md / spec.md）**MUST** 用繁體中文撰寫，**禁止**英文 artifact。code 識別字、技術名詞（如 `audit_signed_chain`、`business_keys_drift`）、SQL/code block 不譯。若 grep 未命中視為無語言規定。
+
       完成標準：`spectra park <change-name>` 執行成功。
       不要呼叫 /spectra-apply。產出後在 stdout 摘要 artifacts 列表 + `spectra validate` 結果。
       ```
@@ -107,7 +113,7 @@ If no argument is provided, the workflow will extract requirements from conversa
    3. **跑 post-propose-check.sh**（檢查 User Journeys / Affected Entity Matrix / Implementation Risk Plan / Design Review 7 步）：
 
       ```bash
-      bash scripts/spectra-ux/post-propose-check.sh <change-name>
+      bash scripts/spectra-advanced/post-propose-check.sh <change-name>
       ```
 
       若有 FINDINGS → 主線**自己**直接 Edit proposal.md / tasks.md 補齊（**不要**回 codex 修，太慢）
@@ -115,7 +121,7 @@ If no argument is provided, the workflow will extract requirements from conversa
    4. **跑 design-inject.sh**（若 UI scope，提醒 7 步 template）：
 
       ```bash
-      bash scripts/spectra-ux/design-inject.sh <change-name>
+      bash scripts/spectra-advanced/design-inject.sh <change-name>
       ```
 
    5. **若 Design Review section 缺或不完整 7 步 → 主線自己 Edit tasks.md 補齊**：
@@ -135,6 +141,44 @@ If no argument is provided, the workflow will extract requirements from conversa
       ```
 
       `[affected pages/components]` 替換為此 change 實際涉及的 UI 檔案/頁面。
+
+   5.5 **Backend-only Manual Review hygiene check**：
+
+      Read `openspec/changes/<change-name>/proposal.md`，grep `**No user-facing journey (backend-only)**`：
+
+      - **若有該宣告**（backend-only change）：
+        1. Read tasks.md `## 人工檢查` 區塊全部 checkbox
+        2. 對每個 checkbox 判斷是否含下列 evidence-collection 動詞 / 模式：
+           - `Apply ... migration`、`verify ... exists`
+           - `SSH`、`docker exec`、`psql`
+           - `\d <table>`、`SELECT ... FROM`
+           - `curl`、`Trigger ... cron`、`Run /_cron/`
+           - `SET session_replication_role`、`UPDATE ... WHERE`、受控 drift 製造
+        3. 若有違規項 → 主線**自己**直接 Edit tasks.md：
+           - 在最後一個功能區塊之後、`## 人工檢查` 之前插入 `## N. Backend Verification Evidence` section（N = 上一個功能區塊序號 + 1），把違規項目搬過去並改寫成「動作 → 預期 evidence」格式（apply Claude 跑完會貼證據）
+           - 若 Backend Verification Evidence 已存在，append 而非新增
+           - 若移完後 `## 人工檢查` 為空 → 替換成固定文字：
+             ```
+             _本 change 為 backend-only，所有驗證由 apply 階段 Claude 自跑（見 `## N. Backend Verification Evidence`）；deploy 前無使用者人工檢查項目。_
+             ```
+           - 若 `## 人工檢查` 仍有合法的三類項目（production 授權 / 商業判斷 / production 觀察），保留之，不要動
+        4. 完整規約見 `.claude/rules/ux-completeness.md`「必填 Backend-only Manual Review 規約」
+      - **若無該宣告**：跳過此 step
+
+   5.6 **Artifact 語言遵循 check**：
+
+      ```bash
+      grep -lE "繁體|繁中|不要使用簡體" AGENTS.md .claude/rules/*.md 2>/dev/null
+      ```
+
+      - **若 grep 命中**（consumer 規定繁體中文）：
+        1. Read proposal.md / design.md / tasks.md，heuristic 偵測：連續 3+ 行純 ASCII 句子且不在 ` ``` ` code block / table / inline code 內 → 視為英文段落
+        2. 主線**自己** Edit 翻成繁體中文，保留：
+           - SQL / code / shell command（` ``` ` block 內）
+           - Code 識別字、檔案路徑、技術名詞（如 `audit_signed_chain`、`business_keys_drift`、`PostgREST`）
+           - inline code（單 backtick 內的字串）
+        3. 標題用語對齊既有繁中規則檔（例如 `## Why` / `## What Changes` / `## Non-Goals` / `## Affected Entity Matrix` 等 OpenSpec / Spectra 制式英文標題**保留不譯**，body 內容才翻）
+      - **若無命中**：跳過此 step
 
    6. **掃 design.md 的 Open Questions**（不論前面摘要多漂亮，這步**不能省略**）：
       - Read `openspec/changes/<change-name>/design.md`
@@ -445,7 +489,7 @@ If no argument is provided, the workflow will extract requirements from conversa
    If `tasks.md` references any `.vue` / `pages/` / `components/` / `layouts/` files:
    - tasks.md **MUST** contain a `## N. Design Review` section before `## 人工檢查` (with N = last functional section number + 1)
    - The section **MUST** have all 7 checkboxes (N.1 through N.7) covering: PRODUCT.md/DESIGN.md check, /design improve + Fidelity Report, DRIFT fix loop, canonical-order targeted impeccable skills, /impeccable audit Critical = 0, review-screenshot, Fidelity confirmation
-   - Verify by running `bash scripts/spectra-ux/post-propose-check.sh <change-name>` and acting on its FINDINGS
+   - Verify by running `bash scripts/spectra-advanced/post-propose-check.sh <change-name>` and acting on its FINDINGS
    - If anything is missing, fix tasks.md inline now — do NOT let an incomplete Design Review section through. Archive gate will block it later anyway.
 
    **Check 6: Fixtures / Seed Plan (UI scope + Affected Entity Matrix)**
@@ -455,7 +499,7 @@ If no argument is provided, the workflow will extract requirements from conversa
    - Either include at least one `- [ ]` task line per entity-with-Surfaces (entity name, minimum row count, target seed file path) **OR** an explicit `**Existing seed sufficient**` declaration with one-line justification
    - Detected seed-file conventions (in order): `supabase/seed.sql` / `db/seed.sql` / `prisma/seed.ts` / `drizzle/seed.ts`
    - Reason: UI pages displaying empty data on dev/staging make `review-screenshot` worthless. Fixtures are part of feature completeness, not a review-time afterthought.
-   - Verify by running `bash scripts/spectra-ux/post-propose-check.sh <change-name>` and acting on Check 6 FINDINGS
+   - Verify by running `bash scripts/spectra-advanced/post-propose-check.sh <change-name>` and acting on Check 6 FINDINGS
    - Full template + exemption rules see `ux-completeness.md` 「必填 Fixtures / Seed Plan」section
 
    **Check 7: Phase Purity (UI view vs 非 view 必須切成獨立 phase)**
@@ -464,9 +508,38 @@ If no argument is provided, the workflow will extract requirements from conversa
    - For each functional `## N. <title>` phase in tasks.md (excluding `## N. Design Review` and `## N. Fixtures / Seed Plan`):
      - **MUST NOT** mix view-layer file references with non-view work (schema / migration / API server / store / hook / API client / type / util / 純 backend)
      - 一個 phase 要嘛純 view 工作（component / page / view / layout / styling），要嘛純非 view 工作；混雜 phase 違規
-   - Verify by running `bash scripts/spectra-ux/post-propose-check.sh <change-name>` and acting on Check 4c FINDINGS
+   - Verify by running `bash scripts/spectra-advanced/post-propose-check.sh <change-name>` and acting on Check 4c FINDINGS
    - If a mixed phase is detected, **MUST** split inline now into independent phases — do NOT defer to ingest. spectra-apply Phase Dispatch 規則仰賴 phase purity；混雜 phase 在 apply 時會被擋下要求重 ingest，propose 階段就修掉成本最低
    - Reason: spectra-apply 把 UI view phase 由主線 AI Agent 自己做、其他 phase 派給 codex GPT-5.5 high；phase 混雜會破壞 dispatch 邊界，要嘛讓 codex 碰 view 層、要嘛讓主線吞下原本可以 offload 的 mechanical 工作
+
+   **Check 8: Backend-only Manual Review hygiene**
+
+   If `proposal.md` declares `**No user-facing journey (backend-only)**`:
+   - tasks.md `## 人工檢查` **MUST NOT** contain evidence-collection items. Forbidden patterns include: SSH / `docker exec` / `psql` / `\d <table>` / `SELECT FROM` / `curl` triggering endpoint or cron / `SET session_replication_role` / controlled drift fabrication / migration existence verification.
+   - Such items **MUST** be moved to `## N. Backend Verification Evidence` section (位置：最後一個功能區塊之後、`## 人工檢查` 之前；N = 上一個功能區塊序號 + 1). apply Claude self-runs them and pastes evidence under each task.
+   - Only three categories are allowed in `## 人工檢查` for backend-only changes:
+     1. **Production 授權型** — deploy 前 final go/no-go ack、production-only 破壞性操作授權
+     2. **商業判斷型** — Claude 無法自動判斷「結果是否合理」的觀察項
+     3. **Production 觀察型** — deploy 後 N 小時 / N 天的 production-only soak window 觀察
+   - 若三類都沒有，`## 人工檢查` **MUST** 寫成固定文字（archive gate 視為合法）：
+     ```
+     _本 change 為 backend-only，所有驗證由 apply 階段 Claude 自跑（見 `## N. Backend Verification Evidence`）；deploy 前無使用者人工檢查項目。_
+     ```
+   - Reason: forcing users to SSH + psql + curl is not "manual review" — it's evidence collection Claude can automate during apply. Real manual review is reserved for production authorization, business judgment, and production observation. Mixing them dilutes the user's attention away from items that genuinely need human judgment.
+   - Full 規約 (含三類定義、Backend Verification Evidence 模板、反面範例、違反回報格式) 見 `ux-completeness.md` 「必填 Backend-only Manual Review 規約」
+
+   **Check 9: Artifact language convention**
+
+   ```bash
+   grep -lE "繁體|繁中|不要使用簡體" AGENTS.md .claude/rules/*.md 2>/dev/null
+   ```
+
+   If the grep matches (consumer enforces 繁體中文):
+   - All artifacts (`proposal.md` / `design.md` / `tasks.md` / `specs/**/*.md`) **MUST** be written in 繁體中文.
+   - Code identifiers, file paths, technical names (e.g., `audit_signed_chain`, `business_keys_drift`, `PostgREST`), SQL blocks, shell commands, and inline `code` remain untranslated.
+   - OpenSpec / Spectra 制式英文標題（如 `## Why`、`## What Changes`、`## Non-Goals`、`## Affected Entity Matrix`、`## User Journeys`、`## Implementation Risk Plan`）保留英文，body 內容必須繁中。
+   - If codex draft produced English artifacts despite the convention, fix inline now — main thread Edit 翻譯，**不要**回 codex 重 draft.
+   - Reason: codex GPT-5.5 在 prompt 已有繁中指示時仍可能默認輸出英文；主線 cross-check 是最後一道翻譯把關。違反語言慣例會讓使用者在 review/manual-check 階段卡關。
 
 ---
 
