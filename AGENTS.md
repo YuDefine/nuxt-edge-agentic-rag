@@ -41,6 +41,8 @@ Changes can be parked（暫存）— temporarily moved out of `openspec/changes/
 
 <!-- SPECTRA:END -->
 
+> Spectra 版號對照：app 版本（如 `2.2.5`，你日常看到的）跟上方 SPECTRA marker（如 `v1.0.2`）是兩條獨立軌道 — marker 只在 Spectra 改 instruction template 時才跳號。
+
 ## Project Focus
 
 - Nuxt Edge Agentic RAG 專案；專題報告治理與工作流規範都以 `.claude/` 為 source 維護。
@@ -86,6 +88,7 @@ Changes can be parked（暫存）— temporarily moved out of `openspec/changes/
 - `.claude/rules/secrets.md`
 - `.claude/rules/session-tasks.md`
 - `.claude/rules/storage.md`
+- `.claude/rules/tech-debt-routing.md`
 - `.claude/rules/test-scripts.md`
 - `.claude/rules/testing-anti-patterns.md`
 - `.claude/rules/trigger.md`

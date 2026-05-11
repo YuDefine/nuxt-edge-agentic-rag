@@ -19,6 +19,7 @@ Local edits will be reverted by the next sync.
 1. **截圖目標** — 頁面路徑列表（ad-hoc）、Spectra change 的人工檢查清單、或除錯截圖需求
 2. **（可選）change name** — Spectra change 名稱
 3. **（可選）dev server port** — 若主 session 已知
+4. **（可選）`mode: verify`** — 切到 Verify Mode，職責改為完整 round-trip（送 form / 觀察 network response / 觀察 DOM 預期變化 / 截 final-state screenshot），用於 spectra-apply Step 8a Verify-Auto Pass。詳見下方「Verify Mode（spectra-apply Step 8a Verify-Auto Pass）」段落。
 
 ## 工具選擇
 
@@ -246,6 +247,31 @@ wait_for_load()
 
 ### A 類：人工檢查截圖（review:ui 配對用）
 
+#### 驗收點優先紀律
+
+收到 spectra change brief 時，拍攝前 **MUST** 先讀：
+
+```bash
+sed -n '/^## .*人工檢查/,$p' "openspec/changes/<change-name>/tasks.md"
+```
+
+逐 item 建立驗收點清單，至少列出：
+
+- id：`#1` / `#1.1`
+- kind：`[review:ui]` / `[discuss]` / default kind 推導結果
+- 要驗證的動作：使用者實際要做什麼
+- 最終驗收狀態：畫面、toast、數值、modal、列表刷新、權限狀態，或必要的 DB / response evidence
+
+只拍「最終驗收狀態」。過程觀察、找路、debug、modal attempt、click 後尚未確認結果、500 detail 調查圖，都不是 review evidence。
+
+每個 `[review:ui]` item **MUST** 至少 1 張驗收截圖，最多 4 張 variant。超過 4 張時，先整理成 1–4 張 final-state evidence，其餘移到：
+
+```text
+screenshots/<env>/<change-name>/_exploration/
+```
+
+若 item 本質不能用截圖證明 round-trip，回報主 session 補 `@no-screenshot`，不要用探索截圖假裝驗收。
+
 #### 資料夾命名（hard rule）
 
 ```bash
@@ -312,6 +338,10 @@ screenshots/local/<change-name>/
 3. 為每個 item 規劃要拍的場景（happy path / variants / states）
 4. 檔名首段 token 對齊 item id；descriptor 反映 item description 的關鍵字
 5. 最後 review:ui 載入此 change 時應該每個 item 都有 ≥ 1 張對應檔
+
+#### descriptor 命名紀律
+
+驗收截圖 descriptor 應描述 final state，優先使用 `saved`、`success`、`final`、`updated`、`readonly`、`disabled`、`unauthorized`、`empty-state`、`conflict` 等詞。`attempt`、`after-click`、`500-detail`、`error-detail`、`debug`、`exploration`、`try`、`probe` 等探索字眼只能出現在 `_exploration/`。
 
 #### review:ui 配對行為（給 agent 自查）
 
@@ -516,6 +546,224 @@ console.log("clients:", clientScripts.map(k=>k.replace(/^dev:/,"")).join(","));
 
    **重要**：`click_at_xy` 接 CSS 像素，截圖檔是 device pixels（2× 螢幕會 ×2）。讀截圖時務必用 `js("window.devicePixelRatio")` 換算座標。
 
+## Verify Mode（spectra-apply Step 8a Verify-Auto Pass）
+
+主 session brief 含 `mode: verify` 時，**職責改為完整 round-trip，不只是拍照**。對每個未勾 `[verify:auto]` item，**MUST** 執行真實使用者操作 + 觀察 server response + 觀察 DOM 預期變化，再截 final-state screenshot。
+
+存在原因：`manual-review.md` 的「Screenshot Review ≠ Functional Verification」血淚案例 — screenshot 全綠 + test 全綠仍可能 miss bug，因為沒有任何環節真實送出 form。verify mode 的 evidence trail（network status + DOM observation）就是補這條。
+
+### 必做動作
+
+對每個 `[verify:auto]` item，依 description「動詞 → 結果」執行：
+
+1. **執行 UI 動作**（用 browser-harness）：
+   - `click_at_xy(x, y)` / `fill(selector, value)` / `select(selector, value)` / submit form
+   - 必要時填表（從 description 推 input：「09:00」就 select hour=9, minute=0）
+
+2. **攔截 mutation network response**（**MUST**）：
+
+   ```bash
+   browser-harness -c '
+   import json
+   js("""
+     window.__verifyAuto = window.__verifyAuto || { mutations: [] };
+     if (!window.__verifyAutoFetchPatched) {
+       const orig = window.fetch;
+       window.fetch = async function(...args) {
+         const resp = await orig.apply(this, args);
+         try {
+           const url = (typeof args[0] === "string") ? args[0] : args[0].url;
+           const method = (args[1] && args[1].method) || "GET";
+           if (method !== "GET" && method !== "HEAD") {
+             window.__verifyAuto.mutations.push({ url, method, status: resp.status });
+           }
+         } catch (e) {}
+         return resp;
+       };
+       window.__verifyAutoFetchPatched = true;
+     }
+     return "ok";
+   """)
+   # 在 fetch hook 安裝後再執行 UI 動作
+   click_at_xy(<x>, <y>)  # 或 fill/select/submit
+   wait_for_load()
+   # 取 mutation 結果
+   result = js("return JSON.stringify(window.__verifyAuto.mutations || [])")
+   mutations = json.loads(result)
+   print("mutations:", mutations)
+   '
+   ```
+
+   - assert：mutation status 對應 description expected（典型 200 / 201 / 204）
+   - 若 status 4xx/5xx 而 description 預期 200 → 標 **FAIL**，記下 status
+
+3. **觀察 DOM 預期變化**（**MUST**）：
+   - description 提到「toast」/「banner」 → `wait_for_element('.toast, [role=alert], .v-snackbar')` 或 js 讀 textContent
+   - description 提到「list refetch」/「列表刷新」/「徽章」 → 比對前後 DOM count / `js("return document.querySelectorAll('...').length")`
+   - description 提到「reload 仍 X」 → `goto_url(target)` + `wait_for_load()` 後再驗一次值
+   - 若 DOM 預期變化沒發生（toast 沒出、list 沒 refetch）→ 標 **FAIL**，記下實際觀察
+
+4. **截 final-state screenshot**：
+
+   ```bash
+   capture_screenshot("screenshots/<env>/<change-name>/#<N>-final.png", max_dim=1800)
+   # 雙模式（未指定 mode 時）：拆 light/ dark/ 子目錄如平常 review 流程
+   ```
+
+### 失敗條件 → PASS / FAIL / UNCERTAIN
+
+| 結果 | 條件 | 主 session 處置 |
+| --- | --- | --- |
+| **PASS** | mutation status 對應 expected + DOM 預期變化發生 + final-state screenshot 已截 | 主 session 寫 `(verified-auto: <ISO> network=<status> dom=<obs>)` annotation |
+| **FAIL** | mutation 4xx/5xx 而 description 預期 200，或 DOM 預期變化沒發生 | 主 session 寫 `（issue: <details>）` 並回報 user |
+| **UNCERTAIN** | 撞登入頁、撞 emptiness preflight 解不開、agent 無法執行 description 的動作（描述太抽象） | 主 session 不寫 annotation，回報 user 升級成 `[review:ui]` 或補 fixtures plan |
+
+### 完成後 MUST
+
+1. 寫 `screenshots/<env>/<change-name>/review.md`，每 item 一個 section，含：
+   - mutations 觀察記錄（method / url / status）
+   - DOM 觀察結果
+   - final-state screenshot 路徑
+   - PASS/FAIL/UNCERTAIN 標記
+2. 跑 `node scripts/spectra-advanced/audit-screenshot-quality.mts <change-name> --fail-on-issues`
+   - 不過 → 整理 `_exploration/`、補拍 final-state，retry；仍不過 → 報告主線
+3. 回傳給主 session 一個結構化清單（每 item 的 result + evidence），主 session 拿來寫 annotation
+
+### 範例（spectra-apply Step 8a 派遣 brief）
+
+```
+mode: verify
+Change: asset-loan-overdue-notification
+未勾 [verify:auto] items：
+- #1 admin /settings 改排程 09:00 → 200 toast → reload 仍是 09:00
+- #4 /asset-loans 兩個 tab 都看到紅標 + 徽章 + 置頂排序
+
+Dev server port: 3000
+```
+
+agent 回傳：
+
+```
+#1 PASS — POST /api/admin/settings 200，toast 出現「已儲存」，reload 後 schedule.hour=9。Final: screenshots/local/asset-loan-overdue-notification/#1-final.png
+#4 UNCERTAIN — dev DB 無 overdue loan，已試補 seed.sql 但 fixtures plan 沒列；建議升級 review:ui 或補 fixtures
+```
+
+### Time Budget & Checkpoint Cadence（hard rule）
+
+**Hard budget: 60 分鐘**（從 agent 收到 brief 算起）。到 60 分鐘無論進度，**MUST**：
+
+1. 立刻停止任何新動作（不再開新 browser-harness call、不再 retry）
+2. 更新 `progress.json`（見下）把未完成 items 標 `status: "UNCERTAIN(time-budget-exhausted)"`
+3. 在 review.md 結尾寫 `## Time Budget Exhausted` section：已完成 N / 未完成 M / 卡點 K
+4. 回傳主線，**NEVER** 再嘗試「最後一個 item 跑完就好」這種拖延
+
+**Cooperative Checkpoint**（**MUST** 滿足以下兩條取較短者）：
+
+- **每完成一個 item 之後**：更新 `progress.json` + 跑一個 cheap tool call（如 `Bash("date")` 或 `Read` `progress.json` 自己剛寫的檔）強制 return main loop
+- **每 15 分鐘**（即使沒新完成 item）：同上
+
+存在原因：`SendMessage` 是 cooperative — 訊息 queue 進 agent inbox 後，**只有 agent 完成當下 tool call、回到 main loop、發出下一個 tool call 時**才會被遞送。verify mode 若把整段 `browser-harness -c '...'` 包成單一 Bash call、內含 10+ 動作（每個 `wait_for_load` 2–5s、`capture_screenshot` 3–10s），整個 call 可能跑 5–15 分鐘以上，**期間主線完全無法介入**。Checkpoint 是強制 return main loop 的機制。
+
+### 為什麼單一 long browser-harness call 會 break SendMessage
+
+`browser-harness -c '...'` 是單一 Bash 工具呼叫，期間 Python 程式跑多少瀏覽器互動主線都看不到。寫法影響主線可介入性：
+
+**❌ 反例（10 動作包成單 call，主線 5–15 分鐘叫不動）**：
+
+```bash
+browser-harness -c '
+js("...安裝 fetch hook...")
+click_at_xy(x1, y1); wait_for_load()
+fill("input#name", "test"); click_at_xy(x2, y2); wait_for_load()
+click_at_xy(x3, y3); wait_for_load()
+capture_screenshot("...#1.png")
+# ... 還有 5 個動作 ...
+'
+```
+
+**✅ 正解（拆成多個 ≤ 1 語義動作的 call）**：
+
+```bash
+# Call 1：登入 + 跳目標頁（一個語義：「到達待操作頁面」）
+browser-harness -c 'new_tab("..."); wait_for_load(); page_info()'
+# → return main loop（SendMessage queue 在此被處理）
+
+# Call 2：安裝 fetch hook + 填表送出（一個語義：「執行 mutation」）
+browser-harness -c 'js("...fetch hook..."); fill("..."); click_at_xy(..); wait_for_load()'
+# → return main loop
+
+# Call 3：觀察 mutation + DOM + 截圖（一個語義：「收集 evidence」）
+browser-harness -c 'mutations=js("return ..."); capture_screenshot("...")'
+# → return main loop
+```
+
+**規則**：單個 `browser-harness -c '...'` **MUST** ≤ 1 語義動作（例如：「登入 + 跳轉首頁」算一個；「填表 + 送出 + 觀察 toast」算一個）。**NEVER** 把多個 verify item round-trip 串在同一個 call。
+
+### Fail-Fast 條件（hard rule）
+
+撞到以下情況 → 標 **UNCERTAIN** 並跳下一 item，**NEVER** 無限 retry：
+
+1. **登入頁打不開** — dev-login route 不存在 / cookie 失效 / 撞 OAuth flow
+2. **必要 fixture 缺**且 tasks.md 沒對應 Fixtures Plan 條目 — Emptiness Preflight 命中且自動補 seed 失敗
+3. **DOM selector 連續 3 次找不到** — 嘗試 3 種不同 selector / id / text 仍找不到目標元素
+4. **同一 item 累計嘗試 > 5 分鐘** — 不管原因，超過就標 UNCERTAIN
+5. **click 後 DOM 連續 2 次無預期變化** — 例如點 readOnly button / hidden overlay 接收 click，DOM 無 mutation / 無 navigation / 無 toast
+
+**MUST** 在 `progress.json` `blockers` 欄位記下原因，主線據此判斷升級成 `[review:ui]` 或補 fixtures plan。
+
+### progress.json 寫盤 contract（hard rule）
+
+Verify mode **MUST** 在 `screenshots/<env>/<change-name>/progress.json` 寫入並維護以下 schema：
+
+```json
+{
+  "started_at": "2026-05-11T08:00:00Z",
+  "last_update": "2026-05-11T08:13:42Z",
+  "budget_minutes": 60,
+  "items_total": 6,
+  "items_done": [
+    {
+      "id": "#1",
+      "status": "PASS",
+      "network": "PATCH /api/v1/system-settings 200",
+      "dom": "toast-saved reload-persists-09:00",
+      "screenshot": "screenshots/local/<change>/#1-final.png"
+    },
+    {
+      "id": "#3",
+      "status": "FAIL",
+      "network": "PATCH /api/... 500",
+      "dom": "no-toast",
+      "screenshot": null,
+      "issue": "server returned 500 unexpectedly"
+    }
+  ],
+  "items_in_progress": "#4",
+  "items_pending": ["#5", "#6"],
+  "blockers": []
+}
+```
+
+`status` 值域：`"PASS"` / `"FAIL"` / `"UNCERTAIN"` / `"UNCERTAIN(time-budget-exhausted)"` / `"UNCERTAIN(<fail-fast-reason>)"`。
+
+寫入時機（**MUST** 任一觸發都更新 `last_update` + 對應欄位）：
+
+- 每完成 / 失敗一個 item 之後
+- 每 15 分鐘（即使沒新進度，仍更新 `last_update` 標記 agent 還活著）
+- 撞 fail-fast 條件後（寫進 `blockers`）
+- Time budget 到期前（自我中止流程觸發前）
+
+**用途**：主線 Watch Protocol 靠這個 file 判斷 agent 健康（見 `rules/core/agent-routing.md` § screenshot-review Verify Mode Dispatch & Watch Protocol）。**NEVER** 把進度只寫進 review.md — review.md 是給人讀的，progress.json 是給主線機器讀的。
+
+### Verify mode 不適用情境（→ UNCERTAIN）
+
+- 收 email / 收 webhook（agent inbox 不可達）
+- 視覺主觀美感判斷
+- 實體裝置（kiosk / printer / 條碼槍）
+- description 太抽象沒有具體 URL / 動作 / 預期結果
+
+撞到這些情境 **MUST** 回報主 session 升級成 `[review:ui]`，**NEVER** 自己亂猜寫 annotation。
+
 ## 平行 / 隔離 session
 
 Spectra `/spectra-apply` 等情境需要多個 screenshot-review subagent 並行時，每個 subagent 透過 `BU_NAME` 隔離 daemon：
@@ -595,6 +843,12 @@ export default defineEventHandler(async (event) => {
 
 ## 截圖結果
 
+## 證據對應表
+
+| Item | 截圖 | 為什麼是驗收證據 |
+| --- | --- | --- |
+| #1 | `screenshots/<env>/<change-name>/#1-saved.png` | 已完成儲存且 toast / 更新後數值可見，不是過程觀察 |
+
 ### #1 <描述>
 
 - 狀態：✅ 通過 / ⚠️ 需確認 / ❌ 有問題
@@ -620,6 +874,18 @@ export default defineEventHandler(async (event) => {
 
 > 指定單一 mode 時，截圖路徑不帶 `light/` / `dark/` 子目錄，報告只列一行截圖。
 > Emptiness Preflight 沒觸發 → 不需 Seed 變動 section；若有觸發但兜底走「停下回報主 session」（fixtures 在 tasks 但未跑 / staging 待授權 / 找不到 seed 機制），用「Preflight 觸發但未補 mock」section 取代，列原因。
+
+### 完成前自查
+
+完成 `review.md` 後 **MUST** 執行 screenshot quality audit：
+
+```bash
+node scripts/spectra-advanced/audit-screenshot-quality.mts <change-name> --fail-on-issues
+```
+
+若有 warning / critical，先整理 `_exploration/`、補拍 final-state、或回報主 session 補 `@no-screenshot`，不要把問題留給使用者在 `pnpm review:ui` 裡猜。
+
+> Vendor script 直接呼叫，不依賴 consumer 端 `package.json` 是否有 `spectra:audit-screenshots` npm script — sync-vendor 會把 `audit-screenshot-quality.mts` 散播到每個 consumer 的 `scripts/spectra-advanced/`。
 
 ## 回傳給主 session
 

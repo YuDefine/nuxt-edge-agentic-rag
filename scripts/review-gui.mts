@@ -26,6 +26,13 @@ const CHECKBOX_LINE_RE = /^[ \t]*- \[[ xX]\]\s+/
 const PARENT_ITEM_RE = /^- \[([ xX])\] (#[1-9][0-9]*) (.+)$/
 const SCOPED_ITEM_RE = /^  - \[([ xX])\] (#[1-9][0-9]*\.[1-9][0-9]*) (.+)$/
 const TRAILING_NO_SCREENSHOT_RE = /(^|[^ ]) @no-screenshot$/
+// 解析 leading kind marker — 必須緊接 `#N` / `#N.M` 後第一個 token、含一個 trailing space。
+// description-mid 的 [discuss] / [review:ui] / [verify:auto] 不會被命中（不是行首）。
+const LEADING_KIND_RE = /^\[([^\]]+)\]\s+/
+const VALID_KINDS = new Set(['review:ui', 'discuss', 'verify:auto'])
+const BACKEND_ONLY_DECLARATION = '**No user-facing journey (backend-only)**'
+
+export type ManualReviewItemKind = 'review:ui' | 'discuss' | 'verify:auto'
 
 export interface ManualReviewItem {
   id: string
@@ -37,6 +44,10 @@ export interface ManualReviewItem {
   lineIndex: number
   lineNumber: number
   noScreenshot: boolean
+  /** Leading kind marker — `[review:ui]` / `[discuss]` / `[verify:auto]`. 缺 marker 時依 defaultKind 推導 */
+  kind: ManualReviewItemKind
+  /** 原始 raw 行有 explicit leading kind marker（true）或走 default 推導（false） */
+  hasExplicitKind: boolean
 }
 
 export interface ManualReviewMalformedLine {
@@ -113,7 +124,31 @@ class HttpError extends Error {
   }
 }
 
-export function parseManualReviewSections(content: string): ParsedManualReview {
+/**
+ * 從 proposal.md 內容推導 default kind。
+ * - 含 `**No user-facing journey (backend-only)**` → `discuss`
+ * - 否則 → `review:ui`
+ *
+ * NEVER 改成「沒 proposal.md 直接 throw」— legacy in-flight change 沒 marker 時
+ * 仍依此 fallback 不破壞既有 archive flow（spec line 60-62 / task 8.5）。
+ */
+export function deriveDefaultKindFromProposal(
+  proposalContent: string | null,
+): ManualReviewItemKind {
+  if (!proposalContent) return 'review:ui'
+  return proposalContent.includes(BACKEND_ONLY_DECLARATION) ? 'discuss' : 'review:ui'
+}
+
+export interface ParseManualReviewOptions {
+  /** Default kind 套用條件：item line 沒 leading marker 時 fallback 到此值。預設 `review:ui` */
+  defaultKind?: ManualReviewItemKind
+}
+
+export function parseManualReviewSections(
+  content: string,
+  options: ParseManualReviewOptions = {},
+): ParsedManualReview {
+  const defaultKind: ManualReviewItemKind = options.defaultKind ?? 'review:ui'
   const lines = content.split(/\r?\n/)
   const sections: ManualReviewSection[] = []
   let current: ManualReviewSection | null = null
@@ -144,7 +179,7 @@ export function parseManualReviewSections(content: string): ParsedManualReview {
 
     const parent = line.match(PARENT_ITEM_RE)
     if (parent) {
-      const item = toReviewItem(parent, line, i, false)
+      const item = toReviewItem(parent, line, i, false, defaultKind)
       current.items.push(item)
       parentIds.add(item.id)
       continue
@@ -152,7 +187,7 @@ export function parseManualReviewSections(content: string): ParsedManualReview {
 
     const scoped = line.match(SCOPED_ITEM_RE)
     if (scoped) {
-      const item = toReviewItem(scoped, line, i, true)
+      const item = toReviewItem(scoped, line, i, true, defaultKind)
       const parentId = item.id.split('.')[0]!
       if (!parentIds.has(parentId)) {
         current.malformed.push({
@@ -185,9 +220,16 @@ function toReviewItem(
   raw: string,
   lineIndex: number,
   scoped: boolean,
+  defaultKind: ManualReviewItemKind,
 ): ManualReviewItem {
   const id = match[2]!
-  const { description, noScreenshot } = parseNoScreenshotMarker(match[3]!.trim())
+  const rawDescription = match[3]!.trim()
+  const {
+    description: afterKind,
+    kind,
+    hasExplicitKind,
+  } = parseLeadingKindMarker(rawDescription, defaultKind)
+  const { description, noScreenshot } = parseNoScreenshotMarker(afterKind)
   return {
     id,
     description,
@@ -198,6 +240,38 @@ function toReviewItem(
     lineIndex,
     lineNumber: lineIndex + 1,
     noScreenshot,
+    kind,
+    hasExplicitKind,
+  }
+}
+
+/**
+ * Strip leading `[review:ui]` / `[discuss]` marker，回傳 description（含後續所有 trailing markers）。
+ * - Marker **MUST** 緊接 `#N` 後第一個 token（已被 PARENT_ITEM_RE / SCOPED_ITEM_RE 切走 id），
+ *   所以這裡的 description 是 `[<kind>] <rest>` 或 `<rest>`（無 marker）。
+ * - 不合法 kind（如 `[auto]`）→ stderr warn、保留 literal `[auto]` 在 description、用 defaultKind。
+ * - mid-description `[discuss]` / `[review:ui]` 不會命中（regex 鎖開頭）。
+ */
+function parseLeadingKindMarker(
+  description: string,
+  defaultKind: ManualReviewItemKind,
+): { description: string; kind: ManualReviewItemKind; hasExplicitKind: boolean } {
+  const match = description.match(LEADING_KIND_RE)
+  if (!match) {
+    return { description, kind: defaultKind, hasExplicitKind: false }
+  }
+  const candidate = match[1]!
+  if (!VALID_KINDS.has(candidate)) {
+    // Malformed kind → warn + 保留 literal 在 description + 套 defaultKind
+    process.stderr.write(
+      `[review-gui] warn: unknown manual-review kind marker [${candidate}] — falling back to default '${defaultKind}'\n`,
+    )
+    return { description, kind: defaultKind, hasExplicitKind: false }
+  }
+  return {
+    description: description.slice(match[0]!.length),
+    kind: candidate as ManualReviewItemKind,
+    hasExplicitKind: true,
   }
 }
 
@@ -220,8 +294,9 @@ export function applyReviewActionToContent(
   itemId: string,
   action: 'ok' | 'issue' | 'skip',
   note = '',
+  options: ParseManualReviewOptions = {},
 ): { content: string; lineBefore: string; lineAfter: string } {
-  const parsed = parseManualReviewSections(content)
+  const parsed = parseManualReviewSections(content, options)
   if (parsed.malformed.length > 0) {
     throw new HttpError(
       422,
@@ -240,8 +315,152 @@ export function applyReviewActionToContent(
   return { content: lines.join(newline), lineBefore, lineAfter }
 }
 
+/**
+ * 在 tasks.md item line 上記錄「Claude 已與 user 討論並取得 OK」的 evidence trail，
+ * 用於 spectra-archive Step 2.5 walkthrough 的 OK 路徑（spec line 102-111）。
+ *
+ * 行為：
+ * - 勾選 checkbox（`- [x]`）
+ * - 在 description 後、所有 trailing markers (`@followup` / `@no-screenshot`) 前插入
+ *   `(claude-discussed: <ISO-8601-timestamp>)` annotation
+ * - 保留 leading kind marker `[discuss]`（spec line 191）
+ * - 保留 trailing markers 原順序（spec line 197）
+ *
+ * 預期僅對 `kind: 'discuss'` items 呼叫 — caller 自行確認 kind。
+ */
+export function applyClaudeDiscussedAnnotationToContent(
+  content: string,
+  itemId: string,
+  isoTimestamp: string,
+  options: ParseManualReviewOptions = {},
+): { content: string; lineBefore: string; lineAfter: string } {
+  const parsed = parseManualReviewSections(content, options)
+  if (parsed.malformed.length > 0) {
+    throw new HttpError(
+      422,
+      'Manual-review section has malformed checkbox lines. Fix schema before writing.',
+    )
+  }
+  const item = parsed.items.find((candidate) => candidate.id === itemId)
+  if (!item) throw new HttpError(404, `Manual-review item not found: ${itemId}`)
+
+  const newline = content.includes('\r\n') ? '\r\n' : '\n'
+  const lines = content.split(/\r?\n/)
+  const lineBefore = lines[item.lineIndex] ?? ''
+  const lineAfter = applyClaudeDiscussedToLine(lineBefore, isoTimestamp)
+  lines[item.lineIndex] = lineAfter
+  return { content: lines.join(newline), lineBefore, lineAfter }
+}
+
+function applyClaudeDiscussedToLine(line: string, isoTimestamp: string): string {
+  const { core, trailing } = extractTrailingMarkers(line)
+  // 先 strip 舊 claude-discussed（避免 stale 重複），保留其他 annotations（issue/skip/note 由各 action 自行管理）
+  const cleaned = stripClaudeDiscussedAnnotation(core)
+  const checked = setCheckbox(cleaned, true)
+  const annotated = `${checked.trimEnd()} (claude-discussed: ${isoTimestamp})`
+  return trailing ? `${annotated}${trailing}` : annotated
+}
+
+export interface VerifyAutoEvidence {
+  /** Mutation HTTP status code observed by agent，必填以證明 round-trip 真的發生 */
+  network: string
+  /** DOM 觀察結果（list refetch / toast / banner 等），可選 */
+  dom?: string
+  /** 其他自由 key=value（不能含 space 或 `)`），依 key 字典序輸出 */
+  [key: string]: string | undefined
+}
+
+/**
+ * 在 tasks.md item line 上記錄「screenshot-review agent verify mode round-trip」的 evidence trail，
+ * 用於 spectra-apply Step 8a Verify-Auto Pass 的 PASS 路徑。
+ *
+ * 行為：
+ * - **不**勾選 checkbox（保留 `[ ]`）— `[verify:auto]` 仍需 user 在 review GUI 點 OK 才勾，避免 agent 觀察品質不足造成假通過
+ * - 在 description 後、所有 trailing markers (`@followup` / `@no-screenshot`) 前插入
+ *   `(verified-auto: <ISO> network=<status>[ dom=<obs>][ key=value]...)` annotation
+ * - 保留 leading kind marker `[verify:auto]`
+ * - 保留 trailing markers 原順序
+ *
+ * 預期僅對 `kind: 'verify:auto'` items 呼叫 — caller 自行確認 kind。
+ */
+export function applyVerifiedAutoAnnotationToContent(
+  content: string,
+  itemId: string,
+  isoTimestamp: string,
+  evidence: VerifyAutoEvidence,
+  options: ParseManualReviewOptions = {},
+): { content: string; lineBefore: string; lineAfter: string } {
+  const parsed = parseManualReviewSections(content, options)
+  if (parsed.malformed.length > 0) {
+    throw new HttpError(
+      422,
+      'Manual-review section has malformed checkbox lines. Fix schema before writing.',
+    )
+  }
+  const item = parsed.items.find((candidate) => candidate.id === itemId)
+  if (!item) throw new HttpError(404, `Manual-review item not found: ${itemId}`)
+
+  const newline = content.includes('\r\n') ? '\r\n' : '\n'
+  const lines = content.split(/\r?\n/)
+  const lineBefore = lines[item.lineIndex] ?? ''
+  const lineAfter = applyVerifiedAutoToLine(lineBefore, isoTimestamp, evidence)
+  lines[item.lineIndex] = lineAfter
+  return { content: lines.join(newline), lineBefore, lineAfter }
+}
+
+function applyVerifiedAutoToLine(
+  line: string,
+  isoTimestamp: string,
+  evidence: VerifyAutoEvidence,
+): string {
+  const { core, trailing } = extractTrailingMarkers(line)
+  // 先 strip 舊 verified-auto（避免 retry 時 stale 重複），保留其他 annotations
+  const cleaned = stripVerifiedAutoAnnotation(core)
+  // verify:auto 設計上保留 `[ ]`，user 在 review GUI 確認後才勾 — 不在 helper 裡代勾
+  const evidenceStr = serializeVerifyEvidence(evidence)
+  const annotated = `${cleaned.trimEnd()} (verified-auto: ${isoTimestamp}${evidenceStr ? ' ' + evidenceStr : ''})`
+  return trailing ? `${annotated}${trailing}` : annotated
+}
+
+function stripVerifiedAutoAnnotation(line: string): string {
+  return line.replace(/\s*\(verified-auto:[^)]*\)/g, '').replace(/[ \t]+$/, '')
+}
+
+function serializeVerifyEvidence(evidence: VerifyAutoEvidence): string {
+  const parts: string[] = []
+  // 固定 key 順序：network 先、dom 次、其餘依字典序
+  const fixedKeys = ['network', 'dom']
+  for (const k of fixedKeys) {
+    const v = evidence[k]
+    if (v !== undefined && v !== '') parts.push(`${k}=${sanitizeEvidenceValue(v)}`)
+  }
+  const otherKeys = Object.keys(evidence)
+    .filter((k) => !fixedKeys.includes(k))
+    .toSorted()
+  for (const k of otherKeys) {
+    const v = evidence[k]
+    if (v !== undefined && v !== '') parts.push(`${k}=${sanitizeEvidenceValue(v)}`)
+  }
+  return parts.join(' ')
+}
+
+// 範圍：U+0000–U+001F（C0 控制字元）；annotation 解析需要剝掉，否則 raw item 內藏的不可見字元會誤導 parser
+// 用 String.fromCharCode 組裝避開 oxlint no-control-regex（literal / RegExp 字串中的 unicode escape 都會被偵測）
+const CONTROL_CHARS_RE = new RegExp(
+  '[' + String.fromCharCode(0) + '-' + String.fromCharCode(0x1f) + ']',
+  'g',
+)
+
+function sanitizeEvidenceValue(v: string): string {
+  // 禁止 space / `(` / `)` / 控制字符；空白替成 `-`，括號剝掉，避免破壞 annotation 解析
+  return (
+    v.replace(/[\s]+/g, '-').replace(/[()]/g, '').replace(CONTROL_CHARS_RE, '').slice(0, 120) ||
+    'unknown'
+  )
+}
+
 function applyActionToLine(line: string, action: 'ok' | 'issue' | 'skip', note: string): string {
-  const { core, marker } = extractTrailingNoScreenshot(line)
+  const { core, trailing } = extractTrailingMarkers(line)
   // 切換 action 前先剝離舊 annotation，避免 stale 殘留（例：先 issue 後改 ok 會留 (issue: ...)）
   const stripped = stripAnnotations(core)
   let result: string
@@ -256,13 +475,43 @@ function applyActionToLine(line: string, action: 'ok' | 'issue' | 'skip', note: 
     result = appendAnnotation(base, 'skip', note)
   }
 
-  return marker ? `${result}${marker}` : result
+  return trailing ? `${result}${trailing}` : result
 }
 
-function extractTrailingNoScreenshot(line: string): { core: string; marker: string } {
-  const match = line.match(/^(.+[^ ])( @no-screenshot)$/)
-  if (!match) return { core: line, marker: '' }
-  return { core: match[1]!, marker: match[2]! }
+/**
+ * 從行尾抽出所有 trailing markers (`@followup[TD-NNN]` / `@no-screenshot`)，
+ * 保持原 ordering、保留它們前面的單一 space。
+ *
+ * 比較舊 `extractTrailingNoScreenshot` 的差異：
+ * - 舊版只抽 `@no-screenshot` → annotation 會插在 `@followup` 之後（spec 不允許）
+ * - 新版抽完所有 trailing markers → annotation 插在 description 後、所有 trailing markers 前
+ *   （spec line 197「Action annotations SHALL be inserted between the description and any
+ *    trailing markers (`@followup` / `@no-screenshot`)」）
+ */
+function extractTrailingMarkers(line: string): { core: string; trailing: string } {
+  // 反覆從行尾剝離 trailing marker（先 @no-screenshot、再 @followup[TD-NNN]）。
+  // 兩個都 anchor 到 `[非空白] +marker`，避免把 description-mid 的 `@xxx` 誤切。
+  const NO_SCREENSHOT_RE = /(.+[^ ])( @no-screenshot)$/
+  const FOLLOWUP_RE = /(.+[^ ])( @followup\[TD-[0-9]+\])$/
+  let core = line
+  let trailing = ''
+  // up to 4 iterations 防呆（理論上一行至多 1 個 followup + 1 個 no-screenshot）
+  for (let i = 0; i < 4; i++) {
+    const ns = core.match(NO_SCREENSHOT_RE)
+    if (ns) {
+      core = ns[1]!
+      trailing = ns[2]! + trailing
+      continue
+    }
+    const fu = core.match(FOLLOWUP_RE)
+    if (fu) {
+      core = fu[1]!
+      trailing = fu[2]! + trailing
+      continue
+    }
+    break
+  }
+  return { core, trailing }
 }
 
 function setCheckbox(line: string, checked: boolean): string {
@@ -275,6 +524,10 @@ function stripAnnotations(line: string): string {
     .replace(/（skip(?::[^）]*)?）/g, '')
     .replace(/（note:[^）]*）/g, '')
     .replace(/[ \t]+$/, '')
+}
+
+function stripClaudeDiscussedAnnotation(line: string): string {
+  return line.replace(/\s*\(claude-discussed:[^)]*\)/g, '').replace(/[ \t]+$/, '')
 }
 
 function appendAnnotation(line: string, kind: 'issue' | 'skip' | 'note', note: string): string {
@@ -404,6 +657,7 @@ async function listPendingChanges(repoRoot: string): Promise<ChangeSummary[]> {
     const tasksPath = join(changesRoot, entry.name, 'tasks.md')
     if (!existsSync(tasksPath)) continue
     const summary = await summarizeChange(
+      repoRoot,
       entry.name,
       tasksPath,
       filterPoolsForChange(pools, entry.name),
@@ -418,13 +672,33 @@ async function listPendingChanges(repoRoot: string): Promise<ChangeSummary[]> {
   })
 }
 
+/**
+ * 讀取 change 的 proposal.md 並推導 default kind。proposal 不存在 → 回 `review:ui`（保守 fallback；
+ * 嚴格規約僅作用於宣告 backend-only 的 change）。
+ */
+async function loadProposalDefaultKind(
+  repoRoot: string,
+  change: string,
+): Promise<ManualReviewItemKind> {
+  const proposalPath = join(repoRoot, 'openspec', 'changes', change, 'proposal.md')
+  if (!existsSync(proposalPath)) return 'review:ui'
+  try {
+    const content = await readFile(proposalPath, 'utf8')
+    return deriveDefaultKindFromProposal(content)
+  } catch {
+    return 'review:ui'
+  }
+}
+
 async function summarizeChange(
+  repoRoot: string,
   name: string,
   tasksPath: string,
   pools: ScreenshotTopic[],
 ): Promise<ChangeSummary | null> {
   const content = await readFile(tasksPath, 'utf8')
-  const parsed = parseManualReviewSections(content)
+  const defaultKind = await loadProposalDefaultKind(repoRoot, name)
+  const parsed = parseManualReviewSections(content, { defaultKind })
   if (parsed.sections.length === 0) return null
 
   // 「真的通過」= [x] 且沒有 issue annotation。`[x]` + `（issue: ...）` 並存
@@ -448,17 +722,18 @@ async function summarizeChange(
 
 async function readChangeDetail(repoRoot: string, change: string): Promise<ChangeDetail> {
   const tasksPath = resolveChangeTasksPath(repoRoot, change)
-  const [content, version, allPools] = await Promise.all([
+  const [content, version, allPools, defaultKind] = await Promise.all([
     readFile(tasksPath, 'utf8'),
     readFileVersion(tasksPath),
     listScreenshotPools(repoRoot),
+    loadProposalDefaultKind(repoRoot, change),
   ])
-  const parsed = parseManualReviewSections(content)
+  const parsed = parseManualReviewSections(content, { defaultKind })
   if (parsed.sections.length === 0) {
     throw new HttpError(404, `Change has no ## 人工檢查 section: ${change}`)
   }
   const pools = filterPoolsForChange(allPools, change)
-  const summary = await summarizeChange(change, tasksPath, pools)
+  const summary = await summarizeChange(repoRoot, change, tasksPath, pools)
   if (!summary) throw new HttpError(404, `Change has no manual-review tasks: ${change}`)
   return {
     ...summary,
@@ -498,7 +773,10 @@ async function persistReviewAction(repoRoot: string, change: string, body: any):
   }
 
   const content = await readFile(tasksPath, 'utf8')
-  const updated = applyReviewActionToContent(content, body.itemId, action, body.note || '')
+  const defaultKind = await loadProposalDefaultKind(repoRoot, change)
+  const updated = applyReviewActionToContent(content, body.itemId, action, body.note || '', {
+    defaultKind,
+  })
   await writeFile(tasksPath, updated.content, 'utf8')
 
   const detail = await readChangeDetail(repoRoot, change)
@@ -953,6 +1231,68 @@ function renderReviewHtml(): string {
     .state-badge.ok { background: #d6ecdf; color: #1e6042; }
     .state-badge.issue { background: #fce4c8; color: #8a4f0a; }
     .state-badge.skip { background: #e7e1d3; color: #5a5341; }
+    /* Kind badge — 在 task-id 後顯示小標籤區分 review:ui / discuss / verify:auto */
+    .kind-badge {
+      display: inline-block;
+      margin-left: 6px;
+      padding: 1px 6px;
+      border-radius: 999px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      vertical-align: middle;
+      white-space: nowrap;
+    }
+    .kind-badge.review-ui { background: #e6eef7; color: #2455a3; }
+    .kind-badge.discuss { background: #f3e7d6; color: #8a4f0a; }
+    .kind-badge.verify-auto { background: #e0eee0; color: #2a6b2a; }
+    /* verify:auto evidence chip — 在 task-head 顯示「agent 已驗」+ tooltip 顯示 (verified-auto: ...) 內容 */
+    .verified-auto-chip {
+      display: inline-block;
+      margin-left: 6px;
+      padding: 1px 6px;
+      border-radius: 4px;
+      background: #d6ecdf;
+      color: #1e6042;
+      font-size: 10px;
+      font-weight: 600;
+      cursor: help;
+      vertical-align: middle;
+    }
+    /* verify-auto evidence card — bodyHtml 顯示 agent 觀察到的 network/dom 證據 + final-state screenshot 提示 */
+    .verify-auto-card {
+      margin-top: 10px;
+      padding: 10px 12px;
+      border: 1px solid #b9d6b9;
+      border-radius: 6px;
+      background: #f0f7ee;
+      color: var(--ink);
+      font-size: 12px;
+      line-height: 1.5;
+    }
+    .verify-auto-card strong { color: #1e6042; font-weight: 600; }
+    .verify-auto-card code { background: #d6ecdf; padding: 1px 4px; border-radius: 3px; font-size: 11px; }
+    .task-item.kind-verify-auto { background: #f4faf2; }
+    /* Discuss-specific viewer card — 取代 OK/Issue/Skip + thumbnail */
+    .discuss-card {
+      margin-top: 12px;
+      padding: 14px 16px;
+      border: 1px dashed var(--accent-2);
+      border-radius: 8px;
+      background: #faf3e6;
+      color: var(--ink);
+    }
+    .discuss-card h3 {
+      margin: 0 0 8px;
+      font-size: 14px;
+      color: var(--accent-2);
+    }
+    .discuss-card p { margin: 4px 0; line-height: 1.5; }
+    .discuss-card .notice { color: var(--muted); font-size: 12px; }
+    /* Discuss item 在 list 中視覺降權，避免使用者誤以為要操作 */
+    .task-item.kind-discuss { background: #fbf6ec; }
+    .task-item.kind-discuss .actions { display: none; }
+    .task-item.kind-discuss .note { display: none; }
     .reopen {
       padding: 0 8px;
       margin-left: 6px;
@@ -1864,31 +2204,80 @@ function renderReviewHtml(): string {
         const handled = decision.kind !== 'pending';
         const collapsed = handled && !state.expanded.has(item.id);
         const decisionClass = handled ? ' decision-' + decision.kind : '';
+        const isDiscuss = item.kind === 'discuss';
+        const isVerifyAuto = item.kind === 'verify:auto';
+        const kindClass = isDiscuss ? ' kind-discuss' : (isVerifyAuto ? ' kind-verify-auto' : ' kind-review-ui');
+        // Kind badge：三 kind 各一色。aria-label 給 a11y。
+        let kindBadge;
+        if (isDiscuss) {
+          kindBadge = '<span class="kind-badge discuss" aria-label="此項由 Claude 主導，無需手動操作">[discuss]</span>';
+        } else if (isVerifyAuto) {
+          kindBadge = '<span class="kind-badge verify-auto" aria-label="此項由 agent 用 browser-harness 自動 round-trip，使用者只需確認 evidence">[verify:auto]</span>';
+        } else {
+          kindBadge = '<span class="kind-badge review-ui" aria-label="此項需要使用者親自操作驗收">[review:ui]</span>';
+        }
+        // 解析 (verified-auto: <ISO> network=... dom=...) annotation — 只對 verify:auto items 取
+        // regex literal 在 outer template literal 內，\`\\\` 必須 double 才能在 render 後保留：
+        // .mts source \`\\\\(\` → backtick string 解析 → \`\\(\` → 瀏覽器 regex literal → 匹配 literal \`(\`
+        // 原版單 \`\\\` 被 backtick 解析吃掉，render 成 \`(verified-auto:s*([^)]+))\`，group 結構錯位
+        const verifiedAutoMatch = isVerifyAuto ? item.raw.match(/\\(verified-auto:\\s*([^)]+)\\)/) : null;
+        const verifiedAutoEvidence = verifiedAutoMatch ? verifiedAutoMatch[1].trim() : null;
         let stateHtml;
         if (handled) {
           stateHtml = '<span class="state-badge ' + decision.kind + '">' + decisionLabel(decision.kind) + '</span>';
           if (collapsed) {
             stateHtml += '<button class="reopen" data-action="reopen" data-id="' + esc(item.id) + '" type="button" title="重新編輯此項">↻ 編輯</button>';
           }
-          if (decision.kind === 'issue') {
+          if (decision.kind === 'issue' && !isDiscuss) {
             stateHtml += '<button class="copy-handoff-btn" data-handoff="item-issue" data-id="' + esc(item.id) + '" type="button" title="複製 handoff prompt 給新 Claude session 處理這個 issue">📋 handoff</button>';
           }
+        } else if (isDiscuss) {
+          stateHtml = '由 Claude 主導';
+        } else if (isVerifyAuto && verifiedAutoEvidence) {
+          stateHtml = '<span class="verified-auto-chip" title="agent 已 round-trip — ' + esc(verifiedAutoEvidence) + '">✓ agent 已驗</span> 待確認';
+        } else if (isVerifyAuto) {
+          stateHtml = '待 agent 跑';
         } else {
           stateHtml = '待檢查';
         }
         const noteValue = decision.note ? esc(decision.note) : '';
-        return '<article class="task-item' + (active ? ' active' : '') + (item.scoped ? ' scoped' : '') + decisionClass + (collapsed ? ' collapsed' : '') + '" data-item="' + esc(item.id) + '">' +
+        // Discuss items：不顯示 textarea / OK / Issue / SKIP buttons / handoff button（spec line 169）。
+        // 改顯示 dedicated 卡片提示「此項由 Claude 主導」。
+        // verify:auto items：跟 review:ui 一樣顯示 OK/Issue/Skip（user 仍要點 OK 才勾），多顯示 evidence card。
+        let bodyHtml;
+        if (isDiscuss) {
+          bodyHtml = '<div class="discuss-card">' +
+              '<h3>此項由 Claude 主導</h3>' +
+              '<p>' + esc(item.description) + '</p>' +
+              '<p class="notice">archive 階段 Claude 會主動準備證據與你討論，這裡無需操作。</p>' +
+            '</div>';
+        } else {
+          const evidenceCard = (isVerifyAuto && verifiedAutoEvidence)
+            ? '<div class="verify-auto-card">' +
+                '<strong>agent verify-auto 通過</strong>：<code>' + esc(verifiedAutoEvidence) + '</code>' +
+                '<p style="margin:6px 0 0">看右側 final-state screenshot 確認後按「✓ 通過」；發現異常按「⚠ 有問題」。</p>' +
+              '</div>'
+            : (isVerifyAuto
+              ? '<div class="verify-auto-card" style="background:#fdf6e3;border-color:#d6c899">' +
+                  '<strong>等待 agent 跑 verify-auto</strong>' +
+                  '<p style="margin:6px 0 0">spectra-apply Step 8a 會由主線派 screenshot-review agent 自跑 round-trip。若主線沒跑，回去要求補。</p>' +
+                '</div>'
+              : '');
+          bodyHtml = evidenceCard +
+            '<textarea class="note" data-note="' + esc(item.id) + '" placeholder="填寫說明（「有問題」必填、「跳過」可選填）">' + noteValue + '</textarea>' +
+            '<div class="actions">' +
+              '<button class="ok" data-action="ok" data-id="' + esc(item.id) + '" type="button" title="標記此項通過 (O)">✓ 通過</button>' +
+              '<button class="issue" data-action="issue" data-id="' + esc(item.id) + '" type="button" title="標記此項有問題，需填寫說明 (I)">⚠ 有問題</button>' +
+              '<button class="skip" data-action="skip" data-id="' + esc(item.id) + '" type="button" title="跳過此項，可選填原因 (S)">⤵ 跳過</button>' +
+            '</div>';
+        }
+        return '<article class="task-item' + (active ? ' active' : '') + (item.scoped ? ' scoped' : '') + decisionClass + (collapsed ? ' collapsed' : '') + kindClass + '" data-item="' + esc(item.id) + '">' +
           '<div class="task-head">' +
-          '<span class="task-id">' + esc(item.id) + '</span>' +
+          '<span class="task-id">' + esc(item.id) + kindBadge + '</span>' +
           '<span class="task-desc">' + esc(item.description) + '</span>' +
           '<span class="task-state">' + stateHtml + '</span>' +
           '</div>' +
-          '<textarea class="note" data-note="' + esc(item.id) + '" placeholder="填寫說明（「有問題」必填、「跳過」可選填）">' + noteValue + '</textarea>' +
-          '<div class="actions">' +
-          '<button class="ok" data-action="ok" data-id="' + esc(item.id) + '" type="button" title="標記此項通過 (O)">✓ 通過</button>' +
-          '<button class="issue" data-action="issue" data-id="' + esc(item.id) + '" type="button" title="標記此項有問題，需填寫說明 (I)">⚠ 有問題</button>' +
-          '<button class="skip" data-action="skip" data-id="' + esc(item.id) + '" type="button" title="跳過此項，可選填原因 (S)">⤵ 跳過</button>' +
-          '</div>' +
+          bodyHtml +
           '</article>';
       }).join('');
       el.taskList.innerHTML = malformed + items;
@@ -1996,6 +2385,13 @@ function renderReviewHtml(): string {
         el.thumbGrid.replaceChildren(emptyMessage('先在中間點一個檢查項，這裡會顯示對應截圖'));
         return;
       }
+      // Discuss items：不顯示 thumbnail grid、不顯示 handoff button、不顯示 unmatched guidance（spec line 169）。
+      // 只在 thumb pane 顯示「此項由 Claude 主導」提示，與中間 task list 的 discuss-card 呼應。
+      if (item.kind === 'discuss') {
+        el.selectionStatus.textContent = '檢查項 ' + item.id + ' · 此項由 Claude 主導，無需截圖驗證';
+        el.thumbGrid.replaceChildren(discussThumbMessage(item.description));
+        return;
+      }
       const change = state.current;
       const pools = change ? change.screenshotPools || [] : [];
       const allFiles = changeFiles();
@@ -2086,6 +2482,23 @@ function renderReviewHtml(): string {
       body.textContent = description;
       const hint = document.createElement('p');
       hint.textContent = '親自操作後可直接勾 OK，不需截圖';
+      hint.style.opacity = '0.7';
+      hint.style.fontSize = '12px';
+      div.appendChild(title);
+      div.appendChild(body);
+      div.appendChild(hint);
+      return div;
+    }
+
+    function discussThumbMessage(description) {
+      const div = document.createElement('div');
+      div.className = 'empty';
+      const title = document.createElement('p');
+      title.textContent = '此項由 Claude 主導';
+      const body = document.createElement('p');
+      body.textContent = description;
+      const hint = document.createElement('p');
+      hint.textContent = 'archive 階段 Claude 會主動準備證據與你討論，無需在此操作';
       hint.style.opacity = '0.7';
       hint.style.fontSize = '12px';
       div.appendChild(title);

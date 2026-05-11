@@ -79,8 +79,16 @@ If no argument is provided, the workflow will extract requirements from conversa
         - N.6 review-screenshot 視覺 QA
         - N.7 Fidelity 確認
 
+      **Manual Review Item Kind Marker（hard rule，所有 change）**：
+      `## 人工檢查` 區塊每條 checkbox 行 **MUST** 在 `#N` / `#N.M` 後緊接 leading kind marker `[review:ui]` 或 `[discuss]`：
+
+      - `[review:ui]` — 真實使用者 round-trip 驗收（form submit → server response → DB / list refetch / UI 狀態）。具體 URL + 動詞 → 結果格式。Claude 禁止代勾。
+      - `[discuss]` — Claude 主導的 evidence-based 討論（production 授權 / 商業判斷 / production 觀察 / 後端 evidence 查驗 / 合理性檢查）。spectra-archive Step 2.5 walkthrough 由 Claude 主動準備證據與使用者討論。
+
+      **分類指引**：描述含 SSH / `docker exec` / `psql` / `\d <table>` / `SELECT ... FROM` / `curl` 觸發 endpoint / 受控 drift 製造 / migration 存在性驗證 / 合理性檢查等 evidence-collection pattern → `[discuss]`；描述含「使用者點 X → 看到 Y」具體 round-trip → `[review:ui]`。
+
       **Backend-only Manual Review 規約**（適用 `## User Journeys` 為 `**No user-facing journey (backend-only)**` 的 change）：
-      tasks.md 的 `## 人工檢查` **只**允許三類項目：(1) production 授權 (2) 商業判斷 (3) production 觀察。**禁止**把 SSH / psql / `\d <table>` / `SELECT FROM` / `curl` 觸發 endpoint / `SET session_replication_role` / 受控 drift 製造 / migration 存在性驗證等 evidence collection 寫進 `## 人工檢查` — 這些 **MUST** 寫進新的 `## N. Backend Verification Evidence` section 由 apply 階段 Claude 自跑自貼。若三類都沒有，`## 人工檢查` 寫成固定文字 `_本 change 為 backend-only，所有驗證由 apply 階段 Claude 自跑（見 `## N. Backend Verification Evidence`）；deploy 前無使用者人工檢查項目。_`。完整規約見 `.claude/rules/ux-completeness.md` 「必填 Backend-only Manual Review 規約」。
+      tasks.md 的 `## 人工檢查` **只**允許 `[discuss]` kind 的代表性 use cases：(1) production 授權 (2) 商業判斷 (3) production 觀察。**禁止**把 SSH / psql / `\d <table>` / `SELECT FROM` / `curl` 觸發 endpoint / `SET session_replication_role` / 受控 drift 製造 / migration 存在性驗證等 evidence collection 寫進 `## 人工檢查` — 這些 **MUST** 寫進新的 `## N. Backend Verification Evidence` section 由 apply 階段 Claude 自跑自貼。若三類都沒有，`## 人工檢查` 寫成固定文字 `_本 change 為 backend-only，所有驗證由 apply 階段 Claude 自跑（見 `## N. Backend Verification Evidence`）；deploy 前無使用者人工檢查項目。_`。完整規約見 `.claude/rules/ux-completeness.md` 「必填 Backend-only Manual Review 規約」與 `.claude/rules/manual-review.md` 「Item Kind Marker」。
 
       **Artifact 語言遵循**：
       開工前先 `grep -lE "繁體|繁中|不要使用簡體" AGENTS.md .claude/rules/*.md 2>/dev/null`。若命中（consumer 規定繁體中文），**全部** artifact（proposal.md / design.md / tasks.md / spec.md）**MUST** 用繁體中文撰寫，**禁止**英文 artifact。code 識別字、技術名詞（如 `audit_signed_chain`、`business_keys_drift`）、SQL/code block 不譯。若 grep 未命中視為無語言規定。
@@ -142,28 +150,73 @@ If no argument is provided, the workflow will extract requirements from conversa
 
       `[affected pages/components]` 替換為此 change 實際涉及的 UI 檔案/頁面。
 
-   5.5 **Backend-only Manual Review hygiene check**：
+   5.5 **Manual Review Marker Hygiene Check**（所有 change，不限 backend-only）：
 
-      Read `openspec/changes/<change-name>/proposal.md`，grep `**No user-facing journey (backend-only)**`：
+      Read tasks.md `## 人工檢查` 區塊全部 checkbox，依以下三類 hygiene rule 檢查並修正。違規 → 主線**自己**直接 Edit tasks.md（**不**回 codex 修，太慢）。
 
-      - **若有該宣告**（backend-only change）：
-        1. Read tasks.md `## 人工檢查` 區塊全部 checkbox
-        2. 對每個 checkbox 判斷是否含下列 evidence-collection 動詞 / 模式：
-           - `Apply ... migration`、`verify ... exists`
-           - `SSH`、`docker exec`、`psql`
-           - `\d <table>`、`SELECT ... FROM`
-           - `curl`、`Trigger ... cron`、`Run /_cron/`
-           - `SET session_replication_role`、`UPDATE ... WHERE`、受控 drift 製造
-        3. 若有違規項 → 主線**自己**直接 Edit tasks.md：
-           - 在最後一個功能區塊之後、`## 人工檢查` 之前插入 `## N. Backend Verification Evidence` section（N = 上一個功能區塊序號 + 1），把違規項目搬過去並改寫成「動作 → 預期 evidence」格式（apply Claude 跑完會貼證據）
-           - 若 Backend Verification Evidence 已存在，append 而非新增
-           - 若移完後 `## 人工檢查` 為空 → 替換成固定文字：
-             ```
-             _本 change 為 backend-only，所有驗證由 apply 階段 Claude 自跑（見 `## N. Backend Verification Evidence`）；deploy 前無使用者人工檢查項目。_
-             ```
-           - 若 `## 人工檢查` 仍有合法的三類項目（production 授權 / 商業判斷 / production 觀察），保留之，不要動
-        4. 完整規約見 `.claude/rules/ux-completeness.md`「必填 Backend-only Manual Review 規約」
-      - **若無該宣告**：跳過此 step
+      **Rule 1：每條 item line MUST 有 leading marker**
+
+      - 每條 `- [ ] #N ...` / `- [ ] #N.M ...` line **MUST** 在 id 後緊接 `[review:ui]`、`[verify:auto]` 或 `[discuss]` marker（三擇一）
+      - 缺 marker → 依下方 Rule 2 / Rule 3 / Rule 4 的內容分類補上正確 marker；**禁止**仰賴 Default Kind Derivation Rule（fallback 只給既有 in-flight legacy item 用，且 fallback 不涵蓋 `[verify:auto]`）
+
+      **Rule 2：Evidence-collection items MUST 標 `[discuss]`**
+
+      若 item description 含下列 evidence-collection 動詞 / 模式：
+
+      - `Apply ... migration`、`verify ... exists`
+      - `SSH`、`docker exec`、`psql`
+      - `\d <table>`、`SELECT ... FROM`
+      - `curl`、`Trigger ... cron`、`Run /_cron/`
+      - `SET session_replication_role`、`UPDATE ... WHERE`、受控 drift 製造
+      - 「合理性檢查」、「分布是否符合預期」等商業判斷類
+
+      行為：
+
+      - 若該 item 標了 `[review:ui]` 或 `[verify:auto]` → flag misclassified，主線改為 `[discuss]`
+      - **若該 change 為 backend-only**（proposal 含 `**No user-facing journey (backend-only)**`）：
+        - SSH / psql / curl / `\d` / `SELECT` / 受控 drift 製造 / migration 存在性驗證等**純技術 evidence**項目 **MUST** 從 `## 人工檢查` 搬到 `## N. Backend Verification Evidence` section（N = 最後一個功能區塊序號 + 1，位於最後功能區塊之後、`## 人工檢查` 之前）由 apply Claude 自跑自貼。`## 人工檢查` 只保留 production 授權 / 商業判斷 / production 觀察三類 `[discuss]` items
+        - 若 Backend Verification Evidence 已存在，append 而非新增
+        - 若移完後 `## 人工檢查` 為空 → 替換成固定文字：`_本 change 為 backend-only，所有驗證由 apply 階段 Claude 自跑（見 `## N. Backend Verification Evidence`）；deploy 前無使用者人工檢查項目。_`
+      - **若該 change 為 user-facing**：evidence-collection items 留在 `## 人工檢查` 但**MUST** 標 `[discuss]`（Claude 在 archive Step 2.5 walkthrough 主動準備 evidence）
+
+      **Rule 3：Real user round-trip items 依「人 vs agent 自跑」分流**
+
+      若 item 描述含真實使用者 round-trip（具體 URL + 使用者動作 + 預期 server/UI 結果），依下方 Rule 4 判定該標 `[verify:auto]`（agent 用 browser-harness 能跑）或 `[review:ui]`（真的需要人）。誤標 `[discuss]` → 主線改為 `[verify:auto]` 或 `[review:ui]`。
+
+      **Rule 4：「真的需要人」白名單 — 落單者改 `[verify:auto]`**
+
+      `[review:ui]` 只給「agent 用 browser-harness 也跑不了」的項目。description 含下列任一關鍵字才 `[review:ui]`：
+
+      - 收 email / 收 webhook（agent inbox 不可達）
+      - 「視覺主觀」/「美感」/「a11y 主觀判斷」
+      - 「實體裝置」/「真機」/「手機」/「平板」/ 「kiosk QR」/「印表機」/「條碼槍」
+      - 「跨機器」/「跨 session」/ 生產環境授權後操作
+      - 「電話」/「SMS」等規格外的非 UI 環境
+
+      其餘真實使用者 round-trip → **MUST** 標 `[verify:auto]`：
+
+      - 純 UI 點按 / 填表 / 送出 form
+      - 觀察 toast / banner / 列表刷新 / 徽章 / 排序 / 計數
+      - 權限拒絕 path（送 403 / 401 行為）
+      - Edge case payload（空、null、邊界值）
+
+      行為：
+
+      - 若 item 標了 `[review:ui]` 但描述符合 `[verify:auto]` 條件（不在白名單） → flag misclassified，主線改為 `[verify:auto]`
+      - 若 item 標了 `[verify:auto]` 但描述需收 email / 實體裝置 / 視覺主觀（在白名單）→ flag misclassified，主線改為 `[review:ui]`
+
+      反面範例：
+
+      ```markdown
+      ❌ - [ ] #1 [review:ui] admin /settings 改排程 09:00 → reload 仍 09:00
+         理由：純 UI round-trip，agent 用 browser-harness 完全能跑；應該 [verify:auto]
+
+      ✅ - [ ] #1 [verify:auto] admin /settings 改排程 09:00 → 200 toast → reload 仍 09:00
+      ✅ - [ ] #2 [review:ui] cron 觸發 → 借用人 inbox 收到逾期通知 email
+      ✅ - [ ] #3 [discuss] production seed 授權與 cron 監控確認
+      ```
+
+      完整規約見 `.claude/rules/manual-review.md`「Item Kind Marker」+「Kind 分類指引」+ `.claude/rules/ux-completeness.md`「必填 Backend-only Manual Review 規約」。
 
    5.6 **Artifact 語言遵循 check**：
 
@@ -512,12 +565,19 @@ If no argument is provided, the workflow will extract requirements from conversa
    - If a mixed phase is detected, **MUST** split inline now into independent phases — do NOT defer to ingest. spectra-apply Phase Dispatch 規則仰賴 phase purity；混雜 phase 在 apply 時會被擋下要求重 ingest，propose 階段就修掉成本最低
    - Reason: spectra-apply 把 UI view phase 由主線 AI Agent 自己做、其他 phase 派給 codex GPT-5.5 high；phase 混雜會破壞 dispatch 邊界，要嘛讓 codex 碰 view 層、要嘛讓主線吞下原本可以 offload 的 mechanical 工作
 
-   **Check 8: Backend-only Manual Review hygiene**
+   **Check 8: Manual Review Marker Hygiene** (applies to **every** change, not only backend-only)
 
-   If `proposal.md` declares `**No user-facing journey (backend-only)**`:
-   - tasks.md `## 人工檢查` **MUST NOT** contain evidence-collection items. Forbidden patterns include: SSH / `docker exec` / `psql` / `\d <table>` / `SELECT FROM` / `curl` triggering endpoint or cron / `SET session_replication_role` / controlled drift fabrication / migration existence verification.
-   - Such items **MUST** be moved to `## N. Backend Verification Evidence` section (位置：最後一個功能區塊之後、`## 人工檢查` 之前；N = 上一個功能區塊序號 + 1). apply Claude self-runs them and pastes evidence under each task.
-   - Only three categories are allowed in `## 人工檢查` for backend-only changes:
+   Verify all four rules from Step 5.5 Manual Review Marker Hygiene Check:
+
+   1. **Every `## 人工檢查` item line MUST carry a leading `[review:ui]`, `[verify:auto]` or `[discuss]` marker** (right after `#N` / `#N.M`, before the description). Default Kind Derivation Rule is a fallback for legacy in-flight items only — newly authored content **MUST** be explicit. Default fallback does NOT cover `[verify:auto]`.
+   2. **Evidence-collection items MUST be marked `[discuss]`** (NOT `[review:ui]` or `[verify:auto]`). Forbidden `[review:ui]` / `[verify:auto]` patterns include: SSH / `docker exec` / `psql` / `\d <table>` / `SELECT FROM` / `curl` triggering endpoint or cron / `SET session_replication_role` / controlled drift fabrication / migration existence verification / 商業判斷類「分布是否符合預期」.
+   3. **Real user round-trip items 依「人 vs agent 自跑」分流** — see Rule 4 below for splitting between `[review:ui]` and `[verify:auto]`.
+   4. **`[review:ui]` is reserved for things only a human can do**. Only mark `[review:ui]` when description matches the human-only allowlist: receiving email/webhook, subjective visual judgment, physical devices (kiosk QR scanner, printer, barcode reader), real mobile/tablet, cross-machine, non-UI environments (phone/SMS). Everything else that's a real user UI round-trip — clicks, form submits, observing toast/banner/list refetch/badges/sort/permission rejection/edge payloads — **MUST** be marked `[verify:auto]` (agent runs full round-trip via browser-harness in spectra-apply Step 8a).
+
+   When a violation is detected, the main thread Edit tasks.md inline (do NOT round-trip back to codex). For backend-only changes specifically:
+
+   - Pure technical evidence items (SSH / psql / curl / `\d` / `SELECT` / drift fabrication / migration existence verify) **MUST** be moved out of `## 人工檢查` into `## N. Backend Verification Evidence` section (位置：最後一個功能區塊之後、`## 人工檢查` 之前；N = 上一個功能區塊序號 + 1) — apply Claude self-runs them and pastes evidence under each task.
+   - `## 人工檢查` retains only `[discuss]` items in three categories:
      1. **Production 授權型** — deploy 前 final go/no-go ack、production-only 破壞性操作授權
      2. **商業判斷型** — Claude 無法自動判斷「結果是否合理」的觀察項
      3. **Production 觀察型** — deploy 後 N 小時 / N 天的 production-only soak window 觀察
@@ -525,8 +585,12 @@ If no argument is provided, the workflow will extract requirements from conversa
      ```
      _本 change 為 backend-only，所有驗證由 apply 階段 Claude 自跑（見 `## N. Backend Verification Evidence`）；deploy 前無使用者人工檢查項目。_
      ```
-   - Reason: forcing users to SSH + psql + curl is not "manual review" — it's evidence collection Claude can automate during apply. Real manual review is reserved for production authorization, business judgment, and production observation. Mixing them dilutes the user's attention away from items that genuinely need human judgment.
-   - Full 規約 (含三類定義、Backend Verification Evidence 模板、反面範例、違反回報格式) 見 `ux-completeness.md` 「必填 Backend-only Manual Review 規約」
+
+   For **user-facing** changes: evidence-collection items can stay in `## 人工檢查` but **MUST** be marked `[discuss]` — Claude proactively prepares evidence + walks the user through during spectra-archive Step 2.5.
+
+   Reason: forcing users to SSH + psql + curl is not "manual review" — it's evidence collection Claude can automate. Forcing users to manually round-trip pure UI flows is also wasted attention — agents can do it via browser-harness (`[verify:auto]`). Real `[review:ui]` items are reserved for things genuinely requiring a human (email inbox, physical devices, subjective judgment). Mixing dilutes the user's attention.
+
+   Full 規約 (含 Item Kind Marker schema、三類定義、Backend Verification Evidence 模板、反面範例、違反回報格式) 見 `manual-review.md` 「Item Kind Marker」 + `ux-completeness.md` 「必填 Backend-only Manual Review 規約」
 
    **Check 9: Artifact language convention**
 
