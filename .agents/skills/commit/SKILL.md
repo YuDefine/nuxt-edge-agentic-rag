@@ -92,48 +92,11 @@ git stash push -u -m "WIP: <簡述為何 stash> — see HANDOFF.md"
 
 ## Step 0: 品質檢查
 
-### 0-A. 程式碼審查（委託 codex GPT 5.5，依規模/信心分流）
+### 0-A. 程式碼審查（委託 codex GPT 5.5，最多 2 輪：High → xHigh）
 
 **審查由 codex 執行，修正由 AI Agent 主線執行**。原本主線自跑的 `simplify` skill / `code-review` agent **不再使用**。
 
-依本次變更規模/信心分兩條路：
-
-- **Fast-path**（規模小+信心高）：只跑 **Round 1 `high`**；有 issue 修完即過，**不升 `xhigh`**
-- **Standard**（其餘）：最多 2 輪，Round 1 `high` → 有 issue 才升 Round 2 `xhigh`（漸進加深 reasoning effort，xhigh 抓 high 漏網的深層問題）
-
-#### 分流判定（必做第一步）
-
-依 `.claude/rules/commit.md` 的「0-A Review 規模分流」評估：
-
-```bash
-# 客觀指標：檔數、行數、是否觸及高風險路徑
-git diff HEAD --stat
-git diff HEAD --name-only | grep -E '(auth|payment|billing|supabase/migrations|\.env|rls)' || echo "no-high-risk-paths"
-```
-
-判定條件：
-
-1. **客觀指標**（必要全成立）
-   - 變更檔數 ≤ 5
-   - 變更行數（加總 `+`/`-`）≤ 100
-   - 未觸及高風險路徑（auth / payment / migrations / env / RLS / public API / 安全敏感 helper）
-2. **主線自評**（任一成立即信心高）
-   - 主題為 docs / chore / style / 重新命名 / 既有測試補強，不含新邏輯
-   - 純 mechanical refactor（改名、提取常數、貼上對齊）
-   - 逐行對應使用者手把手指示
-   - 上一輪 codex review 已通過後的收尾微調
-
-**全成立** → 走 fast-path 並輸出：
-
-```text
-🟢 0-A 走 fast-path（規模小+信心高）：<N> 檔 / <M> 行變更、未觸及高風險路徑、<信心理由>。Round 1 high 修完即過，不升 xhigh。
-```
-
-**任一不成立** → 走 standard 並輸出：
-
-```text
-🟡 0-A 走 standard：<哪條 fast-path 條件不成立>。Round 1 high → 有 issue 才升 Round 2 xhigh。
-```
+兩輪採**漸進加深 reasoning effort**：Round 1 用 `high` 抓常見問題（速度與成本最佳化），Round 2 用 `xhigh` 抓 Round 1 漏網的深層問題（最高推理）。
 
 #### 執行方式：背景跑 + 每 3 分鐘確認進度
 
@@ -156,11 +119,9 @@ git diff HEAD --name-only | grep -E '(auth|payment|billing|supabase/migrations|\
 讀完 codex 輸出後判斷：
 
 - **無問題** → 輸出 `✅ 0-A Round 1 通過（codex high 無 issue）`，跳到 0-B
-- **有問題** → AI Agent 主線**逐一修正 codex 列出的所有問題**，修完依分流：
-  - 走 **fast-path** → **不升 xhigh**，輸出 `✅ 0-A 通過（fast-path：codex high 修完即過）`，跳到 0-B
-  - 走 **standard** → 進入 Round 2
+- **有問題** → AI Agent 主線**逐一修正 codex 列出的所有問題**，修完進入 Round 2
 
-#### Round 2 — codex review (xhigh，**僅 standard 模式 + Round 1 有問題時執行**)
+#### Round 2 — codex review (xhigh，僅在 Round 1 有問題時執行)
 
 ```bash
 .codex/scripts/codex-review-safe.sh xhigh
@@ -174,17 +135,16 @@ git diff HEAD --name-only | grep -E '(auth|payment|billing|supabase/migrations|\
 完成後明確輸出：
 
 ```text
-✅ 0-A 通過（codex review 已完成 {1|2} 輪、模式 fast-path / standard）
+✅ 0-A 通過（codex review 已完成 {1|2} 輪）
 ```
 
 **禁止**：
 
 - **NEVER** 改用其他模型（必須 `gpt-5.5`）
 - **NEVER** 顛倒兩輪的 reasoning effort 或兩輪都用同一檔（Round 1 必為 `high`、Round 2 必為 `xhigh`）
-- **NEVER** 把 codex 列出的問題判定為「建議性質」「不在本次範圍」而跳過 — 一律修（不論 fast-path / standard）
+- **NEVER** 把 codex 列出的問題判定為「建議性質」「不在本次範圍」而跳過 — 一律修
 - **NEVER** 做第 3 輪 review（會無限拖長 commit 流程；2 輪內處理不完代表變更太大，應先 split）
-- **NEVER** 在 standard 模式下跳過 Round 2 — 只要 Round 1 有任何修正，**MUST** 跑 Round 2 用 `xhigh` 驗證
-- **NEVER** 為了省 token / 趕時間擅自把 standard 情境降級為 fast-path（高風險路徑、行數超標、信心不足都**MUST** standard）
+- **NEVER** 跳過 Round 2 — 只要 Round 1 有任何修正，**MUST** 跑 Round 2 用 `xhigh` 驗證
 
 ### 0-B. UI Design Review（條件觸發）
 
