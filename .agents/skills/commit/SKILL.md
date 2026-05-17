@@ -90,17 +90,142 @@ git stash push -u -m "WIP: <簡述為何 stash> — see HANDOFF.md"
 
 **唯一例外**：使用者在 `$ARGUMENTS` **明確、主動**寫出 `git restore` / `git checkout --` / `revert <commit>` 等指令或具體變更名稱，且語意完全無歧義時，才能執行。從模糊語氣（「不要這個」「這個怪怪的」）解讀為「使用者想丟棄」**一律禁止** — 必須先確認是「排除本次 commit」（→ stash）還是「丟棄變更」（→ 拒絕，請使用者明確下指令）。
 
+## Step 0-MR: 人工檢查 Gate（main / master 限定，**硬擋無 override**）
+
+`.claude/rules/commit.md` 「人工檢查 Gate」hard rule 的執行點。**MUST** 在 Step 0 品質檢查之前 fail-fast，避免人工檢查未完的 change 浪費 5–15 min codex / screenshot review 時間。
+
+### 判定流程
+
+1. 確認當前 branch：
+
+   ```bash
+   git rev-parse --abbrev-ref HEAD
+   ```
+
+   輸出 ∉ {`main`, `master`} → 輸出 `⏭️ 0-MR 跳過（branch=<name>）`，進入 Step 0。
+
+2. 萃取本次 commit 觸及的 spectra change（含 staged + unstaged + untracked，排除 `archive/` 子目錄）：
+
+   ```bash
+   { git diff --name-only HEAD; git ls-files --others --exclude-standard; } \
+     | grep -oE '^openspec/changes/[^/]+' \
+     | grep -v '^openspec/changes/archive$' \
+     | sort -u
+   ```
+
+   結果為空 → 輸出 `⏭️ 0-MR 跳過（本次變更未觸及任何 in-progress spectra change）`，進入 Step 0。
+
+3. 對每個 change 讀 `<path>/tasks.md`，同時判定「非 `## 人工檢查` 段有 `- [x]`」與「`## 人工檢查` 段有 **leaf** `- [ ]`」（parent `#N` 有 scoped `#N.M` 子項時，parent 由子項 derive，**MUST** leaf-only 計，見 `.claude/rules/manual-review.md` 「Parent State Derivation」段）：
+
+   ```bash
+   awk '
+     /^## /{ in_mr = (/^## *人工檢查/) ? 1 : 0; next }
+     !in_mr && /^- \[x\]/ { has_impl = 1 }
+     in_mr && /^- \[[ x]\] #[0-9]+ / {
+       pid = $0; sub(/^- \[[ x]\] #/, "", pid); sub(/ .*/, "", pid)
+       parent_pending[pid] = (/^- \[ \]/); next
+     }
+     in_mr && /^  - \[[ x]\] #[0-9]+\.[0-9]+ / {
+       pid = $0; sub(/^  - \[[ x]\] #/, "", pid); sub(/\..*/, "", pid)
+       has_scoped_child[pid] = 1
+       if (/^  - \[ \]/) has_pending_leaf = 1
+       next
+     }
+     END {
+       for (p in parent_pending)
+         if (parent_pending[p] && !(p in has_scoped_child)) has_pending_leaf = 1
+       print (has_impl && has_pending_leaf) ? "BLOCK" : "OK"
+     }
+   ' "<path>/tasks.md"
+   ```
+
+   - `tasks.md` 不存在 → 視為 `OK`（尚未進入實作階段的 change）
+   - 輸出 `BLOCK` → 列入 blocker，順便用同樣 leaf-only 邏輯抓出未勾 leaf 數量（同 awk 改 END 累加 `pending_count` 並 print）
+
+4. **blocker list 非空時**：
+
+   1. **MUST** 立即釋放 lock，避免下次 session 被卡：
+
+      ```bash
+      node .claude/scripts/commit-lock.mjs release
+      ```
+
+   2. 印出 blocker 報告（每條 change 一行：路徑 + 未勾項數）+ 明確的「本次 /commit 已中止」結語
+   3. **NEVER** 自動勾任何 `- [ ]`、**NEVER** 提議跳過 gate 的方法、**NEVER** 提議 stash 走 `tasks.md` 讓 step 2 抓空
+
+5. blocker list 空 → 輸出 `✅ 0-MR 通過`，進入 Step 0。
+
+### 禁止項
+
+- **NEVER** 把 `main` / `master` 以外的 branch 判進 gate 範圍（feature branch 上後續有 /ship + PR review 擋）
+- **NEVER** 接受 `$ARGUMENTS` 任何形式的「skip / ignore / override」旗標 — gate 無 override
+- **NEVER** 自行 `Edit tasks.md` 勾掉 `- [ ]` 來通過 gate — 違反 `.claude/rules/manual-review.md` 核心規則
+- **NEVER** 把 `tasks.md` / change 目錄 stash / mv / rm 走讓 step 2 / 3 抓不到 — 等同繞過 hard rule
+- **NEVER** 把「人工檢查未完」包裝成「審查條件已滿足」「等同 OK」「之後再勾」說服 user 繼續
+
 ## Step 0: 品質檢查
 
-### 0-A. 程式碼審查（委託 codex GPT 5.5，最多 2 輪：High → xHigh）
+### 0-A/B/C 並行策略（**重要：總時長省 ~45% 的關鍵**）
 
-**審查由 codex 執行，修正由 AI Agent 主線執行**。原本主線自跑的 `simplify` skill / `code-review` agent **不再使用**。
+0-A.0 simplify **必序跑且永遠第一**（會刪死碼，否則後續 review 白檢即將刪除的 code）。**simplify 完成後，0-A.1 / 0-B / 0-C 三軸 MUST 並行**，不可串行：
 
-兩輪採**漸進加深 reasoning effort**：Round 1 用 `high` 抓常見問題（速度與成本最佳化），Round 2 用 `xhigh` 抓 Round 1 漏網的深層問題（最高推理）。
+```
+0-A.0 simplify（序跑、主線）
+      │
+      ▼
+  ┌─ 並行 fan-out（同一輪 tool call 內啟動） ─┐
+  ├─ 軸 A：0-A.1 codex high（背景 bash，~5–15 min）
+  ├─ 軸 B：0-B screenshot-review（subagent，條件觸發時派；~3–5 min）
+  └─ 軸 C：0-C pnpm check + pnpm test（主線 foreground；~2–5 min）
+                            │
+                            ▼
+              匯合 → 合併所有修正 → 條件觸發 0-A.2 xhigh
+```
 
-#### 執行方式：背景跑 + 每 3 分鐘確認進度
+**啟動順序（在同一個 assistant 回合內完成）**：
+
+1. simplify 完成後，**MUST** 用單一回合的多個 tool call 並行啟動：
+   - Bash `codex-review-safe.sh high`（`run_in_background: true`）→ 拿到 background bash id
+   - Agent `screenshot-review`（若 0-B 觸發條件成立）
+   - Bash `pnpm check`（foreground，主線同步跑）
+2. 主線 foreground 0-C 完成後 → poll 軸 A、等軸 B 回收
+3. 三軸全部 done 才進入修正合併
+
+**安全性保證**：
+
+- `codex review --uncommitted` 在啟動時讀 working tree diff snapshot，後續 working tree 變動**不影響** codex 已啟動的 review（codex 看的是啟動時的 v1）
+- 0-C 修正若**超過 50 行或跨 5 檔以上** → 完成 0-A.1 後 **MUST** 重跑 codex high（避免大範圍邏輯改動沒過 codex 眼睛）
+- 0-B / 0-A.1 / 0-C 抓到的問題**全部匯合一次修**，避免反覆 review
+
+**禁止**：
+
+- **NEVER** 把 0-A.1 / 0-B / 0-C 串行跑（除非 0-B 跳過）—— 沒並行 = 浪費 5–10 分鐘閘門時間
+- **NEVER** 在 0-A.1 背景跑的時候，主線只 poll 不做事 —— 必須同步推進 0-C，0-B 觸發時派 subagent
+- **NEVER** 因為「擔心 0-C 修改影響 codex」而退回串行 —— codex 看的是 snapshot，不受後續 working tree 變動影響；大改動的 fallback 已寫在「安全性保證」
+
+### 0-A. 程式碼審查（simplify → codex two-round）
+
+**審查策略**：
+
+1. 主線先跑 `simplify` skill —— 它看 reuse / 精簡 / 過度設計這條軸，codex review 不會抓。先處理掉避免後續 codex 重複指出
+2. 接著以背景方式跑 codex review（GPT-5.5），跨模型抓 bug / 邏輯 / 安全，盲點與 simplify / Claude 主線不同。**啟動後立即進入並行階段（見「0-A/B/C 並行策略」）**，主線同步推進 0-C 並派 0-B subagent
+3. 修正一律由 AI Agent 主線執行；所有並行軸的 finding 匯合後一次性修正
+
+**已棄用**：`code-review` agent（Opus subagent）—— 職責與 codex review 高度重疊且同為 Anthropic 模型盲點，砍掉省一輪 subagent 成本。
+
+#### 0-A.0 — simplify（主線，永遠跑、永遠先跑）
+
+對本次 working tree 變更跑 simplify skill（review + 自動修）。
+
+simplify 修完的版本才是下一步 codex review 應該看的對象 —— 若兩者並行，codex 會挑到 simplify 即將要刪掉的死碼，浪費一輪修正成本。
+
+跑完輸出 `✅ 0-A.0 完成（simplify 已 review + 修正）` 後進入 0-A.1。
+
+#### 0-A.1 — codex review (high)，背景（**並行軸 A**）
 
 `codex review` 在 `high` / `xhigh` 推理下常需數分鐘。**MUST** 用 Bash `run_in_background: true` 啟動，並**每 3 分鐘**讀一次背景輸出確認進度（process 還活著、有沒有錯訊、跑到哪一檔）。建議用 `ScheduleWakeup({delaySeconds: 180})` 排隔——3 分鐘穩穩落在 prompt cache 5 分鐘 TTL 內（300s 是 cache miss 最差解），又是使用者明定的上限，不可拉長。
+
+**啟動背景 process 後 MUST 立即進入並行階段**（同一個 assistant 回合內），啟動 0-B（條件觸發）與 0-C —— 不要乾等 codex 完成才推進其他軸，那等同放棄並行收益。詳見上方「0-A/B/C 並行策略」。
 
 - **NEVER** 把 codex review 用 foreground 同步阻塞主線 — 等下去什麼事都做不了
 - **NEVER** 連續多次 sleep <60s 短輪詢 — 會把 cache 燒光也吵
@@ -108,20 +233,23 @@ git stash push -u -m "WIP: <簡述為何 stash> — see HANDOFF.md"
 - **NEVER** wake 起來只回報「還在跑」— 每次 poll **MUST** 讀實際輸出有具體狀態（哪一步、哪個檔、有沒有 issue 浮現）才算數
 - 結束條件：背景 process 結束、輸出含完成標記、或使用者叫停 — 才進入後續判斷
 
-#### Round 1 — codex review (high)
-
 ```bash
 .codex/scripts/codex-review-safe.sh high
 ```
 
 > ℹ️ wrapper 暫時把 `~/.codex/config.toml` 移開避開 MCP server hang（codex CLI 對 nested TOML override 是 merge 不是 replace；MCP 載入 + 卡死是已知問題）。`trap EXIT` 確保不論 codex 怎麼結束 config 都會還原。**不要**改回 `codex review --uncommitted` 直接跑 — 在配 codebase-memory-mcp 的環境會卡 70 秒 fetch failed 死掉。
 
-讀完 codex 輸出後判斷：
+讀完 codex 輸出後依 **codex 自己輸出的 severity 標記**分情境處理（**此時 0-B / 0-C 應已並行完成或在收尾**）：
 
-- **無問題** → 輸出 `✅ 0-A Round 1 通過（codex high 無 issue）`，跳到 0-B
-- **有問題** → AI Agent 主線**逐一修正 codex 列出的所有問題**，修完進入 Round 2
+- **無 issue** → 輸出 `✅ 0-A.1 通過（codex high 無 issue）`，**跳過 0-A.2**，進入「並行匯合」
+- **僅 Minor / Info 級 issue** → 主線逐一修完，輸出 `✅ 0-A.1 通過（codex high 僅 Minor/Info 已修）`，**跳過 0-A.2**，進入「並行匯合」
+- **出現 Critical / Major 級 issue** → 主線逐一修完，**MUST** 進入 0-A.2 用 xhigh 驗證
 
-#### Round 2 — codex review (xhigh，僅在 Round 1 有問題時執行)
+**Severity 來源**：以 codex 自己輸出的 severity 標記為準（Critical / Major / Minor / Info）。**NEVER** 由主線自行判定降級「這個其實沒那麼嚴重」—— codex 標 Major 就照 Major 處理，否則 0-A.2 條件觸發機制等於形同虛設。
+
+#### 0-A.2 — codex review (xhigh)，條件觸發
+
+**僅在 0-A.1 出現 Critical / Major 級 issue 時執行**，其他情況一律跳過。
 
 ```bash
 .codex/scripts/codex-review-safe.sh xhigh
@@ -129,24 +257,39 @@ git stash push -u -m "WIP: <簡述為何 stash> — see HANDOFF.md"
 
 讀完輸出後判斷：
 
-- **無問題** → 輸出 `✅ 0-A Round 2 通過（codex xhigh 無 issue）`，進入 0-B
-- **仍有問題** → AI Agent 主線再次修正所有問題，修完**直接進入 0-B**（最多 2 輪 review，不做第 3 次）
+- **無問題** → 輸出 `✅ 0-A.2 通過（codex xhigh 無 issue）`，進入「並行匯合」
+- **仍有問題** → 主線再次修正所有問題，修完**直接進入「並行匯合」**（最多到 0-A.2，不做第 3 輪）
 
-完成後明確輸出：
+#### 0-A/B/C 並行匯合（**收口檢查**）
+
+三軸完成後合併狀態檢查：
+
+1. 0-A（codex review）：通過
+2. 0-B（screenshot review）：通過或跳過
+3. 0-C（pnpm check + pnpm test）：全綠
+
+**0-C 大改動回頭驗證**：若 0-C 的修正**超過 50 行或跨 5 檔以上**，**MUST** 在此處重跑一次 `codex-review-safe.sh high` 確認新引入的程式碼也過 codex 眼睛（codex 看的是啟動時 snapshot，後續大改動不在它覆蓋範圍）。小改動（< 50 行 / < 5 檔）視同安全跳過。
+
+完成匯合後輸出：
 
 ```text
-✅ 0-A 通過（codex review 已完成 {1|2} 輪）
+✅ 0-A/B/C 並行匯合通過（codex {1|2} 輪、screenshot {pass|skip}、check 全綠）
 ```
 
 **禁止**：
 
-- **NEVER** 改用其他模型（必須 `gpt-5.5`）
-- **NEVER** 顛倒兩輪的 reasoning effort 或兩輪都用同一檔（Round 1 必為 `high`、Round 2 必為 `xhigh`）
-- **NEVER** 把 codex 列出的問題判定為「建議性質」「不在本次範圍」而跳過 — 一律修
-- **NEVER** 做第 3 輪 review（會無限拖長 commit 流程；2 輪內處理不完代表變更太大，應先 split）
-- **NEVER** 跳過 Round 2 — 只要 Round 1 有任何修正，**MUST** 跑 Round 2 用 `xhigh` 驗證
+- **NEVER** 跳過 0-A.0（simplify 是常駐第一步，不視變更大小例外）
+- **NEVER** 把 simplify 跟 codex 並行 —— simplify 必須在 codex 之前序跑完
+- **NEVER** 把 0-A.1 / 0-B / 0-C 退回串行 —— simplify 完成後三軸必並行（見上方「0-A/B/C 並行策略」）
+- **NEVER** 改用其他模型（codex 必須 `gpt-5.5`）
+- **NEVER** 顛倒 codex 兩輪的 reasoning effort（0-A.1 必為 `high`、0-A.2 必為 `xhigh`）
+- **NEVER** 把 codex 列出的問題判定為「建議性質」「不在本次範圍」而跳過 —— 一律修
+- **NEVER** 做第 3 輪 codex review（會無限拖長 commit 流程；2 輪內處理不完代表變更太大，應先 split）
+- **NEVER** 因 0-A.1 抓到 Critical/Major 後跳過 0-A.2 —— 一律用 xhigh 驗證
+- **NEVER** 用主線自判把 codex 標的 Major / Critical 降級成 Minor 來跳過 0-A.2 —— severity 以 codex 輸出為準
+- **NEVER** 重新啟用 `code-review` agent（職責已被 codex 兩輪取代）
 
-### 0-B. UI Design Review（條件觸發）
+### 0-B. UI Design Review（條件觸發、**並行軸 B**）
 
 ```bash
 git diff --name-only
@@ -159,9 +302,13 @@ git diff --name-only
 
 **不觸發**：純 `<script>` / `<style>` 微調、composable / store / API 純邏輯、測試、文件、設定檔、單純重構不影響視覺輸出。
 
+**並行啟動**：觸發時 MUST 在 0-A.1 codex 背景 process 啟動的**同一個 assistant 回合**內派 `screenshot-review` agent —— **NEVER** 等 codex 跑完才派（會浪費 3–5 min 的並行收益）。subagent 跑完回收 finding，與 0-A.1 / 0-C 的 finding 一起匯合修正。
+
 觸發時派 `screenshot-review` agent 截圖並評估。問題修正後輸出 `✅ 0-B 通過`；不觸發則直接輸出 `⏭️ 0-B 跳過（無 UI 變更）`。
 
-### 0-C. CI 等效檢查（Fix-Verify Loop）
+### 0-C. CI 等效檢查（Fix-Verify Loop、**並行軸 C**）
+
+**並行啟動**：MUST 在 0-A.1 codex 背景 process 啟動的**同一個 assistant 回合**內，主線 foreground 開跑 `pnpm check` —— 跟 codex 並行不阻塞。0-C 完成（含 fix loop 通過）後再 poll 0-A.1 與回收 0-B subagent。
 
 跑下列指令確保 **format / lint / typecheck / test 全部 0 errors + 0 warnings + 0 test failures**：
 
@@ -181,7 +328,7 @@ node -e "const s=require('./package.json').scripts.check||''; console.log(/test|
 pnpm test          # 或 vp test run / pnpm test:unit，依 consumer 設定
 ```
 
-失敗時進入 loop：修復 → `vp fmt` → 重跑上述兩步 → 直到全綠。
+失敗時進入 loop：修復 → `pnpm format`（裸打 `vp fmt` 必須加 `--ignore-path .oxfmtignore`） → 重跑上述兩步 → 直到全綠。
 
 **禁止**用 `npx vitest run` / `npx eslint` 等個別工具替代 `pnpm check` / `pnpm test`。若 `.claude/worktrees/` 干擾結果，先清理再跑。
 

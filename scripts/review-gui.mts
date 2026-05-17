@@ -16,8 +16,149 @@ import { join, normalize, resolve, sep } from 'node:path'
 import { Readable } from 'node:stream'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { spawn, spawnSync } from 'node:child_process'
+import { readFileSync } from 'node:fs'
 
 const DEFAULT_PORT = 5174
+
+// =============================================================================
+// Manual Review Pre-Flight Pattern Source
+// =============================================================================
+// Loads the same patterns.json that post-propose-manual-review-check.sh uses,
+// keeping the bash hook and GUI client in lockstep (single source-of-truth).
+// Patterns evaluate on parent item block content (parent line + scoped children
+// joined by newlines) so that a sample UID / URL inline in a sub-item satisfies
+// `requiresPresenceOf` / `requiresAbsenceOf` on the parent.
+
+export interface ManualReviewPatternEntry {
+  code: string
+  description: string
+  regex: string
+  regexFlags?: string
+  anchor: string
+  remediation: string
+  requiresPresenceOf?: string
+  requiresAbsenceOf?: string
+  appliesTo?: string
+  requiresKindIn?: string[]
+}
+
+let cachedPatterns: ManualReviewPatternEntry[] | null = null
+
+function locatePatternsFile(): string | null {
+  // Search upward from CWD looking for vendor/snippets/manual-review-enforcement/patterns.json
+  // (works in both clade central repo and consumer repos).
+  let dir = process.cwd()
+  for (let i = 0; i < 8; i++) {
+    const candidate = join(dir, 'vendor', 'snippets', 'manual-review-enforcement', 'patterns.json')
+    if (existsSync(candidate)) return candidate
+    const parent = resolve(dir, '..')
+    if (parent === dir) break
+    dir = parent
+  }
+  return null
+}
+
+/**
+ * Translate POSIX bracket expressions used by the bash hook into JS-compatible
+ * regex syntax. patterns.json is designed for both `grep -E` (POSIX) and JS
+ * `RegExp`; this one-way transform keeps a single source-of-truth.
+ */
+function translatePosixToJs(pattern: string): string {
+  return pattern
+    .replace(/\[\[:space:\]\]/g, '\\s')
+    .replace(/\[\[:digit:\]\]/g, '\\d')
+    .replace(/\[\[:alpha:\]\]/g, '[A-Za-z]')
+    .replace(/\[\[:alnum:\]\]/g, '[A-Za-z0-9]')
+    .replace(/\[\[:upper:\]\]/g, '[A-Z]')
+    .replace(/\[\[:lower:\]\]/g, '[a-z]')
+}
+
+export function loadManualReviewPatterns(): ManualReviewPatternEntry[] {
+  if (cachedPatterns !== null) return cachedPatterns
+  const path = locatePatternsFile()
+  if (!path) {
+    cachedPatterns = []
+    return cachedPatterns
+  }
+  try {
+    const raw = readFileSync(path, 'utf8')
+    const parsed = JSON.parse(raw) as { patterns?: ManualReviewPatternEntry[] }
+    const entries = Array.isArray(parsed.patterns) ? parsed.patterns : []
+    cachedPatterns = entries.map((p) => ({
+      ...p,
+      regex: translatePosixToJs(p.regex),
+      requiresPresenceOf: p.requiresPresenceOf
+        ? translatePosixToJs(p.requiresPresenceOf)
+        : undefined,
+      requiresAbsenceOf: p.requiresAbsenceOf ? translatePosixToJs(p.requiresAbsenceOf) : undefined,
+    }))
+  } catch {
+    cachedPatterns = []
+  }
+  return cachedPatterns
+}
+
+/**
+ * Evaluate manual-review patterns against an item block.
+ * `block`: parent line (+ optional scoped children joined by newline).
+ * `isParent`: when true, requiresPresenceOf / requiresAbsenceOf evaluate against
+ *   the full block; when false, only against the line itself.
+ * `appliesTo: parentLineOnly` patterns skip scoped children entirely.
+ */
+export function evaluateManualReviewPatterns(
+  block: string,
+  isParent: boolean,
+): Array<{ code: string; description: string; anchor: string }> {
+  const patterns = loadManualReviewPatterns()
+  const hits: Array<{ code: string; description: string; anchor: string }> = []
+  // Primary regex evaluates against the first line (the item line itself).
+  const firstLine = block.split('\n')[0] ?? ''
+  for (const p of patterns) {
+    if (p.appliesTo === 'parentLineOnly' && !isParent) continue
+    let primaryRe: RegExp
+    try {
+      primaryRe = new RegExp(p.regex, p.regexFlags ?? '')
+    } catch {
+      continue
+    }
+    if (!primaryRe.test(firstLine)) continue
+    // requiresKindIn: pattern only fires when item's leading kind marker is in the allowed list.
+    // Example: MULTI_STEP_NOT_SCOPED uses requiresKindIn: ["review:ui"] so it doesn't over-fire
+    // on [verify:api] / [verify:api+ui] / [verify:e2e] items (verify channels — agent runs the
+    // round-trip itself, not the user; arrow chains there describe agent-verifiable evidence).
+    if (p.requiresKindIn && p.requiresKindIn.length > 0) {
+      const kindMatch = firstLine.match(/\[((?:review|verify|discuss):[a-z+]+)\]/)
+      const kind = kindMatch ? kindMatch[1] : null
+      if (!kind || !p.requiresKindIn.includes(kind)) continue
+    }
+    const scope = isParent ? block : firstLine
+    if (p.requiresPresenceOf) {
+      try {
+        const re = new RegExp(p.requiresPresenceOf, p.regexFlags ?? '')
+        if (re.test(scope)) continue
+      } catch {
+        // invalid regex → fall through to hit
+      }
+    }
+    if (p.requiresAbsenceOf) {
+      try {
+        const re = new RegExp(p.requiresAbsenceOf, p.regexFlags ?? '')
+        if (re.test(scope)) continue
+      } catch {
+        // invalid regex → fall through to hit
+      }
+    }
+    // MULTI_STEP_NOT_SCOPED special case: skip if parent block already contains
+    // scoped sub-items (lines beginning with two-space indent + `- [`).
+    if (p.code === 'MULTI_STEP_NOT_SCOPED' && isParent) {
+      const hasScopedChildren = block.split('\n').some((l) => /^ {2}- \[[ xX]\]/.test(l))
+      if (hasScopedChildren) continue
+    }
+    hits.push({ code: p.code, description: p.description, anchor: p.anchor })
+  }
+  return hits
+}
+
 const PORT_FALLBACK_RANGE = 20
 const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif', '.avif'])
 const MANUAL_REVIEW_HEADING_RE = /^##\s+.*人工檢查\s*$/
@@ -26,13 +167,78 @@ const CHECKBOX_LINE_RE = /^[ \t]*- \[[ xX]\]\s+/
 const PARENT_ITEM_RE = /^- \[([ xX])\] (#[1-9][0-9]*) (.+)$/
 const SCOPED_ITEM_RE = /^  - \[([ xX])\] (#[1-9][0-9]*\.[1-9][0-9]*) (.+)$/
 const TRAILING_NO_SCREENSHOT_RE = /(^|[^ ]) @no-screenshot$/
+// `@no-manual-review-check[<reason>]` bypass marker per manual-review.md hard rule.
+// Empty brackets and bare marker (no brackets) are invalid by schema → not captured here.
+// May coexist with trailing `@no-screenshot` (canonical ordering: bypass then no-screenshot).
+const TRAILING_NO_MANUAL_REVIEW_CHECK_RE =
+  /@no-manual-review-check\[([^\][]+)\](?:\s+@no-screenshot)?\s*$/
 // 解析 leading kind marker — 必須緊接 `#N` / `#N.M` 後第一個 token、含一個 trailing space。
-// description-mid 的 [discuss] / [review:ui] / [verify:auto] 不會被命中（不是行首）。
+// description-mid 的 [discuss] / [review:ui] / [verify:*] 不會被命中（不是行首）。
 const LEADING_KIND_RE = /^\[([^\]]+)\]\s+/
-const VALID_KINDS = new Set(['review:ui', 'discuss', 'verify:auto'])
+const VERIFY_CHANNEL_ORDER = ['e2e', 'api', 'ui'] as const
+const VERIFY_KIND_ORDER = ['verify:e2e', 'verify:api', 'verify:ui'] as const
+const VALID_KINDS = new Set(['review:ui', 'discuss', 'verify:auto', ...VERIFY_KIND_ORDER])
+const VERIFY_CHANNELS = new Set<string>(VERIFY_CHANNEL_ORDER)
 const BACKEND_ONLY_DECLARATION = '**No user-facing journey (backend-only)**'
+const STRUCTURED_ANNOTATION_ORDER = [
+  'verifiedE2e',
+  'verifiedApi',
+  'verifiedUi',
+  'claudeDiscussed',
+] as const
 
-export type ManualReviewItemKind = 'review:ui' | 'discuss' | 'verify:auto'
+export type ManualReviewItemKind =
+  | 'review:ui'
+  | 'discuss'
+  | 'verify:auto'
+  | 'verify:e2e'
+  | 'verify:api'
+  | 'verify:ui'
+
+type ResolvedManualReviewItemKind = Exclude<ManualReviewItemKind, 'verify:auto'>
+type DefaultManualReviewItemKind = Extract<ManualReviewItemKind, 'review:ui' | 'discuss'>
+type StructuredAnnotationKey = (typeof STRUCTURED_ANNOTATION_ORDER)[number]
+
+export interface VerifiedE2eAnnotation {
+  raw: string
+  timestamp: string
+  spec: string
+  trace: string
+}
+
+export interface VerifiedApiAnnotation {
+  raw: string
+  timestamp: string
+  method: string
+  url: string
+  status: string
+  body?: string
+}
+
+export interface VerifiedUiAnnotation {
+  raw: string
+  timestamp: string
+  screenshot: string
+  dom?: string
+}
+
+export interface ClaudeDiscussedAnnotation {
+  raw: string
+  timestamp: string
+}
+
+export interface ManualReviewItemAnnotations {
+  verifiedE2e?: VerifiedE2eAnnotation
+  verifiedApi?: VerifiedApiAnnotation
+  verifiedUi?: VerifiedUiAnnotation
+  claudeDiscussed?: ClaudeDiscussedAnnotation
+  // *List 保留同一個 raw 行裡所有同 prefix annotation。單值欄位 = 最後一個（back-compat）；
+  // upsert/canonicalize 路徑仍走單值 record，這裡只服務 parse + display 的多筆顯示需求。
+  verifiedE2eList?: VerifiedE2eAnnotation[]
+  verifiedApiList?: VerifiedApiAnnotation[]
+  verifiedUiList?: VerifiedUiAnnotation[]
+  claudeDiscussedList?: ClaudeDiscussedAnnotation[]
+}
 
 export interface ManualReviewItem {
   id: string
@@ -44,8 +250,16 @@ export interface ManualReviewItem {
   lineIndex: number
   lineNumber: number
   noScreenshot: boolean
-  /** Leading kind marker — `[review:ui]` / `[discuss]` / `[verify:auto]`. 缺 marker 時依 defaultKind 推導 */
+  /** Pre-flight bypass marker `@no-manual-review-check[<reason>]`，若 valid 則 hook + GUI 跳過 pattern eval。 */
+  bypassManualReviewCheck: { reason: string } | null
+  /** Pre-flight hit findings — patterns.json regex matches against item block。bypassManualReviewCheck 非 null 時為空。 */
+  manualReviewHits: Array<{ code: string; description: string; anchor: string }>
+  /** Resolved leading kind marker；legacy field，等於 `kinds[0]`。 */
   kind: ManualReviewItemKind
+  /** Resolved kind markers；`[verify:auto]` 會展開成 `['verify:api', 'verify:ui']`。 */
+  kinds: ReadonlyArray<ResolvedManualReviewItemKind>
+  /** Structured evidence annotations parsed from raw line. */
+  annotations: ManualReviewItemAnnotations
   /** 原始 raw 行有 explicit leading kind marker（true）或走 default 推導（false） */
   hasExplicitKind: boolean
 }
@@ -76,11 +290,42 @@ export interface FileVersion {
   mtimeMs: number
 }
 
+/**
+ * Build a set of parent item IDs that own at least one scoped child (`#N.M`).
+ * Server-side equivalent of the GUI's `rebuildParentChildrenIndex()` so the
+ * completion counter and archive-readiness check share one notion of
+ * "parent-with-children".
+ */
+export function buildParentsWithScopedChildren(items: readonly ManualReviewItem[]): Set<string> {
+  const parents = new Set<string>()
+  for (const item of items) {
+    if (item.scoped && item.parentId) parents.add(item.parentId)
+  }
+  return parents
+}
+
+/**
+ * Whether `item` is a parent that owns at least one scoped child. Such parents
+ * are intentionally excluded from completion / archive counts: the GUI's
+ * `requiresUserConfirmation()` returns false for them so users cannot OK / Issue
+ * / Skip the parent directly. Counting them in `pending` keeps the change
+ * stuck even after every scoped child passes.
+ */
+export function manualReviewItemHasScopedChildren(
+  item: ManualReviewItem,
+  parentsWithScopedChildren: ReadonlySet<string>,
+): boolean {
+  if (item.scoped) return false
+  return parentsWithScopedChildren.has(item.id)
+}
+
 interface CliOptions {
   host: string
   port: number
   repoRoot: string
   openBrowser: boolean
+  /** Headless scan：不啟 server，輸出 readiness JSON 到 stdout 後結束。供 review-readiness-scan skill 使用。 */
+  scan: boolean
 }
 
 interface ScreenshotFile {
@@ -103,7 +348,27 @@ interface ChangeSummary {
   pending: number
   /** 含 `（issue: ...）` annotation 的 item 數；issue 在 raw 是 `[ ]`，仍算 pending 但 UI 要區分 */
   issued: number
+  /**
+   * effective items 中「需要 user 親自確認（review:ui / verify:ui）」且未 [x]、未標 issue 的數量。
+   * verify:api / verify:e2e 自動驗證 item（GUI `requiresUserConfirmation` 回 false）即使 [ ]
+   * 也不算進此值。home page 用此判斷「user 是否還有可點的 item」，0 = 所有可點項已處理。
+   */
+  userActionPending: number
   malformed: number
+  /** Pre-Review Data Readiness：effective items 命中的 manual-review pattern 總次數。0 = ready for review。 */
+  readinessHits: number
+  /** Hit code → count，提供 home page 顯示「MISSING_URL ×2, BACKEND_MISFLAGGED ×1」摘要。 */
+  hitsByCode: Record<string, number>
+  /**
+   * Effective items 標了 `[verify:e2e]` / `[verify:api]` / `[verify:ui]` 但缺對應 `(verified-*:)` annotation
+   * 的清單。每個 entry 一個 item（kinds 可能多個 tag）。配合 home page 把這類 change 歸到 not-ready 群、
+   * 健康檢查 prompt 一併列出由 Claude 跑 `/spectra-apply` Step 8a 補齊。
+   */
+  evidenceMissing: Array<{
+    itemId: string
+    description: string
+    kinds: ReadonlyArray<'e2e' | 'api' | 'ui'>
+  }>
   screenshotTopicCount: number
   screenshotTopics: string[]
 }
@@ -134,7 +399,7 @@ class HttpError extends Error {
  */
 export function deriveDefaultKindFromProposal(
   proposalContent: string | null,
-): ManualReviewItemKind {
+): DefaultManualReviewItemKind {
   if (!proposalContent) return 'review:ui'
   return proposalContent.includes(BACKEND_ONLY_DECLARATION) ? 'discuss' : 'review:ui'
 }
@@ -142,13 +407,19 @@ export function deriveDefaultKindFromProposal(
 export interface ParseManualReviewOptions {
   /** Default kind 套用條件：item line 沒 leading marker 時 fallback 到此值。預設 `review:ui` */
   defaultKind?: ManualReviewItemKind
+  /** Warning context for parser diagnostics. */
+  sourcePath?: string
 }
 
 export function parseManualReviewSections(
   content: string,
   options: ParseManualReviewOptions = {},
 ): ParsedManualReview {
-  const defaultKind: ManualReviewItemKind = options.defaultKind ?? 'review:ui'
+  const defaultKind = normalizeDefaultKind(options.defaultKind ?? 'review:ui', {
+    sourcePath: options.sourcePath ?? '<inline>',
+    lineNumber: 0,
+  })
+  const sourcePath = options.sourcePath ?? '<inline>'
   const lines = content.split(/\r?\n/)
   const sections: ManualReviewSection[] = []
   let current: ManualReviewSection | null = null
@@ -179,7 +450,7 @@ export function parseManualReviewSections(
 
     const parent = line.match(PARENT_ITEM_RE)
     if (parent) {
-      const item = toReviewItem(parent, line, i, false, defaultKind)
+      const item = toReviewItem(parent, line, i, false, defaultKind, sourcePath)
       current.items.push(item)
       parentIds.add(item.id)
       continue
@@ -187,7 +458,7 @@ export function parseManualReviewSections(
 
     const scoped = line.match(SCOPED_ITEM_RE)
     if (scoped) {
-      const item = toReviewItem(scoped, line, i, true, defaultKind)
+      const item = toReviewItem(scoped, line, i, true, defaultKind, sourcePath)
       const parentId = item.id.split('.')[0]!
       if (!parentIds.has(parentId)) {
         current.malformed.push({
@@ -210,6 +481,29 @@ export function parseManualReviewSections(
     })
   }
 
+  // Post-pass: evaluate Pre-Review Data Readiness patterns against each item.
+  // Parent items see the full block (parent line + scoped children); scoped items
+  // see only their own line. Bypassed items keep `manualReviewHits` empty.
+  for (const section of sections) {
+    const byParent = new Map<string, ManualReviewItem[]>()
+    for (const item of section.items) {
+      if (item.scoped && item.parentId) {
+        if (!byParent.has(item.parentId)) byParent.set(item.parentId, [])
+        byParent.get(item.parentId)!.push(item)
+      }
+    }
+    for (const item of section.items) {
+      if (item.bypassManualReviewCheck) continue
+      if (item.scoped) {
+        item.manualReviewHits = evaluateManualReviewPatterns(item.raw, false)
+      } else {
+        const children = byParent.get(item.id) ?? []
+        const block = [item.raw, ...children.map((c) => c.raw)].join('\n')
+        item.manualReviewHits = evaluateManualReviewPatterns(block, true)
+      }
+    }
+  }
+
   const items = sections.flatMap((section) => section.items)
   const malformed = sections.flatMap((section) => section.malformed)
   return { sections, items, malformed }
@@ -220,16 +514,30 @@ function toReviewItem(
   raw: string,
   lineIndex: number,
   scoped: boolean,
-  defaultKind: ManualReviewItemKind,
+  defaultKind: DefaultManualReviewItemKind,
+  sourcePath: string,
 ): ManualReviewItem {
   const id = match[2]!
   const rawDescription = match[3]!.trim()
   const {
     description: afterKind,
-    kind,
+    kinds,
     hasExplicitKind,
-  } = parseLeadingKindMarker(rawDescription, defaultKind)
-  const { description, noScreenshot } = parseNoScreenshotMarker(afterKind)
+  } = parseLeadingKindMarker(rawDescription, defaultKind, {
+    sourcePath,
+    lineNumber: lineIndex + 1,
+  })
+  const annotations = parseStructuredAnnotations(raw, { sourcePath, lineNumber: lineIndex + 1 })
+  const withoutAnnotations = stripStructuredAnnotations(afterKind)
+  // Parse bypass marker before @no-screenshot so they coexist correctly.
+  const { description: afterBypass, bypassManualReviewCheck } =
+    parseNoManualReviewCheckMarker(withoutAnnotations)
+  const { description, noScreenshot } = parseNoScreenshotMarker(afterBypass)
+  if (bypassManualReviewCheck) {
+    process.stderr.write(
+      `[info] ${sourcePath}:${lineIndex + 1} bypass: ${bypassManualReviewCheck.reason}\n`,
+    )
+  }
   return {
     id,
     description,
@@ -240,7 +548,12 @@ function toReviewItem(
     lineIndex,
     lineNumber: lineIndex + 1,
     noScreenshot,
-    kind,
+    bypassManualReviewCheck,
+    // Filled in by parseManualReviewSections post-pass once scoped children are available.
+    manualReviewHits: [],
+    kind: kinds[0]!,
+    kinds,
+    annotations,
     hasExplicitKind,
   }
 }
@@ -254,25 +567,147 @@ function toReviewItem(
  */
 function parseLeadingKindMarker(
   description: string,
-  defaultKind: ManualReviewItemKind,
-): { description: string; kind: ManualReviewItemKind; hasExplicitKind: boolean } {
+  defaultKind: DefaultManualReviewItemKind,
+  context: ParserWarningContext,
+): {
+  description: string
+  kinds: ReadonlyArray<ResolvedManualReviewItemKind>
+  hasExplicitKind: boolean
+} {
   const match = description.match(LEADING_KIND_RE)
   if (!match) {
-    return { description, kind: defaultKind, hasExplicitKind: false }
+    return { description, kinds: [defaultKind], hasExplicitKind: false }
   }
   const candidate = match[1]!
-  if (!VALID_KINDS.has(candidate)) {
-    // Malformed kind → warn + 保留 literal 在 description + 套 defaultKind
-    process.stderr.write(
-      `[review-gui] warn: unknown manual-review kind marker [${candidate}] — falling back to default '${defaultKind}'\n`,
-    )
-    return { description, kind: defaultKind, hasExplicitKind: false }
+  const parsed = parseKindMarkerCandidate(candidate, defaultKind, context)
+  if (!parsed.valid) {
+    return { description, kinds: [defaultKind], hasExplicitKind: false }
   }
   return {
     description: description.slice(match[0]!.length),
-    kind: candidate as ManualReviewItemKind,
+    kinds: parsed.kinds,
     hasExplicitKind: true,
   }
+}
+
+interface ParserWarningContext {
+  sourcePath: string
+  lineNumber: number
+}
+
+function formatParserLocation(context: ParserWarningContext): string {
+  return context.lineNumber > 0 ? `${context.sourcePath}:${context.lineNumber}` : context.sourcePath
+}
+
+function warnParser(context: ParserWarningContext, message: string): void {
+  process.stderr.write(`[review-gui] warn: ${formatParserLocation(context)}: ${message}\n`)
+}
+
+function normalizeDefaultKind(
+  candidate: ManualReviewItemKind,
+  context: ParserWarningContext,
+): DefaultManualReviewItemKind {
+  if (candidate === 'review:ui' || candidate === 'discuss') return candidate
+  warnParser(
+    context,
+    `invalid default manual-review kind '${candidate}' — falling back to default 'review:ui'`,
+  )
+  return 'review:ui'
+}
+
+function parseKindMarkerCandidate(
+  candidate: string,
+  defaultKind: DefaultManualReviewItemKind,
+  context: ParserWarningContext,
+): { valid: true; kinds: ReadonlyArray<ResolvedManualReviewItemKind> } | { valid: false } {
+  if (candidate === 'verify:auto') {
+    warnParser(context, '[verify:auto] is deprecated; prefer [verify:api+ui]')
+    return { valid: true, kinds: ['verify:api', 'verify:ui'] }
+  }
+
+  if (candidate.includes('+')) {
+    return parseMultiChannelKindMarker(candidate, defaultKind, context)
+  }
+
+  if (!VALID_KINDS.has(candidate)) {
+    warnParser(
+      context,
+      `unknown manual-review kind marker [${candidate}] — falling back to default '${defaultKind}'`,
+    )
+    return { valid: false }
+  }
+
+  return { valid: true, kinds: [candidate as ResolvedManualReviewItemKind] }
+}
+
+function parseMultiChannelKindMarker(
+  candidate: string,
+  defaultKind: DefaultManualReviewItemKind,
+  context: ParserWarningContext,
+): { valid: true; kinds: ReadonlyArray<ResolvedManualReviewItemKind> } | { valid: false } {
+  if (!candidate.startsWith('verify:')) {
+    warnParser(
+      context,
+      `invalid multi-channel manual-review kind marker [${candidate}] — only verify:* channels may be combined; falling back to default '${defaultKind}'`,
+    )
+    return { valid: false }
+  }
+
+  const rawChannels = candidate.slice('verify:'.length).split('+')
+  if (rawChannels.length < 2 || rawChannels.length > 3) {
+    warnParser(
+      context,
+      `invalid multi-channel manual-review kind marker [${candidate}] — expected 2 or 3 verify channels; falling back to default '${defaultKind}'`,
+    )
+    return { valid: false }
+  }
+
+  const seen = new Set<string>()
+  for (const channel of rawChannels) {
+    if (!VERIFY_CHANNELS.has(channel)) {
+      warnParser(
+        context,
+        `invalid multi-channel manual-review kind marker [${candidate}] — unknown verify channel '${channel}'; falling back to default '${defaultKind}'`,
+      )
+      return { valid: false }
+    }
+    if (seen.has(channel)) {
+      warnParser(
+        context,
+        `invalid multi-channel manual-review kind marker [${candidate}] — duplicate verify channel '${channel}'; falling back to default '${defaultKind}'`,
+      )
+      return { valid: false }
+    }
+    seen.add(channel)
+  }
+
+  return {
+    valid: true,
+    kinds: VERIFY_CHANNEL_ORDER.filter((channel) => seen.has(channel)).map(
+      (channel) => `verify:${channel}` as ResolvedManualReviewItemKind,
+    ),
+  }
+}
+
+function canonicalizeLeadingKindMarker(line: string): string {
+  return line.replace(
+    /^(\s*- \[[ xX]\]\s+#[1-9][0-9]*(?:\.[1-9][0-9]*)?\s+)\[verify:([^\]]*\+[^\]]*)\]/,
+    (full: string, prefix: string, channelsText: string) => {
+      const channels = channelsText.split('+')
+      if (
+        channels.length < 2 ||
+        channels.length > 3 ||
+        channels.some((channel) => !VERIFY_CHANNELS.has(channel)) ||
+        new Set(channels).size !== channels.length
+      ) {
+        return full
+      }
+      const canonical = VERIFY_CHANNEL_ORDER.filter((channel) => channels.includes(channel)).join(
+        '+',
+      )
+      return `${prefix}[verify:${canonical}]`
+    },
+  )
 }
 
 function parseNoScreenshotMarker(description: string): {
@@ -289,13 +724,215 @@ function parseNoScreenshotMarker(description: string): {
   }
 }
 
+/**
+ * Parse `@no-manual-review-check[<reason>]` bypass marker per manual-review.md hard rule.
+ * Empty brackets `[]` and bare marker (no brackets) are invalid → returns null.
+ * Marker must be trailing (optionally followed by `@no-screenshot`).
+ */
+function parseNoManualReviewCheckMarker(description: string): {
+  description: string
+  bypassManualReviewCheck: { reason: string } | null
+} {
+  const match = description.match(TRAILING_NO_MANUAL_REVIEW_CHECK_RE)
+  if (!match) {
+    return { description, bypassManualReviewCheck: null }
+  }
+  const reason = match[1]!.trim()
+  if (!reason) {
+    return { description, bypassManualReviewCheck: null }
+  }
+  // Strip the bypass marker but preserve trailing @no-screenshot for downstream parser.
+  const stripped = description.slice(0, match.index).trim()
+  const afterScreenshot = match[0]!.endsWith('@no-screenshot') ? ' @no-screenshot' : ''
+  return {
+    description: (stripped + afterScreenshot).trim(),
+    bypassManualReviewCheck: { reason },
+  }
+}
+
+function parseStructuredAnnotations(
+  line: string,
+  context: ParserWarningContext,
+): ManualReviewItemAnnotations {
+  const annotations: ManualReviewItemAnnotations = {}
+  const matches = line.matchAll(
+    /\((verified-e2e|verified-api|verified-ui|claude-discussed):\s*([^)]*)\)/g,
+  )
+  for (const match of matches) {
+    const prefix = match[1]!
+    const body = match[2]!.trim()
+    const raw = match[0]!
+    const parsed = parseStructuredAnnotationValue(prefix, raw, body, context)
+    if (!parsed) continue
+    if (parsed.verifiedE2e) {
+      ;(annotations.verifiedE2eList ??= []).push(parsed.verifiedE2e)
+      annotations.verifiedE2e = parsed.verifiedE2e
+    }
+    if (parsed.verifiedApi) {
+      ;(annotations.verifiedApiList ??= []).push(parsed.verifiedApi)
+      annotations.verifiedApi = parsed.verifiedApi
+    }
+    if (parsed.verifiedUi) {
+      ;(annotations.verifiedUiList ??= []).push(parsed.verifiedUi)
+      annotations.verifiedUi = parsed.verifiedUi
+    }
+    if (parsed.claudeDiscussed) {
+      ;(annotations.claudeDiscussedList ??= []).push(parsed.claudeDiscussed)
+      annotations.claudeDiscussed = parsed.claudeDiscussed
+    }
+  }
+  return annotations
+}
+
+function parseStructuredAnnotationValue(
+  prefix: string,
+  raw: string,
+  body: string,
+  context: ParserWarningContext,
+): ManualReviewItemAnnotations | null {
+  const parts = body.split(/\s+/).filter(Boolean)
+  const timestamp = parts[0]
+  if (!timestamp) {
+    warnParser(context, `malformed (${prefix}: ...) annotation — missing timestamp`)
+    return null
+  }
+
+  if (prefix === 'verified-e2e') {
+    const spec = findKeyValue(parts, 'spec')
+    const trace = findKeyValue(parts, 'trace')
+    if (!spec || !trace) {
+      warnParser(
+        context,
+        `malformed (${prefix}: ...) annotation — expected spec=<path> trace=<path>`,
+      )
+      return null
+    }
+    return { verifiedE2e: { raw, timestamp, spec, trace } }
+  }
+
+  if (prefix === 'verified-api') {
+    const method = parts[1]
+    const url = parts[2]
+    const status = parts[3]
+    if (!method || !url || !status) {
+      warnParser(
+        context,
+        `malformed (${prefix}: ...) annotation — expected <ISO> <METHOD> <URL> <STATUS>`,
+      )
+      return null
+    }
+    const bodyDigest = findKeyValue(parts, 'body')
+    return {
+      verifiedApi: {
+        raw,
+        timestamp,
+        method,
+        url,
+        status,
+        ...(bodyDigest ? { body: bodyDigest } : {}),
+      },
+    }
+  }
+
+  if (prefix === 'verified-ui') {
+    const screenshot = findKeyValue(parts, 'screenshot')
+    if (!screenshot) {
+      warnParser(context, `malformed (${prefix}: ...) annotation — expected screenshot=<path>`)
+      return null
+    }
+    const dom = findKeyValue(parts, 'dom')
+    return {
+      verifiedUi: {
+        raw,
+        timestamp,
+        screenshot,
+        ...(dom ? { dom } : {}),
+      },
+    }
+  }
+
+  return { claudeDiscussed: { raw, timestamp } }
+}
+
+function findKeyValue(parts: string[], key: string): string | undefined {
+  const prefix = `${key}=`
+  return parts.find((part) => part.startsWith(prefix))?.slice(prefix.length)
+}
+
+function annotationPrefixToKey(prefix: string): StructuredAnnotationKey {
+  if (prefix === 'verified-e2e') return 'verifiedE2e'
+  if (prefix === 'verified-api') return 'verifiedApi'
+  if (prefix === 'verified-ui') return 'verifiedUi'
+  return 'claudeDiscussed'
+}
+
+function stripStructuredAnnotations(line: string): string {
+  return line
+    .replace(/\s*\((?:verified-e2e|verified-api|verified-ui|claude-discussed):[^)]*\)/g, '')
+    .replace(/[ \t]+$/, '')
+}
+
+function collectStructuredAnnotationRaw(line: string): {
+  base: string
+  annotations: Partial<Record<StructuredAnnotationKey, string>>
+} {
+  const annotations: Partial<Record<StructuredAnnotationKey, string>> = {}
+  const base = line.replace(
+    /\s*\((verified-e2e|verified-api|verified-ui|claude-discussed):[^)]*\)/g,
+    (raw: string, prefix: string) => {
+      annotations[annotationPrefixToKey(prefix)] = raw.trim()
+      return ''
+    },
+  )
+  return { base: base.replace(/[ \t]+$/, ''), annotations }
+}
+
+function renderStructuredAnnotations(
+  annotations: Partial<Record<StructuredAnnotationKey, string>>,
+): string {
+  return STRUCTURED_ANNOTATION_ORDER.flatMap((key) =>
+    annotations[key] ? [annotations[key]!] : [],
+  ).join(' ')
+}
+
+function upsertStructuredAnnotation(
+  line: string,
+  key: StructuredAnnotationKey,
+  annotation: string,
+): string {
+  const { base, annotations } = collectStructuredAnnotationRaw(line)
+  annotations[key] = annotation
+  const rendered = renderStructuredAnnotations(annotations)
+  return rendered ? `${base.trimEnd()} ${rendered}` : base
+}
+
+function canonicalizeStructuredAnnotations(line: string): string {
+  const { base, annotations } = collectStructuredAnnotationRaw(line)
+  const rendered = renderStructuredAnnotations(annotations)
+  return rendered ? `${base.trimEnd()} ${rendered}` : base
+}
+
+export interface ParentRollupResult {
+  parentId: string
+  lineBefore: string
+  lineAfter: string
+}
+
+export interface ApplyReviewActionResult {
+  content: string
+  lineBefore: string
+  lineAfter: string
+  parentRollup?: ParentRollupResult
+}
+
 export function applyReviewActionToContent(
   content: string,
   itemId: string,
   action: 'ok' | 'issue' | 'skip',
   note = '',
   options: ParseManualReviewOptions = {},
-): { content: string; lineBefore: string; lineAfter: string } {
+  finding = '',
+): ApplyReviewActionResult {
   const parsed = parseManualReviewSections(content, options)
   if (parsed.malformed.length > 0) {
     throw new HttpError(
@@ -310,9 +947,89 @@ export function applyReviewActionToContent(
   const newline = content.includes('\r\n') ? '\r\n' : '\n'
   const lines = content.split(/\r?\n/)
   const lineBefore = lines[item.lineIndex] ?? ''
-  const lineAfter = applyActionToLine(lineBefore, action, note)
+  const lineAfter = applyActionToLine(lineBefore, action, note, finding)
   lines[item.lineIndex] = lineAfter
-  return { content: lines.join(newline), lineBefore, lineAfter }
+
+  const parentRollup = item.scoped ? rollupParentForScopedItem(lines, item, options) : null
+
+  const result: ApplyReviewActionResult = {
+    content: lines.join(newline),
+    lineBefore,
+    lineAfter,
+  }
+  if (parentRollup) result.parentRollup = parentRollup
+  return result
+}
+
+function rollupParentForScopedItem(
+  lines: string[],
+  scopedItem: ManualReviewItem,
+  options: ParseManualReviewOptions,
+): ParentRollupResult | null {
+  if (!scopedItem.scoped || !scopedItem.parentId) return null
+
+  const reparsed = parseManualReviewSections(lines.join('\n'), options)
+  const parent = reparsed.items.find((i) => i.id === scopedItem.parentId && !i.scoped)
+  if (!parent) return null
+
+  const siblings = reparsed.items.filter((i) => i.scoped && i.parentId === scopedItem.parentId)
+  if (siblings.length === 0) return null
+
+  const allChildrenOk = siblings.every((i) => i.checked && !/（issue:[^）]*）/.test(i.raw))
+
+  const lineBefore = lines[parent.lineIndex] ?? ''
+  if (allChildrenOk === parent.checked) return null
+
+  const lineAfter = setCheckbox(lineBefore, allChildrenOk)
+  if (lineAfter === lineBefore) return null
+
+  lines[parent.lineIndex] = lineAfter
+  return { parentId: parent.id, lineBefore, lineAfter }
+}
+
+function isAutomaticOnlyKinds(kinds: ReadonlyArray<ResolvedManualReviewItemKind>): boolean {
+  return kinds.length > 0 && kinds.every((kind) => kind === 'verify:e2e' || kind === 'verify:api')
+}
+
+function hasExpectedAutomaticAnnotations(item: ManualReviewItem): boolean {
+  return item.kinds.every((kind) => {
+    if (kind === 'verify:e2e') return Boolean(item.annotations.verifiedE2e)
+    if (kind === 'verify:api') return Boolean(item.annotations.verifiedApi)
+    return false
+  })
+}
+
+/**
+ * Step 8a helper：pure automatic channels (`verify:e2e` / `verify:api`) complete from
+ * evidence annotations alone. UI-confirmation channels remain user-driven.
+ */
+export function autoCheckCompletedAutomaticItems(
+  content: string,
+  options: ParseManualReviewOptions = {},
+): { content: string; checkedItemIds: string[] } {
+  const parsed = parseManualReviewSections(content, options)
+  if (parsed.malformed.length > 0) {
+    throw new HttpError(
+      422,
+      'Manual-review section has malformed checkbox lines. Fix schema before writing.',
+    )
+  }
+
+  const newline = content.includes('\r\n') ? '\r\n' : '\n'
+  const lines = content.split(/\r?\n/)
+  const checkedItemIds: string[] = []
+
+  for (const item of parsed.items) {
+    if (item.checked) continue
+    if (!isAutomaticOnlyKinds(item.kinds)) continue
+    if (!hasExpectedAutomaticAnnotations(item)) continue
+
+    const lineBefore = lines[item.lineIndex] ?? ''
+    lines[item.lineIndex] = setCheckbox(canonicalizeLeadingKindMarker(lineBefore), true)
+    checkedItemIds.push(item.id)
+  }
+
+  return { content: lines.join(newline), checkedItemIds }
 }
 
 /**
@@ -354,10 +1071,12 @@ export function applyClaudeDiscussedAnnotationToContent(
 
 function applyClaudeDiscussedToLine(line: string, isoTimestamp: string): string {
   const { core, trailing } = extractTrailingMarkers(line)
-  // 先 strip 舊 claude-discussed（避免 stale 重複），保留其他 annotations（issue/skip/note 由各 action 自行管理）
-  const cleaned = stripClaudeDiscussedAnnotation(core)
-  const checked = setCheckbox(cleaned, true)
-  const annotated = `${checked.trimEnd()} (claude-discussed: ${isoTimestamp})`
+  const checked = setCheckbox(canonicalizeLeadingKindMarker(core), true)
+  const annotated = upsertStructuredAnnotation(
+    checked,
+    'claudeDiscussed',
+    `(claude-discussed: ${isoTimestamp})`,
+  )
   return trailing ? `${annotated}${trailing}` : annotated
 }
 
@@ -368,6 +1087,23 @@ export interface VerifyAutoEvidence {
   dom?: string
   /** 其他自由 key=value（不能含 space 或 `)`），依 key 字典序輸出 */
   [key: string]: string | undefined
+}
+
+export interface VerifiedE2eEvidence {
+  spec: string
+  trace: string
+}
+
+export interface VerifiedApiEvidence {
+  method: string
+  url: string
+  status: string
+  body?: string
+}
+
+export interface VerifiedUiEvidence {
+  screenshot: string
+  dom?: string
 }
 
 /**
@@ -408,6 +1144,92 @@ export function applyVerifiedAutoAnnotationToContent(
   return { content: lines.join(newline), lineBefore, lineAfter }
 }
 
+export function applyVerifiedE2eAnnotationToContent(
+  content: string,
+  itemId: string,
+  isoTimestamp: string,
+  evidence: VerifiedE2eEvidence,
+  options: ParseManualReviewOptions = {},
+): { content: string; lineBefore: string; lineAfter: string } {
+  return applyVerifyChannelAnnotationToContent(content, itemId, {
+    key: 'verifiedE2e',
+    annotation: `(verified-e2e: ${isoTimestamp} spec=${sanitizeEvidenceValue(evidence.spec)} trace=${sanitizeEvidenceValue(evidence.trace)})`,
+    options,
+  })
+}
+
+export function applyVerifiedApiAnnotationToContent(
+  content: string,
+  itemId: string,
+  isoTimestamp: string,
+  evidence: VerifiedApiEvidence,
+  options: ParseManualReviewOptions = {},
+): { content: string; lineBefore: string; lineAfter: string } {
+  const body = evidence.body ? ` body=${sanitizeEvidenceValue(evidence.body)}` : ''
+  return applyVerifyChannelAnnotationToContent(content, itemId, {
+    key: 'verifiedApi',
+    annotation: `(verified-api: ${isoTimestamp} ${sanitizeEvidenceValue(
+      evidence.method.toUpperCase(),
+    )} ${sanitizeEvidenceValue(evidence.url)} ${sanitizeEvidenceValue(evidence.status)}${body})`,
+    options,
+  })
+}
+
+export function applyVerifiedUiAnnotationToContent(
+  content: string,
+  itemId: string,
+  isoTimestamp: string,
+  evidence: VerifiedUiEvidence,
+  options: ParseManualReviewOptions = {},
+): { content: string; lineBefore: string; lineAfter: string } {
+  const dom = evidence.dom ? ` dom=${sanitizeEvidenceValue(evidence.dom)}` : ''
+  return applyVerifyChannelAnnotationToContent(content, itemId, {
+    key: 'verifiedUi',
+    annotation: `(verified-ui: ${isoTimestamp} screenshot=${sanitizeEvidenceValue(
+      evidence.screenshot,
+    )}${dom})`,
+    options,
+  })
+}
+
+function applyVerifyChannelAnnotationToContent(
+  content: string,
+  itemId: string,
+  input: {
+    key: Extract<StructuredAnnotationKey, 'verifiedE2e' | 'verifiedApi' | 'verifiedUi'>
+    annotation: string
+    options: ParseManualReviewOptions
+  },
+): { content: string; lineBefore: string; lineAfter: string } {
+  const parsed = parseManualReviewSections(content, input.options)
+  if (parsed.malformed.length > 0) {
+    throw new HttpError(
+      422,
+      'Manual-review section has malformed checkbox lines. Fix schema before writing.',
+    )
+  }
+  const item = parsed.items.find((candidate) => candidate.id === itemId)
+  if (!item) throw new HttpError(404, `Manual-review item not found: ${itemId}`)
+
+  const newline = content.includes('\r\n') ? '\r\n' : '\n'
+  const lines = content.split(/\r?\n/)
+  const lineBefore = lines[item.lineIndex] ?? ''
+  const lineAfter = applyVerifyChannelAnnotationToLine(lineBefore, input.key, input.annotation)
+  lines[item.lineIndex] = lineAfter
+  return { content: lines.join(newline), lineBefore, lineAfter }
+}
+
+function applyVerifyChannelAnnotationToLine(
+  line: string,
+  key: Extract<StructuredAnnotationKey, 'verifiedE2e' | 'verifiedApi' | 'verifiedUi'>,
+  annotation: string,
+): string {
+  const { core, trailing } = extractTrailingMarkers(line)
+  const canonicalCore = canonicalizeLeadingKindMarker(core)
+  const annotated = upsertStructuredAnnotation(canonicalCore, key, annotation)
+  return trailing ? `${annotated}${trailing}` : annotated
+}
+
 function applyVerifiedAutoToLine(
   line: string,
   isoTimestamp: string,
@@ -415,10 +1237,12 @@ function applyVerifiedAutoToLine(
 ): string {
   const { core, trailing } = extractTrailingMarkers(line)
   // 先 strip 舊 verified-auto（避免 retry 時 stale 重複），保留其他 annotations
-  const cleaned = stripVerifiedAutoAnnotation(core)
+  const cleaned = stripVerifiedAutoAnnotation(canonicalizeLeadingKindMarker(core))
   // verify:auto 設計上保留 `[ ]`，user 在 review GUI 確認後才勾 — 不在 helper 裡代勾
   const evidenceStr = serializeVerifyEvidence(evidence)
-  const annotated = `${cleaned.trimEnd()} (verified-auto: ${isoTimestamp}${evidenceStr ? ' ' + evidenceStr : ''})`
+  const annotated = canonicalizeStructuredAnnotations(
+    `${cleaned.trimEnd()} (verified-auto: ${isoTimestamp}${evidenceStr ? ' ' + evidenceStr : ''})`,
+  )
   return trailing ? `${annotated}${trailing}` : annotated
 }
 
@@ -459,10 +1283,15 @@ function sanitizeEvidenceValue(v: string): string {
   )
 }
 
-function applyActionToLine(line: string, action: 'ok' | 'issue' | 'skip', note: string): string {
+function applyActionToLine(
+  line: string,
+  action: 'ok' | 'issue' | 'skip',
+  note: string,
+  finding: string,
+): string {
   const { core, trailing } = extractTrailingMarkers(line)
   // 切換 action 前先剝離舊 annotation，避免 stale 殘留（例：先 issue 後改 ok 會留 (issue: ...)）
-  const stripped = stripAnnotations(core)
+  const stripped = stripAnnotations(canonicalizeLeadingKindMarker(core))
   let result: string
   if (action === 'ok') {
     const base = setCheckbox(stripped, true)
@@ -474,6 +1303,7 @@ function applyActionToLine(line: string, action: 'ok' | 'issue' | 'skip', note: 
     const base = setCheckbox(stripped, true)
     result = appendAnnotation(base, 'skip', note)
   }
+  if (finding.trim()) result = appendAnnotation(result, 'finding', finding)
 
   return trailing ? `${result}${trailing}` : result
 }
@@ -519,23 +1349,27 @@ function setCheckbox(line: string, checked: boolean): string {
 }
 
 function stripAnnotations(line: string): string {
-  return line
+  const withoutActionAnnotations = line
     .replace(/（issue:[^）]*）/g, '')
     .replace(/（skip(?::[^）]*)?）/g, '')
     .replace(/（note:[^）]*）/g, '')
+    .replace(/（finding:[^）]*）/g, '')
     .replace(/[ \t]+$/, '')
+  return canonicalizeStructuredAnnotations(withoutActionAnnotations)
 }
 
-function stripClaudeDiscussedAnnotation(line: string): string {
-  return line.replace(/\s*\(claude-discussed:[^)]*\)/g, '').replace(/[ \t]+$/, '')
-}
-
-function appendAnnotation(line: string, kind: 'issue' | 'skip' | 'note', note: string): string {
+function appendAnnotation(
+  line: string,
+  kind: 'issue' | 'skip' | 'note' | 'finding',
+  note: string,
+): string {
   let label: string
   if (kind === 'skip') {
     label = note.trim() ? `（skip: ${sanitizeNote(note)}）` : '（skip）'
   } else if (kind === 'issue') {
     label = `（issue: ${sanitizeNote(note)}）`
+  } else if (kind === 'finding') {
+    label = `（finding: ${sanitizeNote(note)}）`
   } else {
     label = `（note: ${sanitizeNote(note)}）`
   }
@@ -579,7 +1413,7 @@ async function loadHono(): Promise<any> {
     const message = err instanceof Error ? err.message : String(err)
     throw new Error(
       '[review:ui] Missing Hono runtime dependency.\n' +
-        'Install consumer dev dependencies with: pnpm add -D hono tsx\n' +
+        'Install consumer dev dependencies with: pnpm add -D hono\n' +
         'Then run: pnpm review:ui\n\n' +
         `Original error: ${message}`,
       { cause: err },
@@ -591,7 +1425,14 @@ export async function createReviewApp(repoRoot = process.cwd()): Promise<any> {
   const { Hono } = await loadHono()
   const app = new Hono()
 
+  // `/review` 與 `/review/<change>` 都回同一 HTML（SPA），URL 變動由 client
+  // 走 history.pushState / replaceState 控制。client 啟動會 parseLocationTarget
+  // 解析 path/hash，deep link reload 才需要 server 認 path。
   app.get('/review', (c: any) => {
+    c.header('Cache-Control', 'no-store')
+    return c.html(renderReviewHtml())
+  })
+  app.get('/review/:change', (c: any) => {
     c.header('Cache-Control', 'no-store')
     return c.html(renderReviewHtml())
   })
@@ -679,7 +1520,7 @@ async function listPendingChanges(repoRoot: string): Promise<ChangeSummary[]> {
 async function loadProposalDefaultKind(
   repoRoot: string,
   change: string,
-): Promise<ManualReviewItemKind> {
+): Promise<DefaultManualReviewItemKind> {
   const proposalPath = join(repoRoot, 'openspec', 'changes', change, 'proposal.md')
   if (!existsSync(proposalPath)) return 'review:ui'
   try {
@@ -698,23 +1539,83 @@ async function summarizeChange(
 ): Promise<ChangeSummary | null> {
   const content = await readFile(tasksPath, 'utf8')
   const defaultKind = await loadProposalDefaultKind(repoRoot, name)
-  const parsed = parseManualReviewSections(content, { defaultKind })
+  const parsed = parseManualReviewSections(content, { defaultKind, sourcePath: tasksPath })
   if (parsed.sections.length === 0) return null
+
+  // 排除 parent-with-children：GUI 的 `requiresUserConfirmation` 對這類 item 回 false
+  // （UI 不允許 user 直接勾），若仍把它們算進 total / pending，子項全勾後 change 仍會
+  // 卡在 pending 不會自動 archive。helper 與 archive completion check 共用同一語義。
+  const parentsWithChildren = buildParentsWithScopedChildren(parsed.items)
+  const effectiveItems = parsed.items.filter(
+    (item) => !manualReviewItemHasScopedChildren(item, parentsWithChildren),
+  )
 
   // 「真的通過」= [x] 且沒有 issue annotation。`[x]` + `（issue: ...）` 並存
   // 是舊版時代的 stale state，語義上應算 issue 待解，不能算通過。
-  const issued = parsed.items.filter((item) => /（issue:[^）]*）/.test(item.raw)).length
-  const checked = parsed.items.filter(
+  const issued = effectiveItems.filter((item) => /（issue:[^）]*）/.test(item.raw)).length
+  const checked = effectiveItems.filter(
     (item) => item.checked && !/（issue:[^）]*）/.test(item.raw),
   ).length
+  // user-actionable pending：對齊 GUI `requiresUserConfirmation`——只認 review:ui / verify:ui
+  // （verify:api / verify:e2e 自動驗證 item user 點不到）。home page feedbackGiven 分類用此值
+  // 取代 `pending === issued`：verify:api 自動驗證但未 [x] 的 item 不該卡住 user 可點項已全處理的 change。
+  const userActionPending = effectiveItems.filter(
+    (item) =>
+      (item.kinds.includes('review:ui') || item.kinds.includes('verify:ui')) &&
+      !item.checked &&
+      !/（issue:[^）]*）/.test(item.raw),
+  ).length
+  // Pre-Review Data Readiness：對齊 GUI 內顯示 banner 的 items 範圍——
+  // effective items（排除 parent-with-children，GUI 不讓 user 勾這類）+ 未勾且非 issued
+  // （[x] 或 issue 已經分流到別的處理路徑，readiness 只關注「等待 user 檢查」這群）。
+  const readinessTargets = effectiveItems.filter(
+    (item) => !item.checked && !/（issue:[^）]*）/.test(item.raw),
+  )
+  const hitsByCode: Record<string, number> = {}
+  let readinessHits = 0
+  for (const item of readinessTargets) {
+    const hits = item.manualReviewHits ?? []
+    for (const hit of hits) {
+      hitsByCode[hit.code] = (hitsByCode[hit.code] ?? 0) + 1
+      readinessHits++
+    }
+  }
+  // Verify-channel evidence missing：對齊 client `computeMissingEvidence`，iterate ALL
+  // 未勾且非 issued items（含 parent-with-children）。parent 的 verify markers 是 explicit
+  // declaration，spectra-apply Step 8a 寫的 (verified-*: ...) annotation 直接寫在 parent line，
+  // 不繼承自子項；GUI 的 compound-evidence panel 也 render 在 parent line 上。
+  // 「由子項回饋」只影響 parent 的 OK/Issue/Skip 按鈕顯示，跟 evidence ownership 無關。
+  // 若沿用 `readinessTargets`（排除 parent-with-children）會讓 server 漏算 parent 缺 evidence
+  // 的情境，導致 change 被誤分到 ready 群（home page 應顯示在 applyPending）。
+  const evidenceTargets = parsed.items.filter(
+    (item) => !item.checked && !/（issue:[^）]*）/.test(item.raw),
+  )
+  const evidenceMissing: Array<{
+    itemId: string
+    description: string
+    kinds: ReadonlyArray<'e2e' | 'api' | 'ui'>
+  }> = []
+  for (const item of evidenceTargets) {
+    const tags: Array<'e2e' | 'api' | 'ui'> = []
+    if (item.kinds.includes('verify:e2e') && !item.annotations.verifiedE2e) tags.push('e2e')
+    if (item.kinds.includes('verify:api') && !item.annotations.verifiedApi) tags.push('api')
+    if (item.kinds.includes('verify:ui') && !item.annotations.verifiedUi) tags.push('ui')
+    if (tags.length > 0) {
+      evidenceMissing.push({ itemId: item.id, description: item.description, kinds: tags })
+    }
+  }
   return {
     name,
     tasksPath,
-    total: parsed.items.length,
+    total: effectiveItems.length,
     checked,
-    pending: parsed.items.length - checked,
+    pending: effectiveItems.length - checked,
     issued,
+    userActionPending,
     malformed: parsed.malformed.length,
+    readinessHits,
+    hitsByCode,
+    evidenceMissing,
     screenshotTopicCount: pools.length,
     screenshotTopics: pools.map((pool) => `${pool.env}/${pool.topic}`),
   }
@@ -728,7 +1629,7 @@ async function readChangeDetail(repoRoot: string, change: string): Promise<Chang
     listScreenshotPools(repoRoot),
     loadProposalDefaultKind(repoRoot, change),
   ])
-  const parsed = parseManualReviewSections(content, { defaultKind })
+  const parsed = parseManualReviewSections(content, { defaultKind, sourcePath: tasksPath })
   if (parsed.sections.length === 0) {
     throw new HttpError(404, `Change has no ## 人工檢查 section: ${change}`)
   }
@@ -774,18 +1675,28 @@ async function persistReviewAction(repoRoot: string, change: string, body: any):
 
   const content = await readFile(tasksPath, 'utf8')
   const defaultKind = await loadProposalDefaultKind(repoRoot, change)
-  const updated = applyReviewActionToContent(content, body.itemId, action, body.note || '', {
-    defaultKind,
-  })
+  const updated = applyReviewActionToContent(
+    content,
+    body.itemId,
+    action,
+    body.note || '',
+    { defaultKind, sourcePath: tasksPath },
+    body.finding || '',
+  )
   await writeFile(tasksPath, updated.content, 'utf8')
 
   const detail = await readChangeDetail(repoRoot, change)
   // 與 summarizeChange 的 checked 算法同義：[x] 且沒 issue annotation 才算完成。
-  // 否則 stale `[x] + （issue: ...）` 會誤觸發 archive。
+  // 否則 stale `[x] + （issue: ...）` 會誤觸發 archive。同樣排除 parent-with-children
+  // — GUI 不讓使用者勾母項，若算進 effectiveItems 子項全勾仍判 incomplete，change 永遠卡。
+  const parentsWithChildren = buildParentsWithScopedChildren(detail.items)
+  const effectiveItems = detail.items.filter(
+    (item) => !manualReviewItemHasScopedChildren(item, parentsWithChildren),
+  )
   const complete =
     detail.malformed === 0 &&
-    detail.items.length > 0 &&
-    detail.items.every((item) => item.checked && !/（issue:[^）]*）/.test(item.raw))
+    effectiveItems.length > 0 &&
+    effectiveItems.every((item) => item.checked && !/（issue:[^）]*）/.test(item.raw))
   const archive = complete ? await invokeReviewArchive(repoRoot, change) : { status: 'not-ready' }
   return {
     ok: true,
@@ -793,6 +1704,7 @@ async function persistReviewAction(repoRoot: string, change: string, body: any):
     action,
     lineBefore: updated.lineBefore,
     lineAfter: updated.lineAfter,
+    parentRollup: updated.parentRollup ?? null,
     complete,
     archive,
     change: detail,
@@ -950,7 +1862,7 @@ function toPosix(path: string): string {
   return path.split(sep).join('/')
 }
 
-function renderReviewHtml(): string {
+export function renderReviewHtml(): string {
   return `<!doctype html>
 <html lang="zh-Hant-TW">
 <head>
@@ -1084,6 +1996,7 @@ function renderReviewHtml(): string {
       background: color-mix(in srgb, var(--panel) 76%, transparent);
     }
     .metric.bad { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 50%, var(--line)); }
+    .metric.warn { color: #8a4f0a; background: #fce4c8; border-color: #f0c68d; font-weight: 600; }
     main {
       min-width: 0;
       min-height: 0;
@@ -1206,12 +2119,50 @@ function renderReviewHtml(): string {
     .ok { background: #e6f3ea; border-color: #a7cdb4; }
     .issue { background: #fff3e2; border-color: #d8ad68; }
     .skip { background: #f0eee8; }
+    /* Pre-flight warning banner — Layer C of manual-review.md mechanical enforcement.
+       Amber treatment, distinct from red verify-channel evidence-missing banners.
+       Banner does NOT block — user can still OK / Issue / SKIP. */
+    .manual-review-banner {
+      background: #fff7e0;
+      border: 1px solid #d8a851;
+      border-left: 4px solid #c97a2c;
+      padding: 8px 12px;
+      margin: 8px 0;
+      border-radius: 4px;
+      font-size: 13px;
+      color: #6b4a14;
+    }
+    .manual-review-banner .mr-banner-title {
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+    .manual-review-banner ul {
+      margin: 4px 0 4px 16px;
+      padding: 0;
+    }
+    .manual-review-banner li {
+      margin: 2px 0;
+    }
+    .manual-review-banner code {
+      background: #ffe9b3;
+      padding: 0 4px;
+      border-radius: 2px;
+    }
+    .manual-review-banner .mr-banner-hint {
+      margin-top: 6px;
+      font-style: italic;
+      opacity: 0.85;
+    }
     .task-item.decision-ok { border-left: 4px solid #6aa181; }
     .task-item.decision-issue { border-left: 4px solid #c97a2c; }
     .task-item.decision-skip { border-left: 4px solid #8a8275; }
     .task-item.collapsed { padding: 8px 12px; opacity: 0.78; }
     .task-item.collapsed .note,
-    .task-item.collapsed .actions { display: none; }
+    .task-item.collapsed .actions,
+    .task-item.collapsed .evidence-panel,
+    .task-item.collapsed .compound-evidence,
+    .task-item.collapsed .verified-ui-panel,
+    .task-item.collapsed .discuss-card { display: none; }
     .task-item.collapsed .task-desc {
       white-space: nowrap;
       overflow: hidden;
@@ -1231,7 +2182,18 @@ function renderReviewHtml(): string {
     .state-badge.ok { background: #d6ecdf; color: #1e6042; }
     .state-badge.issue { background: #fce4c8; color: #8a4f0a; }
     .state-badge.skip { background: #e7e1d3; color: #5a5341; }
-    /* Kind badge — 在 task-id 後顯示小標籤區分 review:ui / discuss / verify:auto */
+    /* 母項有子項時，body 顯示這條提示，告知使用者回饋焦點在子項。 */
+    .parent-children-hint {
+      margin-top: 6px;
+      padding: 6px 10px;
+      border-left: 3px solid color-mix(in srgb, var(--muted) 50%, transparent);
+      background: color-mix(in srgb, var(--panel) 60%, transparent);
+      color: var(--muted);
+      font-size: 12px;
+      font-style: italic;
+      border-radius: 4px;
+    }
+    /* Kind badge — 在 task-id 後顯示小標籤區分 review:ui / discuss / verify:* */
     .kind-badge {
       display: inline-block;
       margin-left: 6px;
@@ -1246,6 +2208,170 @@ function renderReviewHtml(): string {
     .kind-badge.review-ui { background: #e6eef7; color: #2455a3; }
     .kind-badge.discuss { background: #f3e7d6; color: #8a4f0a; }
     .kind-badge.verify-auto { background: #e0eee0; color: #2a6b2a; }
+    .kind-badge.verify-e2e { background: #e8edf7; color: #284b8f; }
+    .kind-badge.verify-api { background: #dff1ec; color: #176052; }
+    .kind-badge.verify-ui { background: #f1e5f5; color: #6b347e; }
+    .self-completed-section {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #f5f1e8;
+      margin-bottom: 12px;
+      overflow: hidden;
+    }
+    .handled-divider {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin: 14px 0 8px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: .02em;
+    }
+    .handled-divider::before,
+    .handled-divider::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--line);
+    }
+    .self-completed-section summary {
+      cursor: pointer;
+      padding: 10px 12px;
+      font-weight: 700;
+      color: var(--muted);
+    }
+    .self-completed-list {
+      display: grid;
+      gap: 10px;
+      padding: 0 10px 10px;
+    }
+    .evidence-panel,
+    .compound-evidence,
+    .verified-ui-panel {
+      margin-top: 10px;
+      padding: 10px 12px;
+      border: 1px solid #b9d6c7;
+      border-radius: 6px;
+      background: #f2f8f5;
+      color: var(--ink);
+      font-size: 12px;
+      line-height: 1.5;
+    }
+    .compound-evidence {
+      display: grid;
+      gap: 8px;
+      background: #f7f5ee;
+      border-color: var(--line);
+    }
+    .evidence-panel h3,
+    .compound-evidence h3,
+    .verified-ui-panel h3 {
+      margin: 0 0 6px;
+      font-size: 13px;
+      color: var(--accent);
+    }
+    .evidence-panel p,
+    .compound-evidence p,
+    .verified-ui-panel p {
+      margin: 4px 0;
+    }
+    .evidence-panel code,
+    .compound-evidence code,
+    .verified-ui-panel code {
+      background: rgba(255, 255, 255, .72);
+      padding: 1px 4px;
+      border-radius: 3px;
+      font-size: 11px;
+    }
+    /* 任務描述等地方由 escWithBackticks 產出的 inline code；點兩下整塊選取走下面
+       document dblclick handler（光靠 CSS user-select: all 會吃掉 cursor 行為）。*/
+    code.inline-code {
+      background: rgba(30, 37, 33, .07);
+      padding: 1px 5px;
+      border-radius: 3px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: .92em;
+      word-break: break-all;
+      cursor: text;
+    }
+    .evidence-link {
+      color: var(--focus);
+      overflow-wrap: anywhere;
+    }
+    .auto-evidence-collapse {
+      border: 1px solid #b9d6c7;
+      border-radius: 6px;
+      background: #f2f8f5;
+      font-size: 12px;
+      overflow: hidden;
+    }
+    .auto-evidence-collapse > summary {
+      cursor: pointer;
+      padding: 6px 10px;
+      color: #176052;
+      font-weight: 600;
+      list-style: none;
+    }
+    .auto-evidence-collapse > summary::-webkit-details-marker { display: none; }
+    .auto-evidence-collapse > summary::before {
+      content: '▸ ';
+      display: inline-block;
+      width: 12px;
+      transition: transform .15s ease;
+    }
+    .auto-evidence-collapse[open] > summary::before { content: '▾ '; }
+    .auto-evidence-collapse[open] > summary {
+      border-bottom: 1px solid #cfe3d8;
+    }
+    .auto-evidence-collapse > .evidence-panel {
+      margin: 0;
+      border: none;
+      background: transparent;
+      border-radius: 0;
+    }
+    .evidence-missing {
+      border-color: #d8c37c;
+      background: #fff8df;
+      color: #6b5115;
+    }
+    .evidence-notice {
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 7px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 800;
+      vertical-align: middle;
+    }
+    .status-badge.status-ok { background: #d6ecdf; color: #1e6042; }
+    .status-badge.status-warn { background: #ffe9bd; color: #7a520f; }
+    .status-badge.status-bad { background: #f8d2d2; color: #8a2525; }
+    .status-badge.status-neutral { background: #e7e1d3; color: #5a5341; }
+    .verified-ui-image {
+      display: block;
+      width: 100%;
+      max-height: 360px;
+      object-fit: contain;
+      margin-top: 8px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      cursor: zoom-in;
+    }
+    .verified-ui-image:hover {
+      border-color: var(--accent, #5a8dee);
+    }
+    .task-item.kind-automatic {
+      background: #f3faf6;
+    }
+    .task-item.kind-verify-ui {
+      background: #fbf7fc;
+    }
     /* verify:auto evidence chip — 在 task-head 顯示「agent 已驗」+ tooltip 顯示 (verified-auto: ...) 內容 */
     .verified-auto-chip {
       display: inline-block;
@@ -1310,6 +2436,43 @@ function renderReviewHtml(): string {
       background: #fffefa;
       color: var(--ink);
     }
+    /* 額外發現 disclosure — 與 ok/issue/skip 主要按鈕並列在 actions 之後，
+       預設收合，hasFinding 時 server 端寫回後 open 起來方便繼續編輯。 */
+    details.finding {
+      margin-top: 8px;
+      font-size: 12px;
+    }
+    details.finding > summary {
+      cursor: pointer;
+      color: var(--muted);
+      padding: 4px 0;
+      user-select: none;
+      list-style: none;
+    }
+    details.finding > summary::-webkit-details-marker { display: none; }
+    details.finding > summary:hover { color: var(--ink); }
+    details.finding[open] > summary { color: var(--ink); margin-bottom: 6px; }
+    .finding-input {
+      width: 100%;
+      min-height: 44px;
+      padding: 8px 10px;
+      border-radius: 6px;
+      border: 1px solid var(--line);
+      resize: vertical;
+      background: #fffefa;
+      color: var(--ink);
+      font-size: 12px;
+    }
+    /* 已註記 item 在 collapsed 狀態下，state-badge 旁的 📝 提示「有額外發現」 */
+    .finding-indicator {
+      display: inline-block;
+      margin-left: 6px;
+      font-size: 13px;
+      cursor: help;
+      opacity: 0.85;
+    }
+    /* discuss / automatic kind 不走人工確認，連帶隱藏 finding disclosure */
+    .task-item.kind-discuss details.finding { display: none; }
     .screenshot-pane {
       min-width: 0;
       border-left: 1px solid var(--line);
@@ -1585,12 +2748,29 @@ function renderReviewHtml(): string {
     .copy-handoff-btn:hover {
       background: color-mix(in srgb, var(--accent) 18%, var(--panel));
     }
+    .copy-handoff-btn[hidden] {
+      display: none;
+    }
     .copy-handoff-btn.block {
       display: inline-flex;
       margin-top: 10px;
       margin-left: 0;
       padding: 6px 14px;
       font-size: 13px;
+    }
+    .copy-handoff-btn.group {
+      margin-left: 0;
+      text-transform: none;
+      letter-spacing: 0;
+      font-size: 11px;
+      padding: 3px 10px;
+    }
+    .change-group-heading.with-action {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      padding-right: 4px;
     }
 
     /* ── handoff prompt fallback modal（clipboard API 失敗時顯示） ── */
@@ -1670,6 +2850,7 @@ function renderReviewHtml(): string {
       <section class="review-pane">
         <div class="toolbar">
           <h2 id="currentTitle">選擇一個 change 開始</h2>
+          <button id="evidenceSweepButton" class="copy-handoff-btn" type="button" hidden title="複製整張 change 的補 evidence prompt — 讓新 Claude session 一次跑 /spectra-apply Step 8a 補齊所有缺項">📋 補齊全 change 缺失 evidence</button>
           <button id="reloadButton" type="button" title="重新載入目前 change">重新載入</button>
         </div>
         <div id="banner" class="banner"></div>
@@ -1726,11 +2907,15 @@ function renderReviewHtml(): string {
       current: null,
       activeIndex: 0,
       expanded: new Set(),
+      selfCompletedOpen: false,
       // draftNotes: 使用者在 textarea 輸入但尚未 saveAction 的內容；以 itemId 為 key。
       // renderTasks 會整個重設 innerHTML 觸發 textarea 重建，沒這層 cache 會把
       // 使用者打字內容沖掉（renderTasks 由點 task / j/k / saveAction / reopen
       // 等多處觸發）。saveAction 成功後清掉該 id（server 已存進 raw）。
       draftNotes: {},
+      // 母項（#3）若有子項（#3.1、#3.2...），UI 不顯示按鈕跟 textarea — 使用者只對子項回饋。
+      // 由 rebuildParentChildrenIndex 在 loadChange 後重建。
+      parentsWithChildren: new Set(),
       // repoRoot / repoName 由啟動時 fetch /api/health 填入，給 handoff prompt 用。
       // 若 health fetch 失敗仍要讓 GUI 可用，prompt 會 fallback 顯示「(unknown)」。
       repoRoot: '',
@@ -1740,6 +2925,7 @@ function renderReviewHtml(): string {
       changeStatus: document.getElementById('changeStatus'),
       changeList: document.getElementById('changeList'),
       currentTitle: document.getElementById('currentTitle'),
+      evidenceSweepButton: document.getElementById('evidenceSweepButton'),
       reloadButton: document.getElementById('reloadButton'),
       banner: document.getElementById('banner'),
       taskList: document.getElementById('taskList'),
@@ -1757,6 +2943,60 @@ function renderReviewHtml(): string {
       promptFallbackSelectAll: document.getElementById('promptFallbackSelectAll'),
       promptFallbackClose: document.getElementById('promptFallbackClose'),
     };
+
+    // ── URL <-> state 同步 ──
+    // path '/review/<change>' 對應 state.current.name
+    // hash '#item-<id>' 對應當前 active task item.id
+    // 點 change 用 pushState（可 back 回 list view），切 task 用 replaceState
+    // （避免 history 被連續按 j/k 灌爆）。reload / 分享 URL 由 client 啟動時
+    // parseLocationTarget 解析後 deep-link。
+    // 註：此 comment / 下方 helper 內**禁用** raw backtick — 整段 client JS
+    // 嵌在 outer template literal 內，raw backtick 會提早結束 template。
+    function parseLocationTarget() {
+      const path = window.location.pathname || '';
+      // regex 用 [/] 而非 \\/ — outer template literal 會把 \\/ 縮成 /，瀏覽器
+      // 拿到 /^/review/(.+)$/ → flag 'r' 不合法 → Uncaught SyntaxError: Invalid
+      // regular expression flags。[/] 等價且不受 template literal escape 影響。
+      const m = path.match(/^[/]review[/](.+)$/);
+      let change = null;
+      if (m) {
+        try { change = decodeURIComponent(m[1]); } catch (_) { change = m[1]; }
+      }
+      const hash = window.location.hash || '';
+      let itemId = null;
+      if (hash.indexOf('#item-') === 0) {
+        try { itemId = decodeURIComponent(hash.slice(6)); } catch (_) { itemId = hash.slice(6); }
+      }
+      return { change: change, itemId: itemId };
+    }
+    function urlForChange(name) {
+      return '/review/' + encodeURIComponent(name);
+    }
+    function urlForItem(name, itemId) {
+      return urlForChange(name) + '#item-' + encodeURIComponent(itemId);
+    }
+    function pushChangeUrl(name) {
+      const target = name ? urlForChange(name) : '/review';
+      const currentFull = window.location.pathname + window.location.hash;
+      if (currentFull === target) return;
+      history.pushState({ change: name, itemId: null }, '', target);
+    }
+    function replaceItemUrl(name, itemId) {
+      let target;
+      if (name && itemId) target = urlForItem(name, itemId);
+      else if (name) target = urlForChange(name);
+      else target = '/review';
+      const currentFull = window.location.pathname + window.location.hash;
+      if (currentFull === target) return;
+      history.replaceState({ change: name, itemId: itemId }, '', target);
+    }
+    function syncActiveItemUrl() {
+      const change = state.current;
+      if (!change) return;
+      const item = change.items && change.items[state.activeIndex];
+      if (!item) return;
+      replaceItemUrl(change.name, item.id);
+    }
 
     // 從截圖檔名擷取 item id token。支援 #N-、#N.M-、Nb-、N.Ma- 等變體。
     // 同時回傳是否為 legacy 格式（無 # 前綴）— legacy fallback 只能套用在 legacy
@@ -1797,6 +3037,12 @@ function renderReviewHtml(): string {
       if (kind === 'skip') return '⤵ 已跳過';
       return '待檢查';
     }
+    // 與 ok/issue/skip 正交：finding 是「除了主要結論之外順手記下的觀察」，
+    // 通常是 TD 候選，可單獨存在也可跟任一主要 action 共存。
+    function parseFinding(raw) {
+      const m = raw.match(/（finding:[ ]*([^）]*)）/);
+      return m ? m[1].trim() : '';
+    }
 
     function fileMatchesItem(filename, itemId) {
       const extracted = extractFilenameId(filename);
@@ -1816,6 +3062,52 @@ function renderReviewHtml(): string {
       return String(value ?? '').replace(/[&<>"']/g, function (ch) {
         return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch];
       });
+    }
+
+    // 切出 backtick-wrapped inline code，包成 <code class="inline-code">。配合下方
+    // 全域 dblclick handler 達成「點兩下整塊選取」(/ 等符號 break default word
+    // selection)。regex 內 backtick 用 \\u0060 escape（raw 寫法會把外層 template
+    // literal 提早結束），\\n 是外層跳脫過的 \\n，禁止 inline code 跨行。
+    function escWithBackticks(value) {
+      const s = String(value ?? '');
+      const tickRe = /\u0060([^\u0060\\n]+)\u0060/g;
+      let out = '';
+      let last = 0;
+      for (const m of s.matchAll(tickRe)) {
+        out += esc(s.slice(last, m.index));
+        out += '<code class="inline-code">' + esc(m[1]) + '</code>';
+        last = m.index + m[0].length;
+      }
+      out += esc(s.slice(last));
+      return out;
+    }
+
+    // 對 raw 字串切出 http(s) URL，URL/text 兩段各自 esc 後拼回。
+    // 比「先 esc 再掃 URL」安全：raw 字串內的 quote 與 ampersand 邊界仍是原樣，
+    // URL regex 能正確判斷終點；先 esc 後 URL 末端會把 entity 吃進去。
+    // 非 URL 段落交給 escWithBackticks 處理 backtick → <code>。
+    // regex 字符類用顯式列舉取代 \\s — 同 extractFilenameId / parseDecision。
+    function escWithLinks(value) {
+      const s = String(value ?? '');
+      const urlRe = /(https?:[/][/][^\\s<>"'\u0060)]+)/g;
+      let out = '';
+      let last = 0;
+      for (const m of s.matchAll(urlRe)) {
+        out += escWithBackticks(s.slice(last, m.index));
+        let url = m[0];
+        let trailing = '';
+        while (url.length && '.,!?)'.indexOf(url[url.length - 1]) !== -1) {
+          trailing = url.slice(-1) + trailing;
+          url = url.slice(0, -1);
+        }
+        if (url) {
+          out += '<a href="' + esc(url) + '" target="_blank" rel="noopener noreferrer">' + esc(url) + '</a>';
+        }
+        out += esc(trailing);
+        last = m.index + m[0].length;
+      }
+      out += escWithBackticks(s.slice(last));
+      return out;
     }
 
     function showBanner(message, type) {
@@ -1855,11 +3147,14 @@ function renderReviewHtml(): string {
     // 即便丟到一個沒讀過 CLAUDE.md / 沒 conversation history 的 cleanroom Claude
     // session 也能直接接手。指示寫硬性使用 codebase-memory-mcp，對齊 user
     // global CLAUDE.md 的 Code Discovery rule。
-    function handoffHeader(change) {
+    function handoffHeader(change, ctx) {
       const repoName = state.repoName || '(unknown)';
       const repoRoot = state.repoRoot || '(unknown)';
       const changeName = change ? change.name : '(unknown)';
-      return [
+      const item = (ctx && ctx.item) || null;
+      const kinds = item ? itemKinds(item) : null;
+      const kindLine = kinds && kinds.length ? '- item kind: ' + kinds.join(' + ') : null;
+      const lines = [
         '我在 consumer repo「' + repoName + '」（路徑：' + repoRoot + '）',
         '跑 \`pnpm review:ui\` 做 spectra 人工檢查，遇到下面這個問題需要你接手分析、提方案，',
         '等我確認後再動手。',
@@ -1869,12 +3164,18 @@ function renderReviewHtml(): string {
         '- repo root: ' + repoRoot,
         '- change: ' + changeName,
         '- tasks.md: openspec/changes/' + changeName + '/tasks.md',
+      ];
+      if (kindLine) lines.push(kindLine);
+      lines.push(
         '- 相關 rules（若存在請優先讀）：',
-        '  - .claude/rules/manual-review-format.md',
-        '  - .claude/rules/screenshot-organization.md',
+        '  - .claude/rules/manual-review.md（item kind marker / decision 語法 / Pre-Review Data Readiness）',
+        '  - .claude/rules/screenshot-strategy.md（截圖檔名 / 路徑 / 變體規範）',
+        '  - .claude/rules/fixtures-reference.md（sample / URL / scoped sub-items 必備樣態）',
+        '  - .claude/rules/tech-debt-routing.md（決定 TD 該登 clade 還是 consumer）',
         '  - openspec/AGENTS.md（spectra 工作流）',
         '',
-      ].join('\\n');
+      );
+      return lines.join('\\n');
     }
     function handoffFooter() {
       return [
@@ -1890,7 +3191,22 @@ function renderReviewHtml(): string {
         '3. 提出處理方案：列出要動哪些檔、影響什麼、為何這樣修，**等我確認後再改**',
         '4. 不要急著動手——這是 plan-first 工作流；急著動手 = 違反 user 規則',
         '',
+        '',
+        handoffStillVisibleNote(),
+        '',
         '回覆時請先說「我看到的現況是 ...」再給方案，不要只回方案。',
+      ].join('\\n');
+    }
+    // 給「按鈕還在」狀況的固定指引：問題不在 consumer 而在 clade 中央倉。
+    // 三類根因都有可能：實際改動沒落地 / GUI 偵測 false positive / 這份 prompt 講不清楚。
+    function handoffStillVisibleNote() {
+      return [
+        '## 若處理完後 review:ui 同一顆按鈕還顯示',
+        '代表 GUI 偵測條件還沒消除——根因有三種，**全部**回到 \`~/offline/clade\` 改，不要在 consumer 改：',
+        '1. 改動沒真的落地 → 跑 \`git diff\` / \`git status\` 確認；review:ui home 也要重新整理',
+        '2. review:ui 偵測邏輯 false positive（按鈕條件本來就不該成立）→ 改 \`~/offline/clade/vendor/scripts/review-gui.mts\` 的偵測函式，跑 \`vp check && node scripts/publish.mjs patch && node scripts/propagate.mjs\`',
+        '3. 這份 prompt 講不清楚導致沒抓對根因 → 改 \`~/offline/clade/vendor/scripts/review-gui.mts\` 的 \`buildHandoffPrompt\`（或對應 group 段）後 propagate',
+        'consumer 端的 \`scripts/review-gui.mts\` 是 clade 投影（LOCKED + chmod 444），直接改會被下次 propagate 蓋回去。',
       ].join('\\n');
     }
     function buildHandoffPrompt(kind, ctx) {
@@ -1966,7 +3282,7 @@ function renderReviewHtml(): string {
           '\`\`\`',
           '',
           '請：',
-          '- 確認檔名與 item id 的對應規範（見 .claude/rules/screenshot-organization.md 或 plugins/hub-core/agents/screenshot-review.md）',
+          '- 確認檔名與 item id 的對應規範（見 .claude/rules/screenshot-strategy.md §檔名強制規範，或 plugins/hub-core/agents/screenshot-review.md）',
           '- 若是命名漂掉，提議 rename 方案（map old → new，不要直接 mv）',
           '- 若是 item id 與設計不符（例如 tasks.md 是 #3 但截圖意圖是 #3.1 sub-item），建議改 tasks.md 結構',
         ].join('\\n');
@@ -2000,6 +3316,21 @@ function renderReviewHtml(): string {
         const item = ctx.item || {};
         const note = ctx.note || '';
         const matchedFiles = ctx.matchedFiles || [];
+        const hits = Array.isArray(item.manualReviewHits) ? item.manualReviewHits : [];
+        const hitLines = hits.length
+          ? [
+              '',
+              '## Pre-Review Data Readiness 命中（review:ui client-side 偵測）',
+              ''
+            ].concat(
+              hits.map(function (h) {
+                return '- \`' + h.code + '\` — ' + h.description + '（rule: .claude/rules/' + h.anchor + '）';
+              })
+            ).concat([
+              '',
+              '這些 pattern 通常代表 proposal 階段 sample / URL / scoped sub-item 沒寫齊。處理 issue 時先判斷：root cause 是不是「proposal 不完整導致截圖難對焦」而非「實作 bug」。',
+            ])
+          : [];
         body = [
           '## 問題：人工檢查標記為 ⚠ 有問題（issue），需要 root cause + 修法',
           '',
@@ -2014,17 +3345,354 @@ function renderReviewHtml(): string {
           '',
           '已配對的截圖（' + matchedFiles.length + ' 張）：',
           matchedFiles.length ? matchedFiles.map(function (n) { return '- ' + n; }).join('\\n') : '- (無)',
+        ].concat(hitLines).concat([
           '',
           '請把上面 issue 說明當 bug report 處理：',
           '1. 用 codebase-memory-mcp 找出這個 item 對應的 feature 在哪實作（從 description 抓 keyword → search_graph）',
           '2. trace_path 看相關 call chain，定位根因（不要急著看 symptom）',
           '3. 提修法：列要動的檔、影響範圍、是否需要新測試、是否需要更新 spec',
-          '4. 若根因在 spec / 設計層級（不是 bug 而是 missing requirement），建議走 /spectra-ingest 改 proposal 而非直接改 code',
+          '4. 修法路由（看 .claude/rules/tech-debt-routing.md）：',
+          '   - 根因是 spec / 設計層級缺漏 → \`/spectra-ingest\` 改 proposal',
+          '   - 根因是 code bug 但影響窄、可延後 → 登 docs/tech-debt.md TD-NNN',
+          '   - 根因跨多個 consumer / 在投影層（clade 中央倉）→ 提示要去 clade 改，不要在當前 consumer 改',
+          '   - 純 bug 當下可修 → 提方案等確認後改',
+        ]).join('\\n');
+      } else if (kind === 'manual-review-readiness') {
+        const item = ctx.item || {};
+        const hits = Array.isArray(item.manualReviewHits) ? item.manualReviewHits : [];
+        const hitLines = hits.length
+          ? hits.map(function (h) {
+              return '- \`' + h.code + '\` — ' + h.description + '（rule: .claude/rules/' + h.anchor + '）';
+            }).join('\\n')
+          : '- (無)';
+        const cn = change ? change.name : '<change>';
+        body = [
+          '## 問題：Pre-Review Data Readiness 命中（review:ui 提示 proposal 資料不完整）',
+          '',
+          'Item：',
+          '- id: ' + (item.id || '(unknown)'),
+          '- description: ' + (item.description || '(無)'),
+          '',
+          '命中 pattern（' + hits.length + ' 個）：',
+          hitLines,
+          '',
+          '這些 pattern 代表 proposal 階段沒寫齊：缺具體 sample / URL / scoped sub-items / 截圖目標 / 驗收條件等，導致 review:ui 看到 item 時很難對焦（不知道要拍什麼、不知道哪段 UI 要驗）。這是 warning 不是 block——但通常代表 proposal 該補資料而非直接 OK / SKIP 過。',
+          '',
+          '請：',
+          '1. 讀 \`openspec/changes/' + cn + '/proposal.md\` + \`tasks.md\` 看當前描述',
+          '2. 對命中的每個 pattern，依 \`.claude/rules/manual-review.md\` §Pre-Review Data Readiness 與相關 rule（見上面 anchor）判斷該補哪類資料',
+          '3. 用 \`/spectra-ingest\` 流程提議補強：',
+          '   - 缺 sample → 找實際 fixture / URL / 內容範例',
+          '   - 缺 scoped sub-items → 拆成 #N.1 / #N.2 等可獨立驗的 sub-item',
+          '   - 缺驗收條件 → 補 expected behavior / screenshot intent',
+          '4. 等我確認後再寫進 tasks.md / proposal.md（plan-first）',
+          '',
+          '若評估後判斷 proposal 已足夠（pattern 屬 false positive），直接回報「不用補」並說明理由即可，我會在 review:ui 直接 OK / Issue / SKIP 帶過 warning。',
+        ].join('\\n');
+      } else if (kind === 'health-check-group') {
+        // Group-level prompt：只列 readinessHits > 0 的 change（Pre-Review Data Readiness pattern hits）。
+        // 核心訴求是「分類後只回報 bug 候選，WIP / false positive 完全不要列」。
+        // 跳開 handoffHeader/footer 自組（涉及多 change）。
+        const list = Array.isArray(ctx.healthCheckChanges) ? ctx.healthCheckChanges : [];
+        const repoName = state.repoName || '(unknown)';
+        const repoRoot = state.repoRoot || '(unknown)';
+        const lines = [
+          '我在 consumer repo「' + repoName + '」（路徑：' + repoRoot + '）',
+          '跑 \`pnpm review:ui\` 做 spectra 人工檢查，home page 有 ' + list.length + ' 張 change 落在',
+          '「🩺 需健康檢查介入」這群——Pre-Review Data Readiness pattern hit（spec / data 不齊），',
+          '請逐張讀 \`openspec/changes/<change>/proposal.md\` 與 \`tasks.md\` 分類後只回報 bug 候選。',
+          '',
+          '## 環境',
+          '- consumer: ' + repoName,
+          '- repo root: ' + repoRoot,
+          '',
+          '## 命中的 changes（共 ' + list.length + ' 張）',
+          '',
+        ];
+        for (const c of list) {
+          const summary = summarizeHits(c.hitsByCode) || '(無 code 細節)';
+          lines.push('- \`' + c.name + '\` — ' + summary);
+        }
+        lines.push(
+          '',
+          '## 相關 rules（必讀）',
+          '- .claude/rules/manual-review.md（pattern code 對應的判斷準則 + Pre-Review Data Readiness 段）',
+          '- .claude/rules/fixtures-reference.md（sample / URL / scoped sub-items 樣態）',
+          '- .claude/rules/tech-debt-routing.md（修法路由：clade vs consumer / TD vs spec）',
+          '- openspec/AGENTS.md（spectra 工作流）',
+          '',
+          '## 你要做的事',
+          '',
+          '對每張 change 跑下面流程：',
+          '',
+          '1. 讀 \`openspec/changes/<change>/proposal.md\` 與 \`tasks.md\` 看當前狀態，把該 change 分到以下其一：',
+          '   - **(A) WIP / 還沒寫完 / 留待之後補**——proposal 還在打草稿、sample/URL 尚未補、相關 task 還沒動工。pattern 命中只是因為資料尚未到位，這是預期狀態。',
+          '   - **(B) bug 或規範違反**——spec 已完成但 item 內容與 spec 不符 / 違反 manual-review.md 規定（例：URL 寫了但對不上、multi-step 該拆但被合併、kind marker 用錯）。',
+          '   - **(C) false positive**——pattern 命中但不適用（例：item 是 backend-only，本來就不需 URL）。',
+          '',
+          '2. **只對 (B) 類回報**，每條給：',
+          '   - change name + item id',
+          '   - 命中的 pattern code + 違規證據（引 spec / 引實作位置）',
+          '   - 建議修法（要動哪些檔，依 \`.claude/rules/tech-debt-routing.md\` 路由：spec 缺漏 → \`/spectra-ingest\`；代碼 bug 影響窄 → \`docs/tech-debt.md\` TD-NNN；clade 投影層 → 提示去 clade 改）',
+          '',
+          '3. **(A) 與 (C) 完全不要列出**——不要寫「以下是略過的」「以下是 false positive」這類段落，那只是徒增噪音。',
+          '',
+          '4. **如果全部都是 (A) 或 (C)**：直接一句「全部都是 WIP / false positive，不用介入」結束。',
+          '',
+          '## 全域規矩',
+          '- **MUST** 用 codebase-memory-mcp 探索（search_graph / trace_path / get_code_snippet）；graph 未 index 先跑 index_repository',
+          '- Grep / Glob / Read 只用於非程式碼檔（.md / config / .env）',
+          '- plan-first，bug 候選列出來等我確認後再改',
+          '',
+          handoffStillVisibleNote(),
+          '',
+          '回覆時請先說「我看到的現況是 ...」再給 bug 清單（若有）。',
+        );
+        return lines.join('\\n');
+      } else if (kind === 'apply-pending-group') {
+        // Group-level prompt：只列「純 evidence missing」的 change（無 pattern hit）。
+        // 核心訴求是「一次性跑 /spectra-apply Step 8a Verify Channel，不要逐 item triage」。
+        // 此 group 跑完後該群就清空、對應 change 進 ready 群。
+        const list = Array.isArray(ctx.applyPendingChanges) ? ctx.applyPendingChanges : [];
+        const repoName = state.repoName || '(unknown)';
+        const repoRoot = state.repoRoot || '(unknown)';
+        let totalItems = 0;
+        let totalPairs = 0;
+        for (const c of list) {
+          if (!Array.isArray(c.evidenceMissing)) continue;
+          for (const m of c.evidenceMissing) {
+            totalItems++;
+            totalPairs += (m.kinds || []).length;
+          }
+        }
+        const lines = [
+          '我在 consumer repo「' + repoName + '」（路徑：' + repoRoot + '）',
+          '跑 \`pnpm review:ui\` 做 spectra 人工檢查，home page 有 ' + list.length + ' 張 change 落在',
+          '「⏳ 等 apply 後就可處理」這群——item 標了 \`[verify:e2e/api/ui]\` 但缺對應 \`(verified-*:)\` annotation。',
+          '**這類不是 bug、不需 triage**，直接依 \`/spectra-apply\` skill **Step 8a Verify Channel Pass** 一次補齊。',
+          '',
+          '## 環境',
+          '- consumer: ' + repoName,
+          '- repo root: ' + repoRoot,
+          '',
+          '## 缺 evidence 清單（共 ' + list.length + ' 張 change · ' + totalItems + ' item · ' + totalPairs + ' pair）',
+        ];
+        for (const c of list) {
+          lines.push('', '### \`' + c.name + '\`');
+          if (!Array.isArray(c.evidenceMissing)) continue;
+          for (const m of c.evidenceMissing) {
+            const desc = m.description ? ' — ' + m.description : '';
+            lines.push('- ' + m.itemId + ' [' + (m.kinds || []).join(' + ') + ']' + desc);
+          }
+        }
+        lines.push(
+          '',
+          '## 補 evidence 的規矩',
+          '',
+          '1. 先做整批 pre-verify baseline check（依出現的 channel 種類）：',
+          '   - 有 \`[verify:e2e]\`：確認 Playwright config + e2e fixtures',
+          '   - 有 \`[verify:api]\`：確認 \`__test-login\` 或等價 session bypass route',
+          '   - 有 \`[verify:ui]\`：確認 \`supabase/seed.sql\` 或 seed 等價檔',
+          '   - 缺 baseline → **STOP**，回報 user 補齊；**NEVER** 降級 channel',
+          '',
+          '2. 對每個 item 依 e2e → api → ui 順序補對應 evidence；每完成一個 channel 立刻 Edit tasks.md 寫對應 \`(verified-*:)\` annotation（不要等到最後一起寫）',
+          '',
+          '3. 全部完成後請 user 在 review:ui 重新整理；含 \`verify:ui\` 的 item checkbox 仍保留 \`[ ]\` 等 user 在 GUI 視覺確認',
+          '',
+          '4. 任一 channel 通不過 → 保留 \`[ ]\` + 寫 \`（issue: ...）\`；**NEVER** 寫不成功的 \`(verified-*:)\` annotation',
+          '',
+          'Cookbook 與範本：\`<clade-vendor>/snippets/verify-channels/README.md\`',
+          '',
+          '## 全域規矩',
+          '- **MUST** 用 codebase-memory-mcp 探索（search_graph / trace_path / get_code_snippet）；graph 未 index 先跑 index_repository',
+          '- Grep / Glob / Read 只用於非程式碼檔（.md / config / .env）',
+          '- 可直接照 Step 8a 流程跑，不需等確認；唯一例外是 baseline 缺漏要先 STOP',
+          '',
+          handoffStillVisibleNote(),
+          '',
+          '回覆時請先說「我看到的現況是 ...」再給 evidence 補齊計劃。',
+        );
+        return lines.join('\\n');
+      } else if (kind === 'feedback-given-group') {
+        // Group-level prompt：user 已點完 N 張 change 的所有可動 item（review:ui / verify:ui），
+        // 剩下的 pending 都是 user 點不到的 — issue 註記、verify:api/e2e 自動驗證 evidence、
+        // discuss 議題。請 Claude 一次接手做 root cause / evidence 檢視 / 議題推進 + 路由。
+        // 與 not-ready-group 一樣跳開 handoffHeader/footer 自組（涉及多 change）。
+        const list = Array.isArray(ctx.feedbackChanges) ? ctx.feedbackChanges : [];
+        const repoName = state.repoName || '(unknown)';
+        const repoRoot = state.repoRoot || '(unknown)';
+        const lines = [
+          '我在 consumer repo「' + repoName + '」（路徑：' + repoRoot + '）',
+          '跑 \`pnpm review:ui\` 做 spectra 人工檢查，已對 ' + list.length + ' 張 change 的所有 user 可動 item（review:ui / verify:ui）',
+          '完成 OK / Issue 標記。剩下的 pending item 都是我點不到的——',
+          '請逐張讀 \`openspec/changes/<change>/tasks.md\` 把這三種接手分析做完：',
+          '',
+          '1. \`（issue: <note>）\` 註記 → root cause + 修法路由',
+          '2. \`[verify:api]\` / \`[verify:e2e]\` item 帶 \`(verified-*: ...)\` 但仍 \`[ ]\` → 看 evidence 是否合理',
+          '3. \`[discuss]\` item 仍 \`[ ]\` → 摘要議題、補上下文、給建議方向',
+          '',
+          '## 環境',
+          '- consumer: ' + repoName,
+          '- repo root: ' + repoRoot,
+          '',
+          '## 命中的 changes（共 ' + list.length + ' 張）',
+        ];
+        for (const c of list) {
+          const issued = c.issued || 0;
+          const tail = issued > 0 ? issued + ' 個 issue + verify/discuss 剩餘' : '無 issue，僅 verify/discuss 剩餘';
+          lines.push('- \`' + c.name + '\` — ' + tail);
+        }
+        lines.push(
+          '',
+          '## 相關 rules（必讀）',
+          '- .claude/rules/manual-review.md（issue 註記語意 + Pre-Review Data Readiness + verify channel）',
+          '- .claude/rules/tech-debt-routing.md（修法路由：clade vs consumer / TD vs spec / spectra-ingest）',
+          '- openspec/AGENTS.md（spectra 工作流）',
+          '',
+          '## 你要做的事',
+          '',
+          '對每張 change 跑下面流程：',
+          '',
+          '### Step 1：讀 \`openspec/changes/<change>/tasks.md\` 把三類項目抓齊',
+          '- **(I) issue 註記**：所有 \`- [ ] ... （issue: <note>）\` 或 \`- [x] ... （issue: <note>）\` 行',
+          '- **(V) auto-verified pending**：標 \`[verify:api]\` / \`[verify:e2e]\` 且帶 \`(verified-api: ...)\` 或 \`(verified-e2e: ...)\` annotation 但仍 \`[ ]\` 的 item',
+          '- **(D) discuss 議題**：標 \`[discuss]\` 仍 \`[ ]\` 的 item',
+          '',
+          '一張 change 三類可能全有 / 全無，按實況列。',
+          '',
+          '### Step 2：對每個項目做對應分析',
+          '',
+          '**(I) issue 註記** → root cause 分析',
+          '- 用 codebase-memory-mcp（search_graph / trace_path / get_code_snippet）定位 item 對應的 feature 在哪實作',
+          '- 從 issue note 描述的 symptom 反推根因（不要急著看 symptom）',
+          '- 必要時補讀 \`proposal.md\` 看當初設計意圖',
+          '',
+          '**(V) auto-verified pending** → evidence 合理性檢視',
+          '- 讀 annotation 的 method / url / status / body hash / timestamp',
+          '- 對照該 item 預期行為（item description）：status code 對嗎？body fingerprint 有意義嗎？timestamp 在本次 apply 範圍內嗎？',
+          '- 合理 → 建議翻 \`[x]\`；不合理 → 建議改標 issue（指出 evidence 跟期望不符的點）；或建議補做更細的驗證',
+          '',
+          '**(D) discuss 議題** → 議題推進',
+          '- 用 codebase-memory-mcp 把 item description 涉及的 schema / config / migration 抓出來',
+          '- 補上下文（目前實作狀態、相關 commit、proposal.md 設計動機）',
+          '- 給建議方向（這個 production deploy check 怎麼做最有效？是否要寫 SQL? 是否要先補 fixture?）',
+          '',
+          '### Step 3：依 \`.claude/rules/tech-debt-routing.md\` 路由',
+          '- **(A) spec / 設計層級缺漏** → \`/spectra-ingest\` 改 proposal.md / tasks.md',
+          '- **(B) code bug 影響窄、可延後** → 登 \`docs/tech-debt.md\` 開 TD-NNN',
+          '- **(C) 純 bug 當下可修** → 提方案等確認後改',
+          '- **(D) 根因在 clade 投影層（rules / skills / vendor scripts）** → 提示要去 \`~/offline/clade\` 改源，不要在 consumer 改',
+          '- **(E) false positive / item 應改回 OK 或翻 [x]** → 說明理由',
+          '',
+          '## 輸出格式',
+          '',
+          '每張 change 一段，按 (I) / (V) / (D) 分小節：',
+          '',
+          '\`\`\`',
+          '### <change-name>',
+          '',
+          '**(I) issue 註記（N 項）**',
+          '- **#<item-id>** — <一句話描述 issue>',
+          '  - root cause: <分析結果，附 file:line 證據>',
+          '  - 路由: (A) / (B) / (C) / (D) / (E)',
+          '  - 建議: <具體要動的檔 / 開 TD / 改 proposal / 改回 OK 的理由>',
+          '',
+          '**(V) auto-verified pending（N 項）**',
+          '- **#<item-id>** — <annotation 摘要>',
+          '  - 評估: <evidence 是否合理；對照 item description>',
+          '  - 路由: (A) / (B) / (C) / (D) / (E)',
+          '  - 建議: <翻 [x] / 改標 issue / 補驗證 / ...>',
+          '',
+          '**(D) discuss 議題（N 項）**',
+          '- **#<item-id>** — <議題摘要>',
+          '  - 上下文: <相關實作狀態、commit、proposal 意圖>',
+          '  - 路由: (A) / (B) / (C) / (D) / (E)',
+          '  - 建議: <具體推進方向>',
+          '\`\`\`',
+          '',
+          '## 規矩',
+          '- **MUST** 用 codebase-memory-mcp 探索；graph 未 index 先跑 index_repository',
+          '- Grep / Glob / Read 只用於非程式碼檔（.md / config / .env）',
+          '- **plan-first**：列完三類項目的分析 + 路由建議後**停下**等我確認，不要直接動手改檔',
+          '- 路由到 (D) clade 投影層的，列清楚但**不要**自己跨 repo 動手——那要切到 clade session 處理',
+          '- 沒命中項目的小節（例如某 change 無 issue）可直接寫「無」省略，不要硬湊',
+          '',
+          handoffStillVisibleNote(),
+        );
+        return lines.join('\\n');
+      } else if (kind === 'evidence-fillin-item') {
+        const item = ctx.item || {};
+        const missingKinds = Array.isArray(ctx.missingKinds) ? ctx.missingKinds : [];
+        const changeName = change ? change.name : '<change-name>';
+        const labelFor = function (k) {
+          if (k === 'e2e') return '- \`[verify:e2e]\` — 需要 Playwright spec round-trip';
+          if (k === 'api') return '- \`[verify:api]\` — 需要 HTTP round-trip evidence';
+          if (k === 'ui') return '- \`[verify:ui]\` — 需要 final-state screenshot + DOM observation';
+          return '- (unknown channel: ' + k + ')';
+        };
+        const channelLines = missingKinds.map(labelFor).join('\\n') || '- (無)';
+        body = [
+          '## 問題：人工檢查 item 缺 verify 證據（review:ui 顯示 evidence missing）',
+          '',
+          'Item：',
+          '- id: ' + (item.id || '(unknown)'),
+          '- description: ' + (item.description || '(無)'),
+          '',
+          '缺的 channel（共 ' + missingKinds.length + ' 個）：',
+          channelLines,
+          '',
+          '請依 \`/spectra-apply\` skill **Step 8a Verify Channel Pass** 對這個 item 補齊 evidence：',
+          '',
+          '1. Pre-verify baseline check（依該 channel）：',
+          '   - \`[verify:e2e]\`：Playwright config + e2e fixtures 必須存在',
+          '   - \`[verify:api]\`：\`__test-login\` 或等價 session bypass route 必須存在',
+          '   - \`[verify:ui]\`：\`supabase/seed.sql\` 或 seed 等價檔必須存在',
+          '   - 缺 baseline → **STOP**，回報 user 補齊；**NEVER** 降級 channel',
+          '',
+          '2. 依 channel 執行（cookbook 在 \`<clade-vendor>/snippets/verify-channels/\`）：',
+          '   - \`[verify:e2e]\`：寫並跑 \`e2e/verify/' + changeName + '/<topic>.spec.ts\` → pass 後 Edit tasks.md 加 \`(verified-e2e: <ISO-8601> spec=... trace=...)\`',
+          '   - \`[verify:api]\`：跑 HTTP round-trip → pass 後 Edit tasks.md 加 \`(verified-api: <ISO-8601> METHOD URL STATUS[ body=<sha256-12chars>])\`',
+          '   - \`[verify:ui]\`：default 走 codex dispatcher（\`node <clade-vendor>/scripts/codex-dispatch-screenshot-verify.mjs --change ' + changeName + ' --consumer-path . --dev-server-url <url> --items-json <items.json>\`）；fallback 走 \`screenshot-review\` subagent → PASS 後 Edit tasks.md 加 \`(verified-ui: <ISO-8601> screenshot=screenshots/local/' + changeName + '/#' + (item.id || '<id>') + '-final.png[ dom=<obs>])\`',
+          '',
+          '3. 多 channel 順序 **MUST** e2e → api → ui',
+          '',
+          '4. evidence 通不過：保留 \`[ ]\` + 寫 \`（issue: ...）\` 或回報 blocker；**NEVER** 寫不成功的 \`(verified-*:)\` annotation',
+          '',
+          '完成後 review:ui 對應 panel 會從 evidence missing 改顯示 evidence link。',
+        ].join('\\n');
+      } else if (kind === 'evidence-fillin-change') {
+        const pairs = Array.isArray(ctx.missing) ? ctx.missing : [];
+        const pairLines = pairs.map(function (p) {
+          const desc = p.description ? ' — ' + p.description : '';
+          return '- ' + p.itemId + ' [' + (p.kinds || []).join(' + ') + ']' + desc;
+        }).join('\\n') || '- (無)';
+        body = [
+          '## 問題：人工檢查整張 change 多項 item 缺 verify 證據（review:ui 全 change sweep）',
+          '',
+          '掃了當前 change 的 \`## 人工檢查\`，下列 item × channel 缺 evidence（共 ' + pairs.length + ' pair）：',
+          '',
+          pairLines,
+          '',
+          '請依 \`/spectra-apply\` skill **Step 8a Verify Channel Pass** 一次補齊所有缺項：',
+          '',
+          '1. 先做整批 pre-verify baseline check（依出現的 channel 種類）：',
+          '   - 有 \`[verify:e2e]\`：確認 Playwright config + e2e fixtures',
+          '   - 有 \`[verify:api]\`：確認 \`__test-login\` 或等價 session bypass route',
+          '   - 有 \`[verify:ui]\`：確認 \`supabase/seed.sql\` 或 seed 等價檔',
+          '   - 缺 baseline → **STOP**，回報 user 補齊；**NEVER** 降級 channel',
+          '',
+          '2. 對每個 item 依 e2e → api → ui 順序補對應 evidence；每完成一個 channel 立刻 Edit tasks.md 寫對應 \`(verified-*:)\` annotation（不要等到最後一起寫）',
+          '',
+          '3. 全部完成後請 user 在 review:ui 重新整理；含 \`verify:ui\` 的 item checkbox 仍保留 \`[ ]\` 等 user 在 GUI 視覺確認',
+          '',
+          '4. 任一 channel 通不過 → 保留 \`[ ]\` + 寫 \`（issue: ...）\`；**NEVER** 寫不成功的 \`(verified-*:)\` annotation',
+          '',
+          'Cookbook 與範本：\`<clade-vendor>/snippets/verify-channels/README.md\`',
         ].join('\\n');
       } else {
         body = '## 問題\\n\\n(unknown kind: ' + kind + ')';
       }
-      return handoffHeader(change) + body + handoffFooter();
+      return handoffHeader(change, ctx) + body + handoffFooter();
     }
 
     // ── handoff prompt 複製 + fallback modal ──
@@ -2082,7 +3750,32 @@ function renderReviewHtml(): string {
         ? state.changes.length + ' 個 change 含人工檢查區塊'
         : '目前沒有待處理的人工檢查項目';
       renderChanges();
-      if (!state.current && state.changes[0]) await loadChange(state.changes[0].name);
+      if (state.current) return;
+      // Deep link：URL 指定的 change（path 第二段）優先，匹配不到才 fallback
+      // 到第一筆。匹配不到時用 replaceState 把 path 清回 '/review'，避免
+      // 失效的 URL 留在 address bar。
+      const target = parseLocationTarget();
+      let bootName = null;
+      if (target.change && state.changes.find(function (c) { return c.name === target.change; })) {
+        bootName = target.change;
+      } else if (state.changes[0]) {
+        bootName = state.changes[0].name;
+      }
+      if (!bootName) {
+        history.replaceState({}, '', '/review');
+        return;
+      }
+      await loadChange(bootName);
+      // loadChange 完才知道 items；hash 指到的 item 在這裡 align。
+      if (target.itemId && state.current) {
+        const idx = state.current.items.findIndex(function (it) { return it.id === target.itemId; });
+        if (idx >= 0) {
+          state.activeIndex = idx;
+          renderTasks();
+          renderThumbs();
+          syncActiveItemUrl();
+        }
+      }
     }
 
     // 依 metrics 推算 change card 主狀態：malformed > issue > pending > done
@@ -2096,39 +3789,109 @@ function renderReviewHtml(): string {
       if (kind === 'malformed') return change.malformed + ' 行格式錯誤';
       if (kind === 'done') return '✓ 全部通過';
       const issued = change.issued || 0;
-      const untouched = change.pending - issued;
+      // userPending：對齊 server userActionPending — user 還能點的 review:ui/verify:ui 項目數。
+      // verify:api/e2e 自動驗證且 user 點不到的 item 不算進去；舊版用 pending-issued 會把這些列為「待檢查」誤導。
+      const userPending = change.userActionPending || 0;
       if (kind === 'issue') {
-        if (untouched > 0) return '⚠ ' + issued + ' 問題・' + untouched + ' 待檢查';
+        if (userPending > 0) return '⚠ ' + issued + ' 問題・' + userPending + ' 待檢查';
         return '⚠ ' + issued + ' 個問題待修';
       }
-      return untouched + ' 待檢查';
+      if (userPending === 0) return '✓ 待 Claude 接手';
+      return userPending + ' 待檢查';
+    }
+    // 把 hitsByCode 轉成 home page 用的單行摘要，例：UI_ITEM_NO_URL ×2, REVIEW_UI_BACKEND_ROUNDTRIP ×1。
+    // 超過 3 個 code 後 truncate 顯示「+N more」避免擠爆 row。
+    function summarizeHits(hitsByCode) {
+      if (!hitsByCode) return '';
+      const entries = Object.entries(hitsByCode).toSorted(function (a, b) { return b[1] - a[1]; });
+      if (!entries.length) return '';
+      const top = entries.slice(0, 3).map(function (entry) { return entry[0] + ' ×' + entry[1]; });
+      const extra = entries.length - top.length;
+      return top.join(', ') + (extra > 0 ? ', +' + extra + ' more' : '');
     }
     function renderChangeCard(change) {
       const current = state.current && state.current.name === change.name;
       const kind = changeCardKind(change);
       const badge = changeCardBadge(change, kind);
+      const hits = change.readinessHits || 0;
+      const hitSummary = hits > 0 ? summarizeHits(change.hitsByCode) : '';
+      const evidenceMissingList = Array.isArray(change.evidenceMissing) ? change.evidenceMissing : [];
+      const evidencePairCount = evidenceMissingList.reduce(function (acc, m) {
+        return acc + (Array.isArray(m.kinds) ? m.kinds.length : 0);
+      }, 0);
       return '<button type="button" class="change-row card-' + kind + '" data-change="' + esc(change.name) + '" aria-current="' + (current ? 'true' : 'false') + '">' +
         '<span class="change-name">' + esc(change.name) + '</span>' +
         '<span class="card-badge ' + kind + '">' + esc(badge) + '</span>' +
         '<span class="metrics">' +
         '<span class="metric" title="已通過（含 skip） / 總項目數">' + change.checked + '/' + change.total + ' 通過</span>' +
+        (hits > 0 ? '<span class="metric warn" title="Pre-Review Data Readiness pattern hits（命中代表 item 缺資料無法直接 review）">⚠ ' + hits + ' hits: ' + esc(hitSummary) + '</span>' : '') +
+        (evidencePairCount > 0 ? '<span class="metric warn" title="標了 verify:e2e/api/ui 但缺對應 (verified-*:) annotation — 需跑 /spectra-apply Step 8a 補">⚠ ' + evidenceMissingList.length + ' item 缺 evidence (' + evidencePairCount + ' pair)</span>' : '') +
         (change.screenshotTopicCount ? '<span class="metric" title="對應的截圖資料夾數">' + change.screenshotTopicCount + ' 截圖</span>' : '') +
         '</span>' +
         '</button>';
     }
     function renderChanges() {
-      const active = [];
+      const ready = [];
+      // not-ready 拆兩桶：healthCheckNeeded = pattern hits（spec/data 缺漏，須 ingest 介入）；
+      // applyPending = 純 evidence missing（跑 /spectra-apply Step 8a 即可補齊）。
+      // 同時命中時優先歸 healthCheckNeeded — pattern 是 spec/data 問題，必先修；
+      // 否則跑 Step 8a 補的 evidence 可能對應到「即將被改寫」的 item，做白工。
+      const healthCheckNeeded = [];
+      const applyPending = [];
+      const feedbackGiven = [];
       const done = [];
       for (const change of state.changes) {
-        if (changeCardKind(change) === 'done') done.push(change);
-        else active.push(change);
+        const kind = changeCardKind(change);
+        const evidenceMissingCount = Array.isArray(change.evidenceMissing) ? change.evidenceMissing.length : 0;
+        if (kind === 'done') done.push(change);
+        else if ((change.readinessHits || 0) > 0) healthCheckNeeded.push(change);
+        else if (evidenceMissingCount > 0) applyPending.push(change);
+        else if (
+          (change.malformed || 0) === 0 &&
+          (change.userActionPending || 0) === 0 &&
+          (change.pending || 0) > 0
+        ) feedbackGiven.push(change);
+        else ready.push(change);
       }
       const blocks = [];
-      if (active.length) {
+      if (ready.length) {
         blocks.push(
           '<div class="change-group">' +
-          '<div class="change-group-heading">進行中 · ' + active.length + '</div>' +
-          active.map(renderChangeCard).join('') +
+          '<div class="change-group-heading">✅ 可以開始檢查 · ' + ready.length + '</div>' +
+          ready.map(renderChangeCard).join('') +
+          '</div>'
+        );
+      }
+      if (healthCheckNeeded.length) {
+        blocks.push(
+          '<div class="change-group">' +
+          '<div class="change-group-heading with-action">' +
+            '<span>🩺 需健康檢查介入 · ' + healthCheckNeeded.length + '</span>' +
+            '<button class="copy-handoff-btn group" data-group-handoff="health-check" type="button" title="複製健康檢查 prompt：讓 Claude 逐張讀 proposal/tasks 分類 pattern hits，只回報 bug，不徒增 noise">📋 健康檢查 prompt</button>' +
+          '</div>' +
+          healthCheckNeeded.map(renderChangeCard).join('') +
+          '</div>'
+        );
+      }
+      if (applyPending.length) {
+        blocks.push(
+          '<div class="change-group">' +
+          '<div class="change-group-heading with-action">' +
+            '<span>⏳ 等 apply 後就可處理 · ' + applyPending.length + '</span>' +
+            '<button class="copy-handoff-btn group" data-group-handoff="apply-pending" type="button" title="複製整批補 evidence prompt：讓 Claude 一次跑 /spectra-apply Step 8a Verify Channel 補齊所有缺項，全做完此群就清空、change 進 ready">📋 補 evidence prompt（整批）</button>' +
+          '</div>' +
+          applyPending.map(renderChangeCard).join('') +
+          '</div>'
+        );
+      }
+      if (feedbackGiven.length) {
+        blocks.push(
+          '<div class="change-group">' +
+          '<div class="change-group-heading with-action">' +
+            '<span>🤖 等 Claude 接手 · ' + feedbackGiven.length + '</span>' +
+            '<button class="copy-handoff-btn group" data-group-handoff="feedback-given" type="button" title="複製接手 prompt：讓 Claude 處理 user 已點完剩下的 issue 回饋 / verify auto-evidence / discuss 議題，做 root cause + 路由建議">📋 接手分析 prompt</button>' +
+          '</div>' +
+          feedbackGiven.map(renderChangeCard).join('') +
           '</div>'
         );
       }
@@ -2150,18 +3913,61 @@ function renderReviewHtml(): string {
       el.changeList.querySelectorAll('[data-change]').forEach(function (button) {
         button.addEventListener('click', function () { loadChange(button.dataset.change); });
       });
+      el.changeList.querySelectorAll('[data-group-handoff]').forEach(function (button) {
+        button.addEventListener('click', function (event) {
+          event.stopPropagation();
+          const kind = button.dataset.groupHandoff;
+          if (kind === 'health-check') {
+            const healthCheckChanges = (state.changes || []).filter(function (c) {
+              return (c.readinessHits || 0) > 0;
+            });
+            copyHandoffPrompt('health-check-group', { healthCheckChanges: healthCheckChanges }, '健康檢查（' + healthCheckChanges.length + ' change）');
+          } else if (kind === 'apply-pending') {
+            // applyPending 桶定義：純 evidence missing（無 pattern hit）
+            const applyPendingChanges = (state.changes || []).filter(function (c) {
+              if ((c.readinessHits || 0) > 0) return false;
+              return Array.isArray(c.evidenceMissing) && c.evidenceMissing.length > 0;
+            });
+            copyHandoffPrompt('apply-pending-group', { applyPendingChanges: applyPendingChanges }, '補 evidence（' + applyPendingChanges.length + ' change）');
+          } else if (kind === 'feedback-given') {
+            const feedbackChanges = (state.changes || []).filter(function (c) {
+              if ((c.malformed || 0) > 0) return false;
+              if ((c.readinessHits || 0) > 0) return false;
+              if (Array.isArray(c.evidenceMissing) && c.evidenceMissing.length > 0) return false;
+              if ((c.userActionPending || 0) > 0) return false;
+              return (c.pending || 0) > 0;
+            });
+            copyHandoffPrompt('feedback-given-group', { feedbackChanges: feedbackChanges }, '接手分析（' + feedbackChanges.length + ' change）');
+          }
+        });
+      });
     }
 
-    async function loadChange(name) {
+    // pushUrl 預設 true：一般 user click / init auto-load 要 push history
+    // 讓 back 能回 list view。popstate 觸發的 loadChange 傳 false，URL 已是
+    // 使用者想要的位置，再 push 會破壞 back/forward。
+    async function loadChange(name, pushUrl) {
+      if (pushUrl === undefined) pushUrl = true;
       showBanner('');
       const data = await api('/api/changes/' + encodeURIComponent(name));
       state.current = data.change;
-      state.activeIndex = Math.max(0, (state.current.items || []).findIndex(function (item) { return !item.checked; }));
+      rebuildParentChildrenIndex();
+      const items = state.current.items || [];
+      state.activeIndex = items.findIndex(function (item) {
+        return !item.checked && requiresUserConfirmation(item);
+      });
+      if (state.activeIndex < 0) {
+        state.activeIndex = items.findIndex(function (item) { return !item.checked; });
+      }
       if (state.activeIndex < 0) state.activeIndex = 0;
       state.expanded = new Set();
+      state.selfCompletedOpen = false;
       state.draftNotes = {};
+      state.draftFindings = {};
       renderChanges();
       renderCurrent();
+      if (pushUrl) pushChangeUrl(name);
+      syncActiveItemUrl();
     }
 
     function renderCurrent() {
@@ -2173,6 +3979,338 @@ function renderReviewHtml(): string {
       }
       renderTasks();
       renderThumbs();
+      updateEvidenceSweepButton();
+    }
+
+    function computeMissingEvidence(change) {
+      const items = (change && change.items) || [];
+      const checks = [
+        { kind: 'verify:e2e', tag: 'e2e', listKey: 'verifiedE2eList', singleKey: 'verifiedE2e' },
+        { kind: 'verify:api', tag: 'api', listKey: 'verifiedApiList', singleKey: 'verifiedApi' },
+        { kind: 'verify:ui', tag: 'ui', listKey: 'verifiedUiList', singleKey: 'verifiedUi' },
+      ];
+      const byItem = new Map();
+      for (const item of items) {
+        if (!item || item.checked) continue;
+        const kinds = itemKinds(item);
+        for (const c of checks) {
+          if (!kinds.includes(c.kind)) continue;
+          const list = annotationList(item, c.listKey, c.singleKey);
+          if (list.length) continue;
+          if (!byItem.has(item.id)) byItem.set(item.id, { itemId: item.id, description: item.description || '', kinds: [], item: item });
+          byItem.get(item.id).kinds.push(c.tag);
+        }
+      }
+      return Array.from(byItem.values());
+    }
+
+    function updateEvidenceSweepButton() {
+      if (!el.evidenceSweepButton) return;
+      const change = state.current;
+      if (!change) {
+        el.evidenceSweepButton.hidden = true;
+        return;
+      }
+      const missing = computeMissingEvidence(change);
+      const pairCount = missing.reduce(function (acc, m) { return acc + m.kinds.length; }, 0);
+      if (!pairCount) {
+        el.evidenceSweepButton.hidden = true;
+        return;
+      }
+      el.evidenceSweepButton.hidden = false;
+      el.evidenceSweepButton.textContent = '📋 補齊全 change 缺失 evidence (' + pairCount + ')';
+    }
+
+    function itemKinds(item) {
+      return Array.isArray(item.kinds) && item.kinds.length ? item.kinds : [item.kind || 'review:ui'];
+    }
+
+    function hasKind(item, kind) {
+      return itemKinds(item).includes(kind);
+    }
+
+    function isAutomaticKind(kind) {
+      return kind === 'verify:e2e' || kind === 'verify:api';
+    }
+
+    function isAutomaticOnly(item) {
+      const kinds = itemKinds(item);
+      return kinds.length > 0 && kinds.every(isAutomaticKind);
+    }
+
+    function requiresUserConfirmation(item) {
+      // 母項若有子項（#3 → #3.1, #3.2...）: 母項本身不要使用者填回饋，焦點全給子項。
+      // 影響：renderTaskControls 不渲染 textarea+按鈕、saveAction 拒收、O/I/S keyboard no-op。
+      if (parentHasChildren(item)) return false;
+      return hasKind(item, 'review:ui') || hasKind(item, 'verify:ui');
+    }
+
+    function parentHasChildren(item) {
+      if (!item || item.scoped) return false;
+      return state.parentsWithChildren ? state.parentsWithChildren.has(item.id) : false;
+    }
+
+    function rebuildParentChildrenIndex() {
+      const set = new Set();
+      const items = (state.current && state.current.items) || [];
+      for (let i = 0; i < items.length; i++) {
+        const it = items[i];
+        if (it.scoped && it.parentId) set.add(it.parentId);
+      }
+      state.parentsWithChildren = set;
+    }
+
+    function isSoloKind(item, kind) {
+      const kinds = itemKinds(item);
+      return kinds.length === 1 && kinds[0] === kind;
+    }
+
+    function localFileHref(path) {
+      if (!path) return '#';
+      const root = state.repoRoot ? state.repoRoot.replace(/\\/$/, '') : '';
+      const abs = path.startsWith('/') ? path : (root ? root + '/' + path : path);
+      return 'file://' + encodeURI(abs).replace(/#/g, '%23');
+    }
+
+    function screenshotUrl(path) {
+      if (!path) return '';
+      if (path.startsWith('screenshots/')) {
+        return '/api/screenshot/' + path.split('/').map(encodeURIComponent).join('/');
+      }
+      return localFileHref(path);
+    }
+
+    function statusClass(status) {
+      const code = Number(status);
+      if (code >= 200 && code < 300) return 'status-ok';
+      if (code >= 400 && code < 500) return 'status-warn';
+      if (code >= 500) return 'status-bad';
+      return 'status-neutral';
+    }
+
+    function renderEvidenceMissing(item, kind) {
+      const itemId = item && item.id ? item.id : '';
+      const buttonHtml = itemId
+        ? '<button class="copy-handoff-btn inline" data-handoff="evidence-fillin-item" data-id="' + esc(itemId) + '" data-evidence-kind="' + esc(kind || '') + '" type="button" title="複製 handoff prompt 給新 Claude session 跑 /spectra-apply Step 8a 補齊這項 verify evidence">📋 補 evidence prompt</button>'
+        : '';
+      return '<div class="evidence-panel evidence-missing">' +
+          '<span>evidence missing — run /spectra-apply Step 8a</span>' +
+          buttonHtml +
+        '</div>';
+    }
+
+    function annotationList(item, listKey, singleKey) {
+      const a = item && item.annotations;
+      if (!a) return [];
+      if (Array.isArray(a[listKey]) && a[listKey].length) return a[listKey];
+      if (a[singleKey]) return [a[singleKey]];
+      return [];
+    }
+
+    function renderE2eEvidence(item, title) {
+      const list = annotationList(item, 'verifiedE2eList', 'verifiedE2e');
+      if (!list.length) return (title ? '<h3>' + esc(title) + '</h3>' : '') + renderEvidenceMissing(item, 'e2e');
+      const head = title ? '<h3>' + esc(title) + '</h3>' : '';
+      return head + list.map(function(evidence, idx) {
+        return '<div class="evidence-panel">' +
+          (list.length > 1 ? '<p class="evidence-multi-label">記錄 ' + (idx + 1) + ' / ' + list.length + '</p>' : '') +
+          '<p>spec: <a class="evidence-link" href="' + esc(localFileHref(evidence.spec)) + '" target="_blank" rel="noreferrer">' + esc(evidence.spec) + '</a></p>' +
+          '<p>trace: <a class="evidence-link" href="' + esc(localFileHref(evidence.trace)) + '" target="_blank" rel="noreferrer">' + esc(evidence.trace) + '</a></p>' +
+          '<p class="evidence-notice">自動完成，無需操作；archive-gate 認 annotation 為 evidence</p>' +
+        '</div>';
+      }).join('');
+    }
+
+    function renderApiEvidence(item, title) {
+      const list = annotationList(item, 'verifiedApiList', 'verifiedApi');
+      if (!list.length) return (title ? '<h3>' + esc(title) + '</h3>' : '') + renderEvidenceMissing(item, 'api');
+      const head = title ? '<h3>' + esc(title) + '</h3>' : '';
+      return head + list.map(function(evidence, idx) {
+        const body = evidence.body ? '<p>body: <code>' + esc(evidence.body) + '</code></p>' : '';
+        return '<div class="evidence-panel">' +
+          (list.length > 1 ? '<p class="evidence-multi-label">記錄 ' + (idx + 1) + ' / ' + list.length + '</p>' : '') +
+          '<p><code>' + esc(evidence.method) + '</code> <code>' + esc(evidence.url) + '</code> <span class="status-badge ' + statusClass(evidence.status) + '">' + esc(evidence.status) + '</span></p>' +
+          body +
+          '<p class="evidence-notice">自動完成，無需操作</p>' +
+        '</div>';
+      }).join('');
+    }
+
+    function renderUiEvidence(item, title) {
+      const list = annotationList(item, 'verifiedUiList', 'verifiedUi');
+      if (!list.length) return (title ? '<h3>' + esc(title) + '</h3>' : '') + renderEvidenceMissing(item, 'ui');
+      const head = title ? '<h3>' + esc(title) + '</h3>' : '';
+      return head + list.map(function(evidence, idx) {
+        const src = screenshotUrl(evidence.screenshot);
+        const dom = evidence.dom ? '<p>DOM: <code>' + esc(evidence.dom) + '</code></p>' : '';
+        return '<div class="verified-ui-panel">' +
+          (list.length > 1 ? '<p class="evidence-multi-label">記錄 ' + (idx + 1) + ' / ' + list.length + '</p>' : '') +
+          '<p><a class="evidence-link" href="' + esc(localFileHref(evidence.screenshot)) + '" target="_blank" rel="noreferrer">' + esc(evidence.screenshot) + '</a></p>' +
+          '<img class="verified-ui-image" src="' + esc(src) + '" alt="' + esc(evidence.screenshot) + '" title="點擊放大檢視">' +
+          dom +
+        '</div>';
+      }).join('');
+    }
+
+    function autoEvidenceSummary(item, kind) {
+      if (kind === 'e2e') {
+        const list = annotationList(item, 'verifiedE2eList', 'verifiedE2e');
+        if (!list.length) return '⚠ Playwright spec evidence — missing';
+        const ev = list[list.length - 1];
+        const spec = String(ev.spec || '').split('/').pop() || ev.spec || '';
+        const suffix = list.length > 1 ? ' (+' + (list.length - 1) + ' more)' : '';
+        return '✓ Playwright: ' + spec + suffix + ' — 自動完成';
+      }
+      if (kind === 'api') {
+        const list = annotationList(item, 'verifiedApiList', 'verifiedApi');
+        if (!list.length) return '⚠ API round-trip evidence — missing';
+        const ev = list[list.length - 1];
+        const suffix = list.length > 1 ? ' (+' + (list.length - 1) + ' more)' : '';
+        return '✓ ' + (ev.method || '') + ' ' + (ev.url || '') + ' ' + (ev.status || '') + suffix + ' — 自動完成';
+      }
+      return '';
+    }
+
+    function wrapAutoEvidence(item, kind, innerHtml) {
+      return '<details class="auto-evidence-collapse"><summary>' + esc(autoEvidenceSummary(item, kind)) + '</summary>' + innerHtml + '</details>';
+    }
+
+    function renderCompoundEvidence(item) {
+      const parts = [];
+      if (hasKind(item, 'verify:e2e')) parts.push(wrapAutoEvidence(item, 'e2e', renderE2eEvidence(item, 'Playwright spec evidence')));
+      if (hasKind(item, 'verify:api')) parts.push(wrapAutoEvidence(item, 'api', renderApiEvidence(item, 'API round-trip evidence')));
+      if (hasKind(item, 'verify:ui')) parts.push(renderUiEvidence(item, 'Final-state screenshot'));
+      if (!parts.length) return '';
+      return '<div class="compound-evidence"><h3>Compound evidence</h3>' + parts.join('') + '</div>';
+    }
+
+    function renderEvidenceForItem(item) {
+      if (hasKind(item, 'discuss')) {
+        return '<div class="discuss-card">' +
+            '<h3>此項由 Claude 主導</h3>' +
+            '<p>' + escWithLinks(item.description) + '</p>' +
+            '<p class="notice">archive 階段 Claude 會主動準備證據與你討論，這裡無需操作。</p>' +
+          '</div>';
+      }
+      if (isSoloKind(item, 'verify:e2e')) {
+        return '<div class="evidence-panel"><h3>此項由 Playwright spec 自動完成</h3><p>' + escWithLinks(item.description) + '</p></div>' +
+          renderE2eEvidence(item, '');
+      }
+      if (isSoloKind(item, 'verify:api')) {
+        return '<div class="evidence-panel"><h3>此項由 API round-trip 自動完成</h3><p>' + escWithLinks(item.description) + '</p></div>' +
+          renderApiEvidence(item, '');
+      }
+      if (isSoloKind(item, 'verify:ui')) {
+        return renderUiEvidence(item, 'Final-state screenshot');
+      }
+      if (itemKinds(item).length > 1) return renderCompoundEvidence(item);
+      return '';
+    }
+
+    function renderKindBadges(item) {
+      return itemKinds(item).map(function (kind) {
+        const className = kind.replace(':', '-');
+        let label = '此項需要使用者親自操作驗收';
+        if (kind === 'discuss') label = '此項由 Claude 主導，無需手動操作';
+        if (kind === 'verify:e2e') label = '此項由 Playwright spec 自動完成';
+        if (kind === 'verify:api') label = '此項由 API round-trip 自動完成';
+        if (kind === 'verify:ui') label = '此項需要使用者確認 final-state screenshot';
+        return '<span class="kind-badge ' + esc(className) + '" aria-label="' + esc(label) + '">[' + esc(kind) + ']</span>';
+      }).join('');
+    }
+
+    function renderTaskControls(item, noteValue, findingValue) {
+      if (parentHasChildren(item)) {
+        return '<div class="parent-children-hint">↓ 母項不需要回饋，請對下方子項分別作回饋</div>';
+      }
+      if (!requiresUserConfirmation(item)) return '';
+      const hasFinding = Boolean(findingValue);
+      return '<textarea class="note" data-note="' + esc(item.id) + '" placeholder="填寫說明（「有問題」必填、「跳過」可選填）">' + noteValue + '</textarea>' +
+        '<div class="actions">' +
+          '<button class="ok" data-action="ok" data-id="' + esc(item.id) + '" type="button" title="標記此項通過 (O)">✓ 通過</button>' +
+          '<button class="issue" data-action="issue" data-id="' + esc(item.id) + '" type="button" title="標記此項有問題，需填寫說明 (I)">⚠ 有問題</button>' +
+          '<button class="skip" data-action="skip" data-id="' + esc(item.id) + '" type="button" title="跳過此項，可選填原因 (S)">⤵ 跳過</button>' +
+        '</div>' +
+        '<details class="finding"' + (hasFinding ? ' open' : '') + '>' +
+          '<summary title="此欄與 ✓/⚠/⤵ 正交；按主要按鈕送出時一起寫回。可空白；填了就會以 （finding: ...）落在同一行，方便後續 TD 登記。">+ 額外發現' + (hasFinding ? '（已填）' : '（選填）') + '</summary>' +
+          '<textarea class="finding-input" data-finding="' + esc(item.id) + '" placeholder="順手記下的觀察 / TD 候選（與主要結論獨立）">' + findingValue + '</textarea>' +
+        '</details>';
+    }
+
+    function renderTaskItem(item, index) {
+      const active = index === state.activeIndex;
+      const decision = parseDecision(item.raw);
+      const handled = decision.kind !== 'pending';
+      const collapsed = handled && !state.expanded.has(item.id);
+      const decisionClass = handled ? ' decision-' + decision.kind : '';
+      const isDiscuss = hasKind(item, 'discuss');
+      const kindClass = isDiscuss
+        ? ' kind-discuss'
+        : (isAutomaticOnly(item) ? ' kind-automatic' : (hasKind(item, 'verify:ui') ? ' kind-verify-ui' : ' kind-review-ui'));
+      const persistedFinding = parseFinding(item.raw);
+      const draftFinding = state.draftFindings[item.id];
+      const findingSeed = draftFinding !== undefined ? draftFinding : persistedFinding;
+      const findingValue = findingSeed ? esc(findingSeed) : '';
+      let stateHtml;
+      if (handled) {
+        stateHtml = '<span class="state-badge ' + decision.kind + '">' + decisionLabel(decision.kind) + '</span>';
+        if (persistedFinding) {
+          stateHtml += '<span class="finding-indicator" title="額外發現：' + esc(persistedFinding) + '">📝</span>';
+        }
+        if (collapsed && requiresUserConfirmation(item)) {
+          stateHtml += '<button class="reopen" data-action="reopen" data-id="' + esc(item.id) + '" type="button" title="重新編輯此項">↻ 編輯</button>';
+        }
+        if (decision.kind === 'issue' && requiresUserConfirmation(item)) {
+          stateHtml += '<button class="copy-handoff-btn" data-handoff="item-issue" data-id="' + esc(item.id) + '" type="button" title="複製 handoff prompt 給新 Claude session 處理這個 issue">📋 handoff</button>';
+        }
+      } else if (parentHasChildren(item)) {
+        stateHtml = '由子項回饋';
+      } else if (isDiscuss) {
+        stateHtml = '由 Claude 主導';
+      } else if (isAutomaticOnly(item)) {
+        stateHtml = 'Self-Completed';
+      } else if (hasKind(item, 'verify:ui')) {
+        stateHtml = '待人工確認';
+      } else {
+        stateHtml = '待檢查';
+      }
+      const noteValue = decision.note ? esc(decision.note) : '';
+      const bannerHtml = renderManualReviewBanner(item);
+      const bodyHtml = renderEvidenceForItem(item) + renderTaskControls(item, noteValue, findingValue);
+      return '<article class="task-item' + (active ? ' active' : '') + (item.scoped ? ' scoped' : '') + decisionClass + (collapsed ? ' collapsed' : '') + kindClass + '" data-item="' + esc(item.id) + '" data-index="' + index + '">' +
+        '<div class="task-head">' +
+        '<span class="task-id">' + esc(item.id) + renderKindBadges(item) + '</span>' +
+        '<span class="task-desc">' + escWithLinks(item.description) + '</span>' +
+        '<span class="task-state">' + stateHtml + '</span>' +
+        '</div>' +
+        bannerHtml +
+        bodyHtml +
+        '</article>';
+    }
+
+    function renderManualReviewBanner(item) {
+      var hits = item.manualReviewHits || [];
+      if (!hits.length) return '';
+      var lines = hits.map(function (h) {
+        return '<li><code>' + esc(h.code) + '</code> — ' + esc(h.description) +
+               ' <a href=".claude/rules/' + esc(h.anchor) + '" target="_blank" style="opacity:.8;font-size:11px;">(rule)</a></li>';
+      }).join('');
+      return '<div class="manual-review-banner" role="alert" data-mr-banner="1">' +
+             '<div class="mr-banner-title">⚠ Pre-Review Data Readiness — ' + hits.length + ' 個 pattern 命中</div>' +
+             '<ul>' + lines + '</ul>' +
+             '<div class="mr-banner-hint">建議跑 <code>/spectra-ingest</code> 補上具體 sample / URL / scoped sub-items（warning non-blocking — 仍可 OK / Issue / SKIP）。</div>' +
+             '<button class="copy-handoff-btn block" data-handoff="manual-review-readiness" data-id="' + esc(item.id) + '" type="button" title="複製 handoff prompt 給新 Claude session 跑 /spectra-ingest 補齊 proposal 資料">📋 複製 ingest prompt</button>' +
+             '</div>';
+    }
+
+    function renderSelfCompletedSection(entries) {
+      if (!entries.length) return '';
+      return '<details id="selfCompletedSection" class="self-completed-section"' + (state.selfCompletedOpen ? ' open' : '') + '>' +
+        '<summary>Self-Completed (' + entries.length + ')</summary>' +
+        '<div class="self-completed-list">' +
+        entries.map(function (entry) { return renderTaskItem(entry.item, entry.index); }).join('') +
+        '</div>' +
+      '</details>';
     }
 
     function renderTasks() {
@@ -2198,102 +4336,40 @@ function renderReviewHtml(): string {
       const malformed = malformedHandoff + change.malformedLines.map(function (line) {
         return '<div class="task-item"><div class="task-head"><span class="task-id">第 ' + line.lineNumber + ' 行</span><span class="task-desc">' + esc(line.raw) + '</span><span class="task-state">格式錯誤</span></div></div>';
       }).join('');
-      const items = change.items.map(function (item, index) {
-        const active = index === state.activeIndex;
-        const decision = parseDecision(item.raw);
-        const handled = decision.kind !== 'pending';
-        const collapsed = handled && !state.expanded.has(item.id);
-        const decisionClass = handled ? ' decision-' + decision.kind : '';
-        const isDiscuss = item.kind === 'discuss';
-        const isVerifyAuto = item.kind === 'verify:auto';
-        const kindClass = isDiscuss ? ' kind-discuss' : (isVerifyAuto ? ' kind-verify-auto' : ' kind-review-ui');
-        // Kind badge：三 kind 各一色。aria-label 給 a11y。
-        let kindBadge;
-        if (isDiscuss) {
-          kindBadge = '<span class="kind-badge discuss" aria-label="此項由 Claude 主導，無需手動操作">[discuss]</span>';
-        } else if (isVerifyAuto) {
-          kindBadge = '<span class="kind-badge verify-auto" aria-label="此項由 agent 用 browser-harness 自動 round-trip，使用者只需確認 evidence">[verify:auto]</span>';
-        } else {
-          kindBadge = '<span class="kind-badge review-ui" aria-label="此項需要使用者親自操作驗收">[review:ui]</span>';
-        }
-        // 解析 (verified-auto: <ISO> network=... dom=...) annotation — 只對 verify:auto items 取
-        // regex literal 在 outer template literal 內，\`\\\` 必須 double 才能在 render 後保留：
-        // .mts source \`\\\\(\` → backtick string 解析 → \`\\(\` → 瀏覽器 regex literal → 匹配 literal \`(\`
-        // 原版單 \`\\\` 被 backtick 解析吃掉，render 成 \`(verified-auto:s*([^)]+))\`，group 結構錯位
-        const verifiedAutoMatch = isVerifyAuto ? item.raw.match(/\\(verified-auto:\\s*([^)]+)\\)/) : null;
-        const verifiedAutoEvidence = verifiedAutoMatch ? verifiedAutoMatch[1].trim() : null;
-        let stateHtml;
-        if (handled) {
-          stateHtml = '<span class="state-badge ' + decision.kind + '">' + decisionLabel(decision.kind) + '</span>';
-          if (collapsed) {
-            stateHtml += '<button class="reopen" data-action="reopen" data-id="' + esc(item.id) + '" type="button" title="重新編輯此項">↻ 編輯</button>';
-          }
-          if (decision.kind === 'issue' && !isDiscuss) {
-            stateHtml += '<button class="copy-handoff-btn" data-handoff="item-issue" data-id="' + esc(item.id) + '" type="button" title="複製 handoff prompt 給新 Claude session 處理這個 issue">📋 handoff</button>';
-          }
-        } else if (isDiscuss) {
-          stateHtml = '由 Claude 主導';
-        } else if (isVerifyAuto && verifiedAutoEvidence) {
-          stateHtml = '<span class="verified-auto-chip" title="agent 已 round-trip — ' + esc(verifiedAutoEvidence) + '">✓ agent 已驗</span> 待確認';
-        } else if (isVerifyAuto) {
-          stateHtml = '待 agent 跑';
-        } else {
-          stateHtml = '待檢查';
-        }
-        const noteValue = decision.note ? esc(decision.note) : '';
-        // Discuss items：不顯示 textarea / OK / Issue / SKIP buttons / handoff button（spec line 169）。
-        // 改顯示 dedicated 卡片提示「此項由 Claude 主導」。
-        // verify:auto items：跟 review:ui 一樣顯示 OK/Issue/Skip（user 仍要點 OK 才勾），多顯示 evidence card。
-        let bodyHtml;
-        if (isDiscuss) {
-          bodyHtml = '<div class="discuss-card">' +
-              '<h3>此項由 Claude 主導</h3>' +
-              '<p>' + esc(item.description) + '</p>' +
-              '<p class="notice">archive 階段 Claude 會主動準備證據與你討論，這裡無需操作。</p>' +
-            '</div>';
-        } else {
-          const evidenceCard = (isVerifyAuto && verifiedAutoEvidence)
-            ? '<div class="verify-auto-card">' +
-                '<strong>agent verify-auto 通過</strong>：<code>' + esc(verifiedAutoEvidence) + '</code>' +
-                '<p style="margin:6px 0 0">看右側 final-state screenshot 確認後按「✓ 通過」；發現異常按「⚠ 有問題」。</p>' +
-              '</div>'
-            : (isVerifyAuto
-              ? '<div class="verify-auto-card" style="background:#fdf6e3;border-color:#d6c899">' +
-                  '<strong>等待 agent 跑 verify-auto</strong>' +
-                  '<p style="margin:6px 0 0">spectra-apply Step 8a 會由主線派 screenshot-review agent 自跑 round-trip。若主線沒跑，回去要求補。</p>' +
-                '</div>'
-              : '');
-          bodyHtml = evidenceCard +
-            '<textarea class="note" data-note="' + esc(item.id) + '" placeholder="填寫說明（「有問題」必填、「跳過」可選填）">' + noteValue + '</textarea>' +
-            '<div class="actions">' +
-              '<button class="ok" data-action="ok" data-id="' + esc(item.id) + '" type="button" title="標記此項通過 (O)">✓ 通過</button>' +
-              '<button class="issue" data-action="issue" data-id="' + esc(item.id) + '" type="button" title="標記此項有問題，需填寫說明 (I)">⚠ 有問題</button>' +
-              '<button class="skip" data-action="skip" data-id="' + esc(item.id) + '" type="button" title="跳過此項，可選填原因 (S)">⤵ 跳過</button>' +
-            '</div>';
-        }
-        return '<article class="task-item' + (active ? ' active' : '') + (item.scoped ? ' scoped' : '') + decisionClass + (collapsed ? ' collapsed' : '') + kindClass + '" data-item="' + esc(item.id) + '">' +
-          '<div class="task-head">' +
-          '<span class="task-id">' + esc(item.id) + kindBadge + '</span>' +
-          '<span class="task-desc">' + esc(item.description) + '</span>' +
-          '<span class="task-state">' + stateHtml + '</span>' +
-          '</div>' +
-          bodyHtml +
-          '</article>';
-      }).join('');
+      const indexedItems = change.items.map(function (item, index) { return { item: item, index: index }; });
+      const selfCompleted = indexedItems.filter(function (entry) { return isAutomaticOnly(entry.item); });
+      const interactive = indexedItems.filter(function (entry) { return !isAutomaticOnly(entry.item); });
+      const interactivePending = interactive.filter(function (entry) { return parseDecision(entry.item.raw).kind === 'pending'; });
+      const interactiveHandled = interactive.filter(function (entry) { return parseDecision(entry.item.raw).kind !== 'pending'; });
+      const handledDivider = interactiveHandled.length
+        ? '<div class="handled-divider" role="separator"><span>已註記 (' + interactiveHandled.length + ')</span></div>'
+        : '';
+      const items = renderSelfCompletedSection(selfCompleted) +
+        interactivePending.map(function (entry) { return renderTaskItem(entry.item, entry.index); }).join('') +
+        handledDivider +
+        interactiveHandled.map(function (entry) { return renderTaskItem(entry.item, entry.index); }).join('');
       el.taskList.innerHTML = malformed + items;
+      const selfSection = el.taskList.querySelector('#selfCompletedSection');
+      if (selfSection) {
+        selfSection.addEventListener('toggle', function () {
+          state.selfCompletedOpen = selfSection.open;
+        });
+      }
       el.taskList.querySelectorAll('[data-item]').forEach(function (node, index) {
         node.addEventListener('click', function (event) {
           const interactive = event.target.closest && event.target.closest('button, textarea, input, select');
           // 點當前 active card 的互動元素：不重建，保留 focus 與輸入
-          if (interactive && state.activeIndex === index) return;
-          if (state.activeIndex === index) return;
+          const itemIndex = Number(node.dataset.index);
+          if (interactive && state.activeIndex === itemIndex) return;
+          if (state.activeIndex === itemIndex) return;
           // 點別張 card：切 active，若原本點的是 textarea，重建後把 focus 還回對應 textarea
           const focusNoteId = (event.target.tagName === 'TEXTAREA' && event.target.dataset && event.target.dataset.note)
             ? event.target.dataset.note
             : null;
-          state.activeIndex = index;
+          state.activeIndex = itemIndex;
           renderTasks();
           renderThumbs();
+          syncActiveItemUrl();
           if (focusNoteId) {
             const textarea = el.taskList.querySelector('textarea[data-note="' + CSS.escape(focusNoteId) + '"]');
             if (textarea) {
@@ -2344,6 +4420,35 @@ function renderReviewHtml(): string {
               note: decision.note,
               matchedFiles: matched,
             }, 'issue ' + target.id);
+            return;
+          }
+          if (kind === 'manual-review-readiness') {
+            const id = button.dataset.id;
+            const target = (state.current && state.current.items || []).find(function (it) { return it.id === id; });
+            if (!target) {
+              showBanner('找不到 item ' + id + '，無法產生 ingest prompt', 'error');
+              return;
+            }
+            copyHandoffPrompt('manual-review-readiness', {
+              change: state.current,
+              item: target,
+            }, 'ingest readiness ' + target.id);
+            return;
+          }
+          if (kind === 'evidence-fillin-item') {
+            const id = button.dataset.id;
+            const target = (state.current && state.current.items || []).find(function (it) { return it.id === id; });
+            if (!target) {
+              showBanner('找不到 item ' + id + '，無法產生補 evidence prompt', 'error');
+              return;
+            }
+            const evidenceKind = button.dataset.evidenceKind || '';
+            copyHandoffPrompt('evidence-fillin-item', {
+              change: state.current,
+              item: target,
+              missingKinds: evidenceKind ? [evidenceKind] : [],
+            }, '補 ' + evidenceKind + ' evidence ' + target.id);
+            return;
           }
         });
       });
@@ -2354,6 +4459,22 @@ function renderReviewHtml(): string {
         if (state.draftNotes[id] !== undefined) textarea.value = state.draftNotes[id];
         textarea.addEventListener('input', function () {
           state.draftNotes[id] = textarea.value;
+        });
+      });
+      // 同型 draft cache：finding textarea（與 note 平行，只是 key 不同）
+      el.taskList.querySelectorAll('textarea[data-finding]').forEach(function (textarea) {
+        const id = textarea.dataset.finding;
+        if (state.draftFindings[id] !== undefined) textarea.value = state.draftFindings[id];
+        textarea.addEventListener('input', function () {
+          state.draftFindings[id] = textarea.value;
+        });
+      });
+      // 任務卡片內的內嵌截圖（Final-state / verified-ui）：點擊放大進 viewer，
+      // 與右側 thumbnail grid 一致。stopPropagation 防止冒泡到 task-item card 觸發 active 切換。
+      el.taskList.querySelectorAll('img.verified-ui-image').forEach(function (img) {
+        img.addEventListener('click', function (event) {
+          event.stopPropagation();
+          openViewer(img.src, img.alt || '');
         });
       });
     }
@@ -2387,9 +4508,14 @@ function renderReviewHtml(): string {
       }
       // Discuss items：不顯示 thumbnail grid、不顯示 handoff button、不顯示 unmatched guidance（spec line 169）。
       // 只在 thumb pane 顯示「此項由 Claude 主導」提示，與中間 task list 的 discuss-card 呼應。
-      if (item.kind === 'discuss') {
+      if (hasKind(item, 'discuss')) {
         el.selectionStatus.textContent = '檢查項 ' + item.id + ' · 此項由 Claude 主導，無需截圖驗證';
         el.thumbGrid.replaceChildren(discussThumbMessage(item.description));
+        return;
+      }
+      if (isAutomaticOnly(item)) {
+        el.selectionStatus.textContent = '檢查項 ' + item.id + ' · Self-Completed · 無需截圖操作';
+        el.thumbGrid.replaceChildren(automaticThumbMessage(item.description));
         return;
       }
       const change = state.current;
@@ -2507,6 +4633,23 @@ function renderReviewHtml(): string {
       return div;
     }
 
+    function automaticThumbMessage(description) {
+      const div = document.createElement('div');
+      div.className = 'empty';
+      const title = document.createElement('p');
+      title.textContent = 'Self-Completed';
+      const body = document.createElement('p');
+      body.textContent = description;
+      const hint = document.createElement('p');
+      hint.textContent = 'automatic channel 的 evidence 顯示在中間清單，無需 OK / Issue / SKIP';
+      hint.style.opacity = '0.7';
+      hint.style.fontSize = '12px';
+      div.appendChild(title);
+      div.appendChild(body);
+      div.appendChild(hint);
+      return div;
+    }
+
     function descriptionGuidanceMessage(description) {
       const div = document.createElement('div');
       div.className = 'empty';
@@ -2561,6 +4704,15 @@ function renderReviewHtml(): string {
     async function saveAction(itemId, action) {
       const change = state.current;
       if (!change) return;
+      const targetItem = (change.items || []).find(function (item) { return item.id === itemId; });
+      if (!targetItem || !requiresUserConfirmation(targetItem)) {
+        if (targetItem && parentHasChildren(targetItem)) {
+          showBanner('此項是母項，請對其子項分別作回饋', '');
+        } else {
+          showBanner('此項自動完成或由 Claude 主導，無需在 GUI 操作', '');
+        }
+        return;
+      }
       if (change.malformedLines.length) {
         showBanner('寫入前需先修正格式錯誤', 'error');
         return;
@@ -2573,6 +4725,8 @@ function renderReviewHtml(): string {
         if (noteNode) noteNode.focus();
         return;
       }
+      const findingNode = el.taskList.querySelector('[data-finding="' + CSS.escape(itemId) + '"]');
+      const finding = findingNode ? findingNode.value : '';
       // visual feedback：立即把 task-item disable + 顯示「儲存中…」banner，
       // 讓使用者知道 click 收到了，不會以為 hung。
       inflightSaves.add(itemId);
@@ -2588,12 +4742,14 @@ function renderReviewHtml(): string {
             itemId: itemId,
             action: action,
             note: note,
+            finding: finding,
             version: change.version,
           }),
         });
         state.current = data.change;
         state.expanded.delete(itemId);
         delete state.draftNotes[itemId];
+        delete state.draftFindings[itemId];
         // sidebar metrics 是 state.changes 的 cache，saveAction 不會自動更新
         // 對應 entry，會跟 right pane 的 state.current 不一致。把 detail 的 summary
         // 欄位 patch 回 list，避免使用者看到「sidebar 1/6 已通過、right pane 4 ok」這種矛盾。
@@ -2662,6 +4818,7 @@ function renderReviewHtml(): string {
       const item = state.current.items[state.activeIndex];
       const node = el.taskList.querySelector('[data-item="' + CSS.escape(item.id) + '"]');
       if (node) node.scrollIntoView({ block: 'nearest' });
+      syncActiveItemUrl();
     }
 
     function openViewer(url, label) {
@@ -2712,6 +4869,63 @@ function renderReviewHtml(): string {
       shortcutModalPrevFocus = null;
     }
 
+    // back/forward 觸發 popstate：重新解析 URL，align state。
+    // - 同 change 內：只切 activeIndex（不重 fetch）
+    // - 換 change：重 loadChange，pushUrl=false（URL 已是使用者導航後位置）
+    // - 退到 list view：清掉 current
+    window.addEventListener('popstate', function () {
+      const target = parseLocationTarget();
+      if (!target.change) {
+        state.current = null;
+        state.activeIndex = 0;
+        renderChanges();
+        el.taskList.replaceChildren();
+        el.currentTitle.textContent = '';
+        if (el.evidenceSweepButton) el.evidenceSweepButton.hidden = true;
+        return;
+      }
+      if (state.current && state.current.name === target.change) {
+        if (target.itemId) {
+          const idx = state.current.items.findIndex(function (it) { return it.id === target.itemId; });
+          if (idx >= 0 && idx !== state.activeIndex) {
+            state.activeIndex = idx;
+            renderTasks();
+            renderThumbs();
+          }
+        }
+        return;
+      }
+      loadChange(target.change, false).then(function () {
+        if (target.itemId && state.current) {
+          const idx = state.current.items.findIndex(function (it) { return it.id === target.itemId; });
+          if (idx >= 0) {
+            state.activeIndex = idx;
+            renderTasks();
+            renderThumbs();
+            syncActiveItemUrl();
+          }
+        }
+      }).catch(function (err) {
+        showBanner(err.message || String(err), 'error');
+      });
+    });
+
+    // 雙擊 <code> 整塊選取；預設 dblclick 用 / 之類符號 break word boundary，會把
+    // 像 /reports/costs 之類路徑切成多段，反而難複製。涵蓋所有 <code>（含 evidence
+    // panel 既有的）。
+    document.addEventListener('dblclick', function (event) {
+      const target = event.target;
+      const codeEl = target && target.closest ? target.closest('code') : null;
+      if (!codeEl) return;
+      event.preventDefault();
+      const range = document.createRange();
+      range.selectNodeContents(codeEl);
+      const sel = window.getSelection();
+      if (!sel) return;
+      sel.removeAllRanges();
+      sel.addRange(range);
+    });
+
     document.addEventListener('keydown', function (event) {
       if (el.viewer.classList.contains('open')) {
         if (event.key === 'Escape') {
@@ -2749,9 +4963,9 @@ function renderReviewHtml(): string {
       const key = event.key.toLowerCase();
       if (key === 'j') { event.preventDefault(); moveActive(1); }
       else if (key === 'k') { event.preventDefault(); moveActive(-1); }
-      else if (key === 'o') { event.preventDefault(); saveAction(item.id, 'ok'); }
-      else if (key === 'i') { event.preventDefault(); saveAction(item.id, 'issue'); }
-      else if (key === 's') { event.preventDefault(); saveAction(item.id, 'skip'); }
+      else if (key === 'o') { event.preventDefault(); if (requiresUserConfirmation(item)) saveAction(item.id, 'ok'); }
+      else if (key === 'i') { event.preventDefault(); if (requiresUserConfirmation(item)) saveAction(item.id, 'issue'); }
+      else if (key === 's') { event.preventDefault(); if (requiresUserConfirmation(item)) saveAction(item.id, 'skip'); }
       else if (key === 'enter') {
         const first = el.thumbGrid.querySelector('[data-url]');
         if (first) openViewer(first.dataset.url, first.dataset.shot);
@@ -2762,6 +4976,16 @@ function renderReviewHtml(): string {
       if (state.current) loadChange(state.current.name);
       else loadChanges();
     });
+    if (el.evidenceSweepButton) {
+      el.evidenceSweepButton.addEventListener('click', function () {
+        const change = state.current;
+        if (!change) return;
+        const missing = computeMissingEvidence(change);
+        const pairCount = missing.reduce(function (acc, m) { return acc + m.kinds.length; }, 0);
+        if (!pairCount) return;
+        copyHandoffPrompt('evidence-fillin-change', { change: change, missing: missing }, '補 evidence (' + pairCount + ' pair)');
+      });
+    }
     el.viewerClose.addEventListener('click', closeViewer);
     el.viewer.addEventListener('click', function (event) {
       if (event.target === el.viewer) closeViewer();
@@ -2866,6 +5090,36 @@ function canListen(host: string, port: number): Promise<boolean> {
   })
 }
 
+// 啟動橫幅：iTerm2 / Terminal.app 對 raw http URL 都支援 cmd-click，所以 URL
+// 本身不加 underline 等 ANSI 修飾（部分 terminal 會把 escape 算進 URL 邊界），
+// 只用 bold + cyan 突顯。非 TTY（pipe to file / CI）自動省略 ANSI。
+const ANSI_ESCAPE_PATTERN = new RegExp(`${String.fromCharCode(0x1b)}\\[[0-9;]*m`, 'g')
+const stripAnsi = (s: string) => s.replace(ANSI_ESCAPE_PATTERN, '')
+
+function printStartupBanner(url: string, repoRoot: string): void {
+  const isTty = !!process.stdout.isTTY
+  const bold = isTty ? '\x1b[1m' : ''
+  const cyan = isTty ? '\x1b[36m' : ''
+  const dim = isTty ? '\x1b[2m' : ''
+  const reset = isTty ? '\x1b[0m' : ''
+  const lines: Array<[string, string]> = [
+    ['repo', `${dim}${repoRoot}${reset}`],
+    ['open', `${bold}${cyan}${url}${reset}`],
+  ]
+  const labelWidth = Math.max(...lines.map(([label]) => label.length))
+  const rendered = lines.map(([label, value]) => `${label.padEnd(labelWidth)}  ${value}`)
+  const innerWidth = Math.max(...rendered.map((l) => stripAnsi(l).length))
+  const horiz = '─'.repeat(innerWidth + 2)
+  console.log('')
+  console.log(`╭${horiz}╮`)
+  for (const line of rendered) {
+    const pad = ' '.repeat(innerWidth - stripAnsi(line).length)
+    console.log(`│ ${line}${pad} │`)
+  }
+  console.log(`╰${horiz}╯`)
+  console.log('')
+}
+
 function openBrowser(url: string): boolean {
   const command =
     process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'cmd' : 'xdg-open'
@@ -2885,16 +5139,18 @@ function parseArgs(argv: string[]): CliOptions {
     port: DEFAULT_PORT,
     repoRoot: process.cwd(),
     openBrowser: true,
+    scan: false,
   }
   for (let i = 2; i < argv.length; i++) {
     const arg = argv[i]
     if (arg === '--no-open') opts.openBrowser = false
+    else if (arg === '--scan') opts.scan = true
     else if (arg === '--host') opts.host = argv[++i] || opts.host
     else if (arg === '--port') opts.port = Number(argv[++i] || DEFAULT_PORT)
     else if (arg === '--repo') opts.repoRoot = resolve(argv[++i] || opts.repoRoot)
     else if (arg === '--help' || arg === '-h') {
       console.log(
-        'Usage: review-gui.mts [--repo <path>] [--host 127.0.0.1] [--port 5174] [--no-open]',
+        'Usage: review-gui.mts [--repo <path>] [--host 127.0.0.1] [--port 5174] [--no-open] [--scan]',
       )
       process.exit(0)
     } else {
@@ -2908,15 +5164,60 @@ async function main() {
   const options = parseArgs(process.argv)
   if (!existsSync(options.repoRoot))
     throw new Error(`Repo root does not exist: ${options.repoRoot}`)
+  if (options.scan) {
+    await runScan(options.repoRoot)
+    return
+  }
   const { url } = await startServer(options)
-  console.log(`[review:ui] repo: ${options.repoRoot}`)
-  console.log(`[review:ui] ${url}`)
+  printStartupBanner(url, options.repoRoot)
   if (options.openBrowser) {
     const opened = openBrowser(url)
     if (!opened) console.log(`[review:ui] Browser launch failed. Open this URL manually: ${url}`)
   } else {
     console.log('[review:ui] Browser launch skipped (--no-open)')
   }
+}
+
+/**
+ * Headless scan：reuse listPendingChanges 的同一份 evaluator，輸出 JSON 給 skill 消費。
+ * 結構穩定（任何欄位異動需更新 review-readiness-scan SKILL.md），避免 skill 端解析漂移。
+ */
+async function runScan(repoRoot: string): Promise<void> {
+  const changes = await listPendingChanges(repoRoot)
+  // pending=0 的 change 從 home page 隱藏不列；scan 也排除（review readiness 只關注待處理項目）。
+  const active = changes.filter((change) => change.pending > 0)
+  const isNotReady = (change: ChangeSummary): boolean =>
+    change.readinessHits > 0 || change.malformed > 0 || change.evidenceMissing.length > 0
+  const ready = active
+    .filter((change) => !isNotReady(change))
+    .map((change) => ({
+      name: change.name,
+      pending: change.pending,
+      issued: change.issued,
+      total: change.total,
+    }))
+  const notReady = active.filter(isNotReady).map((change) => ({
+    name: change.name,
+    pending: change.pending,
+    issued: change.issued,
+    total: change.total,
+    readinessHits: change.readinessHits,
+    malformed: change.malformed,
+    hitsByCode: change.hitsByCode,
+    evidenceMissing: change.evidenceMissing,
+  }))
+  const output = {
+    schema: 'review-readiness-scan/v1',
+    generatedAt: new Date().toISOString(),
+    repoRoot,
+    counts: {
+      ready: ready.length,
+      notReady: notReady.length,
+    },
+    ready,
+    notReady,
+  }
+  process.stdout.write(JSON.stringify(output, null, 2) + '\n')
 }
 
 const invokedPath = process.argv[1] ? resolve(process.argv[1]) : ''

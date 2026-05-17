@@ -27,6 +27,90 @@ Implement tasks from a Spectra change.
 
 **Steps**
 
+0. **Worktree gate**（clade fork addition；not in upstream spectra）
+
+   Spectra-apply writes tracked product code, so per [[worktree-default]] §1 it **MUST** run in an isolated session worktree — multi-session 並行共用單一 working tree 會撞 staging / branch / WIP（見 worktree-default.md 開頭兩次真實事故）。Step 1 之前先 gate：
+
+   a. **Resolve change name early**（用 Step 1 同套規則 — argument > conversation context > `spectra list`）。Step 0 完成後 Step 1 可重用已解析的 name，不必再問。
+
+   b. **偵測 cwd**：
+
+      ```bash
+      git rev-parse --git-dir
+      ```
+
+      - 若 output 路徑含 `/worktrees/`（或 `git rev-parse --git-common-dir` ≠ `git rev-parse --git-dir`）→ cwd 已在某個 session worktree，**通過**，繼續 Step 1
+      - 否則 cwd 在 main，繼續 step c
+
+   c. **Pre-fork baseline guard + 自動建 worktree**（idempotent）：
+
+      Spectra-apply 走 **commit-then-fork** — 有 change context，把屬於這條 change 的 baseline 自動 commit 上 main 再 fork，避免 worktree 看不到 main 的 untracked / modified baseline（[[worktree-default]] §1 Pre-fork baseline guard）。
+
+      **c.1 — 偵測 main dirty**：
+
+      ```bash
+      node scripts/wt-helper.mjs detect-main-dirty --json
+      ```
+
+      解析回傳 `{ modified, untracked, conflicted }`：
+
+      - **conflicted 非空** → STOP，回報 user 解 conflict 再重試（wt-helper 拒絕自動處理 unmerged）
+      - **modified + untracked 為空**（clean）→ 跳到 c.4 直接 fork
+      - **modified + untracked 非空** → 進 c.2 做 scope filter
+
+      **c.2 — Scope filter（主線自己做，不靠 wt-helper）**：
+
+      把 dirty paths 分成 **scope-in**（屬於這條 change 的 baseline）vs **scope-out**（其他）。三來源 union：
+
+      1. 讀 `.spectra/touched/<change-name>.json`（若存在；spectra-commit 上次 sync 寫入）— 列出的 path 為 scope-in
+      2. Grep `openspec/changes/<change-name>/proposal.md` + `openspec/changes/<change-name>/specs/**/*.md`，找 `packages/` / `server/` / `app/` / `supabase/` / `scripts/` 等 module path 提及；任一 dirty path 是它們的子路徑或開頭命中 → scope-in
+      3. Fallback：dirty path basename 或開頭跟 change name slug 的 word 命中 → scope-in
+
+      其餘 dirty → scope-out。
+
+      **c.3 — 三情境決策**：
+
+      | 情境 | 行為 |
+      | --- | --- |
+      | scope-in 非空 + scope-out 為空 | 直接走 c.4，commit-then-fork |
+      | scope-in 非空 + scope-out 非空 | 印分類報告給 user（scope-in N 條 / scope-out N 條）後走 c.4，commit **只**包 scope-in；scope-out 留在 main 不動 |
+      | scope-in 為空（無論 scope-out 為空或非空、無論三來源是否對得上）| 直接走 c.4 **clean fork**；若 scope-out 非空，印一行通知：`main 有 <N> 條 dirty 不屬於本 change，已留在 main 不動，worktree 從 HEAD fork`。**NEVER** STOP / request_user_input / 要求 user 先 commit/stash —— worktree 隔離已處理 main WIP 對 apply 的影響；同檔衝突是 merge-back 時的事，不在 apply 範圍 |
+
+      **c.4 — Fork（commit-then-fork 或 clean fork）**：
+
+      ```bash
+      # 有 scope-in baseline 要 commit
+      node scripts/wt-helper.mjs add <change-name> \
+        --precheck-baseline <change-name> \
+        --baseline-strategy commit \
+        --baseline-scope-paths <comma-separated-scope-in-paths>
+
+      # 或：main clean / user 選 (b) cross-session 不動 dirty
+      node scripts/wt-helper.mjs add <change-name>
+      ```
+
+      Helper 用 change name 當 slug，內部 normalize（lowercase / 空白轉 `-` / collapse 重複 `-`）。commit 策略時 helper 跑 selective stage（`git add -- <scope-paths>`，**禁** `git add -A`）+ commit `baseline: <change-name> pre-fork sync` + fork。Helper 行為與失敗處理見 `plugins/hub-core/skills/wt/SKILL.md`。
+
+      若 helper fail with `Worktree path already exists` → slug 對應 worktree 已存在（前次 session 建過、未清掉），**沿用即可**，視為成功；用 `node scripts/wt-helper.mjs list --json` 抓既有 path。**注意**：既有 worktree 不會再跑 baseline guard，若 main 仍有屬於本 change 的 dirty baseline，必須 user 自己 commit 後 worktree 內 `git pull` 或 cherry-pick。
+
+      其他 helper 錯誤 → 報錯並 STOP，**不要**降級回「在 main 跑」。
+
+   d. **Internally dispatch via `/wt` Form 3**：
+
+      Invoke the Skill tool with `/wt <change-name>: /spectra-apply <change-name>` (Form 3 per `plugins/hub-core/skills/wt/SKILL.md`). `/wt` orchestrates the worktree lifecycle (reuses the one prepared in Step 0c) and spawns a subagent that runs Step 1+ inside it. Subagent reports completion or structured failure back through `/wt`'s normal channel; parent cwd stays on main throughout.
+
+      Wait for the dispatched skill to return, surface its report to the user, and STOP — do **not** re-enter Step 1 in the parent session.
+
+      **Fallback** — if the Skill tool / `/wt` dispatch is unavailable in this environment (rare degradation; e.g., minimal runtime without skill support), emit a status-only message:
+
+      ```
+      Worktree at <worktree-absolute-path> ready; please run `/spectra-apply <change-name>` from inside it manually.
+      ```
+
+      No `cd … && claude` oneliner under any branch. `<worktree-absolute-path>` 從 wt-helper 輸出抓；`<change-name>` 是 Step 0a 已解析的 name.
+
+   e. **Bypass 條件**：使用者**明確**訊息含「不要 worktree」「在 main 跑」「我知道風險」等字眼時，跳過 Step 0 直接 Step 1。**禁止** agent 自行判斷略過（包括 user 跑 `/spectra-apply` 本身不算明確 bypass — 那只是 invocation，不是 worktree 偏好）。
+
 1. **Select the change**
 
    If a name is provided, use it. Otherwise:
@@ -35,6 +119,8 @@ Implement tasks from a Spectra change.
    - If ambiguous, run `spectra list --json` AND `spectra list --parked --json` to get all available changes (including parked ones). Parked changes should be annotated with "(parked)" in the selection list. Use the **request_user_input 工具** to let the user select
 
    Always announce: "Using change: <name>" and how to override (e.g., `/spectra-apply <other>`).
+
+   Then invoke `/rename <name>` (AI Agent built-in slash command) to rename this session after the change — makes concurrent change sessions easy to identify in the session list. If the SlashCommand tool is unavailable in this environment, skip silently.
 
 2. **Check status to understand the schema**
 
@@ -150,6 +236,24 @@ Run `spectra analyze <change-name> --json` to check cross-artifact consistency (
   - **Stop** — end the workflow
 
   If there is no request_user_input 工具 available, present options as plain text and wait for the user's response.
+
+3d. **Drift dormancy check** (passive trigger for stale changes)
+
+When the change has been dormant for more than 5 days AND the change directory has had zero commits in the past 3 days, surface a drift report before tasks begin — the change is likely out-of-sync with the current codebase.
+
+Detect dormancy from `.openspec.yaml` `created` and `git log -1 --format=%at -- docs/specs/changes/<name>/`:
+
+- **Both conditions met**: run `spectra drift <change-name>`, display the report, then use the **request_user_input 工具**:
+  - **Continue with apply** — proceed to tasks (recommended for Light drift)
+  - **Refresh first** — pause apply, run `/spectra-ingest <change-name>` to update artifacts, then resume
+  - **Stop** — end the workflow
+- **Either condition not met**: silently continue, no output.
+
+The trigger is guidance only — it MUST NOT block apply from proceeding when the user chooses to continue. Hard-blocking on dormancy would punish legitimate "I came back after a long weekend" cases.
+
+(Threshold reasoning: AI-assisted commits are daily-cadence. ≥5 days dormant + ≥3 days no commit ≈ genuine stagnation, not normal pacing.)
+
+If there is no request_user_input 工具 available, present options as plain text and wait for the user's response.
 
 4. **Read context files**
 
@@ -287,6 +391,12 @@ Run `spectra analyze <change-name> --json` to check cross-artifact consistency (
    For each pending task:
    - Show which task is being worked on
    - Re-read the sections of design and spec files that are relevant to this task's scope — do not rely on memory from earlier in the conversation, as context may have been compressed
+   - **Read the Implementation Contract for this task before editing any source file.** If `design.md` exists and contains an `## Implementation Contract` section (or contract content under another heading the design uses), read the part of it that covers this task's scope. The contract names the observable behavior, interface or data shape, failure modes, acceptance criteria, and scope boundaries you must satisfy. Treat the contract as the durable handoff — it is what the task will be measured against, regardless of who started the change.
+   - **Detect unclear or path-only tasks before writing code.** A task is unclear if it:
+     - only names files to edit ("edit `foo.rs`", "update `bar.svelte`") with no behavior, contract, or verification target;
+     - is vague ("handle edge cases", "wire it up", "make it work");
+     - conflicts with the implementation contract (asks for behavior the contract excludes, or omits behavior the contract requires).
+       When this happens, pause. Either update the artifact (design or tasks) so the task names a concrete behavior and verification target, or report the blocker and wait for guidance. Do NOT silently guess against unclear requirements.
    - Before writing code, check:
      1. **Reuse** — search adjacent modules and shared utilities for existing implementations before writing new code
      2. **Quality** — derive values from existing state instead of duplicating; use existing types and constants over new literals
@@ -299,7 +409,7 @@ Run `spectra analyze <change-name> --json` to check cross-artifact consistency (
           Do NOT invent additional test values beyond what the spec examples provide without reason. The examples ARE the agreed specification.
    - Make the code changes required
    - Keep changes minimal and focused
-   - **Verify before marking done** — re-read the task description from the tasks file. For each requirement stated in the description, confirm it is addressed by your changes. If any requirement is missing, implement it now. Do not mark the task complete until every part of the description is covered.
+   - **Verify before marking done** — re-read the task description from the tasks file AND the relevant Implementation Contract content from design.md. For each requirement stated in the task description and each contract item that covers this task's scope, confirm it is addressed by your changes. Confirm the verification target named by the task (test name, CLI invocation, analyzer check, or manual assertion) actually passes. If any contract item, task requirement, or verification target is missing or failing, implement/fix it now. Do not mark the task complete until every part of the description is covered and the contract for this task is satisfied.
    - Mark task complete by running: `spectra task done --change "<name>" <task-id>`
      This command marks the checkbox in tasks.md AND records which files were modified for this task.
    - Continue to next task
@@ -339,52 +449,148 @@ Run `spectra analyze <change-name> --json` to check cross-artifact consistency (
 
    Confirm `state: "all_done"`. If not, review remaining tasks and complete them.
 
-8a. **Verify-Auto Pass**（Step 8b 前 hard gate）
+8a. **Verify Channel Pass**（Step 8b 前 hard gate）
 
-   Read `tasks.md` `## 人工檢查` 找未勾 `[verify:auto]` items。**MUST** 先處理完所有 `[verify:auto]` items 才進 Step 8b — 把「agent 能自跑」的 round-trip 用 evidence trail 預先消掉，user 在 GUI 只需要 review evidence 點 OK，不用再自己跑一次。
+   Read `tasks.md` `## 人工檢查` 找未勾 `[verify:e2e]` / `[verify:api]` / `[verify:ui]` / `[verify:<a>+<b>]` / deprecated `[verify:auto]` items。**MUST** 先處理完所有 verify channels 才進 Step 8b。
 
-   **Skip-condition**：`## 人工檢查` 沒任何未勾 `[verify:auto]` item → 直接跳 Step 8b。
+   **Skip-condition**：`## 人工檢查` 沒任何未勾 `verify:*` item → 直接跳 Step 8b。
+
+   Cookbook 與範本入口：`vendor/snippets/verify-channels/README.md`。
+
+   **Pre-verify baseline check（dispatch 前必做）**：
+
+   1. 主線先 grep / read dev-login route：
+
+      ```bash
+      find server packages -path '*/server/routes/auth/_dev-login.get.ts' -o -path '*/server/routes/auth/__test-login.get.ts' 2>/dev/null
+      ```
+
+   2. 依 channel 補查：
+      - `[verify:e2e]`：Playwright config + `e2e/fixtures/index.ts` style three-role fixture 必須存在
+      - `[verify:api]`：`__test-login` 或等價 session bypass route 必須存在
+      - `[verify:ui]`：`supabase/seed.sql` 或專案等價 seed file 必須存在
+   3. 缺 baseline → **STOP**，回報 user 補齊 baseline；**NEVER** 降級 channel、派 agent 撞錯、或讓 screenshot-review 補 seed。
 
    **執行流程**：
 
-   1. **派遣 screenshot-review agent 用 `mode: verify`**：
+   1. **解析未勾 verify items 並依 `kinds` 分類**
 
+      - 單一 `[verify:e2e]` / `[verify:api]` / `[verify:ui]` 依該 channel 執行。
+      - Multi-marker 依 `e2e → api → ui` 順序逐 channel 執行。
+      - Deprecated `[verify:auto]` **MUST** resolution as `[verify:api+ui]`；同時記錄 deprecation warning，後續 archive-gate 也會 warn。
+
+   2. **`[verify:e2e]` channel — 主線自己寫 Playwright spec**
+
+      - Copy/adapt `vendor/snippets/verify-channels/e2e-spec.template.ts`。
+      - Spec path **MUST** 是 `e2e/verify/<change>/<topic>.spec.ts`。
+      - 跑：
+
+        ```bash
+        pnpm test:e2e:verify <change>
+        ```
+
+      - Spec pass 後，主線 Edit tasks.md 寫：
+
+        ```text
+        (verified-e2e: <ISO-8601> spec=e2e/verify/<change>/<topic>.spec.ts trace=<trace-path>)
+        ```
+
+      - Spec fail → 保留 `[ ]`，寫 `（issue: <spec failure summary>）` 或回報 blocker；**NEVER** 寫 `(verified-e2e:)`。
+
+   3. **`[verify:api]` channel — 主線自己跑 HTTP round-trip**
+
+      - Copy/adapt `vendor/snippets/verify-channels/api-roundtrip.template.sh` 或直接用 curl / ofetch 跑等價 request。
+      - 通過後，主線 Edit tasks.md 寫：
+
+        ```text
+        (verified-api: <ISO-8601> <METHOD> <URL> <STATUS>[ body=<sha256-12chars>])
+        ```
+
+      - Request fail / status 不符 → 保留 `[ ]`，寫 `（issue: <METHOD URL expected/actual>）` 或回報 blocker；**NEVER** 寫 `(verified-api:)`。
+
+   4. **`[verify:ui]` channel — 派 verify mode（UI only）**
+
+      **Runtime 選擇**（default codex；Claude subagent fallback）：
+
+      - **Default — codex**：偵測 `command -v codex` 存在且 env `CLADE_FORCE_CLAUDE_SCREENSHOT` 未設 → 呼叫 `node <clade-vendor>/scripts/codex-dispatch-screenshot-verify.mjs --change <name> --consumer-path . --dev-server-url <url> --items-json <items.json>`。Dispatcher 跑完 stdout 印 JSON 摘要（`{"runtime":"codex","change":...,"items":[...],"audit_exit_code":N,"progress_json":"...","review_md":"..."}`），主線解析該 JSON 後對 `items[].status === "PASS"` 的 item 寫 `(verified-ui:)` annotation。Codex 任一 item `status` 不是 `PASS` 時 → 保留 `[ ]` + 寫 issue / blocker（業務結果，**NEVER** fallback Claude — 同一 brief 在 Claude 也會撞同樣業務問題）
+      - **Fallback — Claude subagent**：以下任一情境**才** fallback 到 `screenshot-review` subagent（brief copy/adapt 自 `vendor/snippets/verify-channels/ui-final-state-brief.template.md`）：
+        - `command -v codex` 不存在
+        - env `CLADE_FORCE_CLAUDE_SCREENSHOT=1` 強制退場（debug / 退場用）
+        - Dispatcher exit 非 0 **且** stdout 沒印出可 parse 的 JSON 摘要（機械故障，例如 codex auth 失效、subprocess crash）
+      - 兩 runtime 走相同的 brief contract（change name、dev server URL、items、Scope）；codex runtime 多了 self-contained guardrails（codex 不會 auto-load `screenshot-review.md`）
+
+      共用規約：
+
+      - Brief **MUST** 提供 change name、dev server URL、每個 item 的 known URL、expected DOM observation、預期 screenshot path。
+      - Agent scope **MUST** 限於 open known URL + wait for load + final-state screenshot + DOM observation。
+      - Agent **NEVER** 做 mutation / form fill / click sequences / multi-role login switching / seed repair。
+      - PASS 後，主線 Edit tasks.md 寫：
+
+        ```text
+        (verified-ui: <ISO-8601> screenshot=screenshots/local/<change>/#<id>-final.png[ dom=<obs>])
+        ```
+
+      - FAIL / UNCERTAIN → 保留 `[ ]`，寫 issue 或回報 blocker；**NEVER** 寫 `(verified-ui:)`。
+
+      Brief 範例：
+
+      ```text
+      mode: verify
+      Channel: verify:ui
+      Change: <change-name>
+      Dev server URL: http://localhost:<port>
+
+      Items:
+      - #3 [verify:ui]
+        Description: /asset-loans 顯示 overdue badge + top-sort
+        Known URL: http://localhost:<port>/asset-loans
+        Expected DOM observation: overdue badge visible, overdue rows sorted first
+        Screenshot path: screenshots/local/<change-name>/#3-final.png
+
+      Scope:
+      - Open the known URL, wait for load, capture final-state screenshot, record DOM observation.
+      - Do NOT click, fill forms, submit mutations, switch roles, repair seed, or patch network.
       ```
-      Agent({
-        agent_type: "screenshot-review",
-        prompt: `mode: verify
-        Change: <change-name>
-        未勾 [verify:auto] items：
-        - #1 admin /settings 改排程 09:00 → 200 toast → reload 仍 09:00
-        - #4 /asset-loans 紅標+徽章+置頂排序
 
-        Dev server port: <port>（若已知）
+   5. **Multi-marker completion semantics**
 
-        每條 item 完整 round-trip 並回報 PASS / FAIL / UNCERTAIN，附 network status、DOM 觀察、final-state screenshot 路徑。`
-      })
-      ```
+      - 每個 channel 完成就寫對應 annotation；同一 line 可同時有 `(verified-e2e:)` / `(verified-api:)` / `(verified-ui:)`，順序 **MUST** 是 e2e → api → ui。
+      - 最後一個 channel 完成且 item 不含 `verify:ui` / `review:ui` 時，呼叫 review-gui auto-check helper `autoCheckCompletedAutomaticItems(...)`，自動 flip `[x]`。
+      - item 含 `verify:ui` 或 `review:ui` 時，checkbox **MUST** 保持 `[ ]`，等 user 在 review GUI 確認。
 
-      Agent 詳細行為見 `.codex/agents/screenshot-review.md` § verify mode（觀察 network response status、觀察 DOM 預期變化、撞 emptiness 主動補 seed、截 final-state screenshot 到 `screenshots/local/<change-name>/#N-final.png`）。
+   6. **Deprecated `[verify:auto]` alias**
 
-   2. **依 agent 回報主線 Edit tasks.md**：
+      - Alias resolution：視為 `[verify:api+ui]`。
+      - 主線先跑 API channel，再派 UI channel。
+      - 新 tasks **NEVER** author `[verify:auto]`；若 Step 8a 碰到它，只做 backward-compatible execution 並保留 deprecation warning。
 
-      - **PASS** → 主線寫入 `(verified-auto: <ISO> network=<status>[ dom=<obs>][ ...])` annotation；**NEVER** 代勾 `[x]`（user 仍要在 GUI 點 OK 才勾，雙層保險）。可用 `applyVerifiedAutoAnnotationToContent` helper 或直接 Edit。
-      - **FAIL**（response 4xx/5xx 而 description 預期 200、DOM 預期變化沒發生） → 保留 `[ ]` + 寫 `（issue: <網路狀態 / DOM 觀察>）`，主線回報 user：「verify-auto FAIL — 看起來 server 行為跟 description 不符，請檢查」
-      - **UNCERTAIN**（fixtures 缺、撞登入頁、agent 解不開） → 不寫 annotation；主線回報 user：「verify-auto UNCERTAIN — 是否升級成 [review:ui]（需人親操）或補 fixtures plan？」並等 user 決定
+   7. **Exit**
 
-   3. 全部 `[verify:auto]` items 處理完才進 Step 8b。
+      - 所有 automatic-only items 完成 annotations 後，呼叫 `autoCheckCompletedAutomaticItems(...)` 讓 review-gui helper 自動勾 `[x]`。
+      - 所有含 `verify:ui` 的 items 保持未勾，進 Step 8b 由 user GUI 確認 visual evidence。
 
    **Guardrails**：
-   - **NEVER** 代勾 `[x]` — annotation 只是 evidence trail，最終勾選由 user 在 GUI 完成
-   - **NEVER** 在 agent 沒成功 round-trip（沒 network 觀察 / 沒 final-state screenshot）的情況下寫 `(verified-auto:)` annotation — 這條 rule 也明列在 `manual-review.md` 禁止事項
-   - **MUST** 主動處理 emptiness（補 seed / fixtures），不要 punt 給 user — user-facing change 一定有 fixtures plan，跑 reset 不該卡
+   - **NEVER** 要求 user 在 GUI 確認 `[verify:e2e]` / `[verify:api]` automatic-only items；annotation pass 後 helper 自動 done。
+   - **NEVER** 對含 `[verify:ui]` 的 item 代勾 `[x]`；final-state screenshot 需要 user eye。
+   - **NEVER** 在沒有成功 evidence 時寫 `(verified-<channel>:)` annotation。
+   - **NEVER** 派 screenshot-review agent 負責 mutation / form fill / multi-role login；改用 `verify:e2e` 或 `verify:api`。
 
 8b. **Manual review handoff**
 
    When tasks.md still contains unchecked items in the `## 人工檢查` section (typical at this point — implementation tasks `[x]` but manual-review items `[ ]`), **MUST** hand off to the local manual-review GUI rather than walking through items inline in chat.
 
    - **DEFAULT path**: Reply to the user with something like:
-     > Implementation 完成。Step 8a 已對 `<M>` 項 `[verify:auto]` 跑完 agent round-trip，剩 `<N>` 項 `## 人工檢查` 待你確認。請在 consumer repo root 執行 `pnpm review:ui` 開本地 GUI 驗收 — `[verify:auto]` 項顯示 evidence + final-state screenshot 等你點 OK；`[review:ui]` 項顯示截圖等你親操確認。完成後回報，我繼續 Step 9 status。
+     > Implementation 完成。Step 8a 已處理 verify channels：automatic `[verify:e2e]` / `[verify:api]` items 已寫 annotation 並自動完成；含 `[verify:ui]` / `[review:ui]` 的 `<N>` 項仍待你確認。請在**該 change 所在的 worktree root** 執行 `pnpm review:ui` 開本地 GUI 驗收：
+     >
+     >   cd <change-worktree-absolute-path>
+     >   pnpm review:ui
+     >
+     > GUI 啟動後直接打開：
+     >
+     >   http://127.0.0.1:5174/review/<change-name>
+     >
+     > GUI 會自動配對 `screenshots/local/<change-name>/#<N>-*.png`、conflict-aware 寫回 tasks.md、對 `[verify:e2e]` / `[verify:api]` automatic-only items 自動勾 `[x]`、對 `[verify:ui]` / `[review:ui]` items 顯示 evidence 等你 OK / Issue / Skip。完成後回報，我繼續 Step 9 status。
+   - **MUST 直接給 review-gui deep-link + worktree 絕對路徑**（per `rules/core/proactive-skills.md` § Inline Review-GUI Deep-Link）：訊息 **MUST** 含 (1) `cd <change-worktree-absolute-path>` 完整路徑（從 `git rev-parse --git-dir` 或 wt-helper list 抓），(2) `http://127.0.0.1:5174/review/<change-name>` 完整 URL。**NEVER** 寫「consumer repo root」「專案根目錄」當預設措辭——`openspec/changes/<name>/` 與 `screenshots/local/<name>/` 只在 worktree、main repo 沒有，使用者開新 terminal 落在 main 跑 `pnpm review:ui` 會空畫面。**NEVER** 列 dev server URL（`http://localhost:3040/admin/...`）當替代——review-gui 內部已有 final-state screenshot + evidence；列 dev server URL 反而模糊驗收入口。`5174` 是 `vendor/scripts/review-gui.mts` `DEFAULT_PORT`，找不到時會 fallback 到 5174-5194，由 GUI startup banner 告知 user，主線不必猜。
    - Wait for the user to complete the GUI flow and report back. Do NOT proceed to Step 9 / propose archive until the user signals manual review is done.
    - **NEVER** default to `request_user_input` chat dialog walking items one-by-one — it burns tokens, ignores the screenshot pool, and contradicts `rules/core/manual-review.md` 標準流程.
 
@@ -465,6 +671,7 @@ What would you like to do?
 - Pause on errors, blockers, or unclear requirements - don't guess
 - Use contextFiles from CLI output, don't assume specific file names
 - **No external task tracking** — do not use any built-in task management, todo list, or progress tracking tool; the tasks file is the only system
+- **Worktree isolation — NEVER halt apply on main's WIP**: Step 0 必須自動把 user 帶進 worktree（用 commit-then-fork 或 clean fork，視 scope 而定）；無論 Step 0c 階段或 apply 進行中，**NEVER** 因 main repo 的 dirty WIP / staged / untracked / 同檔別 session WIP 中斷 apply、request_user_input 要 user clean main、或建議 user 自己處理後重試。worktree 是獨立 working tree，main 的 WIP 不在 worktree 也無法影響它；同檔衝突是 merge-back 時的事，由 `/spectra-commit` + user 決策處理。唯一合法 STOP 是 unmerged conflict（wt-helper 拒絕 fork）或 helper 本身錯誤；user-decision-needed pause **NEVER**。
 - **Phase dispatch discipline**（per `agent-routing.md`）:
   - **NEVER** dispatch Design Review phase to codex — Design skill is AI Agent first-class
   - **NEVER** dispatch UI view phase（component / page / view / layout / styling）to codex — UI view 層的視覺 / 互動 / a11y 細節必須跟 Design skill 緊耦合，主線自己做。Frontend 但非 view 的（store / hook / API client / type / util）仍走 codex

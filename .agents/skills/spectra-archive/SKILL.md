@@ -23,7 +23,29 @@ Archive a completed change.
 
 **Prerequisites**: This skill requires the `spectra` CLI. If any `spectra` command fails with "command not found" or similar, report the error and STOP.
 
+**Worktree exemption (clade fork addition)**: This skill is exempt from the [[worktree-default]] §1 worktree requirement. Archive is main-bound — every output (delta sync into `openspec/specs/<capability>/spec.md`, move into `openspec/changes/archive/`, screenshot sweep) targets main, so running inside a worktree adds a mandatory merge-back with no isolation benefit. The skill SHALL proceed regardless of whether cwd is on the main worktree or inside a session worktree; the orchestrator (e.g., `/handoff` Mode B Step 2B.5) SHALL dispatch this skill directly without routing through `/wt`. Do NOT add prose instructing the user to "open a worktree first" — that contradicts the §1 exemption.
+
+**Atomic merge-back contract (clade fork addition)**: Per [[worktree-default]] §5.5, worktree branches do NOT squash back to main at `/wt` return time — they wait until archive. Step 0 below absorbs any slug-matching session worktree into main BEFORE the archive gates run, so gates inspect the post-squash state and so main never carries half-done work between sessions.
+
 **Steps**
+
+0. **Atomic merge-back from active worktree** (clade fork addition)
+
+   Per [[worktree-default]] §5.5, any session worktree whose slug matches this change-name MUST be absorbed into main before archive gates run. If gates run on un-absorbed main, they would see a false-clean diff (worktree changes never landed) and produce a misleading archive.
+
+   ```bash
+   node scripts/wt-helper.mjs merge-back <change-name> --auto-stash --noop-if-missing
+   ```
+
+   - `--noop-if-missing` makes this a silent no-op when no matching worktree exists (solo archive path — change implemented directly on main).
+   - `--auto-stash` stashes any main-worktree blockers as `wt-merge-block/<change-name>/<ISO>` for later reconciliation via `node scripts/stash-reconcile.mjs`.
+   - On conflict, the squash aborts, the worktree + branch are preserved, and the stash is popped back. Surface the error and **STOP** the archive — the change cannot be archived until the conflict is resolved.
+
+   **Skip condition**: if `scripts/wt-helper.mjs` does not exist (consumer hasn't propagated the merge-back subcommand yet), skip this step silently with a one-line note: `Step 0: skipped — wt-helper merge-back not available (consumer pre-propagate)`.
+
+   **Output (when worktree absorbed)**:
+   - `merge-back: <change-name> absorbed into main` — proceed to Step 1
+   - `merge-back: <change-name> absorbed into main (blockers stashed as wt-merge-block/<name>/<ISO>) + worktree cleaned` — proceed; remind user in Step 8 summary that stash entry needs reconciliation
 
 1. **If no change name provided, prompt for selection**
 
@@ -51,7 +73,7 @@ Archive a completed change.
 
    Read the tasks file (typically `tasks.md`) to check for incomplete tasks.
 
-   Count tasks marked with `- [ ]` (incomplete) vs `- [x]` (complete).
+   Count **leaf** tasks marked with `- [ ]` (incomplete) vs `- [x]` (complete). For `## 人工檢查` items, parent `#N` lines that own scoped `#N.M` children have state derived from children (see `rules/core/manual-review.md`「Parent State Derivation」) — never count those parent lines directly.
 
    **If incomplete tasks found:**
    - Display warning showing count of incomplete tasks
@@ -116,11 +138,9 @@ Archive a completed change.
    - **NEVER** batch-process multiple `[discuss]` items in one user prompt — present them one at a time so the user can give a focused answer per item
    - **NEVER** touch `[review:ui]` items during this step
 
-4. **Preview delta spec sync (informational)**
+4. **Assess delta spec sync state**
 
-   The `spectra archive` CLI applies delta specs to main specs by default; this step previews what will be applied so the user can choose to sync or skip via the CLI flag in step 6.
-
-   Check for delta specs at `openspec/changes/<name>/specs/`. If none exist, proceed to step 5 without prompting.
+   Check for delta specs at `openspec/changes/<name>/specs/`. If none exist, proceed without sync prompt.
 
    **If delta specs exist:**
    - Compare each delta spec with its corresponding main spec at `openspec/specs/<capability>/spec.md`
@@ -128,11 +148,10 @@ Archive a completed change.
    - Show a combined summary before prompting
 
    **Prompt options:**
-   - "Sync now (recommended)" — step 6 runs `spectra archive <name>` (default: applies deltas)
-   - "Archive without syncing" — step 6 runs `spectra archive <name> --skip-specs`
-   - "Cancel" — STOP without archiving
+   - If changes needed: "Sync now (recommended)", "Archive without syncing"
+   - If already synced: "Archive now", "Sync anyway", "Cancel"
 
-   Record the user's choice for step 6. Do NOT invoke any separate sync skill — the CLI is the single source of truth for delta application.
+   If user chooses sync, use Task tool (agent_type: "general-purpose", prompt: "Use Skill tool to invoke spectra-sync-specs for change '<name>'. Delta spec analysis: <include the analyzed delta spec summary>"). Proceed to archive regardless of choice.
 
 5. **Clean up tracking file**
 
@@ -184,11 +203,17 @@ Archive a completed change.
 
 **Change:** <change-name>
 **Schema:** <schema-name>
+**Worktree:** ✓ Absorbed into main (or: no worktree — solo path)
 **Archived to:** openspec/changes/archive/YYYY-MM-DD-<name>/
 **Specs:** ✓ Synced to main specs
 **Screenshots:** ✓ Swept to _archive/YYYY-MM/ (or: no screenshots / skipped (user --no-sweep) / sweep failed)
 
 All artifacts complete. All tasks complete.
+```
+
+If Step 0 stashed blockers, append a line under **Worktree**:
+```
+**Stash to reconcile:** wt-merge-block/<change-name>/<ISO> (run `node scripts/stash-reconcile.mjs` to plan)
 ```
 
 **Output On Success (No Delta Specs)**
@@ -248,8 +273,8 @@ Target archive directory already exists.
 - Don't block archive on warnings - just inform and confirm
 - Preserve .openspec.yaml when moving to archive (it moves with the directory)
 - Show clear summary of what happened
-- Delta spec application is performed by `spectra archive` itself (default behavior); user choice in step 4 only controls whether to pass `--skip-specs`. Do NOT invoke a separate sync skill — the CLI is SSOT.
-- If delta specs exist, always run the sync preview and show the combined summary before prompting
+- If sync is requested, use the Skill tool to invoke `spectra-sync-specs` (agent-driven)
+- If delta specs exist, always run the sync assessment and show the combined summary before prompting
 - If **request_user_input 工具** is not available, ask the same questions as plain text and wait for the user's response
 - **NEVER** skip Step 7 screenshot sweep silently — always run it (unless `--no-sweep`); sweep failure must surface in summary, but **NEVER** roll back the successful archive on sweep failure
 - **ALWAYS** call `screenshots-archive` via Skill tool with explicit `change <change-name>` argument so Mode B logic (caller-trusted, internal topic-mismatch prompt) kicks in
