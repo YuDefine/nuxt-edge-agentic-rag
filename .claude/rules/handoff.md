@@ -1,3 +1,7 @@
+---
+description: Handoff 規則——當 session 尚有未完成的 spectra work、blocker 或跨 agent 交接時，必須留下可執行的交接文件
+paths: ['HANDOFF.md', 'openspec/changes/**']
+---
 <!--
 🔒 LOCKED — managed by clade
 Source: rules/core/handoff.md
@@ -5,14 +9,8 @@ Edit at: /Users/charles/offline/clade
 Local edits will be reverted by the next sync.
 -->
 
----
-description: Handoff 規則——當 session 尚有未完成的 spectra work、blocker 或跨 agent 交接時，必須留下可執行的交接文件
-globs: ['HANDOFF.md', 'openspec/changes/**']
----
 
 # Handoff
-
-繁體中文 | [English](./handoff.en.md)
 
 **核心命題**：session 結束時若仍有 in-progress 的變更、未 commit 的 WIP、或明確的 blocker，資訊不能只留在對話上下文。必須落到 `HANDOFF.md`，讓下一個 session / agent 能直接接手。
 
@@ -81,6 +79,18 @@ globs: ['HANDOFF.md', 'openspec/changes/**']
 | `openspec/ROADMAP.md` | 進行中 change、active claims、未來工作排序 | 持續維護 |
 
 **與 `session-tasks.md` 的銜接**：tasks 檔內未完項在 session 結束時若需下一 session 立刻接手，**MUST** 升到 `HANDOFF.md` 的 `## In Progress`，不能只留在 tasks 檔等下一 session 自己 grep。
+
+## Drift detection (v1.13+)
+
+每次 session start 時，`session-start-roadmap-sync.sh` hook 會跑 `scripts/handoff-drift-scan.mjs`，自動掃所有 `session/*` worktree 跟 `HANDOFF.md` 內容比對，把 drift 寫到 stderr：
+
+- **unmentioned-progress** — branch HEAD 已 commit 但 slug 沒在 HANDOFF 出現 → 下個 session 看不到這個工作
+- **mention-stale** — branch 最新 commit 時間晚於 HANDOFF mtime → HANDOFF 描述可能過時
+- **merged-but-not-cleaned** — branch 已 fully merge 進 main 但 worktree 還在 → 可跑 `wt-helper cleanup` 或讓 archive 自動吸收
+
+理由：[[worktree-default]] §5.5 採 atomic landing model，worktree → main 吸收延後到 `/spectra-archive` 才發生。中間 subagent commit 後若 user 沒同步更新 HANDOFF，下個 session 可能誤判工作未做。drift scan 把這類情境 surface 出來。
+
+行為：scan 是純 informational，**不**擋 session、**不**自動改 HANDOFF。User 看到警告後依情境跑 `/handoff` refresh、或繼續工作（warnings 在每次 session start 重新評估，工作完成 archive 後自動消失）。
 
 ## 禁止事項
 

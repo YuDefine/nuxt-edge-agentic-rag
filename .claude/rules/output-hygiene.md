@@ -5,10 +5,6 @@ Edit at: /Users/charles/offline/clade
 Local edits will be reverted by the next sync.
 -->
 
----
-description: 對外輸出規則——commit/PR/註解/跨團隊訊息要乾淨，不夾帶 Claude 內部過程、放棄選項、被糾正的修補軌跡或事後辯解
----
-
 # Output Hygiene — 別把內部過程變成讀者的負擔
 
 對外輸出（PR / commit message / code comment / Slack / email / 文件 / 跨團隊訊息 / 設計報告）只該讓讀者最快理解「**現況 + 為什麼**」。

@@ -58,6 +58,7 @@ Changes can be parked（暫存）— temporarily moved out of `openspec/changes/
 
 ### All Rules（自動生成，source 在 `.claude/rules/`；請勿手編此區塊）
 
+- `.claude/rules/agent-routing.codex-watch-protocol.md`
 - `.claude/rules/agent-routing.md`
 - `.claude/rules/api-patterns.md`
 - `.claude/rules/audit-pattern.md`
@@ -70,15 +71,23 @@ Changes can be parked（暫存）— temporarily moved out of `openspec/changes/
 - `.claude/rules/development.md`
 - `.claude/rules/error-handling.md`
 - `.claude/rules/evlog-adoption.md`
+- `.claude/rules/evlog-stream-extend.md`
+- `.claude/rules/fixtures-reference.md`
 - `.claude/rules/follow-up-register.md`
+- `.claude/rules/goal-mode.md`
 - `.claude/rules/handoff.md`
 - `.claude/rules/knowledge-and-decisions.md`
 - `.claude/rules/logging.md`
+- `.claude/rules/manual-review.backend.md`
+- `.claude/rules/manual-review.data-readiness.md`
+- `.claude/rules/manual-review.evidence.md`
 - `.claude/rules/manual-review.md`
 - `.claude/rules/mcp-remote.md`
 - `.claude/rules/migration.md`
 - `.claude/rules/nuxt-security.md`
 - `.claude/rules/output-hygiene.md`
+- `.claude/rules/proactive-skills.design-checkpoint.md`
+- `.claude/rules/proactive-skills.ingest-triggers.md`
 - `.claude/rules/proactive-skills.md`
 - `.claude/rules/query-optimization.md`
 - `.claude/rules/review-tiers.md`
@@ -96,6 +105,7 @@ Changes can be parked（暫存）— temporarily moved out of `openspec/changes/
 - `.claude/rules/unused-features.md`
 - `.claude/rules/ux-completeness.md`
 - `.claude/rules/work-claims.md`
+- `.claude/rules/worktree-default.md`
 
 <!-- AUTO-SYNCED-RULE-INDEX:END -->
 
@@ -178,6 +188,36 @@ Subagent 任務應包含（cwd 設為 push 發生的 repo path）：
 - **NEVER** 用 `/spectra-commit` 收尾 — 速度優先，selective stage 不值得
 - **NEVER** 在 archive 之後分兩個 `/commit`（一個包 fix、一個包 archive）— 同上理由
 <!-- CLADE:SNIPPET:archive-commit-order:END -->
+
+<!-- CLADE:SNIPPET:worktree-default:START -->
+
+## Session-level Worktree
+
+要動 code 的工作（implement / fix / refactor / migration）**MUST** 在獨立 git worktree 內執行，**NEVER** 直接在 main 改。操作上由 `/wt <task>` 全自動 orchestrate — `/wt` 建 worktree、dispatch subagent 進去做事、subagent commit 完回來主線 squash-merge 進 main 的 working tree、cleanup worktree。主線 chat session cwd 全程不動，user 不必開新 terminal、不必複製 oneliner、不必手動 `git worktree` 任何子命令。
+
+Read-only session（grep、看 log、解釋 code 不寫檔）可留在 main worktree。
+
+**例外：`/spectra-archive` 在 main 跑**。Archive 語意是「把 change 合併進 main」（mv folder、delta sync 進 specs、screenshot sweep），全部寫入 main，走 worktree 反而多一道 merge-back。其他 spectra-\* skill（`/spectra-apply` / `/spectra-ingest` / `/spectra-debug`）仍須走 `/wt` 進 worktree。
+
+**Parent cwd 不動 invariant**：`/wt` **SHALL NOT** 遷移 parent session 的 cwd — 所有 worktree 內的操作由 subagent 執行（subagent cwd = worktree path），主線（cwd = main）負責 dispatch + squash + cleanup。先前 `--dispatch-from-handoff` flag 機制已移除；新 orchestration model 透過 subagent 隔離 cwd 達到同樣的「不切 terminal」UX，且更嚴格地保留 parent cwd invariant。
+
+**`/wt` invocation forms**：
+
+- `/wt <task description>` — 單條 ad-hoc。
+- `/wt A: ... B: ...` — 平行多 task，每 task 一 worktree + subagent。
+- `/wt <slug>: /<next-skill> <args>` — `/handoff` Mode B 內部 dispatch（subagent 在 worktree 跑指定 skill）。
+
+**Silent branch 禁令**：Claude **MUST NOT** 跑 `git checkout -b` / `git branch <name>` 或任何會建新 ref 的指令，**除非**先取得 user 明確同意。`/wt` 用的 `session/<date-slug>` 規約命名是唯一例外（`/wt` 呼叫本身就是 user 對該 branch 的授權）。
+
+**Commit 階段：subagent commit in worktree → 主線 squash 進 main → user 跑 `/commit`**。subagent 在 worktree 做 `git add + commit -m "wt: <slug>"`（可多 commit、**禁止** push / `/commit`）；主線跑 `git -C <main> merge --squash <session-branch>` 把改動 land 到 main 的 working tree（**不** commit on main）+ `wt-helper cleanup <slug> --force` 清 worktree；user 累積夠了在 main 主動 `/commit` 走 ceremony（lint / type / test / selective stage / push）。
+
+**Atomic-landing 自包約束**：subagent 在 worktree 內的 edit **MUST** 全部 commit 到 session branch 才能 merge-back — `git merge --squash` 只搬 commit，uncommitted WIP 會被後續 cleanup 永久砍掉。`wt-helper merge-back` 預設會 pre-flight 偵測 worktree 內 user-WIP（filter clade-managed projection 後）並 refuse，除非加 `--include-worktree-wip` 強制 auto-amend（不建議）。
+
+**Failure fallback**：subagent fail（test 不過、沒 commit）→ 保留 worktree + branch，主線回報路徑，user 從 main 跑 `git -C <wt> diff/log` 檢查；squash conflict（平行 task 改同檔）→ 保留該 worktree，main 維持上一個成功 squash 的狀態；cleanup 失敗 → 改動已在 main，報告 worktree 殘留路徑由 user 手動 `wt-helper cleanup --force`。
+
+詳見 `.claude/rules/worktree-default.md`。
+
+<!-- CLADE:SNIPPET:worktree-default:END -->
 
 # RTK Instructions
 

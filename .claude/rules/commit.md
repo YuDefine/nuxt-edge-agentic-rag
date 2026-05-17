@@ -16,6 +16,8 @@ Local edits will be reverted by the next sync.
 - **0-A** `codex review --uncommitted`（GPT 5.5，最多 2 輪 review-fix loop：Round 1 = `high`、Round 2 = `xhigh`）— 重用性、品質、邏輯、安全；review 由 codex 執行，修正由 Claude Code 主線執行
 - **0-B** UI Design Review（條件觸發）— 含 `.vue` 模板變動 + 屬於頁面/元件/佈局/互動/樣式變更時派 screenshot-review agent
 - **0-C** **format / lint / typecheck / test 全綠**：跑 `pnpm check`（多數專案含 format/lint/typecheck）**並且**確認 test 也有跑。**若 `package.json` 的 `scripts.check` 不含 `test` / `vitest`，必須額外跑 `pnpm test`（或 `vp test run` / `pnpm test:unit`），否則 CI 抓到的測試失敗（hook timeout、flake、新增測試壞掉）會在 commit 後才暴露**
+
+**並行執行**：0-A.0 simplify 序跑完後，**0-A.1（codex high 背景）/ 0-B（screenshot subagent）/ 0-C（主線 foreground check）三軸 MUST 並行**——序跑會浪費 5–10 分鐘閘門時間。`codex review --uncommitted` 啟動時讀 working tree snapshot，後續變動不影響它正在進行的 review，所以三軸並行安全。詳細啟動順序與大改動 fallback 見 `.claude/commands/commit.md` 的「0-A/B/C 並行策略」。
 - **Step 1** Schema 同步檢查 — `database.types.ts` 與 migration 對齊
 - **Step 5** 版本號升級 + tag push — `feat` → minor、其他 → patch
 
@@ -40,6 +42,55 @@ Local edits will be reverted by the next sync.
 - **NEVER** 以「這個不在我 scope」「看起來是別的 session 做的」「不確定是否該 commit」自行排除或徵詢使用者意見 — 先假設是使用者並行工作 + 一律保留並走分組流程
 
 **理由**：品質閘門成本高，把 WIP 分次 commit 等於多跑一次閘門，浪費時間與 token。`/commit` 的分組階段就是設計來把「主線工作 + 並行 WIP」自然分類到不同 commit group。
+
+## Commit 預設位置：main worktree
+
+**`/commit` MUST 在 main worktree 跑、NEVER 在 session worktree 內跑**。Worktree 是工作區、main 是 commit ceremony 發起點。
+
+Worktree 完成驗證後的標準收尾流程（詳見 [[worktree-default]] §5）：**主線自動執行** stash + 跨 worktree pop + cleanup worktree（用 `git stash push -u -m "<slug>-handoff" -- <Edit/Write 過的檔>` selective stash + `git -C <main> stash pop` + pop 成功後 `node <main>/scripts/wt-helper.mjs cleanup <slug> --force`，**不切** session cwd），完成後 user 只需開 main session 跑 `claude "/commit"`。
+
+預檢：跑 pop 前 `git -C <main> status --porcelain` 若非空 → 中止 closure、stash entry 保留、提示 user 自行處理 main 端 WIP。
+
+Cleanup 安全性依賴 selective stash 列舉的完整性（漏列檔會永久丟）；pop 失敗時 **NEVER** 跑 cleanup（worktree 改動還沒進 main）。
+
+手動 fallback（user 明確要求自己處理時）：
+
+```bash
+# 在 worktree（驗證 OK、準備收尾）
+git stash push -u -m "<slug>-handoff"
+
+# 切回 main worktree（consumer 主路徑）
+cd ~/offline/<consumer>
+
+# Pop changes 進 main 的 working tree
+git stash pop
+
+# 跑 /commit（一次完成 0-A/B/C 品質閘門 + selective stage + commit + push）
+claude "/commit"
+```
+
+理由：
+
+- **單一 ceremony**：worktree 跑驗證、main 跑 commit handoff，分工清楚
+- **避免雙 hop**：worktree /commit → 再 cd main → ff merge → push 等於跑兩段 ceremony
+- **branch HEAD 乾淨**：worktree 內**不** commit，session branch 不留 dangling commit；`wt-helper cleanup <slug>` 後 branch 自然消失
+- **0-C 在 main 跑**：`pnpm check` / `pnpm test` 在 main 環境跑一次，跟 CI 環境一致
+
+### 此路徑的 stash 是合法中介
+
+下面「WIP 阻礙處理」把 stash 列為「**極少數例外**」**僅限**單一 working tree 內的 WIP 處置（多主題 WIP 預設靠 Step 3 分組納入）。**Worktree → main 跨 working tree handoff** 是不同情境——stash 在這裡是規約定義的中介機制、**不**受該禁令限制：
+
+| 情境 | Stash 是 | 替代做法 |
+| --- | --- | --- |
+| 單一 working tree 多主題 WIP（同一 cwd 內混了主題 A + B） | **last resort**（觸發三條件之一才用） | Step 3 分組納入 |
+| Worktree → main commit handoff | **合法規約中介**（每次收尾都用） | 無——這就是預設路徑 |
+
+### 禁止項
+
+- **NEVER** 在 worktree 內跑 `/commit`、`/spectra-commit`、或 `git commit` — 違反「commit 集中在 main」原則
+- **NEVER** 在 worktree 跑 /commit 後**又**試圖 stash 剩餘改動到 main — 已經分裂成兩段 commit
+- **NEVER** 用 `git stash push` 不加 `-u` — 漏掉 untracked 新檔
+- **NEVER** stash pop 撞 conflict 時用 `git checkout --` / `git restore` 「清理」 — 會永久毀掉 main 既有 WIP
 
 ## WIP 阻礙處理（**極少數例外**，預設一律靠分組納入）
 
@@ -80,6 +131,31 @@ git stash push -u -m "WIP: <簡述為何 stash> — see HANDOFF.md"
 - stash 仍保留變更可恢復、handoff 留下 paper trail，等同「延後處理」而非「丟棄」；但分組納入比 stash 更直接、更省下次 `/commit` 的閘門成本。
 - 任何形式的 `git restore` / `git checkout --` / `git reset` / `git revert` 都會**永久毀掉使用者的 WIP**，這是不可接受的成本（見下節嚴格禁令）。
 
+## 人工檢查 Gate（main / master 限定，**hard rule**）
+
+當前 branch 為 `main` / `master` 且本次 `/commit` 觸及的 spectra change（`openspec/changes/<name>/**` 路徑，archive 子目錄除外）滿足下列**兩條件同時成立**時，**MUST** 中止 commit：
+
+1. 該 change 的 `tasks.md` **非** `## 人工檢查` 段落含任一 `- [x]` → 已開始 / 完成實作
+2. 該 change 的 `## 人工檢查` 段落含任一 `- [ ]` → 人工檢查未完成
+
+只滿足其一不擋（純 propose 未動工的 change、或實作完且人工檢查全綠的 change，都允許 commit）。判定流程、fail-fast 位置（Step 0-Scope 之後、Step 0 品質檢查之前）見 `.claude/commands/commit.md` Step 0-MR。
+
+### 為何 gate 在這
+
+- main / master 是 trunk 終點（clade / perno 等直接 push main 觸發 deploy / propagate），**沒有 PR review 擋一層**。下一個有意義的人類關卡就是線上 user。
+- `## 人工檢查` 區設計就是要擋下「實作完了但 functional round-trip 未驗收」的工作（見 [[manual-review]] §「Screenshot Review ≠ Functional Verification」案例）；commit 進 main 等同跳過該區的保護。
+- 排在最耗時的 0-A/B/C 品質閘門之前，fail-fast 可省 5–15 min 不必要的 codex / screenshot / check 成本。
+
+### 無 override
+
+**NEVER** 接受 `--skip-manual-review-gate` / `--ignore-mr` / `$ARGUMENTS` 旗標等任何形式跳過。Gate 過 = 真的完成人工檢查（依 [[manual-review]] 「核心規則」由使用者親自驗收後勾選 `- [x]`）。
+
+- **NEVER** 主線自行勾掉 `- [ ]` 來通過 gate — 違反 [[manual-review]] 核心規則「**NEVER** 自行標記 `## 人工檢查` 區塊中屬於 `[review:ui]` kind 的 `- [ ]` 為 `- [x]`」
+- **NEVER** `git stash` / `mv` / `rm` 把 `tasks.md` 或 change 目錄移走讓 gate scan 抓不到 — 等同繞過 hard rule，亦違反 [[commit]] 「WIP 處置禁令」
+- **NEVER** 把「人工檢查還沒完成」包裝成「審查條件已滿足」「等同 OK」「之後再勾」 — gate 看的是 tasks.md 的實際 `- [x]` / `- [ ]` 狀態
+- **NEVER** 建議 user「先 checkout 到 feature branch 跑 /commit 再 merge 回 main」繞過 gate — 該 change 本來就該在進 main 前完成人工檢查
+- **NEVER** 因為「使用者沒明說 main 算 trunk」而判 branch 不算 — `main` / `master` 兩個 branch name 都算
+
 ## 禁止事項
 
 - **NEVER** `git commit` / `git commit -m` — 繞過 0-A / 0-B / 0-C 品質閘門
@@ -95,13 +171,44 @@ git stash push -u -m "WIP: <簡述為何 stash> — see HANDOFF.md"
 
 **完全禁止任何會丟失 WIP 的動作，包括「向使用者建議」這些動作**：
 
+#### Git 命令禁令
+
 - **NEVER** 執行 `git restore` / `git restore --staged` / `git checkout --` / `git checkout <path>` 清場 — 這會永久毀掉 unstaged 變更
 - **NEVER** 執行 `git reset --hard` / `git reset HEAD --hard` / `git clean -fd` — 同上
+- **NEVER** 執行 `git stash drop` / `git stash clear`
 - **NEVER** 提議 `git revert` 或在輸出中暗示「可以 revert XX」「要不要還原 XX」「這部分先 revert」 — `revert` 在使用者語境通常意指**丟棄變更**，會誤導使用者破壞 WIP；真正需要還原既有 commit 的情境極罕見且應由使用者主動發起
-- **NEVER** 以「這變更看起來壞掉了 / 不該存在 / 不在 scope，是否要還原？」徵詢使用者 — 唯一允許的選項是 `git stash` + `HANDOFF.md`，照「WIP 阻礙處理」流程走
-- **NEVER** 把「revert / restore / discard」包裝成「清理」「重置」「回到乾淨狀態」等委婉說法繞過上述禁令
 
-**唯一例外**：使用者在 `$ARGUMENTS` 中**明確、主動、白紙黑字**寫出 `git restore` / `git checkout --` / `revert` 等指令或變更名稱，且語意無歧義時才能執行。**NEVER** 從「不在 scope」「看起來壞掉」等模糊語氣自行解讀為「使用者想丟棄」。
+#### 檔案系統等效動作禁令（同樣 destructive）
+
+以下動作功能上等同破壞性 git 命令，**MUST** 視同 WIP 處置禁令範圍（容易誤以為「不是 git 所以 OK」）：
+
+- **NEVER** `mv <git-tracked-path> <elsewhere>` / `mv <elsewhere> <git-tracked-path>` 反向 hook 工作（例：把 `openspec/changes/archive/2026-MM-DD-*/` 搬回 `openspec/changes/*/`、把 `screenshots/<env>/_archive/*` 搬回頂層）
+- **NEVER** `rm -rf <openspec/changes/**>` / `rm -rf <screenshots/**>` 等批次刪除含 user-authored / hook-authored 內容的目錄
+- **NEVER** `cp --remove-destination` / `cp -f` 覆蓋 git-tracked 檔案
+- **NEVER** `sed -i` / `awk -i inplace` / `perl -i` 在 git-tracked 檔案上 in-place 寫入而**沒走 Edit/Write tool**（無 user 看得到的 diff）
+- **NEVER** `echo > <git-tracked-path>` / `cat > <git-tracked-path>` / `tee` 覆蓋 git-tracked 檔案內容
+- **NEVER** 用 shell script / subprocess 包裝上述動作試圖繞過 tool-level 觀察
+
+#### 推理層禁令
+
+- **NEVER** 以「這變更看起來壞掉了 / 不該存在 / 不在 scope，是否要還原？」徵詢使用者 — 唯一允許的選項是 `git stash` + `HANDOFF.md`，照「WIP 阻礙處理」流程走
+- **NEVER** 把「revert / restore / discard」包裝成「清理」「重置」「回到乾淨狀態」「對齊規約」「修正狀態」等委婉說法繞過上述禁令
+- **NEVER** 拿其他 rule（例 manual-review.md `[discuss]` 應 user walkthrough）當理由還原 hook 自動產出 — rule 衝突一律保留現狀 + AskUserQuestion（詳見 `scope-discipline.md`「Rule 衝突解法」）
+- **NEVER** 看到 hook 自動 archive directory / spec 自動 propagate / annotation 自動寫入時，自行判定「應該還原」— 自動產出 = 跨 session 成果，必先 AskUserQuestion
+
+#### 話術關鍵詞 = 立即停手訊號
+
+chat / thinking / tool call description 中出現以下任一關鍵詞，**MUST** 立即停手（不下任何命令，AskUserQuestion 給使用者拍板）：
+
+中：`revert` / `還原` / `回退` / `退回` / `撤回` / `復原` / `恢復` / `清除` / `清掉` / `重置` / `回到乾淨狀態` / `丟掉` / `刪掉` / `修正狀態` / `對齊狀態` / `把 X 還回 Y` / `把 X 搬回 Y` / `先還原再 …`
+
+En：`revert` / `undo` / `rollback` / `roll back` / `reset` / `discard` / `drop` / `restore` / `clean up` / `go back` / `undo this` / `fix the state` / `align with` / `move X back to Y` / `restore X to original`
+
+詳細停手定義 + 為什麼話術即訊號，見 `scope-discipline.md`「話術關鍵詞 = 立即停手訊號」。
+
+#### 唯一例外
+
+使用者在 `$ARGUMENTS` 中**明確、主動、白紙黑字**寫出 `git restore` / `git checkout --` / `mv <具體路徑> <具體路徑>` / `rm -rf <具體路徑>` / `revert <具體 commit>` 等指令或具體變更名稱，且語意無歧義時才能執行。**NEVER** 從「不在 scope」「看起來壞掉」「違反 X rule」等模糊語氣自行解讀為「使用者想丟棄」。
 
 ## 例外（極少）
 

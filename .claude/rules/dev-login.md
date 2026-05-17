@@ -1,3 +1,7 @@
+---
+description: Dev-login routes must stay local-only while giving screenshot review and E2E a canonical way to mint test sessions.
+paths: ['server/routes/auth/**/*dev-login*.ts', 'server/routes/auth/**/*test-login*.ts', 'server/api/_dev/**/*.ts', 'packages/*/server/routes/auth/**/*dev-login*.ts', 'packages/*/server/routes/auth/**/*test-login*.ts', 'e2e/**/*.ts', 'test/e2e/**/*.ts', 'tests/e2e/**/*.ts']
+---
 <!--
 🔒 LOCKED — managed by clade
 Source: rules/modules/auth/better-auth/dev-login.md
@@ -5,10 +9,6 @@ Edit at: /Users/charles/offline/clade
 Local edits will be reverted by the next sync.
 -->
 
----
-description: Dev-login routes must stay local-only while giving screenshot review and E2E a canonical way to mint test sessions.
-globs: ['server/routes/auth/**/*dev-login*.ts', 'server/routes/auth/**/*test-login*.ts', 'server/api/_dev/**/*.ts', 'packages/*/server/routes/auth/**/*dev-login*.ts', 'packages/*/server/routes/auth/**/*test-login*.ts', 'e2e/**/*.ts', 'test/e2e/**/*.ts', 'tests/e2e/**/*.ts']
----
 
 # Dev-login
 
@@ -49,7 +49,7 @@ Dev-login routes are local/test-only auth bypasses for screenshot automation, E2
 ## Decision Reference
 
 完整 canonical decision matrix（route path / method / guard / params / DB mode / audit / naming / open redirect）+
-per-variant TypeScript skeletons + per-consumer migration plan：見 clade `openspec/discussions/dev-login-canonical-design.md`。
+per-variant TypeScript skeletons + per-consumer migration plan：見 clade `docs/archives/openspec-discussions/dev-login-canonical-design.md`。
 
 ## Screenshot Integration
 

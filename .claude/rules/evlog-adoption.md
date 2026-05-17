@@ -1,13 +1,6 @@
-<!--
-🔒 LOCKED — managed by clade
-Source: rules/core/evlog-adoption.md
-Edit at: /Users/charles/offline/clade
-Local edits will be reverted by the next sync.
--->
-
 ---
 description: evlog 14 區塊全功能採用治理（template 選擇、preset、depth 自評、migration 順序）
-globs:
+paths:
   - 'nuxt.config.ts'
   - 'server/plugins/evlog-*.ts'
   - 'app/plugins/evlog-*.ts'
@@ -15,6 +8,13 @@ globs:
   - 'packages/**/app/plugins/evlog-*.ts'
   - 'openspec/changes/evlog-*/**'
 ---
+<!--
+🔒 LOCKED — managed by clade
+Source: rules/core/evlog-adoption.md
+Edit at: /Users/charles/offline/clade
+Local edits will be reverted by the next sync.
+-->
+
 
 # evlog Adoption
 
@@ -162,7 +162,24 @@ rg -n "signed\\(\\{|auditEnricher\\(|auditOnly\\(" server/plugins packages/**/se
 
 ## Catalogs 採用（evlog 2.17+）
 
-`defineErrorCatalog` / `defineAuditCatalog` / `defineError` / `defineAuditAction` 把散落的 ad-hoc error code + audit action 集中宣告，配 `declare module 'evlog'` augment `ErrorCode` / `AuditAction` 聯合型別。詳見 `docs/evlog-master-plan.md` § 15 與 `vendor/snippets/evlog-catalogs/` cookbook 範本。
+`defineErrorCatalog` / `defineAuditCatalog` / `defineError` / `defineAuditAction` 把散落的 ad-hoc error code + audit action 集中宣告，配 `declare module 'evlog'` augment `ErrorCode` / `AuditAction` 聯合型別。詳見 `docs/evlog-master-plan.md` § 15 + `vendor/snippets/evlog-catalogs/` cookbook 範本 + 官方文件 <https://www.evlog.dev/learn/catalogs>。
+
+### 命名規約（block-level）
+
+- **MUST** Key 用 `UPPER_SNAKE_CASE`（`PAYMENT_DECLINED` / `INVOICE_REFUND` / `USER_LOGIN`）— audit script `catalog.keyNotUpperSnake` 偵測違反
+- **MUST** Prefix 用 `lower.dot.case`（`billing` / `billing.payment` / `billing.subscription`）— audit script `catalog.prefixNotLowerDot` 偵測違反
+- **MUST** Wire format 是 `${prefix}.${KEY}`（例：`billing.PAYMENT_DECLINED`、`auth.SESSION_EXPIRED`）— 此即 `code` 欄位、HTTP response code、Sentry 聚合 key 三合一
+
+### 結構原則
+
+- **MUST** **One catalog = one bounded context = one prefix = one file**：`billing` 是一個 bounded context，對應一個檔案 `server/utils/catalogs/billing.ts`，內部只用 prefix `billing`；跨 context 拆檔（`auth.ts` / `machines.ts`），不混
+- **MUST** `defineErrorCatalog` / `defineAuditCatalog`（bundle）vs `defineError` / `defineAuditAction`（單例）的選擇：同 bounded context 內 2+ 點 → 用 catalog；真正 one-off 跨 context 共用 error（例如「`featureFlagDisabled`」這種 cross-cutting）→ 用 standalone `defineError`，prefix 仍須 `lower.dot.case`
+- **MUST** 單一 prefix 跨檔禁止：`billing.ts` 跟 `billing-extra.ts` 都 `defineErrorCatalog('billing', ...)` → augment 互蓋丟失 KEY；要拆就拆 sub-prefix（`billing` + `billing.payment`）
+
+### 動態訊息與 internal 合併
+
+- **MUST** Message 可以是 string 或 templated function：`message: ({ field }: { field: string }) => \`欄位 ${field} 必填\``。函式簽章成為 typed params，呼叫端 `throw authErrors.FIELD_REQUIRED({ field: 'email' })` 會型別檢查
+- **MUST** Catalog 在 KEY 預宣告的 `internal` 與呼叫端 `throw catalog.X({ internal: {...} })` 採 **shallow merge，call-site 同 key 勝出**。要疊深層欄位手動展開：`throw catalog.X({ internal: { ...catalog.X.internal, ...callSiteInternal } })`
 
 ### MUST
 
@@ -172,6 +189,7 @@ rg -n "signed\\(\\{|auditEnricher\\(|auditOnly\\(" server/plugins packages/**/se
 - **MUST** 每個 catalog 檔案配對 `declare module 'evlog'` 區塊（同檔末尾或統一 `index.ts`）
 - **MUST** audit catalog KEY 對齊 D-pattern `audit_logs.action_name` 字串（有 D-pattern consumer 適用）；遷移前先 `SELECT DISTINCT action_name FROM audit_logs` 拿 canonical 列表
 - **MUST** 既存 ad-hoc createError 走 spectra change 批次遷移（不強制立即全改；新增 endpoint 必走 catalog）
+- **MUST** Tests 比較 `factory.code` 而非字串字面值：`expect(err.code).toBe(billingErrors.PAYMENT_DECLINED.code)` — KEY rename 時測試會 TS 報錯，hard-code 字串會靜默失準
 
 ### MUST NOT
 
@@ -180,6 +198,16 @@ rg -n "signed\\(\\{|auditEnricher\\(|auditOnly\\(" server/plugins packages/**/se
 - **MUST NOT** 在 `declare module 'evlog'` 寫進 `*.test.ts` / `*.spec.ts`（測試檔的 augmentation 不會散播到 production type space，反而誤導 IDE）
 - **MUST NOT** 在 enricher 內 `throw billingErrors.X()`（enricher 失敗會破整個 wide event；catalog error 限 endpoint handler 層）
 - **MUST NOT** 跨 npm 套件用同 prefix（兩份 catalog augment 互蓋 → TypeScript 拿後 import 的版本）
+- **MUST NOT** 在 call site override `code`（**禁止** `throw billingErrors.X({ code: 'billing.OTHER' })`）— catalog factory 才是 code 的身份來源；override 會讓 Sentry 聚合錯位、type augment 偏離真實；audit script `catalog.codeOverrideAtCallSite` 偵測
+
+### Sharding 路徑（規模演化 4 階段）
+
+| 階段 | 場景 | 結構 |
+| --- | --- | --- |
+| 1. Single file | < 30 點 createError；單一 bounded context 起手 | `src/errors.ts` 一檔含所有 catalog + `declare module` |
+| 2. Folder per domain | 30–250 點；多 bounded context | `src/errors/{billing,auth,machines}.ts` 一 context 一檔 + `src/errors/index.ts` 統一 `declare module` |
+| 3. Sub-prefixes | 單一 context 內 50+ KEY，需內部分組 | 同 context 拆 `billing` + `billing.payment` + `billing.subscription`；各檔自家 `defineErrorCatalog('billing.payment', ...)` |
+| 4. npm package per context | Monorepo / cross-app reuse | 各 bounded context 自成 package；`packages/billing/src/index.ts` 內含 `defineErrorCatalog` + 自家 `declare module 'evlog'` block，consumer 透過 published `.d.ts` 自動拿到 augment |
 
 ### Catalog 反模式（補既有反模式列表）
 
@@ -206,7 +234,7 @@ rg -n "defineErrorCatalog\\(['\"](?:tdms|perno|sroi|rag|starter)\\." server pack
 rg -nE "code:\\s*['\"][a-z][a-z0-9._]*\\.[A-Z_]+['\"]" "**/*.test.ts" "**/*.spec.ts"
 ```
 
-完整 audit signal 在 `scripts/evlog-adoption-audit.mjs`：`catalog.errorCatalogs` / `catalog.auditCatalogs` / `catalog.declareModuleBlocks` / `catalog.adhocServerErrors`（warn）/ `catalog.testHardcodedCode`（block）/ `catalog.consumerNamespacedPrefix`（block）/ `catalog.missingDeclareModule`（warn）。
+完整 audit signal 在 `scripts/evlog-adoption-audit.mjs`：`catalog.errorCatalogs` / `catalog.auditCatalogs` / `catalog.declareModuleBlocks` / `catalog.adhocServerErrors`（warn）/ `catalog.testHardcodedCode`（block）/ `catalog.consumerNamespacedPrefix`（block）/ `catalog.missingDeclareModule`（warn）/ `catalog.keyNotUpperSnake`（block）/ `catalog.prefixNotLowerDot`（block）/ `catalog.codeOverrideAtCallSite`（block）。
 
 ## Migration 順序建議
 
@@ -247,9 +275,9 @@ rg -nE "code:\\s*['\"][a-z][a-z0-9._]*\\.[A-Z_]+['\"]" "**/*.test.ts" "**/*.spec
 ## MUST
 
 - evlog 採用 **MUST** 走 cookbook + spectra template + starter preset 三層治理；**MUST NOT** consumer 自家從零摸索 wiring
-- 任何 drain **MUST** 經 `pipeline.wrap` 包覆（見 `rules/core/logging.md` Drain pipeline 規範）
+- 任何自家 drain **MUST** 經 `createDrainPipeline(opts)(drain)` 包覆（見 `rules/core/logging.md` Drain pipeline 規範）
 - production sampling **MUST** 滿足 error 100% / audit forceKeep 100% / warn ≥ 50% / info ≥ 10%
-- production **MUST** 開 `redactionPolicy`，至少含 6 類 secret keys + 3 類 patterns（見 logging.md）
+- production **MUST** 開 `evlog.redact`，至少涵蓋 password 與 token / authorization（見 logging.md）
 - 5 件套 enricher（UA / RequestSize / Geo / TraceContext + multi-tenant 加 tenant）**MUST** 全裝
 - client transport **MUST** 開（5 consumer 共同 gap），endpoint **MUST** 套 CSRF + rate-limit + redaction
 - O1 overlay **MUST** 不取代 D-pattern DB canonical truth；evlog signed chain 是 derived stream
@@ -259,9 +287,10 @@ rg -nE "code:\\s*['\"][a-z][a-z0-9._]*\\.[A-Z_]+['\"]" "**/*.test.ts" "**/*.spec
 ## MUST NOT
 
 - **MUST NOT** 在 `server/api/` 使用 `consola`（遷至 `useLogger`）
-- **MUST NOT** 用 raw drain（沒 `pipeline.wrap`）— Workers subrequest budget 會被吃光
+- **MUST NOT** 新增或保留 `consola` runtime dependency 作為 evlog fallback；非 request path 用 evlog standalone API，drain failure fallback 用帶註解的 `console.error`
+- **MUST NOT** 用 raw drain（沒 `createDrainPipeline`）— Workers subrequest budget 會被吃光
 - **MUST NOT** sample `error` < 100% 或 `audit` 不 forceKeep
-- **MUST NOT** 在 `redactionPolicy` 缺 `password` / `token` / `authorization` keys
+- **MUST NOT** 在 `redact.paths` 缺 `password` 或 `token|authorization`；`redact: true` 視為啟用 builtins
 - **MUST NOT** 把 `auditEventId` 漏掉（evlog audit event 沒 `auditEventId` = D-pattern source 找不回）
 - **MUST NOT** 把 evlog signed chain 當 audit canonical truth — DB row 才是
 - **MUST NOT** 在 enricher 內 await DB query — 拖慢 hot path；resolve 函式要 sync 或 cache
@@ -274,9 +303,9 @@ rg -nE "code:\\s*['\"][a-z][a-z0-9._]*\\.[A-Z_]+['\"]" "**/*.test.ts" "**/*.spec
 | 反模式 | 為什麼壞 | 怎麼改 |
 | --- | --- | --- |
 | consumer 自家寫 drain（不引用 vendor snippet） | drift；clade 升版 snippet 時 consumer 不會跟上 | `cp -r ~/offline/clade/openspec/templates/evlog-*` 或裝對應 plugin |
-| 把 raw drain 直接接 Sentry | Workers 50 subrequest 用光 | 套 `createPipeline` 包覆 |
-| sampling = 0.1 全 level（含 error） | error 90% 漏；告警失效 | `byLevel.error: 1.0`，`forceKeep` 加 audit |
-| `redactionPolicy` 只 keys 沒 patterns | API key（無共通名稱）漏 redact | 加 `patterns` regex（sk- / Bearer / JWT） |
+| 把 raw drain 直接接 Sentry | Workers 50 subrequest 用光 | 套 `createDrainPipeline(opts)(drain)` 包覆 |
+| sampling rate 用 0.1 全 level（含 error） | evlog rates 是 0-100；error 會被誤 sample，告警失效 | `rates.error: 100`，audit consumer 另 wire `evlog:emit:keep` |
+| `redact` 只列 paths 沒 patterns / builtins | API key（無共通名稱）漏 redact | 加 `patterns` regex（sk- / Bearer / JWT）或直接 `redact: true` |
 | typed fields 把整個 request body 塞進去 | 失去 wide event 彈性；schema 改一處全 endpoint 重 build | typed 只用於跨 endpoint 共用核心欄位 |
 | client transport endpoint 沒 rate-limit | client bug 暴量打死 endpoint | rate-limit 100 req/min/user + CSRF + redaction |
 | 在 enricher 內 await DB query 抓 tenant tier | hot path 拖慢；fail 影響整個 wide event | enricher 只 resolve sync 欄位；tier 由 consumer 在 handler 內 `log.set` |
@@ -288,16 +317,16 @@ rg -nE "code:\\s*['\"][a-z][a-z0-9._]*\\.[A-Z_]+['\"]" "**/*.test.ts" "**/*.spec
 
 ```bash
 # Depth marker（自評用）
-rg -n "useLogger\\(event\\)" server | wc -l
-rg -n "createPipeline\\(|pipeline\\.wrap" server/plugins | wc -l
-rg -n "samplingPolicy\\(|redactionPolicy\\(" server/plugins | wc -l
-rg -n "evlog:[\\s\\S]*client:[\\s\\S]*enabled:\\s*true" nuxt.config.ts
+rg -n "useLogger\\(event\\)" server packages/**/server | wc -l
+rg -n "createDrainPipeline\\(" server/plugins packages/**/server/plugins | wc -l
+rg -nM "rates:\\s*\\{[\\s\\S]*error:\\s*100" nuxt.config.ts packages/**/nuxt.config.ts
+rg -n "redact:\\s*(true|\\{)" nuxt.config.ts packages/**/nuxt.config.ts
+rg -nM "transport:\\s*\\{[\\s\\S]{0,200}?enabled:\\s*true" nuxt.config.ts packages/**/nuxt.config.ts
 
 # 反模式
-rg -n "createSentryDrain\\(" server | rg -v "pipeline\\.wrap" # raw drain
-rg -nA10 "samplingPolicy\\(" server/plugins | rg "error:\\s*0\\." # error sampled
-rg -nA10 "redactionPolicy\\(" server/plugins | rg -v "password|token|authorization" # 缺核心 keys
-rg -n "consola" server/api # consola 遷移漏網
+rg -n "createSentryDrain\\(" server packages/**/server | rg -v "createDrainPipeline" # raw drain
+rg -n "error:\\s*[0-9]+" nuxt.config.ts packages/**/nuxt.config.ts # 檢查 error rate 是否 < 100
+rg -n "consola" server package.json packages/**/server packages/**/package.json # consola 遷移漏網
 ```
 
-完整 static audit script 在 M2 階段補：`scripts/evlog-adoption-audit.mjs`（spec 見 `docs/evlog-master-plan.md` § 10.1）。
+完整 static audit script 已落地在 `scripts/evlog-adoption-audit.mjs`。

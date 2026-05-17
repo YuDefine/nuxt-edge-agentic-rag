@@ -1,13 +1,6 @@
-<!--
-🔒 LOCKED — managed by clade
-Source: rules/core/logging.md
-Edit at: /Users/charles/offline/clade
-Local edits will be reverted by the next sync.
--->
-
 ---
 description: Server / client logging 與錯誤記錄規範（evlog）
-globs:
+paths:
   - 'server/api/**/*.ts'
   - 'server/plugins/evlog-*.ts'
   - 'app/plugins/evlog-*.ts'
@@ -16,6 +9,13 @@ globs:
   - 'packages/**/server/plugins/evlog-*.ts'
   - 'packages/**/app/plugins/evlog-*.ts'
 ---
+<!--
+🔒 LOCKED — managed by clade
+Source: rules/core/logging.md
+Edit at: /Users/charles/offline/clade
+Local edits will be reverted by the next sync.
+-->
+
 
 # Logging
 
@@ -24,8 +24,33 @@ evlog（https://www.evlog.dev/）是 wide-event-style structured logger。clade 
 ## Logger 選擇
 
 - **API handler** → `const log = useLogger(event)` from `evlog`（第一行）
-- **Utils（無 event）** → `consola.withTag('...')`
-- **NEVER** 在 `server/api/` 使用 `consola` — 遷移至 `useLogger`
+- **Request 呼叫的 utils** → 優先讓 caller 傳入 `RequestLogger`，用同一個 request-scoped wide event 累積 context
+- **非 request job / cron / script** → `initLogger()` + `createLogger()` / `createRequestLogger()`，一個 logical operation 最後 `emit()`
+- **Drain pipeline failure fallback** → 只允許帶 `evlog-exempt` 註解的 `console.error`，避免 drain 壞掉時再透過同一條 drain 記錄自己
+- **NEVER** 新增或使用 `consola` — evlog 已提供 request、standalone job、drain pipeline 三種場景的原生 API
+
+```ts
+import type { RequestLogger } from 'evlog'
+
+export async function runDomainOperation(options: {
+  log?: RequestLogger
+}) {
+  options.log?.set({ operation: 'domain-operation' })
+}
+```
+
+```ts
+import { createRequestLogger } from 'evlog'
+
+const log = createRequestLogger({ path: 'cron/stale-lifespan-check' })
+try {
+  log.set({ operation: 'stale-lifespan-check' })
+} catch (error) {
+  log.error(error as Error, { step: 'cron-run' })
+} finally {
+  log.emit()
+}
+```
 
 ## log.error 使用時機
 
@@ -182,26 +207,27 @@ GET endpoint 可省略 `log.set`，只需初始化 `useLogger(event)` + 錯誤�
 
 ## Drain pipeline 規範
 
-**MUST**：所有 drain 都必須走 `pipeline.wrap`，**禁止** raw drain 直接 ship event。
+**MUST**：所有自家 drain 都必須走 `createDrainPipeline(opts)(drain)`，**禁止** raw drain 直接 ship event。T3 NuxtHub stack 例外：`@evlog/nuxthub` module 自動 wire drain，consumer code 不需要直接出現 `createDrainPipeline`。
 
 ```ts
-// ✅ 正確 — pipeline 包覆
-import { createPipeline } from 'evlog'
+// server/plugins/evlog-drain.ts
+import { createDrainPipeline } from 'evlog/pipeline'
 import { createSentryDrain } from 'evlog/sentry'
 
-const pipeline = createPipeline({
-  batch: { maxSize: 50, maxAgeMs: 1000 },
-  retry: { attempts: 3, backoffMs: [200, 1000, 3000] },
-  onOverflow: 'drop-oldest',
-  onError: (err, batch) => {
-    console.error('[evlog drain pipeline error]', err.message, batch.length)
+const pipeline = createDrainPipeline({
+  batch: { size: 50, intervalMs: 1000 },
+  retry: { maxAttempts: 3, backoff: 'exponential', initialDelayMs: 200, maxDelayMs: 3000 },
+  maxBufferSize: 1_000_000,
+  onDropped: (events, reason) => {
+    // evlog-exempt: drain failure fallback must not recurse through evlog itself
+    console.error('[evlog drain pipeline dropped]', reason, events.length)
   },
 })
 
-const drain = pipeline.wrap(createSentryDrain({ dsn: process.env.SENTRY_DSN }))
+const drain = pipeline(createSentryDrain({ dsn: process.env.SENTRY_DSN }))
 
-// ❌ 錯誤 — raw drain
-const drain = createSentryDrain({ dsn: process.env.SENTRY_DSN })
+// 反模式：raw drain 直接 ship event
+const rawDrain = createSentryDrain({ dsn: process.env.SENTRY_DSN })
 ```
 
 ### 為什麼強制 pipeline
@@ -210,16 +236,26 @@ const drain = createSentryDrain({ dsn: process.env.SENTRY_DSN })
 - Sentry / Axiom 限速會 429 — 沒 retry = drop = wide event 信號斷
 - pipeline 失敗本身要可觀測 — 否則只看到「event 怎麼少了」沒線索
 
-### 必要 hook（Cloudflare Workers）
+### Cloudflare Workers flush
+
+Nuxt drain 以 `nitroApp.hooks.hook('evlog:drain', drain)` 註冊；Cloudflare Workers consumer **MUST** 另在 `afterResponse` hook 把 `drain.flush()` 掛到 platform `waitUntil`，否則 worker 回收時 in-memory batch 可能被丟掉。
 
 ```ts
-// server/plugins/evlog-drain.ts
-nitroApp.hooks.hook('request:end', (event) => {
-  event.waitUntil?.(drain.flush())
+nitroApp.hooks.hook('evlog:drain', drain)
+nitroApp.hooks.hook('close', () => drain.flush())
+
+// 用 afterResponse 而非 request：current request 的 wide event 在 afterResponse
+// 才由 evlog emit 進 buffer。在 request 時 flush 只會處理先前殘留 batch、漏掉
+// 當前 event；低流量場景 worker 回收前不會再有 request 觸發下一次 flush。
+nitroApp.hooks.hook('afterResponse', (event) => {
+  const waitUntil = event.context.cloudflare?.context?.waitUntil
+  if (typeof waitUntil === 'function') {
+    waitUntil(drain.flush())
+  }
 })
 ```
 
-`waitUntil` **MUST** wire — 否則 worker 結束時 in-memory batch 會被丟掉。
+**禁止**改回 `request` hook + `waitUntil(drain.flush())` pattern — `request` hook 早於該次 request 的 wide event 被 evlog emit 進 buffer（evlog 在 `afterResponse` 才 emit），低流量 Workers 環境下會永久遺失當前 event。
 
 ### 三條 meta-event 必接
 
@@ -231,7 +267,7 @@ drain pipeline emit 以下 meta-event，consumer **MUST** 接這三個並 ship �
 | `pipeline.retry_exhausted` | retry 用光仍失敗 | error channel；ship 到自家 `evlog_dropped` 留底 |
 | `pipeline.memory_warning` | batch buffer >1MB | warn channel；review batch size |
 
-review 抓 `createSentryDrain\(` 不被 `pipeline.wrap` 包 → 🟠 Major。
+review 抓 `createSentryDrain\(` 同檔沒有 `createDrainPipeline` 包覆 → 🟠 Major。
 
 ## Sampling 強制下限
 
@@ -246,50 +282,67 @@ production sampling **MUST** 滿足以下下限：
 | `debug` | 0%（production） | — | production 不送 |
 
 ```ts
-import { samplingPolicy } from 'evlog/sampling'
-
-const sampling = samplingPolicy({
-  default: 0.5,
-  byLevel: {
-    error: 1.0,
-    warn: 1.0,
-    info: 0.5,
-    debug: 0,
+// nuxt.config.ts
+export default defineNuxtConfig({
+  modules: ['evlog/nuxt'],
+  evlog: {
+    sampling: {
+      // rates 是百分比 0-100，不是 0-1
+      rates: {
+        error: 100,
+        warn: 100,
+        info: 50,
+        debug: 0,
+      },
+      // tail sampling；任一條件符合就 force keep（OR logic）
+      keep: [
+        { status: 400 },
+        { duration: 1000 },
+        { path: '/api/critical/**' },
+      ],
+    },
   },
-  byRoute: {
-    'GET /api/health': 0.01,
-    'POST /api/_evlog/ingest': 1.0, // client transport 不 sample
-  },
-  forceKeep: (event) => event.kind === 'audit',
 })
 ```
 
-review 抓 `samplingPolicy` 內 `error` 不為 1.0 或 `forceKeep` 漏 audit → 🔴 Critical。
+evlog 2.16 無內建 `kind === 'audit'` force keep。需要 audit forceKeep 的 consumer **MUST** 在 Nitro plugin 內 wire `evlog:emit:keep`：
+
+```ts
+nitroApp.hooks.hook('evlog:emit:keep', (ctx) => {
+  if ((ctx.context as { kind?: string }).kind === 'audit') ctx.shouldKeep = true
+})
+```
+
+review 抓 `sampling.rates.error` < 100 或 audit consumer 缺 `evlog:emit:keep` + `kind === 'audit'` → 🔴 Critical。
 
 ## Redaction 強制條件
 
-production **MUST** 開 `redactionPolicy`，至少包含 6 類 secret + audit drain `auditRedactPreset`：
+production **MUST** 開 `evlog.redact`。可直接 `redact: true` 啟用 builtins；要追加自家欄位時用 `paths` / `patterns` / `builtins` / `replacement`。
 
 ```ts
-import { redactionPolicy } from 'evlog/redaction'
-import { auditRedactPreset } from 'evlog/audit'
-
-const redaction = redactionPolicy({
-  keys: [
-    'password', 'token', 'apiKey', 'secret',
-    'authorization', 'cookie',
-    'access_token', 'refresh_token', 'id_token',
-    'sessionId',
-  ],
-  patterns: [
-    /sk-[A-Za-z0-9_-]{20,}/, // OpenAI / Anthropic API keys
-    /eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/, // JWT
-    /Bearer\s+[A-Za-z0-9._-]{20,}/,
-  ],
-  replace: '[REDACTED]',
-  presets: { audit: auditRedactPreset },
+// nuxt.config.ts
+export default defineNuxtConfig({
+  modules: ['evlog/nuxt'],
+  evlog: {
+    redact: {
+      paths: [
+        'user.password',
+        'body.password',
+        'headers.authorization',
+        'headers.cookie',
+        'access_token',
+        'refresh_token',
+        'id_token',
+      ],
+      patterns: [/sk-[A-Za-z0-9_-]{20,}/],
+      builtins: ['jwt', 'bearer', 'email', 'creditCard'],
+      replacement: '[REDACTED]',
+    },
+  },
 })
 ```
+
+audit drain 的 PII 過濾走 evlog root export 的 `auditRedactPreset`，在 audit drain branch 套用；不要使用不存在的 `redactionPolicy.presets`。
 
 ### PII 分層
 
@@ -302,24 +355,23 @@ const redaction = redactionPolicy({
 | `cf-ip*` headers | ❌ enricher 不准抓 | ❌ | ❌ |
 | LLM raw prompt / output | ✅ 保留（短 TTL） | ❌ redact | — |
 
-review 抓 `redactionPolicy` 不存在或 `keys` 缺 `password` / `token` / `authorization` → 🔴 Critical。
+review 抓 `redact` 不存在，或 `redact: { paths: [...] }` 缺 `password` 與 `token|authorization` 任一 → 🔴 Critical。`redact: true` 視為啟用 builtins，不算缺 core redaction。
 
 ## Client logging 規範
 
-client transport **MUST** 走 evlog 內建 `evlog/client` plugin（5 consumer 預設），高量 consumer 才轉 `createHttpLogDrain`。
+client transport **MUST** 走 evlog/nuxt module 內建 transport + `evlog/client` runtime helper。高量 consumer 才轉自家 `createHttpLogDrain`。
 
 ### 安裝
 
 ```ts
 // nuxt.config.ts
 export default defineNuxtConfig({
+  modules: ['evlog/nuxt'],
   evlog: {
-    client: {
+    transport: {
       enabled: true,
       endpoint: '/api/_evlog/ingest',
-      minLevel: 'warn', // 預設只送 warn 以上；dev 可降 info
-      suppressConsole: false, // dev 留著看；production 可開
-      identity: { cookieName: 'evlog_identity' },
+      credentials: 'same-origin',
     },
   },
 })
@@ -330,7 +382,6 @@ export default defineNuxtConfig({
 login 成功後 **MUST** 呼叫 `setIdentity({ userId, tenantId })`，logout 時呼叫 `clearIdentity()`。否則 client event 無法跟 server `requireAuth()` 後的 user 對齊。
 
 ```ts
-// app/plugins/evlog-client.client.ts（pseudocode）
 import { setIdentity, clearIdentity } from 'evlog/client'
 
 watch(() => useUserSession().user, (user) => {
@@ -346,16 +397,20 @@ watch(() => useUserSession().user, (user) => {
 
 | 保護 | 強制？ | 為什麼 |
 | --- | --- | --- |
-| CSRF | ✅ | endpoint 接 client POST，沒 CSRF 等於開放放任意 ingest |
+| CSRF | ✅ | module 自動註冊的 endpoint 接 client POST；需由 consumer 的安全 middleware / platform policy 保護 |
 | rate-limit | ✅ | 建議 100 req/min/user；防 client bug 暴量 |
-| body schema validation | ✅ | client 端可能誤送 password / token |
-| `redactionPolicy` 二次套用 | ✅ | 信任邊界：client 送來的 event 必須再過一次 redaction |
+| body schema validation | module 內建 | client 端可能誤送 password / token |
+| `evlog.redact` 二次套用 | ✅ | 信任邊界：client 送來的 event 必須再過一次 redaction |
 
 ### `minLevel` / `suppressConsole`
 
-- `minLevel: 'warn'`：production 預設；info 不送 server（量太大 + 大多無價值）
-- `suppressConsole: true`：production 可開，避免使用者打開 devtools 看到內部欄位
-- dev 階段 `minLevel: 'debug'` + `suppressConsole: false`，方便 debug
+- `setMinLevel('warn')`：production 可用；info 不送 server（量太大 + 大多無價值）
+- `console: false`：由 nuxt module config 控制 console suppression
+- dev 階段可 `setMinLevel('debug')`，方便 debug
+
+反模式：
+- 自寫 `app/plugins/evlog-client.client.ts` 包 `createHttpLogDrain` + `initLog({ drain })`
+- 自寫 `server/api/_evlog/ingest.post.ts` 跟 module handler 搶同一路徑
 
 ### 不該用 client transport 的場景
 
@@ -411,51 +466,62 @@ export interface EvlogFields {
 
 ```ts
 // server/plugins/evlog-enrich.ts
-nitroApp.hooks.hook('evlog:setup', ({ logger }) => {
-  logger.use(userAgentEnricher())
-  logger.use(requestSizeEnricher())
-  logger.use(geoEnricher())
-  logger.use(traceContextEnricher())
-  logger.use(tenantEnricher({
-    resolve: (event) => event.context.tenantId ?? null,
-  }))
+import {
+  createGeoEnricher,
+  createRequestSizeEnricher,
+  createTraceContextEnricher,
+  createUserAgentEnricher,
+} from 'evlog/enrichers'
+
+export default defineNitroPlugin((nitroApp) => {
+  nitroApp.hooks.hook('evlog:enrich', createUserAgentEnricher())
+  nitroApp.hooks.hook('evlog:enrich', createRequestSizeEnricher())
+  nitroApp.hooks.hook('evlog:enrich', createGeoEnricher())
+  nitroApp.hooks.hook('evlog:enrich', createTraceContextEnricher())
+
+  // H3 event only exists in request hook; write to the same wide event.
+  nitroApp.hooks.hook('request', cfGeoEnricher)
+  nitroApp.hooks.hook('request', tenantEnricher)
 })
 ```
 
 | Enricher | 加什麼欄位 |
 | --- | --- |
-| `userAgentEnricher()` | `client.ua` / `client.ua_family` / `client.os` / `client.device` |
-| `requestSizeEnricher()` | `req.size_bytes` / `req.content_type` |
-| `geoEnricher()` | `req.geo.country` / `req.geo.colo` / `req.geo.tz`（從 `cf-*` headers） |
-| `traceContextEnricher()` | `trace.trace_id` / `trace.span_id` / `trace.parent_span_id` |
-| `tenantEnricher({ resolve })` | `tenant.id` / `tenant.tier`（multi-tenant 必裝） |
+| `createUserAgentEnricher()` | `event.userAgent.{raw,browser,os,device}` |
+| `createRequestSizeEnricher()` | `event.requestSize.{requestBytes,responseBytes}` |
+| `createGeoEnricher()` | `event.geo.country`（從 header 抽） |
+| `createTraceContextEnricher()` | `event.traceContext` / `event.traceId` / `event.spanId` |
+| `cfGeoEnricher` | `event.geo.{region,city,latitude,longitude}`（從 Cloudflare `request.cf` 抽） |
+| `tenantEnricher` | `event.tenant.id`（multi-tenant 必裝） |
 
-`tenantEnricher` 必須在 `nuxt-auth-utils` plugin 之後 register（否則 resolve 拿不到 user context）。
+`EnrichContext` 不暴露 H3 event；要拿 `request.cf` 或 auth middleware 寫入的 tenant context，必須在 `request` hook 透過 `event.context.log.set({...})` 寫入同一筆 wide event。
 
-review 抓 `evlog:setup` hook 內缺前 4 個 enricher → 🟠 Major。
+review 抓 `evlog:enrich` / `request` hook 內缺前 4 個 built-in enricher 或 cf-workers 缺 `cfGeoEnricher` → 🟠 Major。
 
 ## Review 檢查
 
 ```bash
 # Drain pipeline
-rg -n 'createSentryDrain\(' server | rg -v 'pipeline\.wrap'
-rg -n 'createPipeline\(' server | wc -l
+rg -n 'createSentryDrain\(' server packages/**/server | rg -v 'createDrainPipeline'
+rg -n 'createDrainPipeline\(' server packages/**/server | wc -l
 
 # Sampling
-rg -nB1 -A3 'samplingPolicy\(' server | rg -B5 -A5 'error:\s*1\.0'
+rg -nM 'rates:\s*\{[\s\S]*error:\s*100' nuxt.config.ts packages/**/nuxt.config.ts
 
 # Redaction
-rg -n 'redactionPolicy\(' server | wc -l
-rg -nA10 'redactionPolicy\(' server | rg "password|token|authorization"
+rg -n 'redact:\s*(true|\{)' nuxt.config.ts packages/**/nuxt.config.ts
 
 # Client transport
-rg -n "client:\\s*\\{[^}]*enabled:\\s*true" nuxt.config.ts
+rg -nM "transport:\\s*\\{[\\s\\S]{0,200}?enabled:\\s*true" nuxt.config.ts packages/**/nuxt.config.ts
 
 # Structured error（PCRE2 lookahead — rg 預設 Rust regex 引擎不支援，必須 -P）
 rg -P -n 'createError\(\{(?![^}]*why)' server packages clients
 
 # Enricher stack
-rg -n "userAgentEnricher\\(|geoEnricher\\(|traceContextEnricher\\(" server/plugins
+rg -n "createUserAgentEnricher\\(|createGeoEnricher\\(|createTraceContextEnricher\\(" server/plugins packages/**/server/plugins
+
+# Workers flush hook（必須 afterResponse，不可 request）
+rg -nP "hooks\.hook\(['\"]request['\"][\s\S]{0,200}?waitUntil\(drain\.flush" server/plugins packages/**/server/plugins
 ```
 
 完整 review automation 在 M2 階段補：`scripts/evlog-adoption-audit.mjs`（spec 見 `docs/evlog-master-plan.md` § 10）。

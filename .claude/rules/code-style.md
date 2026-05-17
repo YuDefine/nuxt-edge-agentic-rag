@@ -1,3 +1,7 @@
+---
+description: 程式碼格式化與 lint 工具鏈—一律用 vite-plus 的 oxfmt + oxlint，禁止 eslint / prettier
+paths: ['**/*.{js,ts,vue,jsx,tsx,mjs,cjs,mts,cts,md,json}', '.*rc*', '.*.config.*']
+---
 <!--
 🔒 LOCKED — managed by clade
 Source: rules/core/code-style.md
@@ -5,10 +9,6 @@ Edit at: /Users/charles/offline/clade
 Local edits will be reverted by the next sync.
 -->
 
----
-description: 程式碼格式化與 lint 工具鏈—一律用 vite-plus 的 oxfmt + oxlint，禁止 eslint / prettier
-globs: ['**/*.{js,ts,vue,jsx,tsx,mjs,cjs,mts,cts,md,json}', '.*rc*', '.*.config.*']
----
 
 # Code Style — vite-plus / oxc 工具鏈
 
@@ -30,19 +30,24 @@ globs: ['**/*.{js,ts,vue,jsx,tsx,mjs,cjs,mts,cts,md,json}', '.*rc*', '.*.config.
 - `package.json` 內的 `eslintConfig` 鍵
 - `.eslintignore`
 
-### 禁止所有 prettier config 檔（`.prettierignore` 例外）
+### 禁止所有 prettier config 檔（含 `.prettierignore`）
 
 **NEVER** 建立或保留以下任一檔案：
 
 - `.prettierrc`、`.prettierrc.json`、`.prettierrc.yaml`、`.prettierrc.yml`、`.prettierrc.toml`
 - `.prettierrc.js`、`.prettierrc.cjs`、`.prettierrc.mjs`、`prettier.config.*`
 - `package.json` 內的 `prettier` 鍵
+- **`.prettierignore`**（自 v0.4.x 起進入黑名單，由 `.oxfmtignore` + `--ignore-path` 取代）
 
-#### `.prettierignore` 例外（clade-managed）
+理由：oxfmt 有自己的 ignore-file 機制（[官方 docs](https://oxc.rs/docs/guide/usage/formatter/ignore-files)），不必借用 prettier 的命名空間。`.prettierignore` 留著會（a）讓 oxfmt fallback 行為跟「我們其實沒裝 prettier」的事實互相矛盾、（b）讓 consumer 誤以為還在用 prettier、（c）在 IDE 端被 prettier 擴充誤觸發。
 
-`.prettierignore` 由 clade 治理（`scripts/lib/prettierignore-governance.mjs`），**只能**保留 clade-managed LOCKED projections（`.claude/rules/`、`.claude/skills/`、`.claude/hooks/`、`.claude/agents/`、`.agents/`、`.codex/`）的 ignore 條目。**禁止**手動加任何其他條目，也**禁止**整個刪除——刪掉之後 `pnpm hub:bootstrap` 會自動重建。
+#### `.oxfmtignore`（clade-managed，承接原 `.prettierignore` 用途）
 
-理由：vite-plus 0.1.14 / oxfmt 0.42.0 的 `.oxfmtrc.json` `ignorePatterns` 欄位**不會被套用到 file walking**（已驗證 bug，2026-05），導致 oxfmt 走訪 LOCKED 目錄時試圖寫入 chmod 444 檔案、被報成 format issue 讓 `pnpm vp fmt --check` 紅燈。`.prettierignore` 是 oxfmt 預設 fallback ignore-file，能正確生效。等 oxfmt 修好 `ignorePatterns` 之後可以撤回此例外。
+`.oxfmtignore` 由 clade 治理（`scripts/lib/oxfmtignore-governance.mjs`），**只能**保留 clade-managed LOCKED projections（`.claude/rules/`、`.claude/skills/`、`.claude/hooks/`、`.claude/agents/`、`.claude/commands/`、`.agents/`、`.codex/`）的 ignore 條目。**禁止**手動加任何其他條目，也**禁止**整個刪除——刪掉之後 `pnpm hub:bootstrap` 會自動重建。
+
+oxfmt 不會自動 fallback 讀 `.oxfmtignore`（只有 `.prettierignore` / `.gitignore` 是 fallback），所以**所有 `vp fmt` 調用入口都必須顯式帶 `--ignore-path .oxfmtignore`**。clade 散播的 `package.json` `format` / `format:check` script 已預先帶 flag，consumer 端走 `pnpm format` / `pnpm format:check` 即可；裸打 `vp fmt` 必須手動加 flag。
+
+> ⚠️ 不能用 `.oxfmtrc.json` `ignorePatterns` 欄位承接：vite-plus 0.1.21 / oxfmt 0.48 仍有 upstream bug，`ignorePatterns` **不會被套用到 file walking**（2026-05 重驗確認）。等 upstream 修好後再評估是否撤回 `.oxfmtignore` 例外、改用 `ignorePatterns` 集中設定。
 
 ### 禁止把 eslint / prettier 加進 dependencies
 
@@ -64,7 +69,106 @@ globs: ['**/*.{js,ts,vue,jsx,tsx,mjs,cjs,mts,cts,md,json}', '.*rc*', '.*.config.
 
 > ⚠️ **NEVER** 直接呼叫 `oxlint` / `oxfmt` CLI binary：在 vite-plus 0.1.x 起，這兩個 binary 已退化成 IDE-only / LSP-only stub，直接執行會回傳 `This oxfmt wrapper is for IDE extension use only` 錯誤導致 pre-commit / CI 失敗。**MUST** 走 `vp lint` / `vp fmt` 入口（vp 內部會用編譯版 oxc）。
 
+### CI workflow 禁止跑 `vp check` / `vp run check`（hard rule）
+
+**NEVER** 在 `.github/workflows/**.yml` 跑 `vp check` 或 `vp run check`。
+
+理由：`vp check` 內部 fmt step **不支援 `--ignore-path` flag**（CLI 沒這 option，pass-through 也不一定生效），意思是 CI 環境下 `vp check` 會掃描整 working tree 包括 LOCKED projection（`.claude/agents/`、`.claude/commands/` 等 chmod 444 檔），撞 oxfmt format issue → CI 紅燈。
+
+consumer 端 LOCKED projection 的 ignore 機制設計：
+- `.oxfmtignore` 由 clade `scripts/lib/oxfmtignore-governance.mjs` 在 `pnpm hub:bootstrap` 時生成
+- oxfmt **不會自動 fallback** 讀 `.oxfmtignore`（只認 `.prettierignore` / `.gitignore` 是 fallback，但 `.prettierignore` 已 v0.4.x 黑名單）
+- 所有 `vp fmt` 調用入口**必須**顯式帶 `--ignore-path .oxfmtignore`
+- clade 散播的 `package.json` `format` / `format:check` script 預埋此 flag：
+  ```json
+  "format:check": "vp fmt --check --ignore-path .oxfmtignore",
+  "format": "vp fmt --write --ignore-path .oxfmtignore",
+  ```
+
+**MUST** CI workflow 拆 step 跑各別 npm script，每個 script 自帶必要 flag：
+
+```yaml
+# ✅ 正確 — TDMS 模式（mirror this pattern in all consumers）
+- name: Format check
+  run: vp run format:check       # 帶 --ignore-path .oxfmtignore
+
+- name: Lint
+  run: vp run lint               # 帶 --deny-warnings（若 consumer baseline 為 0 warnings）
+
+- name: Typecheck
+  run: vp run typecheck
+
+- name: Run tests
+  run: vp run test
+```
+
+```yaml
+# ❌ 錯誤 — 撞 LOCKED projection
+- name: Check (lint + format + typecheck)
+  run: vp run check              # = pnpm check = vp check && ... (vp check 沒 ignore-path)
+```
+
+對應 `package.json` `check` script（local dev / pre-push 用）可保留 `vp check` 但 consumer 必須**清楚知道**這個 script 在 LOCKED projection 既有的情況下會撞——dev 端用 `vp staged` (pre-commit) 或拆 step 跑各別 npm script 替代。
+
+### 真實事故參考
+
+perno consumer v0.40.0（2026-05-13）CI 紅燈：`_ci-reusable.yml` 跑 `vp run check` → vp check 撞 9 個 LOCKED projection format issue → deploy/migrate job 沒跑 → production 沒上線。修法 = 把 `vp run check` 拆成 `vp run format:check` + `vp run typecheck`（對齊 TDMS）。詳見 perno `docs/tech-debt.md` TD-056（CI workflow ignore-path drift）。
+
+`pnpm-lock.yaml` 重生時 oxlint patch 升版可能讓既有 warning 升 error（perno 2026-05-14 觀察到 `vp lint` 對 `scripts/audit-ux-drift.mts` 從「2 warnings + 0 errors」變成「0 warnings + 1 error」）。CI lint baseline 需週期性 audit。
+
 ## 必須事項（MUST）
+
+### `vite.config.ts` 必備欄位（跨 consumer 統一，避免 propagate drift）
+
+clade 散播檔（`vendor/scripts/*.mts`、`scripts/spectra-advanced/*`、`.github/actions/*`）會進到每個 consumer 的 `vp fmt` 掃描範圍。若 clade 與 consumer 的 `vite.config.ts` fmt 設定不一致，consumer 端 `vp fmt --check` 會把 clade 寫出的程式重排成 consumer 風格 → 形成 LOCKED 檔被改動 → CI 紅燈或下次 propagate 出現 drift commit。
+
+**MUST** 從 clade 散播的 `vendor/oxc-shared/preset.mjs` import baseline 並 spread merge：
+
+```ts
+import { defineConfig } from 'vite-plus'
+import { lintBase, fmtBase } from './vendor/oxc-shared/preset.mjs'
+
+export default defineConfig({
+  resolve: { alias: [/* consumer build config */] },
+
+  lint: {
+    ...lintBase,
+    rules: {
+      ...lintBase.rules,
+      // 業務 override 僅放這裡（屬於 baseline 的請改 preset.mjs，跨 consumer 統一）
+      'unicorn/no-thenable': 'off', // supabase PostgREST mock builder chain
+    },
+    ignorePatterns: [...lintBase.ignorePatterns, '.wrangler/'],
+  },
+
+  fmt: {
+    ...fmtBase,
+    // experimentalTailwindcss stylesheet 各 consumer 路徑不同，不在 preset
+    experimentalTailwindcss: { stylesheet: './app/assets/css/main.css' },
+    ignorePatterns: [...fmtBase.ignorePatterns, 'AGENTS.md'],
+  },
+})
+```
+
+baseline 內容（自 `vendor/oxc-shared/preset.mjs`）：
+
+- `fmt`: `semi: false`, `singleQuote: true`, `printWidth: 100`, `tabWidth: 2`, `trailingComma: 'all'`, `quoteProps: 'as-needed'`, `arrowParens: 'always'`, `endOfLine: 'lf'`, `htmlWhitespaceSensitivity: 'css'`, `vueIndentScriptAndStyle: true`, `experimentalSortPackageJson: { sortScripts: true }`
+- `lint.categories`: `correctness:error` / `suspicious:warn` / `perf:warn` / `pedantic|style|restriction|nursery:off`
+- `lint.plugins`: `['typescript', 'unicorn', 'import', 'promise']`
+- `lint.rules`: `no-console:off`, `no-debugger:warn`, `no-alert:error`, `eqeqeq:['error','always']`, `@typescript-eslint/no-unused-vars:warn`, `no-await-in-loop:off`, `no-underscore-dangle:['warn',{allow:['__dirname','__filename']}]`
+- `lint.env`: `{ browser: true, node: true, es2024: true }`
+- 共通 `ignorePatterns`：`node_modules/`, `.nuxt/`, `.output/`, `dist/`, `coverage/`, `supabase/`, `.claude/skills/`, `.agents/`, `.codex/`, `.clade/`, `*.d.ts`（lint）;  `**/*.md`, `coverage/**`, `.nuxt/**`, `.output/**`, `pnpm-lock.yaml`, `.claude/plugins/cache/**`, `.spectra/**`（fmt）
+
+**禁止**：
+
+- 直接 inline 寫 `lint:` / `fmt:` 全部欄位而不 import preset — 哪天 preset 升版（例：oxlint patch 升 `no-underscore-dangle` 從 warn 升 error 要在 preset 反制），consumer 就會 silently drift。
+- 在 consumer 端的 `vendor/oxc-shared/preset.mjs` 投影檔直接改 — 下次 propagate 會覆蓋。要改 baseline → cd 到 clade 改 `vendor/oxc-shared/preset.mjs` 再 propagate。
+
+**真實事故參考**：perno 2026-05-14 觀察 `vp lint scripts/audit-ux-drift.mts`（檔案內容無 git diff）：
+- @ v0.39.2: `Found 2 warnings and 0 errors`
+- @ main (v0.40.0): `Found 0 warnings and 1 error`
+
+`pnpm-lock.yaml` 自 v0.39.2 後重生兩次，oxlint 在 `^0.1.21` 內升 patch，把 `no-underscore-dangle` rule level 從 warn 升 error。perno 5 個 consumer 都吃 clade 同一份 oxlint dep range — preset 已 pin 此 rule 為 `['warn', { allow: ['__dirname', '__filename'] }]`，import 即享 single source of truth。
 
 ### 用 vp 命令做 lint / format
 
@@ -72,14 +176,18 @@ globs: ['**/*.{js,ts,vue,jsx,tsx,mjs,cjs,mts,cts,md,json}', '.*rc*', '.*.config.
 # Lint（修復可自動修復的問題）
 pnpm vp lint --fix
 
-# Format
-pnpm vp fmt
+# Format（裸打必須帶 --ignore-path，否則 LOCKED 投影檔會被報 format issue）
+pnpm vp fmt --ignore-path .oxfmtignore
 
-# Pre-commit staged 檢查（lint + fmt 在 staged files 上）
-pnpm vp staged
+# 推薦走 package.json script（clade 散播的 hub-scripts 已預埋 flag）
+pnpm format        # 等同 vp fmt --write --ignore-path .oxfmtignore
+pnpm format:check  # 等同 vp fmt --check --ignore-path .oxfmtignore
+
+# Pre-commit staged 檢查（clade 散播的 vp-staged.sh，shell layer 已過濾 LOCKED）
+bash scripts/pre-commit/runner.sh
 ```
 
-`vp` 內部呼叫 oxc，行為一致。
+`vp` 內部呼叫 oxc，行為一致。**裸打 `vp fmt` 時遺漏 `--ignore-path .oxfmtignore` 就會掃到 LOCKED 投影檔**（chmod 444）並報 format issue。
 
 ### lint-staged 配置（若用 husky）
 
@@ -87,17 +195,17 @@ pnpm vp staged
 
 ```js
 module.exports = {
-  '*.{js,ts,vue,jsx,tsx}': ['vp lint --fix', 'vp fmt'],
+  '*.{js,ts,vue,jsx,tsx}': ['vp lint --fix', 'vp fmt --ignore-path .oxfmtignore'],
   '*.md': (files) => {
     const allowed = files.filter(
       (f) => !f.startsWith('.claude/rules/') && !f.startsWith('.claude/skills/') && !f.startsWith('.claude/hooks/')
     )
-    return allowed.length ? [`vp fmt ${allowed.join(' ')}`] : []
+    return allowed.length ? [`vp fmt --ignore-path .oxfmtignore ${allowed.join(' ')}`] : []
   },
 }
 ```
 
-`.claude/{rules,skills,hooks}/` 由 clade 治理（chmod 444），lint-staged 必須排除。
+`.claude/{rules,skills,hooks}/` 由 clade 治理（chmod 444），lint-staged 必須排除。雙重保險：shell-side filter + `--ignore-path .oxfmtignore`。
 
 > ⚠️ **NEVER** 用 `oxlint --fix` / `oxfmt` 直接呼叫（見上節「禁止在 lint-staged ... 中呼叫 eslint / prettier」的注意事項）。`vp lint` / `vp fmt` 是唯一正確入口。
 
@@ -113,43 +221,47 @@ vp staged
 
 ```sh
 pnpm exec vp lint --fix --no-error-on-unmatched-pattern "$@"
-pnpm exec vp fmt --no-error-on-unmatched-pattern "$@"
+pnpm exec vp fmt --ignore-path .oxfmtignore --no-error-on-unmatched-pattern "$@"
 ```
 
 ### 自家 ignore patterns — 雙軌制
 
-**(A) 專案自己的 ignore（用 `.oxfmtrc.json` `ignorePatterns`）**
+**(A) 專案自己的 ignore（首選 `vite.config.ts` `fmt.ignorePatterns`，目前壞著只能靠 `.gitignore` 掩護）**
 
-oxfmt 自家 config（`.oxfmtrc.json`）的 `ignorePatterns` 欄位是專案 ignore 的**主要**機制：
+`vite.config.ts` 內 `fmt.ignorePatterns`（或 `.oxfmtrc.json` 的同名欄位）是 oxfmt 規劃中的「正確且唯一」ignore 入口：
 
-```json
-{
-  "$schema": "https://oxc.rs/schemas/oxfmtrc.json",
-  "ignorePatterns": [
-    "coverage/**",
-    ".nuxt/**",
-    ".output/**",
-    "dist/**",
-    "node_modules/**",
-    "**/database.types.ts",
-    "pnpm-lock.yaml",
-    "supabase/seed.sql"
-  ]
+```ts
+// vite.config.ts
+fmt: {
+  // ... 其他設定
+  ignorePatterns: [
+    'coverage/**',
+    '.nuxt/**',
+    '.output/**',
+    'dist/**',
+    'node_modules/**',
+    '**/database.types.ts',
+    'pnpm-lock.yaml',
+    'supabase/seed.sql',
+  ],
 }
 ```
 
-> ⚠️ **已知 upstream bug**（2026-05 驗證）：vite-plus 0.1.14 / oxfmt 0.42.0 的 `ignorePatterns` 欄位**不會被套用到 file walking**——換句話說只有用 `--ignore-path` 或預設 fallback（`.gitignore` / `.prettierignore`）才會生效。等 oxfmt 修好之後 `ignorePatterns` 才會回到「正確且唯一」位置。
+> ⚠️ **已知 upstream bug**（vite-plus 0.1.21 / oxfmt 0.48，2026-05 重驗）：`ignorePatterns` 欄位**不會被套用到 file walking**——只有 `--ignore-path` 或 fallback（`.gitignore`、`.prettierignore`）會生效。**`.prettierignore` 已被 rule 禁用**（見上節），所以實際 ignore 路徑只剩 `.gitignore` 與顯式 `--ignore-path`。等 upstream 修好後，`ignorePatterns` 才能回到「集中設定」位置。
 
-**(B) Clade-managed LOCKED projections ignore（用 `.prettierignore`，clade 治理）**
+**(B) Clade-managed LOCKED projections ignore（用 `.oxfmtignore` + `--ignore-path` 顯式 flag，clade 治理）**
 
-`.claude/rules/`、`.claude/skills/`、`.claude/hooks/`、`.claude/agents/`、`.agents/`、`.codex/` 這些 clade 投影目錄是 chmod 444，oxfmt 不能寫入但會走訪到，會被報 format issue。clade 透過 `scripts/lib/prettierignore-governance.mjs` 在 `pnpm hub:bootstrap` 時自動寫 `.prettierignore`，oxfmt 預設 fallback 就會讀到並跳過。**consumer 不要手動編輯這個檔**。
+`.claude/rules/`、`.claude/skills/`、`.claude/hooks/`、`.claude/agents/`、`.claude/commands/`、`.agents/`、`.codex/` 這些 clade 投影目錄是 chmod 444，oxfmt 不能寫入但會走訪到，會被報 format issue。clade 透過 `scripts/lib/oxfmtignore-governance.mjs` 在 `pnpm hub:bootstrap` 時自動寫 `.oxfmtignore`，並由 clade 散播的 `package.json` `format` / `format:check` script 預埋 `--ignore-path .oxfmtignore` flag。
 
-對 oxlint，用 `.oxlintrc.json` 的 `ignorePatterns`（同名欄位）：
+**consumer 不要手動編輯 `.oxfmtignore`**（內容由 governance 治理；可以加自家條目，但 LOCKED 那幾條由 governance 維持）。
 
-```json
-{
-  "$schema": "https://oxc.rs/schemas/oxlintrc.json",
-  "ignorePatterns": [".claude/**", "shared/types/database.types.ts"]
+oxlint 的 ignore 走另一條路徑（`vite.config.ts` 內 `lint.ignorePatterns` 或 `.oxlintrc.json` `ignorePatterns`，**lint 的 `ignorePatterns` 是 work 的**），跟 fmt 不共用 `.oxfmtignore`：
+
+```ts
+// vite.config.ts
+lint: {
+  // ... 其他設定
+  ignorePatterns: ['.claude/**', 'shared/types/database.types.ts'],
 }
 ```
 
@@ -160,7 +272,7 @@ pnpm exec vp fmt --init        # 產 .oxfmtrc.json 預設值
 pnpm exec vp fmt --migrate=prettier  # 從既有 prettier config 遷移（若有）
 ```
 
-`.gitignore` 不該作為 lint/format ignore（git 跟 lint 是獨立面向）。LOCKED 投影目錄走 `.prettierignore`（B 軌）；專案自家 ignore 走 `.oxfmtrc.json` `ignorePatterns`（A 軌，等 oxfmt 修好後生效；目前可暫時 fallback 用 `.gitignore` 已 ignore 的條目掩護）。
+`.gitignore` 在 oxfmt fallback 鏈仍會被讀，可以順便擔任 `.nuxt/` / `.output/` 等構建產物的 ignore source；LOCKED 投影目錄走 `.oxfmtignore`（B 軌）；專案自家額外 ignore 寫進 `vite.config.ts` `fmt.ignorePatterns`（A 軌，等 oxfmt 修好後生效）。
 
 ## 心智模型
 
@@ -174,15 +286,23 @@ pnpm exec vp fmt --migrate=prettier  # 從既有 prettier config 遷移（若有
 | CI lint check | vp | `pnpm vp lint`（非 --fix） |
 | CI format check | vp | `pnpm vp fmt --check` |
 
-## 違反偵測（建議擴充）
+## 違反偵測
 
-以下 enforcement 之後可加進 clade：
+### 已實作（v0.4.x+）
 
-- `scripts/audit-tooling-drift.mjs`：掃 consumer 是否有 `.eslintrc*` / `.prettierrc*` 等檔案，存在則報 drift
+- `scripts/sync-rules.mjs --check` 在跑 drift report 時偵測 consumer 端 `.prettierignore` 存在 → 列為 drift
+- `scripts/lib/oxfmtignore-governance.mjs` 在 `pnpm hub:bootstrap` 時主動刪除舊 `.prettierignore`（self-healing）
+- `pnpm hub:check` 包含上述 drift signal，consumer 端 CI 應啟用此 job
+- `scripts/audit-tooling-drift.mjs`（v1.3.19）：掃每個 consumer 的 `vite.config.ts` 對齊狀態。報兩個 signal：
+  1. **presetImport** — 是否從 `./vendor/oxc-shared/preset.mjs` import `lintBase` + `fmtBase`
+  2. **inlineDrift** — 未 import preset 時，inline 寫死的 fmt baseline 欄位（`trailingComma`、`semi`、`singleQuote`、`printWidth` 等 11 項）與 baseline 不一致的 entries
+  - 用法：`node scripts/audit-tooling-drift.mjs [--markdown|--json]`；diagnostic-only，exit code 永遠 0；HANDOFF §4 baseline 由此 script 維護
+
+### 建議擴充（尚未實作）
+
+- `scripts/audit-tooling-drift.mjs` Phase 2：併入 `.eslintrc*` / `.prettierrc*` / `eslint.config.*` / `prettier.config.*` 等禁用 config 檔的存在性掃描（目前 sync-rules.mjs 只認 `.prettierignore` 一條）
 - pre-commit hook 加 check：偵測到 eslint/prettier config 進 staging 直接擋
 - CI workflow 同步檢查
-
-當前版本（v0.1.3）僅以 rule 規範，未加自動偵測。發現 consumer 違反時手動報修。
 
 ## 與其他規則的關係
 

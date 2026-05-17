@@ -27,7 +27,19 @@ Code review 時，除了標準檢查項目外，**MUST** 額外檢查以下專�
 | 禁止使用                                                                                                                                                                                | 應替換為                                                                                                                  | 說明                                                                                                                                                                                                                                                     |
 | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `<img>`                                                                                                                                                                                 | `<NuxtImg>`                                                                                                               | 使用 Nuxt Image 模組，支援自動最佳化、lazy loading、responsive sizes。除非有 `<!-- raw-img -->` 註解明確標記例外。                                                                                                                                       |
-| 原生 HTML date / time 輸入：`<input type="date">`、`<input type="datetime-local">`、`<input type="time">`、`<input type="month">`、`<input type="week">`，或包成 `<UInput type="date">` | `<UCalendar>`（[@nuxt/ui Calendar](https://ui.nuxt.com/docs/components/calendar)），搭配 `UPopover` 做為 date picker 觸發 | 原生 date picker 在不同瀏覽器外觀不一致、無法套用 design system theming、a11y 行為不可控、無法本地化日期格式（zh-TW vs en-US）、無法支援 disabled date / range 等需求。例外：純後端工具腳本、admin debug 內部頁面可豁免，**MUST** 在 PR 註明理由與位置。 |
+| 原生 HTML date / time / calendar 輸入：`<input type="date">`、`<input type="datetime-local">`、`<input type="time">`、`<input type="month">`、`<input type="week">`，或包成 `<UInput type="date">` / `<UInput type="time">` / `<UInput type="datetime-local">` / `<UInput type="month">` / `<UInput type="week">`（`UInput` 只是 wrapper，底層仍走原生 picker） | 日期 / 日期區間：`<UCalendar>`（[@nuxt/ui Calendar](https://ui.nuxt.com/docs/components/calendar)）搭配 `<UPopover>` 做為 trigger；純時間輸入：`<USelectMenu>` / `<UInputMenu>` 提供固定時間選項，或專案內部封裝的時間選擇器；日期 + 時間：`<UCalendar>` + 時間選擇器組合 | 原生 date / time / calendar picker 在不同瀏覽器外觀不一致、無法套用 design system theming（含 dark mode）、a11y 行為不可控、無法本地化日期格式（zh-TW vs en-US）、無法支援 disabled date / range / 最小最大日期 / 預設 highlight 等需求。第三方 picker（`v-calendar`、`@vuepic/vue-datepicker`、`flatpickr`、`vue-datepicker` 等）一律改用 `@nuxt/ui` 對應元件，避免再多一條 design system / dark mode / i18n drift 來源。例外：純後端工具腳本、admin debug 內部頁面可豁免，**MUST** 在 PR 註明理由與位置。 |
+
+**Reviewer 檢查方式（針對原生 date / time picker 與 `<NuxtImg>` 替代）**：
+
+1. `grep -rEn '<input[^>]*type="(date\|datetime-local\|time\|month\|week)"' app/ packages/*/app/ components/ layouts/ pages/ 2>/dev/null` — 找原生 date / time `<input>`
+2. `grep -rEn '<UInput[^>]*type="(date\|datetime-local\|time\|month\|week)"' app/ packages/*/app/ components/ layouts/ pages/ 2>/dev/null` — 找 `<UInput>` 偽裝（底層仍是原生 picker）
+3. `grep -rEn "from ['\"](v-calendar\|@vuepic/vue-datepicker\|flatpickr\|vue-flatpickr-component\|vue-datepicker)['\"]" app/ packages/*/app/ components/ 2>/dev/null` — 找第三方 date picker import
+4. `grep -rEn '<(img\|image)\s' app/ packages/*/app/ components/ layouts/ pages/ 2>/dev/null | grep -v "raw-img"` — 找未標記例外的原生 `<img>`
+
+**例外條件**：
+
+- 純後端腳本、admin debug 內部頁面、第三方套件強制原生 HTML 元素：**MUST** 在 PR 註明位置與理由
+- `<input type="color">` 等非日期 / 時間類 picker 不在本條範圍
 
 ## 資料庫存取模式
 
@@ -121,8 +133,9 @@ UI **MUST NOT** 出現任何未經處理的原始英文錯誤代碼或訊息（�
 | 禁止 pattern                                                                                | 應改為                                                                                 | 說明                                                                                                                                                                  |
 | ------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 新增 `server/api/**` handler 沒有第一行 `const log = useLogger(event)`                     | 第一行 `const log = useLogger(event)`，後續用 `log.set(...)` / `log.error(err, {...})` | request-scoped wide event 是 evlog 的核心；handler 缺 logger 等於該 request 沒有結構化 trace。GET endpoint 至少要初始化 logger，方便錯誤路徑用 `log.error`。              |
-| `server/` 任何位置出現 `console.log` / `console.error` / `console.warn` / `console.info` / `console.debug` | API handler 用 `log.*`；utils 用 `consola.withTag('...')`；錯誤路徑用 `log.error(err, ctx)`            | `console.*` 不會進入 evlog drain（Axiom / OTLP / Sentry 等），等於 production 永久看不到。dev 殘留 console 屬於 review 必砍項。                                       |
+| `server/` 任何位置出現 `console.log` / `console.error` / `console.warn` / `console.info` / `console.debug` | API handler 用 `log.*`；request utils 接收 `RequestLogger`；job/cron/script 用 `createLogger()` / `createRequestLogger()`；drain failure fallback 需 `evlog-exempt` 註解 | `console.*` 不會進入 evlog drain（Axiom / OTLP / Sentry 等），等於 production 永久看不到。唯一例外是 evlog drain 自身失敗時不可再透過同一條 drain 記錄。                 |
 | `server/api/**` 內 `import { consola } from 'consola'` / `useLogger` 之外的 logger          | 一律 `useLogger(event)`                                                                | 該層必須是 request-scoped；用 consola 會繞過 wide event 累積機制，丟失 user / request 對應。                                                                          |
+| PR diff 新增 `package.json` `consola` runtime dependency                                    | 移除；用 evlog 的 request / standalone / pipeline API                                  | evlog 已提供 `useLogger(event)`、`createLogger()`、`createRequestLogger()` 與 `createDrainPipeline()`；不需要多裝 consola 當 fallback。**Pre-existing dep 不擋**（見例外條件）。                                |
 | `throw new Error('...')` / `throw Error('...')`（在 evlog handler 內）                      | `throw createError({ message, status, why?, fix?, cause? })`（從 `evlog` import）     | 結構化 error 才能在前端 `parseError` 拿到 `why` / `fix` / `link`；`new Error` 等於丟掉 debugging context。                                                              |
 | `catch (e) { console.error(e); throw e }` log-and-throw                                     | `catch (e) { log.error(e, { step: '...' }); throw createError({...}) }`                | log + 重新拋同一個 error 會在上游重複記錄；evlog 模式是「log.error 留 trace + 拋結構化 error 給 caller」。                                                            |
 | `catch (e) { throw e }` 重新拋出但沒補 context                                              | 補 `log.error(e, { step })` 並包成 `createError({ message, why: e.message, cause: e })` | 重拋不補 context 等於這層白搭；至少要留下 `step` 標記與原 error 的 `cause`。                                                                                          |
@@ -139,13 +152,15 @@ UI **MUST NOT** 出現任何未經處理的原始英文錯誤代碼或訊息（�
 2. `grep -rn "throw new Error\|throw Error(" server/` — 新增的 `new Error` 必須轉 `createError`
 3. 對每個 PR 新增的 `server/api/**/*.ts` 檔，Read 開頭 5 行確認 `const log = useLogger(event)` 存在
 4. `grep -rn "handleDbError(" server/api/` — 每個呼叫點往下看 3 行，確認後續有 `throw`
-5. `grep -rn "from 'consola'" server/api/` — 不應出現
+5. `git diff <base>..HEAD -- server/ package.json` 內 `+.*from 'consola'` 或 `+.*"consola"` 才 flag；pre-existing usage / dep 不擋（遷移走專案的 evlog adoption spectra change）
 6. `grep -rn "log\.error" server/api/` — 對每個出現點檢查：(a) 是否為預期業務錯誤被誤 log；(b) 同一路徑是否多次 log
+7. `grep -rn "console\.error" server/plugins/evlog-*` — 僅允許 drain failure fallback，且同段必須有 `evlog-exempt` 註解
 
 **例外條件**：
-- 純 build / script / 非 request-scoped 工具（`scripts/**`、`drizzle.config.ts` 等）可用 `consola` 或 `console`
+- 純 build / CLI script（`scripts/**`、`drizzle.config.ts` 等）可用 `console` 作終端輸出；若 script 需要 production observability，改用 evlog standalone API
 - 一次性 migration script、debug 用 admin endpoint 可豁免，但 **MUST** 在 PR 註明
 - 專案尚未採用 evlog（`package.json` 沒有依賴）→ 整段規則不適用，但若 PR 同時引入 evlog，新 / 改的 handler 必須直接到位，不接受「先用 console 之後再遷」
+- **Pre-existing `consola` runtime dep + pre-existing `import { consola } from 'consola'` usage**：本條 review 不擋；遷移走專案的 evlog adoption spectra change（如 `adopt-evlog-hardening-t2`）統一處理。新 PR 不得新增 consola usage，也不得在 evlog 已完成遷移後保留殘留 dep。Reviewer **MUST** 用 `git diff <base>..HEAD` 範圍判斷，不能 `grep -rn` 全 codebase 掃出 pre-existing 然後當作違規
 
 ## D-pattern audit 一致性
 
@@ -189,12 +204,20 @@ Reference: `docs/d-pattern-master-plan.md`
 | `<UFormField label="標題">` 但該欄實際必填                                                    | `<UFormField label="標題" name="title" required>` + schema 對應欄位 `z.string().min(1)`                           | 必填必須在 UI 上有星號標示；`name` 屬性才能讓 UForm 把 Zod 錯誤對應到欄位。                                                         |
 | 從使用者輸入（檔名、標題等）自動產生識別字串（slug / id）後未處理「結果為空字串」的 edge case | 產生後必須 `if (!result) result = fallback()`（例如 `crypto.randomUUID().slice(0, 8)`），或顯式提示使用者手動填寫 | 全中文、emoji、純符號等輸入經 `[^a-z0-9]+` replace 後會變成空字串，欄位只剩 placeholder 看起來像已填、實際為空 → 使用者無法 debug。 |
 | 把 `placeholder` 當作「這欄已有值」的視覺訊號                                                 | `placeholder` 僅供範例；必填提示用 `required` / inline error                                                      | placeholder 是灰字提示，使用者無法區分「已填」與「範例文字」。                                                                      |
+| `<UInput>` / `<input>` / `<textarea>` / `<UTextarea>` 沒設 `maxlength`                       | `:maxlength="<schema/DB 上限>"`（例 `decimal(12, 4)` → 14；`varchar(N)` → N；自由文字依 schema `z.string().max(N)` 一致） | 沒上限的 input 等於對 server 開放任意長度寫入：DB column overflow 變 500 / 422 錯誤、payload 無限大、UI 文字 layout 爆版。`maxlength` 是輸入端硬閘門，schema validation 是第二層；兩層都要。 |
 
 **檢查動作**：
 
 1. 掃 `app/**/*.vue` 中的 `<UButton[^>]*:disabled=` — 若 disabled 條件引用多個 form state，flag 為 🟠 Major，建議改用 UForm
 2. 掃 auto-generate slug / id 邏輯 — 確認有空值 fallback
 3. 掃 `<UFormField>` — 若對應 schema 欄位是 `.min(1)` 或非 optional，UFormField 必須有 `required` 且 `name` 屬性
+4. `grep -rEn "<(UInput|input|UTextarea|textarea)\b" app/ packages/*/app/ layers/*/components/ 2>/dev/null` — 逐筆檢查是否有 `:maxlength` / `maxlength`；缺者比對對應 schema / DB column 上限是否合理省略
+
+**例外條件**：
+
+- 第三方套件元件強制無 `maxlength` 屬性 → PR **MUST** 註明位置與套件名
+- 純展示用 `readonly` / `disabled` input 可豁免
+- 已透過 schema `z.string().max(N)` 嚴格約束且 UI 額外有 character counter 顯示 → 可省略 `maxlength`，但 PR 須註明改用 counter 的原因
 
 ## Nuxt a11y 採用一致性
 

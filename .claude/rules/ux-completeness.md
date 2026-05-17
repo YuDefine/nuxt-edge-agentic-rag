@@ -1,3 +1,7 @@
+---
+description: UX 完整性規則——定義 "feature complete"、強制列舉 user-facing surface、防止 DB+API 完成但 UI 缺失
+paths: ['openspec/changes/**', 'app/**/*.vue', 'shared/types/**/*.ts', 'supabase/migrations/**']
+---
 <!--
 🔒 LOCKED — managed by clade
 Source: rules/core/ux-completeness.md
@@ -5,10 +9,6 @@ Edit at: /Users/charles/offline/clade
 Local edits will be reverted by the next sync.
 -->
 
----
-description: UX 完整性規則——定義 "feature complete"、強制列舉 user-facing surface、防止 DB+API 完成但 UI 缺失
-globs: ['openspec/changes/**', 'app/**/*.vue', 'shared/types/**/*.ts', 'supabase/migrations/**']
----
 
 # UX Completeness
 
@@ -173,6 +173,17 @@ spectra-propose 階段，`proposal.md` 必須包含以下三個區塊（或明�
 - propose 階段已經寫了 `Affected Entity Matrix`，多列一個 fixtures task 邊際成本極低
 - apply 階段執行 fixtures task = 自動產生持久化 mock，下次 reset DB 還在
 - review 階段 screenshot-review agent 拍前若仍偵測到空狀態，可立刻反查 tasks.md 是否有 Fixtures Plan，定位是「沒規劃」還是「沒執行」
+
+### 與 `## 人工檢查` items 的交叉約束（hard rule）
+
+Fixtures Plan 不只服務「list / detail 頁面非空狀態」，**MUST** 同時涵蓋 `## 人工檢查` items inline 引用的所有具體 sample：
+
+- 每個 `[review:ui]` / `[verify:ui]` / `[verify:api]` / `[verify:e2e]` item 描述中引用的具體 sample（如 `WR-9001` / `card_uid=04A1B2C3` / 帶特定 status / role / branch 的 row）**MUST** 在 Fixtures Plan 對應 task 顯式寫進 seed
+- 對 status 互斥、多角色 authz、edge case branch 等情境，**MUST** 為每條被驗的 branch 各備一筆 sample（**NEVER** 用「review 時自己造一筆」「ad-hoc INSERT」「依賴 dev DB 既有資料」打發）
+- Sample 在 Fixtures Plan task 內 **MUST** 列出 stable identifier（business key / fixed PK / UUID），與人工檢查 item 描述中的引用一字不差
+- 完整 hard rule（禁止模糊指代、必填三件事、反面範例）見 `manual-review.md` 的「Pre-Review Data Readiness」
+
+**心智模型**：seed.sql 是 review fixture 的 single source of truth；人工檢查 item 是該 fixture 的 consumer。Consumer 引用的 key **MUST** 在 source 中存在，否則 review 階段 user 無路可走。
 
 ## 必填 Backend-only Manual Review 規約
 
