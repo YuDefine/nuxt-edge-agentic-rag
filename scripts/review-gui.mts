@@ -8,7 +8,7 @@
  */
 
 import { createHash } from 'node:crypto'
-import { createReadStream, existsSync } from 'node:fs'
+import { createReadStream, existsSync, readdirSync, statSync } from 'node:fs'
 import { mkdir, open as openFd, readFile, readdir, stat, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import net from 'node:net'
@@ -40,9 +40,36 @@ export interface ManualReviewPatternEntry {
   requiresAbsenceOf?: string
   appliesTo?: string
   requiresKindIn?: string[]
+  /**
+   * `"group"` → requiresAbsenceOf evaluates against the parent's full group
+   * block (parent line + all scoped sub-items) regardless of whether the
+   * current item is the parent or a sub-item. Use for rules where any line
+   * in the group can satisfy the requirement (e.g. UI_ITEM_NO_URL: parent
+   * declares the URL once, sub-items inherit). Default (omitted) keeps the
+   * legacy scope: parent → full block, sub-item → its own line.
+   */
+  requiresAbsenceOfScope?: 'group'
+  requiresPresenceOfScope?: 'group'
 }
 
-let cachedPatterns: ManualReviewPatternEntry[] | null = null
+interface CompiledManualReviewPatternEntry extends ManualReviewPatternEntry {
+  // Precompiled regex objects — populated lazily by `loadManualReviewPatterns`
+  // so `evaluateManualReviewPatterns` skips repeated `new RegExp(...)` per item.
+  _primaryRe: RegExp | null
+  _presenceRe: RegExp | null
+  _absenceRe: RegExp | null
+}
+
+let cachedPatterns: CompiledManualReviewPatternEntry[] | null = null
+
+function compileOrNull(source: string | undefined, flags: string | undefined): RegExp | null {
+  if (!source) return null
+  try {
+    return new RegExp(source, flags ?? '')
+  } catch {
+    return null
+  }
+}
 
 function locatePatternsFile(): string | null {
   // Search upward from CWD looking for vendor/snippets/manual-review-enforcement/patterns.json
@@ -84,14 +111,20 @@ export function loadManualReviewPatterns(): ManualReviewPatternEntry[] {
     const raw = readFileSync(path, 'utf8')
     const parsed = JSON.parse(raw) as { patterns?: ManualReviewPatternEntry[] }
     const entries = Array.isArray(parsed.patterns) ? parsed.patterns : []
-    cachedPatterns = entries.map((p) => ({
-      ...p,
-      regex: translatePosixToJs(p.regex),
-      requiresPresenceOf: p.requiresPresenceOf
-        ? translatePosixToJs(p.requiresPresenceOf)
-        : undefined,
-      requiresAbsenceOf: p.requiresAbsenceOf ? translatePosixToJs(p.requiresAbsenceOf) : undefined,
-    }))
+    cachedPatterns = entries.map((p) => {
+      const regex = translatePosixToJs(p.regex)
+      const presence = p.requiresPresenceOf ? translatePosixToJs(p.requiresPresenceOf) : undefined
+      const absence = p.requiresAbsenceOf ? translatePosixToJs(p.requiresAbsenceOf) : undefined
+      return {
+        ...p,
+        regex,
+        requiresPresenceOf: presence,
+        requiresAbsenceOf: absence,
+        _primaryRe: compileOrNull(regex, p.regexFlags),
+        _presenceRe: compileOrNull(presence, p.regexFlags),
+        _absenceRe: compileOrNull(absence, p.regexFlags),
+      }
+    })
   } catch {
     cachedPatterns = []
   }
@@ -100,27 +133,31 @@ export function loadManualReviewPatterns(): ManualReviewPatternEntry[] {
 
 /**
  * Evaluate manual-review patterns against an item block.
- * `block`: parent line (+ optional scoped children joined by newline).
- * `isParent`: when true, requiresPresenceOf / requiresAbsenceOf evaluate against
- *   the full block; when false, only against the line itself.
+ * `block`: when `isParent` is true, the parent line + scoped children joined
+ *   by newline; when `isParent` is false, the sub-item line by itself.
+ * `isParent`: drives default presence/absence scope (parent → full block,
+ *   sub-item → its own line).
+ * `groupBlock`: optional override — the parent's full group block (parent
+ *   line + all scoped sub-items) used when a pattern declares
+ *   `requiresAbsenceOfScope: "group"` or `requiresPresenceOfScope: "group"`.
+ *   Defaults to `block` for backward compat (callers that only have one
+ *   block keep prior semantics).
  * `appliesTo: parentLineOnly` patterns skip scoped children entirely.
  */
 export function evaluateManualReviewPatterns(
   block: string,
   isParent: boolean,
+  groupBlock?: string,
 ): Array<{ code: string; description: string; anchor: string }> {
-  const patterns = loadManualReviewPatterns()
+  const patterns = loadManualReviewPatterns() as CompiledManualReviewPatternEntry[]
   const hits: Array<{ code: string; description: string; anchor: string }> = []
   // Primary regex evaluates against the first line (the item line itself).
   const firstLine = block.split('\n')[0] ?? ''
+  const effectiveGroupBlock = groupBlock ?? block
   for (const p of patterns) {
     if (p.appliesTo === 'parentLineOnly' && !isParent) continue
-    let primaryRe: RegExp
-    try {
-      primaryRe = new RegExp(p.regex, p.regexFlags ?? '')
-    } catch {
-      continue
-    }
+    const primaryRe = p._primaryRe
+    if (!primaryRe) continue
     if (!primaryRe.test(firstLine)) continue
     // requiresKindIn: pattern only fires when item's leading kind marker is in the allowed list.
     // Example: MULTI_STEP_NOT_SCOPED uses requiresKindIn: ["review:ui"] so it doesn't over-fire
@@ -131,22 +168,14 @@ export function evaluateManualReviewPatterns(
       const kind = kindMatch ? kindMatch[1] : null
       if (!kind || !p.requiresKindIn.includes(kind)) continue
     }
-    const scope = isParent ? block : firstLine
-    if (p.requiresPresenceOf) {
-      try {
-        const re = new RegExp(p.requiresPresenceOf, p.regexFlags ?? '')
-        if (re.test(scope)) continue
-      } catch {
-        // invalid regex → fall through to hit
-      }
+    const defaultScope = isParent ? block : firstLine
+    if (p._presenceRe) {
+      const scope = p.requiresPresenceOfScope === 'group' ? effectiveGroupBlock : defaultScope
+      if (p._presenceRe.test(scope)) continue
     }
-    if (p.requiresAbsenceOf) {
-      try {
-        const re = new RegExp(p.requiresAbsenceOf, p.regexFlags ?? '')
-        if (re.test(scope)) continue
-      } catch {
-        // invalid regex → fall through to hit
-      }
+    if (p._absenceRe) {
+      const scope = p.requiresAbsenceOfScope === 'group' ? effectiveGroupBlock : defaultScope
+      if (p._absenceRe.test(scope)) continue
     }
     // MULTI_STEP_NOT_SCOPED special case: skip if parent block already contains
     // scoped sub-items (lines beginning with two-space indent + `- [`).
@@ -326,6 +355,11 @@ interface CliOptions {
   openBrowser: boolean
   /** Headless scan：不啟 server，輸出 readiness JSON 到 stdout 後結束。供 review-readiness-scan skill 使用。 */
   scan: boolean
+  /**
+   * User 顯式帶 `--repo <path>` → 視為已知意圖（如 CI / 腳本指定 main path 跑 scan），
+   * skip preflightCwd 的 worktree 拒絕檢查。預設 process.cwd() 啟動時 enforce check。
+   */
+  explicitRepo: boolean
 }
 
 interface ScreenshotFile {
@@ -343,6 +377,15 @@ interface ScreenshotTopic {
 interface ChangeSummary {
   name: string
   tasksPath: string
+  /**
+   * 該 change 實際所在的 working tree 絕對路徑。
+   * - main repo → mainRoot
+   * - worktree → 對應 worktree path
+   * 後續 readChangeDetail / persistReviewAction / invokeReviewArchive / serveScreenshot 全部依此 route。
+   */
+  sourceRoot: string
+  /** Worktree slug；main repo 為 null。前端用此貼 `wt:<slug>` 標籤。 */
+  worktreeSlug: string | null
   total: number
   checked: number
   pending: number
@@ -369,6 +412,14 @@ interface ChangeSummary {
     description: string
     kinds: ReadonlyArray<'e2e' | 'api' | 'ui'>
   }>
+  /**
+   * Impl task 總數 — 計算 `- [ ] N.M ...` / `- [x] N.M ...` 行（含小數點 ID，無 `#` 前綴）。
+   * 排除 `## 人工檢查` 區塊（那邊用 `#N` / `#N.M` 格式）。用於 home page 判斷該 change 是
+   * 「apply 已完成、可批量補 evidence」還是「apply 還在動工、補 evidence 會撞不存在的 UI/seed」。
+   */
+  implTotal: number
+  /** 已勾選的 impl task 數（`- [x] N.M ...`）。`implDone / implTotal` 是 apply 完成度估計值。 */
+  implDone: number
   screenshotTopicCount: number
   screenshotTopics: string[]
 }
@@ -492,14 +543,24 @@ export function parseManualReviewSections(
         byParent.get(item.parentId)!.push(item)
       }
     }
+    // Pre-build group blocks per parent id so sub-items can pass their
+    // parent's full group as `groupBlock` for `requiresAbsenceOfScope: "group"`
+    // patterns (e.g. UI_ITEM_NO_URL — continuation sub-items inherit the URL
+    // declared in a sibling).
+    const groupBlocks = new Map<string, string>()
+    for (const item of section.items) {
+      if (item.scoped) continue
+      const children = byParent.get(item.id) ?? []
+      groupBlocks.set(item.id, [item.raw, ...children.map((c) => c.raw)].join('\n'))
+    }
     for (const item of section.items) {
       if (item.bypassManualReviewCheck) continue
       if (item.scoped) {
-        item.manualReviewHits = evaluateManualReviewPatterns(item.raw, false)
+        const groupBlock = groupBlocks.get(item.parentId!) ?? item.raw
+        item.manualReviewHits = evaluateManualReviewPatterns(item.raw, false, groupBlock)
       } else {
-        const children = byParent.get(item.id) ?? []
-        const block = [item.raw, ...children.map((c) => c.raw)].join('\n')
-        item.manualReviewHits = evaluateManualReviewPatterns(block, true)
+        const block = groupBlocks.get(item.id) ?? item.raw
+        item.manualReviewHits = evaluateManualReviewPatterns(block, true, block)
       }
     }
   }
@@ -1421,7 +1482,7 @@ async function loadHono(): Promise<any> {
   }
 }
 
-export async function createReviewApp(repoRoot = process.cwd()): Promise<any> {
+export async function createReviewApp(mainRoot = process.cwd()): Promise<any> {
   const { Hono } = await loadHono()
   const app = new Hono()
 
@@ -1430,39 +1491,41 @@ export async function createReviewApp(repoRoot = process.cwd()): Promise<any> {
   // 解析 path/hash，deep link reload 才需要 server 認 path。
   app.get('/review', (c: any) => {
     c.header('Cache-Control', 'no-store')
-    return c.html(renderReviewHtml())
+    return c.html(renderReviewHtml({ mainRoot }))
   })
   app.get('/review/:change', (c: any) => {
     c.header('Cache-Control', 'no-store')
-    return c.html(renderReviewHtml())
+    return c.html(renderReviewHtml({ mainRoot }))
   })
 
-  app.get('/api/health', (c: any) => c.json({ ok: true, repoRoot }))
+  app.get('/api/health', (c: any) => c.json({ ok: true, repoRoot: mainRoot }))
 
   // GET /api/changes 與 /api/changes/:change 都不能讓瀏覽器 cache：
   // change detail 含 version.hash + mtime，cache 後 reload 會拿到 stale version
   // 而下一次 saveAction 仍用舊 version → server 端永遠回 409。
   app.get('/api/changes', async (c: any) => {
     c.header('Cache-Control', 'no-store')
-    const changes = await listPendingChanges(repoRoot)
+    const changes = await listPendingChanges(mainRoot)
     return c.json({ changes })
   })
 
   app.get('/api/changes/:change', async (c: any) => {
     c.header('Cache-Control', 'no-store')
-    const detail = await readChangeDetail(repoRoot, c.req.param('change'))
+    const changeName = c.req.param('change')
+    const source = await ensureChangeRoute(mainRoot, changeName)
+    const detail = await readChangeDetail(source, changeName)
     return c.json({ change: detail })
   })
 
   app.post('/api/changes/:change/action', async (c: any) => {
     const change = c.req.param('change')
     const body = await c.req.json().catch(() => ({}))
-    const result = await persistReviewAction(repoRoot, change, body)
+    const result = await persistReviewAction(mainRoot, change, body)
     return c.json(result, result.statusCode || 200)
   })
 
   app.get('/api/screenshot/*', async (c: any) => {
-    return serveScreenshot(repoRoot, c)
+    return serveScreenshot(mainRoot, c)
   })
 
   app.onError((err: unknown, c: any) => {
@@ -1485,28 +1548,175 @@ function filterPoolsForChange(pools: ScreenshotTopic[], change: string): Screens
   return pools.filter((pool) => topicMatchesChange(pool.topic, change))
 }
 
-async function listPendingChanges(repoRoot: string): Promise<ChangeSummary[]> {
-  const changesRoot = join(repoRoot, 'openspec', 'changes')
-  if (!existsSync(changesRoot)) return []
-
-  const pools = await listScreenshotPools(repoRoot)
-  const entries = await readdir(changesRoot, { withFileTypes: true })
-  const summaries: ChangeSummary[] = []
-
-  for (const entry of entries) {
-    if (!entry.isDirectory() || entry.name === 'archive' || entry.name.startsWith('.')) continue
-    const tasksPath = join(changesRoot, entry.name, 'tasks.md')
-    if (!existsSync(tasksPath)) continue
-    const summary = await summarizeChange(
-      repoRoot,
-      entry.name,
-      tasksPath,
-      filterPoolsForChange(pools, entry.name),
+/**
+ * List `openspec/changes/**` blob hashes at HEAD as a Map<relativePath, blobSha>.
+ * Used by listPendingChanges to detect "worktree HEAD did not diverge from main HEAD
+ * for this file" — in which case main's working-tree state (which may have uncommitted
+ * updates) is canonical and worktree should NOT shadow main per the collision rule.
+ *
+ * Returns empty map on git error (safe default: behave like pre-fix, no skip).
+ */
+function listOpenspecChangesBlobHashes(repoRoot: string): Map<string, string> {
+  const result = new Map<string, string>()
+  try {
+    const res = spawnSync(
+      'git',
+      ['-C', repoRoot, 'ls-tree', '-r', 'HEAD', '--', 'openspec/changes/'],
+      { encoding: 'utf8' },
     )
-    if (summary) summaries.push(summary)
+    if (res.status !== 0) return result
+    for (const line of res.stdout.split('\n')) {
+      // ls-tree -r format: "<mode> blob <sha>\t<path>"
+      const m = line.match(/^\d+\s+blob\s+([0-9a-f]+)\t(.+)$/)
+      if (m) result.set(m[2], m[1])
+    }
+  } catch {
+    // ignore
+  }
+  return result
+}
+
+/**
+ * Check if a worktree has uncommitted changes (modified / staged / untracked) for a
+ * specific path. Used by listPendingChanges diff-aware skip to confirm the worktree's
+ * working tree is also clean before allowing main to shadow worktree.
+ *
+ * Without this check, the skip silently drops worktree entries when a sibling worktree
+ * has mid-`/spectra-apply` edits to `<change>/tasks.md`: HEAD blob still matches main
+ * (commit hasn't happened yet), but the worktree's working tree carries uncommitted
+ * updates that the user MUST see in the GUI.
+ *
+ * Returns `true` (= dirty / cannot confirm clean) on git error — conservative default
+ * matching the calling site's "skip only when we can fully prove clean" posture.
+ */
+function isWtPathDirty(wtRoot: string, relPath: string): boolean {
+  try {
+    const res = spawnSync('git', ['-C', wtRoot, 'status', '--porcelain', '--', relPath], {
+      encoding: 'utf8',
+    })
+    if (res.status !== 0) return true
+    return res.stdout.trim().length > 0
+  } catch {
+    return true
+  }
+}
+
+/**
+ * List change names that exist under main's `openspec/changes/archive/` directory.
+ * Archive folders follow the convention `YYYY-MM-DD-<change-name>`.
+ *
+ * Used by listPendingChanges to dedupe stale sibling-worktree copies: when a change
+ * has been archived in main, sibling worktrees forked before the archive still carry
+ * the pre-archive active copy. Those stale copies should NOT surface in the review
+ * GUI as pending work — the change is already done in main.
+ *
+ * Returns empty set on fs error (safe default: behave like pre-fix, no dedupe).
+ */
+function listMainArchivedChangeNames(mainRoot: string): Set<string> {
+  const result = new Set<string>()
+  const archiveRoot = join(mainRoot, 'openspec', 'changes', 'archive')
+  if (!existsSync(archiveRoot)) return result
+  try {
+    const entries = readdirSync(archiveRoot, { withFileTypes: true })
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue
+      const match = entry.name.match(/^\d{4}-\d{2}-\d{2}-(.+)$/)
+      if (match) result.add(match[1])
+    }
+  } catch {
+    // ignore
+  }
+  return result
+}
+
+export async function listPendingChanges(mainRoot: string): Promise<ChangeSummary[]> {
+  const sources = await listSourceRoots(mainRoot)
+  // 重建兩個 module-level cache：sourceRootIndex 給 rootId → SourceRoot；changeRouteCache 給 change → SourceRoot。
+  sourceRootIndex = new Map(sources.map((src) => [src.rootId, src]))
+  changeRouteCache = new Map()
+
+  // Diff-aware collision rule (refines the older worktree-prefer rule):
+  // 「worktree 是 ahead 版本」假設只在 worktree's HEAD committed changes to that
+  // specific change file 時成立。若 worktree HEAD == main HEAD for `<change>/tasks.md`
+  // （worktree fork 自 main 後沒 commit 過該 change file），main 的 working-tree
+  // 才是 canonical（main 可能有未 commit 的 WIP 更新），worktree **MUST NOT** shadow main。
+  // 對應 anti-pattern：active worktree A 做 change X，但繼承了 main 的 change Y / Z 目錄；
+  // user 在 main 改 Y / Z 的 tasks.md（未 commit），舊規則讓 worktree 的 stale Y / Z 蓋過 main。
+  const mainBlobHashes = listOpenspecChangesBlobHashes(mainRoot)
+  // sibling-worktree stale copy dedupe：fork 點早於 archive 的 worktree 仍會帶著 pre-archive
+  // 的 active copy；main 已 archive 的 change 不該再在 review GUI 顯示為 pending。
+  const archivedInMain = listMainArchivedChangeNames(mainRoot)
+
+  // Parallelize per-source work: pools walk + per-change summarize all overlap.
+  // Result is an array of `{ src, summaries }` in the same order as `sources`,
+  // so the downstream merge preserves the legacy collision rule (main first,
+  // worktree later writes shadow main).
+  const partials = await Promise.all(
+    sources.map(async (src) => {
+      const changesRoot = join(src.root, 'openspec', 'changes')
+      if (!existsSync(changesRoot)) return { src, summaries: [] as ChangeSummary[] }
+
+      // 對 worktree source 預載 HEAD blob hash（main source 跳過：main 永遠是 fallback target）
+      const wtBlobHashes = src.slug !== null ? listOpenspecChangesBlobHashes(src.root) : null
+
+      const [pools, entries] = await Promise.all([
+        listScreenshotPools(src.root, src.rootId),
+        readdir(changesRoot, { withFileTypes: true }).catch(() => null),
+      ])
+      if (!entries) return { src, summaries: [] as ChangeSummary[] }
+
+      const summarized = await Promise.all(
+        entries.map(async (entry) => {
+          if (!entry.isDirectory() || entry.name === 'archive' || entry.name.startsWith('.'))
+            return null
+          // archive-aware dedupe：sibling worktree 的 active copy 若在 main 已 archive，跳過。
+          // 只對 worktree source 套用（main 自己的 archive folder 已在上一行的 name === 'archive' 排除）。
+          if (src.slug !== null && archivedInMain.has(entry.name)) return null
+          const tasksPath = join(changesRoot, entry.name, 'tasks.md')
+          if (!existsSync(tasksPath)) return null
+          // Diff-aware skip：worktree HEAD 跟 main HEAD 對該 change tasks.md 的 blob hash 相同
+          // → worktree 沒在這條 change 上 commit 任何變動 → 不蓋過 main entry（讓 main 的
+          // working-tree state 服務 user）。兩邊 hash 任一缺失（檔不在 HEAD tree、git 失敗等）
+          // 視為「無法確認 worktree 沒動過」→ 保守走舊邏輯（overwrite as usual）。
+          if (wtBlobHashes !== null) {
+            const relPath = `openspec/changes/${entry.name}/tasks.md`
+            const wtHash = wtBlobHashes.get(relPath)
+            const mainHash = mainBlobHashes.get(relPath)
+            if (wtHash && mainHash && wtHash === mainHash) {
+              // HEAD blobs match — but worktree working tree could still carry uncommitted
+              // edits (mid-`/spectra-apply` scenario). Only skip when working tree is also
+              // confirmed clean; otherwise fall through and let worktree shadow main so the
+              // user sees the WIP edits in the review GUI.
+              if (!isWtPathDirty(src.root, relPath)) return null
+            }
+          }
+          return summarizeChange(
+            src.root,
+            entry.name,
+            tasksPath,
+            filterPoolsForChange(pools, entry.name),
+            src.slug,
+          )
+        }),
+      )
+      return {
+        src,
+        summaries: summarized.filter((s): s is ChangeSummary => s !== null),
+      }
+    }),
+  )
+
+  const summariesByName = new Map<string, ChangeSummary>()
+  // partials 維持 sources 的順序：main 第一筆、worktree 在後。後寫蓋掉前寫 → worktree-prefer
+  // collision rule（受 mainBlobHashes 判斷 skip 條件約束）。
+  for (const { src, summaries } of partials) {
+    for (const summary of summaries) {
+      summariesByName.set(summary.name, summary)
+      changeRouteCache.set(summary.name, src)
+    }
   }
 
-  return summaries.toSorted((a, b) => {
+  return Array.from(summariesByName.values()).toSorted((a, b) => {
     if (a.pending !== b.pending) return b.pending - a.pending
     if (a.malformed !== b.malformed) return b.malformed - a.malformed
     return a.name.localeCompare(b.name)
@@ -1532,13 +1742,14 @@ async function loadProposalDefaultKind(
 }
 
 async function summarizeChange(
-  repoRoot: string,
+  sourceRoot: string,
   name: string,
   tasksPath: string,
   pools: ScreenshotTopic[],
+  worktreeSlug: string | null = null,
 ): Promise<ChangeSummary | null> {
   const content = await readFile(tasksPath, 'utf8')
-  const defaultKind = await loadProposalDefaultKind(repoRoot, name)
+  const defaultKind = await loadProposalDefaultKind(sourceRoot, name)
   const parsed = parseManualReviewSections(content, { defaultKind, sourcePath: tasksPath })
   if (parsed.sections.length === 0) return null
 
@@ -1581,12 +1792,51 @@ async function summarizeChange(
     }
   }
   // Verify-channel evidence missing：對齊 client `computeMissingEvidence`，iterate ALL
-  // 未勾且非 issued items（含 parent-with-children）。parent 的 verify markers 是 explicit
-  // declaration，spectra-apply Step 8a 寫的 (verified-*: ...) annotation 直接寫在 parent line，
-  // 不繼承自子項；GUI 的 compound-evidence panel 也 render 在 parent line 上。
-  // 「由子項回饋」只影響 parent 的 OK/Issue/Skip 按鈕顯示，跟 evidence ownership 無關。
+  // 未勾且非 issued items（含 parent-with-children）。parent 的 verify markers 採雙路認定：
+  //   (a) parent line 自帶 (verified-*: ...) annotation — explicit declaration 慣例
+  //   (b) parent 所有相同 kind 的 scoped children 都有對應 annotation — rollup 語意
+  //       （對齊 manual-review.md「Parent State Derivation」+ archive-gate.sh
+  //       L323-329「semantic fully aggregated from scoped children」+ spectra-apply
+  //       Step 8a 在 leaf child line 寫 annotation 的實際慣例）
+  // 兩種之一成立即算 evidence present。Compound-evidence panel 仍 render 在 parent。
   // 若沿用 `readinessTargets`（排除 parent-with-children）會讓 server 漏算 parent 缺 evidence
   // 的情境，導致 change 被誤分到 ready 群（home page 應顯示在 applyPending）。
+  const evidenceChildrenByParent = new Map<string, ManualReviewItem[]>()
+  for (const item of parsed.items) {
+    if (item.scoped && item.parentId) {
+      const list = evidenceChildrenByParent.get(item.parentId) ?? []
+      list.push(item)
+      evidenceChildrenByParent.set(item.parentId, list)
+    }
+  }
+  const hasEvidenceFor = (
+    item: ManualReviewItem,
+    kind: 'verify:e2e' | 'verify:api' | 'verify:ui',
+    ak: 'verifiedE2e' | 'verifiedApi' | 'verifiedUi',
+  ): boolean => {
+    if (item.annotations[ak]) return true
+    const children = evidenceChildrenByParent.get(item.id) ?? []
+    if (children.length === 0) return false
+    // Path A (strict)：children 之中有任一條帶 explicit verify marker（per
+    // manual-review.md Item Kind Marker hard rule），視為 propose 已正確分配 sub-scope
+    // → 只認 kind-matching children 都已 annotate。
+    // Path B (lenient fallback)：children 全無 verify marker（典型 propose hygiene
+    // 漏網——parent 是 [verify:api+ui] 但 sub-step 直接寫 `- [ ] #N.M PATCH ...` 沒補
+    // [verify:*] marker），此時 marker 不能用來分流 sub-scope，改以 annotation
+    // presence 作為 evidence intent：任一 child 帶該 kind 的 annotation 即視為 rollup
+    // 通過。Evidence-truth-over-marker-hygiene 的安全網，避免 parent 因 propose
+    // 漏標 marker 而永久卡在 evidenceMissing。propose-time hook 補 marker 後此
+    // 分支會永不觸發。
+    const childrenHaveAnyVerifyMarker = children.some((c) =>
+      c.kinds.some((k) => k.startsWith('verify:')),
+    )
+    if (childrenHaveAnyVerifyMarker) {
+      const relevantChildren = children.filter((c) => c.kinds.includes(kind))
+      if (relevantChildren.length === 0) return false
+      return relevantChildren.every((c) => Boolean(c.annotations[ak]))
+    }
+    return children.some((c) => Boolean(c.annotations[ak]))
+  }
   const evidenceTargets = parsed.items.filter(
     (item) => !item.checked && !/（issue:[^）]*）/.test(item.raw),
   )
@@ -1597,16 +1847,32 @@ async function summarizeChange(
   }> = []
   for (const item of evidenceTargets) {
     const tags: Array<'e2e' | 'api' | 'ui'> = []
-    if (item.kinds.includes('verify:e2e') && !item.annotations.verifiedE2e) tags.push('e2e')
-    if (item.kinds.includes('verify:api') && !item.annotations.verifiedApi) tags.push('api')
-    if (item.kinds.includes('verify:ui') && !item.annotations.verifiedUi) tags.push('ui')
+    if (item.kinds.includes('verify:e2e') && !hasEvidenceFor(item, 'verify:e2e', 'verifiedE2e'))
+      tags.push('e2e')
+    if (item.kinds.includes('verify:api') && !hasEvidenceFor(item, 'verify:api', 'verifiedApi'))
+      tags.push('api')
+    if (item.kinds.includes('verify:ui') && !hasEvidenceFor(item, 'verify:ui', 'verifiedUi'))
+      tags.push('ui')
     if (tags.length > 0) {
       evidenceMissing.push({ itemId: item.id, description: item.description, kinds: tags })
     }
   }
+  // Impl task 進度：count `- [ ] N.M ...` / `- [x] N.M ...`（impl tasks 用 N.M 格式，
+  // 人工檢查用 `#N` / `#N.M`，regex 不會誤抓）。home page 用此值決定該 change 是進
+  // 「✅ Apply 已完成、可補 evidence」還是「⏳ Apply 還在動工」群——避免對 §3 UI / §6
+  // Fixtures 未動工的 change 派 agent 跑 Step 8a 撞 404 / 缺 seed。
+  const implTaskLine = /^- \[([ x])\] [0-9]+\.[0-9]+ /gm
+  let implTotal = 0
+  let implDone = 0
+  for (const match of content.matchAll(implTaskLine)) {
+    implTotal++
+    if (match[1] === 'x') implDone++
+  }
   return {
     name,
     tasksPath,
+    sourceRoot,
+    worktreeSlug,
     total: effectiveItems.length,
     checked,
     pending: effectiveItems.length - checked,
@@ -1616,25 +1882,27 @@ async function summarizeChange(
     readinessHits,
     hitsByCode,
     evidenceMissing,
+    implTotal,
+    implDone,
     screenshotTopicCount: pools.length,
     screenshotTopics: pools.map((pool) => `${pool.env}/${pool.topic}`),
   }
 }
 
-async function readChangeDetail(repoRoot: string, change: string): Promise<ChangeDetail> {
-  const tasksPath = resolveChangeTasksPath(repoRoot, change)
+async function readChangeDetail(source: SourceRoot, change: string): Promise<ChangeDetail> {
+  const tasksPath = resolveChangeTasksPath(source.root, change)
   const [content, version, allPools, defaultKind] = await Promise.all([
     readFile(tasksPath, 'utf8'),
     readFileVersion(tasksPath),
-    listScreenshotPools(repoRoot),
-    loadProposalDefaultKind(repoRoot, change),
+    listScreenshotPools(source.root, source.rootId),
+    loadProposalDefaultKind(source.root, change),
   ])
   const parsed = parseManualReviewSections(content, { defaultKind, sourcePath: tasksPath })
   if (parsed.sections.length === 0) {
     throw new HttpError(404, `Change has no ## 人工檢查 section: ${change}`)
   }
   const pools = filterPoolsForChange(allPools, change)
-  const summary = await summarizeChange(repoRoot, change, tasksPath, pools)
+  const summary = await summarizeChange(source.root, change, tasksPath, pools, source.slug)
   if (!summary) throw new HttpError(404, `Change has no manual-review tasks: ${change}`)
   return {
     ...summary,
@@ -1645,17 +1913,18 @@ async function readChangeDetail(repoRoot: string, change: string): Promise<Chang
   }
 }
 
-function resolveChangeTasksPath(repoRoot: string, change: string): string {
+function resolveChangeTasksPath(sourceRoot: string, change: string): string {
   if (!/^[A-Za-z0-9._-]+$/.test(change) || change === 'archive') {
     throw new HttpError(400, '無效的 change 名稱')
   }
-  const tasksPath = join(repoRoot, 'openspec', 'changes', change, 'tasks.md')
+  const tasksPath = join(sourceRoot, 'openspec', 'changes', change, 'tasks.md')
   if (!existsSync(tasksPath)) throw new HttpError(404, `tasks.md not found for change: ${change}`)
   return tasksPath
 }
 
-async function persistReviewAction(repoRoot: string, change: string, body: any): Promise<any> {
-  const tasksPath = resolveChangeTasksPath(repoRoot, change)
+async function persistReviewAction(mainRoot: string, change: string, body: any): Promise<any> {
+  const source = await ensureChangeRoute(mainRoot, change)
+  const tasksPath = resolveChangeTasksPath(source.root, change)
   const action = body?.action
   if (!['ok', 'issue', 'skip'].includes(action))
     throw new HttpError(400, 'action must be ok, issue, or skip')
@@ -1674,7 +1943,7 @@ async function persistReviewAction(repoRoot: string, change: string, body: any):
   }
 
   const content = await readFile(tasksPath, 'utf8')
-  const defaultKind = await loadProposalDefaultKind(repoRoot, change)
+  const defaultKind = await loadProposalDefaultKind(source.root, change)
   const updated = applyReviewActionToContent(
     content,
     body.itemId,
@@ -1685,7 +1954,7 @@ async function persistReviewAction(repoRoot: string, change: string, body: any):
   )
   await writeFile(tasksPath, updated.content, 'utf8')
 
-  const detail = await readChangeDetail(repoRoot, change)
+  const detail = await readChangeDetail(source, change)
   // 與 summarizeChange 的 checked 算法同義：[x] 且沒 issue annotation 才算完成。
   // 否則 stale `[x] + （issue: ...）` 會誤觸發 archive。同樣排除 parent-with-children
   // — GUI 不讓使用者勾母項，若算進 effectiveItems 子項全勾仍判 incomplete，change 永遠卡。
@@ -1697,7 +1966,12 @@ async function persistReviewAction(repoRoot: string, change: string, body: any):
     detail.malformed === 0 &&
     effectiveItems.length > 0 &&
     effectiveItems.every((item) => item.checked && !/（issue:[^）]*）/.test(item.raw))
-  const archive = complete ? await invokeReviewArchive(repoRoot, change) : { status: 'not-ready' }
+  // archive cwd = change 所在的 source root（worktree-based change 在 worktree 跑 /review-archive
+  // 才能寫 docs/manual-review-archive.md；後續 /spectra-archive 在 main 跑時 wt-helper merge-back
+  // 把 doc 變動帶回 main）。
+  const archive = complete
+    ? await invokeReviewArchive(source.root, change)
+    : { status: 'not-ready' }
   return {
     ok: true,
     itemId: body.itemId,
@@ -1777,7 +2051,105 @@ function shellQuote(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`
 }
 
-async function listScreenshotPools(repoRoot: string): Promise<ScreenshotTopic[]> {
+/**
+ * 一個 review-gui server 同時要看 main repo + 所有 worktree 的 change。
+ * SourceRoot 是「change 實際 commit 寫入的 working tree」單位：main + 每個 worktree 各一筆。
+ * rootId 是 URL-safe namespace（`main` / `wt-<slug>`），給 `/api/screenshot/<rootId>/...` 用，避免不同 worktree 同 relPath 撞。
+ */
+export interface SourceRoot {
+  root: string
+  slug: string | null
+  branch: string
+  rootId: string
+}
+
+const WORKTREE_SLUG_BRANCH_RE = /^wt\/([^/]+)/
+
+function computeRootId(slug: string | null): string {
+  return slug === null ? 'main' : `wt-${slug}`
+}
+
+function computeWorktreeSlug(absPath: string, branch: string | undefined): string {
+  if (branch) {
+    const m = branch.match(WORKTREE_SLUG_BRANCH_RE)
+    if (m) return m[1]
+  }
+  return absPath.split(sep).findLast((segment) => Boolean(segment)) ?? absPath
+}
+
+/**
+ * 列出 main repo 及其所有 worktree（含 mainRoot 自己）。
+ * - parse `git worktree list --porcelain`
+ * - 失敗（非 git repo / git 不存在）→ 只回 mainRoot 一筆，行為等同改動前
+ * - main 永遠排第一筆；後續 collision (`change name` 重複) worktree 蓋過 main（worktree 是 ahead 版本）
+ */
+export async function listSourceRoots(mainRoot: string): Promise<SourceRoot[]> {
+  const mainAbs = resolve(mainRoot)
+  const result = spawnSync('git', ['-C', mainAbs, 'worktree', 'list', '--porcelain'], {
+    encoding: 'utf8',
+  })
+  if (result.status !== 0 || !result.stdout) {
+    return [{ root: mainAbs, slug: null, branch: '', rootId: 'main' }]
+  }
+  const sources: SourceRoot[] = []
+  let current: { worktree?: string; branch?: string } = {}
+  const flush = () => {
+    if (current.worktree) {
+      const abs = resolve(current.worktree)
+      const isMain = abs === mainAbs
+      const slug = isMain ? null : computeWorktreeSlug(abs, current.branch)
+      sources.push({ root: abs, slug, branch: current.branch ?? '', rootId: computeRootId(slug) })
+    }
+    current = {}
+  }
+  for (const line of result.stdout.split('\n')) {
+    if (line.startsWith('worktree ')) {
+      flush()
+      current.worktree = line.slice('worktree '.length).trim()
+    } else if (line.startsWith('branch ')) {
+      current.branch = line
+        .slice('branch '.length)
+        .trim()
+        .replace(/^refs\/heads\//, '')
+    } else if (line === '') {
+      flush()
+    }
+  }
+  flush()
+  // main 永遠在第一筆；後續 listPendingChanges 用 Map.set 順序，worktree 在 main 之後寫入會蓋掉 main。
+  return sources.toSorted((a, b) => {
+    if (a.slug === null && b.slug !== null) return -1
+    if (a.slug !== null && b.slug === null) return 1
+    return (a.slug || '').localeCompare(b.slug || '')
+  })
+}
+
+/**
+ * 每次 listPendingChanges 重建；route per-change API 用。
+ * key = change name；value = 該 change 所在的 SourceRoot。
+ * Deep link reload（沒先打 /api/changes）會 lazy 重建。
+ */
+let changeRouteCache: Map<string, SourceRoot> = new Map()
+let sourceRootIndex: Map<string, SourceRoot> = new Map()
+
+async function ensureChangeRoute(mainRoot: string, change: string): Promise<SourceRoot> {
+  const cached = changeRouteCache.get(change)
+  if (cached && existsSync(join(cached.root, 'openspec', 'changes', change, 'tasks.md'))) {
+    return cached
+  }
+  await listPendingChanges(mainRoot)
+  const fresh = changeRouteCache.get(change)
+  if (fresh) return fresh
+  const mainEntry = sourceRootIndex.get('main')
+  if (mainEntry) return mainEntry
+  return { root: resolve(mainRoot), slug: null, branch: '', rootId: 'main' }
+}
+
+function resolveSourceByRootId(rootId: string): SourceRoot | null {
+  return sourceRootIndex.get(rootId) ?? null
+}
+
+async function listScreenshotPools(repoRoot: string, rootId: string): Promise<ScreenshotTopic[]> {
   const root = join(repoRoot, 'screenshots')
   if (!existsSync(root)) return []
 
@@ -1795,7 +2167,7 @@ async function listScreenshotPools(repoRoot: string): Promise<ScreenshotTopic[]>
         continue
       const topicDir = join(envDir, topicEntry.name)
       const relRoot = join('screenshots', envEntry.name, topicEntry.name)
-      const files = await collectImages(topicDir, relRoot)
+      const files = await collectImages(topicDir, relRoot, rootId)
       pools.push({
         env: envEntry.name,
         topic: topicEntry.name,
@@ -1807,37 +2179,59 @@ async function listScreenshotPools(repoRoot: string): Promise<ScreenshotTopic[]>
   return pools.toSorted((a, b) => `${a.env}/${a.topic}`.localeCompare(`${b.env}/${b.topic}`))
 }
 
-async function collectImages(absDir: string, relRoot: string): Promise<ScreenshotFile[]> {
+async function collectImages(
+  absDir: string,
+  relRoot: string,
+  rootId: string,
+): Promise<ScreenshotFile[]> {
   const files: ScreenshotFile[] = []
   for (const entry of await readdir(absDir, { withFileTypes: true })) {
     const abs = join(absDir, entry.name)
     const rel = join(relRoot, entry.name)
     if (entry.isDirectory()) {
-      files.push(...(await collectImages(abs, rel)))
+      files.push(...(await collectImages(abs, rel, rootId)))
       continue
     }
     if (!entry.isFile()) continue
     const ext = entry.name.slice(entry.name.lastIndexOf('.')).toLowerCase()
     if (!IMAGE_EXTS.has(ext)) continue
     const relPath = toPosix(rel)
+    const encodedRel = relPath.split('/').map(encodeURIComponent).join('/')
     files.push({
       relPath,
-      url: `/api/screenshot/${relPath.split('/').map(encodeURIComponent).join('/')}`,
+      url: `/api/screenshot/${encodeURIComponent(rootId)}/${encodedRel}`,
       name: entry.name,
     })
   }
   return files.toSorted((a, b) => a.relPath.localeCompare(b.relPath))
 }
 
-async function serveScreenshot(repoRoot: string, c: any): Promise<any> {
-  const rawPath = decodeURIComponent(c.req.path.replace(/^\/api\/screenshot\//, ''))
-  if (!rawPath.startsWith('screenshots/'))
+async function serveScreenshot(mainRoot: string, c: any): Promise<any> {
+  // URL：/api/screenshot/<rootId>/<relPath>。舊形式（直接 screenshots/... 開頭）保留 fallback → mainRoot。
+  const stripped = c.req.path.replace(/^\/api\/screenshot\//, '')
+  const slashIdx = stripped.indexOf('/')
+  if (slashIdx < 0) throw new HttpError(400, '截圖 URL 缺少路徑')
+  const firstSegment = decodeURIComponent(stripped.slice(0, slashIdx))
+  const remainder = stripped.slice(slashIdx + 1)
+  let sourceRoot: string
+  let relPath: string
+  if (firstSegment === 'screenshots') {
+    sourceRoot = mainRoot
+    relPath = decodeURIComponent(stripped)
+  } else {
+    if (sourceRootIndex.size === 0) await listPendingChanges(mainRoot)
+    const source = resolveSourceByRootId(firstSegment)
+    if (!source) throw new HttpError(404, `未知的 rootId: ${firstSegment}`)
+    sourceRoot = source.root
+    relPath = decodeURIComponent(remainder)
+  }
+  if (!relPath.startsWith('screenshots/'))
     throw new HttpError(400, '截圖路徑必須以 screenshots/ 開頭')
-  const normalized = normalize(rawPath)
+  const normalized = normalize(relPath)
   if (normalized.startsWith('..') || normalized.includes(`${sep}..${sep}`))
     throw new HttpError(400, '無效的截圖路徑')
-  const abs = resolve(repoRoot, normalized)
-  const screenshotsRoot = resolve(repoRoot, 'screenshots')
+  const abs = resolve(sourceRoot, normalized)
+  const screenshotsRoot = resolve(sourceRoot, 'screenshots')
   if (!abs.startsWith(screenshotsRoot + sep)) throw new HttpError(400, '無效的截圖路徑')
   if (!existsSync(abs)) throw new HttpError(404, '截圖不存在')
   const ext = abs.slice(abs.lastIndexOf('.')).toLowerCase()
@@ -1862,7 +2256,38 @@ function toPosix(path: string): string {
   return path.split(sep).join('/')
 }
 
-export function renderReviewHtml(): string {
+function readCladeHubMeta(mainRoot: string): { version: string | null; mtimeMs: number | null } {
+  const hubPath = join(mainRoot, '.claude', 'hub.json')
+  try {
+    const raw = readFileSync(hubPath, 'utf8')
+    const parsed = JSON.parse(raw) as { version?: unknown }
+    const version =
+      typeof parsed.version === 'string' && /^[\w.\-+]+$/.test(parsed.version)
+        ? parsed.version
+        : null
+    let mtimeMs: number | null = null
+    try {
+      mtimeMs = statSync(hubPath).mtimeMs
+    } catch {}
+    return { version, mtimeMs }
+  } catch {
+    return { version: null, mtimeMs: null }
+  }
+}
+
+function padTwoDigits(n: number): string {
+  return (n < 10 ? '0' : '') + n
+}
+
+function formatVersionTimestamp(mtimeMs: number): string {
+  const d = new Date(mtimeMs)
+  return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()} ${padTwoDigits(d.getHours())}:${padTwoDigits(d.getMinutes())}:${padTwoDigits(d.getSeconds())}`
+}
+
+export function renderReviewHtml(opts: { mainRoot?: string } = {}): string {
+  const { version, mtimeMs } = readCladeHubMeta(opts.mainRoot ?? process.cwd())
+  const versionBadge = version ? `<span class="title-version">v${version}</span>` : ''
+  const versionTimestamp = mtimeMs !== null ? formatVersionTimestamp(mtimeMs) : ''
   return `<!doctype html>
 <html lang="zh-Hant-TW">
 <head>
@@ -1922,10 +2347,27 @@ export function renderReviewHtml(): string {
       overflow: auto;
     }
     .sidebar h1 {
-      margin: 0 0 14px;
+      margin: 0 0 4px;
       font-size: 18px;
       line-height: 1.2;
       letter-spacing: 0;
+    }
+    .title-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: baseline;
+      margin: 0 0 14px;
+      font-size: 11px;
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+    }
+    .title-meta .title-version {
+      font-weight: 600;
+      color: var(--accent);
+    }
+    .title-meta .title-updated {
+      font-family: 'JetBrains Mono', 'SF Mono', Menlo, monospace;
     }
     .change-list {
       display: grid;
@@ -1942,6 +2384,19 @@ export function renderReviewHtml(): string {
       color: var(--muted);
       text-transform: uppercase;
       padding: 4px 4px 0;
+    }
+    .change-group-note {
+      font-size: 12px;
+      color: var(--muted);
+      padding: 0 4px 4px;
+      line-height: 1.5;
+    }
+    .change-group-note code {
+      font-family: var(--font-mono, ui-monospace, monospace);
+      font-size: 11px;
+      background: rgba(0, 0, 0, 0.05);
+      padding: 1px 4px;
+      border-radius: 3px;
     }
     .change-row {
       display: grid;
@@ -1982,6 +2437,23 @@ export function renderReviewHtml(): string {
     .card-badge.issue { background: #fce4c8; color: #8a4f0a; }
     .card-badge.pending { background: #ece8dd; color: #5a5341; }
     .card-badge.malformed { background: #fae0e0; color: #7a2828; }
+    .wt-badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 1px 7px;
+      border-radius: 999px;
+      font-size: 10px;
+      font-weight: 600;
+      background: #dde6f2;
+      color: #2b4470;
+      margin-left: 6px;
+      vertical-align: middle;
+      white-space: nowrap;
+    }
+    .wt-badge.detail {
+      font-size: 12px;
+      padding: 2px 9px;
+    }
     .metrics {
       display: flex;
       flex-wrap: wrap;
@@ -2056,6 +2528,19 @@ export function renderReviewHtml(): string {
       animation: rg-spin .8s linear infinite;
     }
     @keyframes rg-spin { to { transform: rotate(360deg); } }
+    .loading-spin::before {
+      content: '';
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      margin-right: 10px;
+      border: 2px solid currentColor;
+      border-right-color: transparent;
+      border-radius: 50%;
+      vertical-align: -1px;
+      animation: rg-spin .8s linear infinite;
+      opacity: .7;
+    }
     .task-item.saving {
       position: relative;
       pointer-events: none;
@@ -2827,6 +3312,10 @@ export function renderReviewHtml(): string {
   <div class="app">
     <aside class="sidebar">
       <h1>人工檢查</h1>
+      <div class="title-meta">
+        ${versionBadge}
+        <span class="title-updated" id="updatedAt" aria-live="off" title="此版本 .claude/hub.json 的散播時間（不是現在時間）">${versionTimestamp}</span>
+      </div>
       <details id="onboardPanel" class="onboard" open>
         <summary>怎麼用</summary>
         <ol class="onboard-steps">
@@ -2843,13 +3332,13 @@ export function renderReviewHtml(): string {
         </ol>
         <p class="onboard-hint">按 <span class="kbd">?</span> 顯示完整鍵盤快捷鍵</p>
       </details>
-      <div id="changeStatus" class="status">載入 change 清單中…</div>
+      <div id="changeStatus" class="status loading-spin">載入 change 清單中…</div>
       <div id="changeList" class="change-list"></div>
     </aside>
     <main>
       <section class="review-pane">
         <div class="toolbar">
-          <h2 id="currentTitle">選擇一個 change 開始</h2>
+          <h2 id="currentTitle" class="loading-spin">載入 change 清單中…</h2>
           <button id="evidenceSweepButton" class="copy-handoff-btn" type="button" hidden title="複製整張 change 的補 evidence prompt — 讓新 Claude session 一次跑 /spectra-apply Step 8a 補齊所有缺項">📋 補齊全 change 缺失 evidence</button>
           <button id="reloadButton" type="button" title="重新載入目前 change">重新載入</button>
         </div>
@@ -3143,69 +3632,233 @@ export function renderReviewHtml(): string {
     }
 
     // ── handoff prompt builder ──
-    // 5 種情境共用骨架；每種往下填情境專屬段落。產出的 prompt 應自給自足，
+    // 11 種情境共用骨架；每種往下填情境專屬段落。產出的 prompt 應自給自足，
     // 即便丟到一個沒讀過 CLAUDE.md / 沒 conversation history 的 cleanroom Claude
-    // session 也能直接接手。指示寫硬性使用 codebase-memory-mcp，對齊 user
-    // global CLAUDE.md 的 Code Discovery rule。
+    // session 也能直接接手。
+    //
+    // Rules / codebase-memory-mcp 指引依 kind 條件式注入：footer 不再 blanket 套用——
+    // 純檔案系統 / git 操作的 kind（malformed / no-pools / no-matched / conflict /
+    // evidence-fillin-*）不需要 code graph，避免 cleanroom session 被引導往錯方向 +
+    // 浪費 token 載 5 條 rules。需要 code 探索的 kind（item-issue / *-group / readiness）
+    // 自己加 codeExplorationGuidance()。
+    function relevantRules(kind) {
+      const map = {
+        'malformed': ['.claude/rules/manual-review.md（schema 段）'],
+        'no-pools': ['.claude/rules/screenshot-strategy.md'],
+        'no-matched': ['.claude/rules/screenshot-strategy.md（§檔名強制規範）', 'plugins/hub-core/agents/screenshot-review.md'],
+        'conflict': [],
+        'item-issue': [
+          '.claude/rules/manual-review.md',
+          '.claude/rules/tech-debt-routing.md',
+        ],
+        'manual-review-readiness': [
+          '.claude/rules/manual-review.md（Pre-Review Data Readiness 段）',
+          '.claude/rules/fixtures-reference.md',
+        ],
+        'evidence-fillin-item': [
+          '.claude/rules/manual-review.md（verify channel 語意）',
+        ],
+        'evidence-fillin-change': [
+          '.claude/rules/manual-review.md（verify channel 語意）',
+        ],
+      };
+      const rules = map[kind] || [];
+      if (!rules.length) return '';
+      return [
+        '',
+        '## 相關 rules（必讀）',
+        ...rules.map(function (r) { return '- ' + r; }),
+      ].join('\\n');
+    }
+    function needsCodeExploration(kind) {
+      // 只對「需要追實作 / 找 call chain / 看 schema」的 kind 強推 codebase-memory-mcp。
+      // 純檔案系統 / git / Playwright baseline 操作不需要 code graph。
+      const codeKinds = [
+        'item-issue',
+        'manual-review-readiness',
+        'health-check-group',
+        'feedback-given-group',
+        'apply-pending-group',
+      ];
+      return codeKinds.indexOf(kind) !== -1;
+    }
+    function codeExplorationGuidance() {
+      return [
+        '',
+        '## 程式碼探索規矩',
+        '- **MUST** 用 codebase-memory-mcp：search_graph（找函式 / class / route）→ trace_path（追 call chain）→ get_code_snippet（讀原始碼）',
+        '- graph 未 index 先跑 index_repository',
+        '- Grep / Glob / Read 只用於非程式碼檔（.md / config / .env）',
+      ].join('\\n');
+    }
+    function verifyChannelBaselineSection() {
+      // 不含 step 編號，由 caller 自己排序；避免 evidence-fillin-item / -change 不同步驟順序時撞號。
+      return [
+        'Pre-verify baseline check（依出現的 channel 種類）：',
+        '- 有 \`[verify:e2e]\`：確認 Playwright config + e2e fixtures 存在',
+        '- 有 \`[verify:api]\`：確認 \`__test-login\` 或等價 session bypass route 存在',
+        '- 有 \`[verify:ui]\`：確認 \`supabase/seed.sql\` 或 seed 等價檔存在',
+        '- 缺 baseline → **STOP**，回報 user 補齊；**NEVER** 降級 channel',
+      ].join('\\n');
+    }
+    function verifyChannelOrderSection() {
+      // 不含 step 編號，由 caller 自己排序。
+      return [
+        '依 e2e → api → ui 順序補對應 evidence；每完成一個 channel 立刻 Edit tasks.md 寫對應 \`(verified-*: ...)\` annotation（不要等到最後一起寫）。',
+        '',
+        '全部完成後請 user 在 review:ui 重新整理；含 \`verify:ui\` 的 item checkbox 仍保留 \`[ ]\` 等 user 在 GUI 視覺確認。',
+        '',
+        '任一 channel 通不過 → 保留 \`[ ]\` + 寫 \`（issue: ...）\`；**NEVER** 寫不成功的 \`(verified-*:)\` annotation。',
+      ].join('\\n');
+    }
+    function feedbackGivenSummaryPrompt(list, repoName, repoRoot) {
+      const tableRows = list.map(function (c) {
+        return '| \`' + c.name + '\` | ' + (c.issued || 0) + ' | _ | _ | _ | _ | _ |';
+      }).join('\\n');
+      return [
+        '我在 consumer repo「' + repoName + '」（路徑：' + repoRoot + '）',
+        '跑 \`pnpm review:ui\` 做 spectra 人工檢查，有 ' + list.length + ' 張 change 落「等 Claude 接手」群。',
+        '',
+        '**N=' + list.length + ' 已超過 4 張閾值——一次嚼三類項目 × 五路由會超 token 預算（單張深度 5-15k token）。**',
+        '',
+        '## 你要做的事（**MUST**，順序執行）',
+        '',
+        '先填下面 summary table，產出後立刻 STOP 等 user 選優先順序：',
+        '',
+        '- **STOP after summary table**',
+        '- **Do not analyze individual changes yet**',
+        '- **Wait for user to specify which change(s) to deep-dive**',
+        '- **Only choose priorities after user replies**',
+        '',
+        '## 環境',
+        '- consumer: ' + repoName,
+        '- repo root: ' + repoRoot,
+        '',
+        '## 命中的 changes（共 ' + list.length + ' 張）',
+        '',
+        '| change | I (issue) | V (verify pending) | D (discuss) | risk | blocking? | needs code mcp? | recommended first action |',
+        '| --- | ---: | ---: | ---: | --- | --- | --- | --- |',
+        tableRows,
+        '',
+        '欄位說明：',
+        '- **I (issue)**：已預填，server 計算的 issue 註記數',
+        '- **V (verify pending)** / **D (discuss)** / **risk** / **blocking?** / **needs code mcp?** / **recommended first action**：由你逐張 \`Read openspec/changes/<change>/tasks.md\` 後填入；**不要展開深度分析**，只填這幾欄',
+        '- **risk**：low / med / high（指根因不明 / 影響範圍大小 / 已有 evidence vs 純猜）',
+        '- **blocking?**：blocking / non-blocking（會卡 archive 嗎？卡 prod 嗎？）',
+        '- **needs code mcp?**：yes / no / unknown（單純看 spec 還是要展開 codebase-memory-mcp 才能判）',
+        '- **recommended first action**：一句話 hint，例：「補 sample data → /spectra-ingest」「審 evidence body fingerprint → 若不合理改標 issue」',
+        '',
+        '## 排序建議（產 summary 時用）',
+        '',
+        'blocking issue > failed/ambiguous verification > discuss-only',
+        '',
+        '## 規矩',
+        '- 讀 tasks.md 用 \`Read\`（不是 codebase-memory-mcp，因為這只是 .md schema 抓三類項目）',
+        '- 每張只花 1-2 分鐘掃，不要展開深度 trace_path',
+        '- summary 產完 STOP；user 會告訴你深入哪幾張',
+        '',
+        handoffStillVisibleNote(),
+      ].join('\\n');
+    }
+    function planDiscipline(kind) {
+      // 三層分類（依 codex 諮詢 2026-05-18）：
+      // - 'direct'：限定動作範圍可直接做完回報（malformed typo / evidence annotation 寫入）
+      // - 'diagnose'：只 diagnose + 提建議，不動手做完（檔案系統 / git mismatch 類）
+      // - 'plan-first'：列方案等確認（涉及 spec / code / 多檔）
+      const directKinds = ['malformed', 'evidence-fillin-item', 'evidence-fillin-change'];
+      const diagnoseKinds = ['no-pools', 'no-matched', 'conflict'];
+      if (directKinds.indexOf(kind) !== -1) {
+        const range = kind === 'malformed'
+          ? '- 限 format/schema 違規一行的 typo / 標點修正；若 item identity 不明、語意結構壞掉 → **STOP** 回報 user，不要自行重組 list'
+          : '- 限既有 Step 8a 流程明訂的 evidence annotation 寫入（\`(verified-e2e: ...)\` / \`(verified-api: ...)\` / \`(verified-ui: ...)\`）；測試 fail / ambiguous → **NEVER** 順手修 code，回報 blocker';
+        return [
+          '',
+          '## 處理紀律',
+          '此類修法**範圍鎖死**可直接做完回報：',
+          range,
+          '- 動作範圍外（動 spec / code / 多檔）→ plan-first 列方案等確認',
+        ].join('\\n');
+      }
+      if (diagnoseKinds.indexOf(kind) !== -1) {
+        return [
+          '',
+          '## 處理紀律',
+          '此類為 **diagnose-only fast path**：定位 mismatch / hash / pool routing 問題後提建議，**不動手做完**——',
+          '- 列出根因評估 + 修法方案（reload / rename / 重拍 / git revert）',
+          '- 動作由 user 自己執行（rename 檔 / 拍截圖 / reload GUI），cleanroom 不替 user 操作',
+        ].join('\\n');
+      }
+      // plan-first kinds: item-issue / manual-review-readiness / *-group
+      return [
+        '',
+        '## 處理紀律',
+        'plan-first 必須：列方案 + 影響範圍 + 為何這樣修，**等我確認後再改**——急著動手 = 違反 user 規則',
+      ].join('\\n');
+    }
     function handoffHeader(change, ctx) {
       const repoName = state.repoName || '(unknown)';
-      const repoRoot = state.repoRoot || '(unknown)';
+      const mainRepoRoot = state.repoRoot || '(unknown)';
       const changeName = change ? change.name : '(unknown)';
+      // 若 change 在 worktree，接手者 cwd 必須是 worktree 否則 tasks.md 路徑找不到。
+      const wtSlug = change ? change.worktreeSlug : null;
+      const sourceRoot = (change && change.sourceRoot) || mainRepoRoot;
       const item = (ctx && ctx.item) || null;
       const kinds = item ? itemKinds(item) : null;
       const kindLine = kinds && kinds.length ? '- item kind: ' + kinds.join(' + ') : null;
       const lines = [
-        '我在 consumer repo「' + repoName + '」（路徑：' + repoRoot + '）',
+        '我在 consumer repo「' + repoName + '」（路徑：' + mainRepoRoot + '）',
         '跑 \`pnpm review:ui\` 做 spectra 人工檢查，遇到下面這個問題需要你接手分析、提方案，',
         '等我確認後再動手。',
         '',
         '## 環境',
         '- consumer: ' + repoName,
-        '- repo root: ' + repoRoot,
+        '- main repo root: ' + mainRepoRoot,
+      ];
+      if (wtSlug) {
+        lines.push(
+          '- ⚠️ 此 change 位於 worktree \`' + wtSlug + '\`：開工前 \`cd ' + sourceRoot + '\`，所有檔案讀寫都以這個 worktree 為主',
+          '- working tree: ' + sourceRoot
+        );
+      }
+      lines.push(
         '- change: ' + changeName,
         '- tasks.md: openspec/changes/' + changeName + '/tasks.md',
-      ];
-      if (kindLine) lines.push(kindLine);
-      lines.push(
-        '- 相關 rules（若存在請優先讀）：',
-        '  - .claude/rules/manual-review.md（item kind marker / decision 語法 / Pre-Review Data Readiness）',
-        '  - .claude/rules/screenshot-strategy.md（截圖檔名 / 路徑 / 變體規範）',
-        '  - .claude/rules/fixtures-reference.md（sample / URL / scoped sub-items 必備樣態）',
-        '  - .claude/rules/tech-debt-routing.md（決定 TD 該登 clade 還是 consumer）',
-        '  - openspec/AGENTS.md（spectra 工作流）',
-        '',
       );
+      if (kindLine) lines.push(kindLine);
+      lines.push('');
       return lines.join('\\n');
     }
-    function handoffFooter() {
-      return [
+    function handoffFooter(kind) {
+      // relevantRules / codeExplorationGuidance / planDiscipline 各自負責 leading '\\n'
+      // 段落分隔；為空時整段不附加，避免 conflict / 純檔案 kind 多出空白章節。
+      const rules = relevantRules(kind);
+      const codeGuide = needsCodeExploration(kind) ? codeExplorationGuidance() : '';
+      const discipline = planDiscipline(kind);
+      const youDo = [
         '',
         '## 你要做的事',
-        '1. 先讀 tasks.md 與相關 rules 確認當前真實狀態（不要相信我的轉述，以檔案為準）',
-        '2. **MUST** 用 codebase-memory-mcp 做程式碼探索：',
-        '   - search_graph(name_pattern/label/qn_pattern) 找函式 / class / route',
-        '   - trace_path(function_name, mode=calls|data_flow|cross_service) 追 call chain',
-        '   - get_code_snippet(qualified_name) 讀原始碼（不要用 cat / Read 讀程式碼檔）',
-        '   - 若 graph 還沒 index，先跑 index_repository',
-        '   - Grep / Glob / Read 只用於非程式碼檔（.md / config / .env）',
-        '3. 提出處理方案：列出要動哪些檔、影響什麼、為何這樣修，**等我確認後再改**',
-        '4. 不要急著動手——這是 plan-first 工作流；急著動手 = 違反 user 規則',
+        '1. 先讀 tasks.md 確認當前真實狀態（不要相信我的轉述，以檔案為準）',
+        '2. 提出處理方案：列出要動哪些檔、影響什麼、為何這樣修',
+      ].join('\\n');
+      const tail = [
         '',
         '',
         handoffStillVisibleNote(),
         '',
         '回覆時請先說「我看到的現況是 ...」再給方案，不要只回方案。',
       ].join('\\n');
+      return rules + youDo + discipline + codeGuide + tail;
     }
-    // 給「按鈕還在」狀況的固定指引：問題不在 consumer 而在 clade 中央倉。
-    // 三類根因都有可能：實際改動沒落地 / GUI 偵測 false positive / 這份 prompt 講不清楚。
+    // 給「修正後 review:ui 仍有問題」狀況的固定指引：問題不在 consumer 而在 clade 中央倉。
+    // 三類根因都有可能：實際改動沒落地 / GUI 偵測或 UI 行為本身有 bug / 這份 prompt 講不清楚。
     function handoffStillVisibleNote() {
       return [
-        '## 若處理完後 review:ui 同一顆按鈕還顯示',
-        '代表 GUI 偵測條件還沒消除——根因有三種，**全部**回到 \`~/offline/clade\` 改，不要在 consumer 改：',
+        '## 若修正後 review:ui 仍有問題（同顆按鈕還在 / UI 顯示異常 / prompt 講不清楚導致重複撞牆）',
+        '代表這次 fix 沒對到根因，或根因本來就在 clade 中央倉而不在 consumer——三種可能，**全部**回到 \`~/offline/clade\` 改，不要在 consumer 改：',
         '1. 改動沒真的落地 → 跑 \`git diff\` / \`git status\` 確認；review:ui home 也要重新整理',
-        '2. review:ui 偵測邏輯 false positive（按鈕條件本來就不該成立）→ 改 \`~/offline/clade/vendor/scripts/review-gui.mts\` 的偵測函式，跑 \`vp check && node scripts/publish.mjs patch && node scripts/propagate.mjs\`',
-        '3. 這份 prompt 講不清楚導致沒抓對根因 → 改 \`~/offline/clade/vendor/scripts/review-gui.mts\` 的 \`buildHandoffPrompt\`（或對應 group 段）後 propagate',
+        '2. review:ui 偵測邏輯 / UI 行為本身有 bug（按鈕條件本來就不該成立、render 錯、互動壞）→ 改 \`~/offline/clade/vendor/scripts/review-gui.mts\` 對應偵測函式或 render / handler 段',
+        '3. 這份 prompt 講不清楚導致接手 Claude 沒抓對根因 → 改 \`~/offline/clade/vendor/scripts/review-gui.mts\` 的 \`buildHandoffPrompt\`（或對應 group 段、\`handoffStillVisibleNote\` 本身）',
+        '改完依 \`~/offline/clade/CLAUDE.md\` § 異動 clade 後的標準流程 散播（vp check → commit → publish patch → push --tags → propagate）。',
         'consumer 端的 \`scripts/review-gui.mts\` 是 clade 投影（LOCKED + chmod 444），直接改會被下次 propagate 蓋回去。',
       ].join('\\n');
     }
@@ -3237,6 +3890,15 @@ export function renderReviewHtml(): string {
         body = [
           '## 問題：找不到屬於此 change 的截圖資料夾',
           '',
+          '## Tier 0（**先問 user 一句，再進 Tier 1，90% 案例就解**）',
+          '',
+          '請先問 user 一句：「截圖是真的還沒拍，還是命名漂掉了？」',
+          '',
+          '- 若 user 答**還沒拍** → 直接告訴 user 該補拍哪些 item 的截圖，**不要往下做 Tier 1 分析**',
+          '- 若 user 答**命名漂了** / 不確定 / 沒回 → 進 Tier 1 命名規範分析',
+          '',
+          '## Tier 1 — 命名規範分析（user 確認是命名問題才做）',
+          '',
           'GUI 對截圖資料夾用 substring match：',
           '\`topic === change\` 或 \`change.startsWith(topic+"-")\` 或 \`topic.startsWith(change+"-")\`',
           '掃完 \`screenshots/<env>/*\` 後，沒有任何資料夾與 change name \`' + cn + '\` 對得起來。',
@@ -3263,6 +3925,15 @@ export function renderReviewHtml(): string {
         const poolPaths = pools.map(function (p) { return 'screenshots/' + p.env + '/' + p.topic + '/'; });
         body = [
           '## 問題：截圖檔名與 item id 不符（無法配對）',
+          '',
+          '## Tier 0（**先問 user 一句，再進 Tier 1，90% 案例就解**）',
+          '',
+          '請先問 user 一句：「這個 item 的截圖是真的還沒拍，還是命名漂掉了？」',
+          '',
+          '- 若 user 答**還沒拍** → 直接告訴 user 該補拍 \`#' + idLabel + '-...\` 命名格式的截圖，**不要往下做 Tier 1 分析**',
+          '- 若 user 答**命名漂了** / 不確定 / 沒回 → 進 Tier 1 配對規範分析',
+          '',
+          '## Tier 1 — 配對規範分析（user 確認是命名問題才做）',
           '',
           '當前 item：',
           '- id: ' + (item.id || '(未選)'),
@@ -3292,7 +3963,14 @@ export function renderReviewHtml(): string {
         body = [
           '## 問題：review:ui 寫入衝突（HTTP 409）',
           '',
-          'GUI 嘗試寫入 tasks.md 但 server 端偵測到 disk 內容與 client 持有的 version hash 不一致——意思是 tasks.md 在我按按鈕的同時被別的東西改過了。',
+          '## Tier 0（**先做這個再進 Tier 1，90% 案例就解**）',
+          '',
+          '請 user 直接在瀏覽器 reload review:ui（cmd+R / ctrl+R），讓 client 重抓最新 hash 再試一次。',
+          '若 reload 後仍 409，再進 Tier 1 細部診斷。',
+          '',
+          '## Tier 1 — 細部診斷（reload 也沒解才做）',
+          '',
+          'GUI 嘗試寫入 tasks.md 但 server 端偵測到 disk 內容與 client 持有的 version hash 不一致——意思是 tasks.md 在 user 按按鈕的同時被別的東西改過了。',
           '',
           '錯誤訊息：' + (ctx.errorMessage || '(無)'),
           '',
@@ -3347,15 +4025,42 @@ export function renderReviewHtml(): string {
           matchedFiles.length ? matchedFiles.map(function (n) { return '- ' + n; }).join('\\n') : '- (無)',
         ].concat(hitLines).concat([
           '',
-          '請把上面 issue 說明當 bug report 處理：',
-          '1. 用 codebase-memory-mcp 找出這個 item 對應的 feature 在哪實作（從 description 抓 keyword → search_graph）',
-          '2. trace_path 看相關 call chain，定位根因（不要急著看 symptom）',
-          '3. 提修法：列要動的檔、影響範圍、是否需要新測試、是否需要更新 spec',
-          '4. 修法路由（看 .claude/rules/tech-debt-routing.md）：',
-          '   - 根因是 spec / 設計層級缺漏 → \`/spectra-ingest\` 改 proposal',
-          '   - 根因是 code bug 但影響窄、可延後 → 登 docs/tech-debt.md TD-NNN',
-          '   - 根因跨多個 consumer / 在投影層（clade 中央倉）→ 提示要去 clade 改，不要在當前 consumer 改',
-          '   - 純 bug 當下可修 → 提方案等確認後改',
+          '## Step 1：1 分鐘 issue triage（**MUST 先做，不要直接展開 code trace**）',
+          '',
+          '依 issue note 文字把這個問題分到下列三類之一，給理由：',
+          '',
+          '### (1) UX/copy 問題（純展示層）',
+          '信號：文案 / 顏色 / 對齊 / 樣式 / 按鈕（顏色/位置）/ icon / spacing / margin / padding / layout / overflow / responsive / mobile / a11y / contrast / 字級 / 動畫 / hover / focus / disabled state / empty state / loading state / CTA / 英文翻譯',
+          '→ workflow：直接給 Edit 修法（改 copy / Tailwind class / UI hint），**不用** codebase-memory-mcp',
+          '',
+          '### (2) Behavior bug（功能 / 資料 / API）',
+          '信號：錯誤 / fail / 沒儲存 / API / 資料 / migration / validation / permission / null/undefined / status code / query / routing / navigation / state / cache / stale / race / auth / session / pagination / filter / sort / timezone / date / i18n locale / webhook / job / queue',
+          '→ workflow：codebase-memory-mcp 找實作 + trace_path 找根因，**plan-first 列方案**',
+          '',
+          '### (3) Spec gap（規格沒寫 / 設計層級缺漏）',
+          '信號：「應該要 X 但沒看到」「spec 沒寫」「不知道對不對」「ambiguous」「漏掉 case」「缺驗收條件」',
+          '→ workflow：列要補的 spec 段 + 建議跑 \`/spectra-ingest <change>\` 改 proposal.md / tasks.md，**不要動 code**',
+          '',
+          '## 陷阱反例（不要被字面騙）',
+          '',
+          '- 「按鈕位置不對，點了沒反應」看似 UX → 核心是 click handler / disabled state（**Behavior**）',
+          '- 「錯誤訊息太紅太嚇人」看似 Behavior(error) → 核心是 copy / visual tone（**UX**）',
+          '- 「列表沒資料」看似 Behavior(empty) → 可能是 empty state UI 沒做（**UX**）或是 query 條件錯（**Behavior**）',
+          '',
+          '## 兩邊都中 / 都不中',
+          '',
+          '- 兩邊都中 → **預設 Behavior**（誤判成 UX 會漏掉資料破壞 / 功能壞掉）',
+          '- 兩邊都不中 → 先做 lightweight triage（讀 spec + 看 screenshot + 看程式碼入口）再分類；不要直接展開 code trace',
+          '',
+          '## Step 2：依分類走對應 workflow',
+          '',
+          '修法路由（依 .claude/rules/tech-debt-routing.md）：',
+          '- (1) UX/copy → 提 Edit 修法 + 寫 issue 後續對應動作（多為「直接動手」）',
+          '- (2) Behavior → 提修法 + 列要動的檔 + 影響範圍 + 是否需要新測試 + 是否需要更新 spec',
+          '  - 根因 code bug 影響窄、可延後 → 登 \`docs/tech-debt.md\` TD-NNN',
+          '  - 根因跨多個 consumer / 在投影層（clade 中央倉）→ 提示要去 \`~/offline/clade\` 改',
+          '  - 純 bug 當下可修 → 提方案等確認後改',
+          '- (3) Spec gap → 列要補的 spec 段 + 建議 \`/spectra-ingest\`，**不要動 code**',
         ]).join('\\n');
       } else if (kind === 'manual-review-readiness') {
         const item = ctx.item || {};
@@ -3456,15 +4161,24 @@ export function renderReviewHtml(): string {
         const list = Array.isArray(ctx.applyPendingChanges) ? ctx.applyPendingChanges : [];
         const repoName = state.repoName || '(unknown)';
         const repoRoot = state.repoRoot || '(unknown)';
+        // 預先 per-change 統計 (給清單 header + 完成 checklist 用)。
+        const perChangeStats = list.map(function (c) {
+          const evList = Array.isArray(c.evidenceMissing) ? c.evidenceMissing : [];
+          let items = 0;
+          let pairs = 0;
+          for (const m of evList) {
+            items++;
+            pairs += (m.kinds || []).length;
+          }
+          return { name: c.name, items: items, pairs: pairs };
+        });
         let totalItems = 0;
         let totalPairs = 0;
-        for (const c of list) {
-          if (!Array.isArray(c.evidenceMissing)) continue;
-          for (const m of c.evidenceMissing) {
-            totalItems++;
-            totalPairs += (m.kinds || []).length;
-          }
+        for (const s of perChangeStats) {
+          totalItems += s.items;
+          totalPairs += s.pairs;
         }
+        const LARGE_BATCH_THRESHOLD = 15;
         const lines = [
           '我在 consumer repo「' + repoName + '」（路徑：' + repoRoot + '）',
           '跑 \`pnpm review:ui\` 做 spectra 人工檢查，home page 有 ' + list.length + ' 張 change 落在',
@@ -3476,9 +4190,19 @@ export function renderReviewHtml(): string {
           '- repo root: ' + repoRoot,
           '',
           '## 缺 evidence 清單（共 ' + list.length + ' 張 change · ' + totalItems + ' item · ' + totalPairs + ' pair）',
+          '',
+          '**完成定義**：所有 ' + totalItems + ' item 都收到對應 \`(verified-*:)\` annotation 寫進 tasks.md；user reload review:ui 後這群該完全清空。**漏一個 item / 一個 kind 都算未完成**。',
         ];
-        for (const c of list) {
-          lines.push('', '### \`' + c.name + '\`');
+        if (totalItems > LARGE_BATCH_THRESHOLD) {
+          lines.push(
+            '',
+            '⚠️ **本批 ' + totalItems + ' item 屬大量**（> ' + LARGE_BATCH_THRESHOLD + '）。**MUST** 一張 change 全部做完才進下一張；**NEVER** 一次橫掃 4 張 marathon。每完成一張立刻 commit 或讓 user 知道進度，避免中途 context exhaust 整批白做。',
+          );
+        }
+        for (let i = 0; i < list.length; i++) {
+          const c = list[i];
+          const stats = perChangeStats[i];
+          lines.push('', '### \`' + c.name + '\` (' + stats.items + ' item · ' + stats.pairs + ' pair)');
           if (!Array.isArray(c.evidenceMissing)) continue;
           for (const m of c.evidenceMissing) {
             const desc = m.description ? ' — ' + m.description : '';
@@ -3495,13 +4219,47 @@ export function renderReviewHtml(): string {
           '   - 有 \`[verify:ui]\`：確認 \`supabase/seed.sql\` 或 seed 等價檔',
           '   - 缺 baseline → **STOP**，回報 user 補齊；**NEVER** 降級 channel',
           '',
-          '2. 對每個 item 依 e2e → api → ui 順序補對應 evidence；每完成一個 channel 立刻 Edit tasks.md 寫對應 \`(verified-*:)\` annotation（不要等到最後一起寫）',
+          '2. **Deeper per-item baseline check**（即使 home page 把 change 分到「Apply 已完成」群，個別 item 仍可能撞 §3 UI / §6 Fixtures 尾巴遺漏；逐項自驗一次）：',
+          '   - 對每個 \`[verify:ui]\` / \`[verify:api+ui]\` item，從 description 抓 URL（如 \`/admin/foo/[id]\`），grep \`app/pages/\` / \`packages/*/app/pages/\` 確認對應 \`.vue\` 存在',
+          '   - 對 item description 中 inline 引用的 sample id（如 \`eval-draft-001\` / \`co-bigbyte-test-001\`），grep \`supabase/seed.sql\`（或 \`db/seed.sql\` / \`prisma/seed.ts\`）確認 seed 已寫入',
+          '   - 任一 grep 0 命中 → 該 item 跳過 evidence 補齊、寫 \`（issue: §3 UI 或 §6 Fixtures 未完成，blocker：<具體缺什麼>）\`，**NEVER** 寫不成功的 \`(verified-*:)\` annotation',
+          '   - 全部 item 都命中此情境 → STOP，回 user：「該 change 的核心 impl section 還沒完成，補 evidence 整批 abort，先回到 /spectra-apply」',
           '',
-          '3. 全部完成後請 user 在 review:ui 重新整理；含 \`verify:ui\` 的 item checkbox 仍保留 \`[ ]\` 等 user 在 GUI 視覺確認',
+          '3. **Leaf-only 寫法**（hard rule，對齊 manual-review.md「Parent State Derivation」）：若上方列表同時出現 parent (\`#N\`) + scoped children (\`#N.M\`)，**只在 children 寫 \`(verified-*:)\` annotation**，parent 行透過 rollup 自動 derive。**NEVER** 在 parent 行寫 annotation —— review-gui 會雙寫過濾但容易混淆 reviewer。',
           '',
-          '4. 任一 channel 通不過 → 保留 \`[ ]\` + 寫 \`（issue: ...）\`；**NEVER** 寫不成功的 \`(verified-*:)\` annotation',
+          '4. **Missing marker 修補授權**（典型 propose hygiene 漏網）：若 scoped child 沒 \`[verify:*]\` leading marker 但 description 對得上 parent verify scope（PATCH /api → verify:api、UI reload 確認 → verify:ui、e2e journey → verify:e2e），**先補 marker 再寫 annotation**。Marker 必須**緊接** \`#N.M\` 後第一個 token：',
+          '   - Before: \`- [ ] #1.1 PATCH /api/v1/company → 200\`',
+          '   - After:  \`- [ ] #1.1 [verify:api] PATCH /api/v1/company → 200 (verified-api: <ISO> PATCH /api/v1/company 200)\`',
+          '   - 不確定 parent verify scope 拆 sub-kind 怎麼分時，**stop + 回報 user**，**NEVER** 亂猜亂標',
           '',
-          'Cookbook 與範本：\`<clade-vendor>/snippets/verify-channels/README.md\`',
+          '5. 對每個 item 依 e2e → api → ui 順序補對應 evidence；每完成一個 channel 立刻 Edit tasks.md 寫對應 \`(verified-*:)\` annotation（**不要**等到最後一起寫）。Format 嚴格對齊 spectra-apply Step 8a：',
+          '   - \`(verified-e2e: <ISO-8601> spec=<path> trace=<path>)\`',
+          '   - \`(verified-api: <ISO-8601> <METHOD> <URL> <STATUS>[ body=<hash>])\`',
+          '   - \`(verified-ui: <ISO-8601> screenshot=<path>[ dom=<obs>])\`',
+          '',
+          '6. **進度收尾規矩**（避免 marathon 中途靜默離開）：',
+          '   - 每完成**一張 change** 立刻向 user 回報「✅ change \`<name>\` — N item annotated」並繼續下一張',
+          '   - **NEVER** 等 4 張全做完才一次回報',
+          '   - 中途 token 不夠 / blocker / baseline 缺 → **MUST** 回報「⚠️ change \`<name>\` 剩 X item 未補，原因 \`<reason>\`，已停在此」**才**離開；**NEVER** 靜默離開讓 user 自己發現',
+          '',
+          '7. 全部完成後請 user 在 review:ui 重新整理；含 \`verify:ui\` 的 item checkbox 仍保留 \`[ ]\` 等 user 在 GUI 視覺確認',
+          '',
+          '8. 任一 channel 通不過 → 保留 \`[ ]\` + 寫 \`（issue: ...）\`；**NEVER** 寫不成功的 \`(verified-*:)\` annotation',
+          '',
+          '## 完成 checklist',
+          '',
+          '完成每張 change 後在心中（或回報訊息中）勾選：',
+        );
+        for (const s of perChangeStats) {
+          lines.push(
+            '- [ ] \`' + s.name + '\` — ' + s.items + ' item · ' + s.pairs + ' pair',
+          );
+        }
+        lines.push(
+          '',
+          '最後彙整一行回報給 user：「全部完成 N/' + list.length + ' 張 change · M/' + totalItems + ' item annotated」（N / M 是實際完成數，若有 issue / skip 也明列）',
+          '',
+          'Cookbook 與範本：\`~/offline/clade/vendor/snippets/verify-channels/README.md\`（Charles clade home；其他機器跑 \`find ~ -name verify-channels -type d 2>/dev/null\` 找）',
           '',
           '## 全域規矩',
           '- **MUST** 用 codebase-memory-mcp 探索（search_graph / trace_path / get_code_snippet）；graph 未 index 先跑 index_repository',
@@ -3521,6 +4279,11 @@ export function renderReviewHtml(): string {
         const list = Array.isArray(ctx.feedbackChanges) ? ctx.feedbackChanges : [];
         const repoName = state.repoName || '(unknown)';
         const repoRoot = state.repoRoot || '(unknown)';
+        // N >= 4 走 summary table 分批（依 codex 諮詢 2026-05-18）。每張 deep-dive 5-15k token，
+        // N=4 已是 20-60k，再加 spec/code context 會超 cleanroom session budget。
+        if (list.length >= 4) {
+          return feedbackGivenSummaryPrompt(list, repoName, repoRoot);
+        }
         const lines = [
           '我在 consumer repo「' + repoName + '」（路徑：' + repoRoot + '）',
           '跑 \`pnpm review:ui\` 做 spectra 人工檢查，已對 ' + list.length + ' 張 change 的所有 user 可動 item（review:ui / verify:ui）',
@@ -3643,20 +4406,21 @@ export function renderReviewHtml(): string {
           '',
           '請依 \`/spectra-apply\` skill **Step 8a Verify Channel Pass** 對這個 item 補齊 evidence：',
           '',
-          '1. Pre-verify baseline check（依該 channel）：',
-          '   - \`[verify:e2e]\`：Playwright config + e2e fixtures 必須存在',
-          '   - \`[verify:api]\`：\`__test-login\` 或等價 session bypass route 必須存在',
-          '   - \`[verify:ui]\`：\`supabase/seed.sql\` 或 seed 等價檔必須存在',
-          '   - 缺 baseline → **STOP**，回報 user 補齊；**NEVER** 降級 channel',
+          '### 1. Baseline check',
           '',
-          '2. 依 channel 執行（cookbook 在 \`<clade-vendor>/snippets/verify-channels/\`）：',
-          '   - \`[verify:e2e]\`：寫並跑 \`e2e/verify/' + changeName + '/<topic>.spec.ts\` → pass 後 Edit tasks.md 加 \`(verified-e2e: <ISO-8601> spec=... trace=...)\`',
-          '   - \`[verify:api]\`：跑 HTTP round-trip → pass 後 Edit tasks.md 加 \`(verified-api: <ISO-8601> METHOD URL STATUS[ body=<sha256-12chars>])\`',
-          '   - \`[verify:ui]\`：default 走 codex dispatcher（\`node <clade-vendor>/scripts/codex-dispatch-screenshot-verify.mjs --change ' + changeName + ' --consumer-path . --dev-server-url <url> --items-json <items.json>\`）；fallback 走 \`screenshot-review\` subagent → PASS 後 Edit tasks.md 加 \`(verified-ui: <ISO-8601> screenshot=screenshots/local/' + changeName + '/#' + (item.id || '<id>') + '-final.png[ dom=<obs>])\`',
+          verifyChannelBaselineSection(),
           '',
-          '3. 多 channel 順序 **MUST** e2e → api → ui',
+          '### 2. 依 channel 執行',
           '',
-          '4. evidence 通不過：保留 \`[ ]\` + 寫 \`（issue: ...）\` 或回報 blocker；**NEVER** 寫不成功的 \`(verified-*:)\` annotation',
+          '（cookbook 在 \`~/offline/clade/vendor/snippets/verify-channels/\`；若你機器無此路徑跑 \`find ~ -name verify-channels -type d 2>/dev/null\` 找）',
+          '',
+          '- \`[verify:e2e]\`：寫並跑 \`e2e/verify/' + changeName + '/<topic>.spec.ts\` → pass 後 Edit tasks.md 加 \`(verified-e2e: <ISO-8601> spec=... trace=...)\`',
+          '- \`[verify:api]\`：跑 HTTP round-trip → pass 後 Edit tasks.md 加 \`(verified-api: <ISO-8601> METHOD URL STATUS[ body=<sha256-12chars>])\`',
+          '- \`[verify:ui]\`：default 走 codex dispatcher（\`node ~/offline/clade/vendor/scripts/codex-dispatch-screenshot-verify.mjs --change ' + changeName + ' --consumer-path . --dev-server-url <url> --items-json <items.json>\`）；fallback 走 \`screenshot-review\` subagent → PASS 後 Edit tasks.md 加 \`(verified-ui: <ISO-8601> screenshot=screenshots/local/' + changeName + '/#' + (item.id || '<id>') + '-final.png[ dom=<obs>])\`',
+          '',
+          '### 3. 順序、寫入、失敗處理',
+          '',
+          verifyChannelOrderSection(),
           '',
           '完成後 review:ui 對應 panel 會從 evidence missing 改顯示 evidence link。',
         ].join('\\n');
@@ -3666,33 +4430,58 @@ export function renderReviewHtml(): string {
           const desc = p.description ? ' — ' + p.description : '';
           return '- ' + p.itemId + ' [' + (p.kinds || []).join(' + ') + ']' + desc;
         }).join('\\n') || '- (無)';
-        body = [
-          '## 問題：人工檢查整張 change 多項 item 缺 verify 證據（review:ui 全 change sweep）',
-          '',
-          '掃了當前 change 的 \`## 人工檢查\`，下列 item × channel 缺 evidence（共 ' + pairs.length + ' pair）：',
-          '',
-          pairLines,
-          '',
-          '請依 \`/spectra-apply\` skill **Step 8a Verify Channel Pass** 一次補齊所有缺項：',
-          '',
-          '1. 先做整批 pre-verify baseline check（依出現的 channel 種類）：',
-          '   - 有 \`[verify:e2e]\`：確認 Playwright config + e2e fixtures',
-          '   - 有 \`[verify:api]\`：確認 \`__test-login\` 或等價 session bypass route',
-          '   - 有 \`[verify:ui]\`：確認 \`supabase/seed.sql\` 或 seed 等價檔',
-          '   - 缺 baseline → **STOP**，回報 user 補齊；**NEVER** 降級 channel',
-          '',
-          '2. 對每個 item 依 e2e → api → ui 順序補對應 evidence；每完成一個 channel 立刻 Edit tasks.md 寫對應 \`(verified-*:)\` annotation（不要等到最後一起寫）',
-          '',
-          '3. 全部完成後請 user 在 review:ui 重新整理；含 \`verify:ui\` 的 item checkbox 仍保留 \`[ ]\` 等 user 在 GUI 視覺確認',
-          '',
-          '4. 任一 channel 通不過 → 保留 \`[ ]\` + 寫 \`（issue: ...）\`；**NEVER** 寫不成功的 \`(verified-*:)\` annotation',
-          '',
-          'Cookbook 與範本：\`<clade-vendor>/snippets/verify-channels/README.md\`',
-        ].join('\\n');
+        // Defense-in-depth：sweep button 已由 updateEvidenceSweepButton 對 non-ready change 隱藏，
+        // 但若呼叫端直接打到此分支（dev console、未來新 caller），仍給正確 prompt 避免誤導 agent。
+        const ctxChange = ctx.change || {};
+        const readyForStep8a = isApplyComplete(ctxChange) && !(ctxChange.readinessHits || 0);
+        if (!readyForStep8a) {
+          const implTotal = ctxChange.implTotal || 0;
+          const implDone = ctxChange.implDone || 0;
+          const implPct = implTotal > 0 ? Math.round((implDone / implTotal) * 100) : 0;
+          const hits = ctxChange.readinessHits || 0;
+          const blocker = hits > 0
+            ? 'change 含 ' + hits + ' 個 Pre-Review Data Readiness pattern hits（spec / data 缺漏）'
+            : 'impl 進度 ' + implPct + '%（< ' + Math.round(APPLY_COMPLETE_THRESHOLD * 100) + '% threshold）';
+          body = [
+            '## 問題：人工檢查 evidence 補齊請求但 change 還沒 ready（不該跑 Step 8a）',
+            '',
+            '當前 change 不在「✅ Apply 已完成、可補 evidence」群：' + blocker + '。',
+            '直接跑 Step 8a Verify Channel Pass 會撞 UI 不存在 / curl 打不通 / spec 待修，做白工。',
+            '',
+            '正確路徑：',
+            hits > 0
+              ? '- 跑 \`/spectra-ingest <change>\` 補上 spec / data hits（修 Pre-Review Data Readiness 違反），再回 review:ui'
+              : '- 繼續 \`/spectra-apply <change>\` 完成 implementation phase（特別是 §3 UI / §6 Fixtures section），等 impl 進度過 ' + Math.round(APPLY_COMPLETE_THRESHOLD * 100) + '% 後 change 會自動進「✅ Apply 已完成」群',
+            '',
+            '當前 change 缺 evidence 的 item 列表（供參考、**不要**照這個跑 Step 8a）：',
+            '',
+            pairLines,
+          ].join('\\n');
+        } else {
+          body = [
+            '## 問題：人工檢查整張 change 多項 item 缺 verify 證據（review:ui 全 change sweep）',
+            '',
+            '掃了當前 change 的 \`## 人工檢查\`，下列 item × channel 缺 evidence（共 ' + pairs.length + ' pair）：',
+            '',
+            pairLines,
+            '',
+            '請依 \`/spectra-apply\` skill **Step 8a Verify Channel Pass** 一次補齊所有缺項：',
+            '',
+            '### 1. 整批 Baseline check',
+            '',
+            verifyChannelBaselineSection(),
+            '',
+            '### 2. 順序、寫入、失敗處理',
+            '',
+            verifyChannelOrderSection(),
+            '',
+            'Cookbook 與範本：\`~/offline/clade/vendor/snippets/verify-channels/README.md\`（Charles clade home；其他機器跑 \`find ~ -name verify-channels -type d 2>/dev/null\` 找）',
+          ].join('\\n');
+        }
       } else {
         body = '## 問題\\n\\n(unknown kind: ' + kind + ')';
       }
-      return handoffHeader(change, ctx) + body + handoffFooter();
+      return handoffHeader(change, ctx) + body + handoffFooter(kind);
     }
 
     // ── handoff prompt 複製 + fallback modal ──
@@ -3746,9 +4535,14 @@ export function renderReviewHtml(): string {
       showBanner('');
       const data = await api('/api/changes');
       state.changes = data.changes || [];
+      el.changeStatus.classList.remove('loading-spin');
       el.changeStatus.textContent = state.changes.length
         ? state.changes.length + ' 個 change 含人工檢查區塊'
         : '目前沒有待處理的人工檢查項目';
+      if (!state.changes.length) {
+        el.currentTitle.classList.remove('loading-spin');
+        el.currentTitle.textContent = '選擇一個 change 開始';
+      }
       renderChanges();
       if (state.current) return;
       // Deep link：URL 指定的 change（path 第二段）優先，匹配不到才 fallback
@@ -3819,8 +4613,15 @@ export function renderReviewHtml(): string {
       const evidencePairCount = evidenceMissingList.reduce(function (acc, m) {
         return acc + (Array.isArray(m.kinds) ? m.kinds.length : 0);
       }, 0);
+      const wtBadgeHtml = change.worktreeSlug
+        ? '<span class="wt-badge" title="此 change 位於 worktree '
+          + esc(change.sourceRoot || '')
+          + '">wt:'
+          + esc(change.worktreeSlug)
+          + '</span>'
+        : '';
       return '<button type="button" class="change-row card-' + kind + '" data-change="' + esc(change.name) + '" aria-current="' + (current ? 'true' : 'false') + '">' +
-        '<span class="change-name">' + esc(change.name) + '</span>' +
+        '<span class="change-name">' + esc(change.name) + wtBadgeHtml + '</span>' +
         '<span class="card-badge ' + kind + '">' + esc(badge) + '</span>' +
         '<span class="metrics">' +
         '<span class="metric" title="已通過（含 skip） / 總項目數">' + change.checked + '/' + change.total + ' 通過</span>' +
@@ -3830,14 +4631,26 @@ export function renderReviewHtml(): string {
         '</span>' +
         '</button>';
     }
+    // Apply 完成度估計閾值：implDone / implTotal ≥ 此值 → 視為 apply 完成、可批量補 evidence。
+    // 觀察 perno consumer 6 張 change：0.93–0.98 是純剩 §4 Docs / §5 驗證 tail 的「真正 ready」；
+    // 0.00–0.40 是 §3 UI / §6 Fixtures 還沒動的「apply 未完成」。0.90 區隔乾淨。
+    const APPLY_COMPLETE_THRESHOLD = 0.90;
+    function isApplyComplete(change) {
+      // 沒 impl task（罕見：純人工檢查 change）→ 視為 ready（沒東西要 apply）
+      if (!change.implTotal) return true;
+      return (change.implDone || 0) / change.implTotal >= APPLY_COMPLETE_THRESHOLD;
+    }
     function renderChanges() {
       const ready = [];
-      // not-ready 拆兩桶：healthCheckNeeded = pattern hits（spec/data 缺漏，須 ingest 介入）；
-      // applyPending = 純 evidence missing（跑 /spectra-apply Step 8a 即可補齊）。
-      // 同時命中時優先歸 healthCheckNeeded — pattern 是 spec/data 問題，必先修；
+      // not-ready 拆三桶：
+      //   healthCheckNeeded = pattern hits（spec/data 缺漏，須 ingest 介入）
+      //   readyForEvidence  = 純 evidence missing + impl 已大致完成（跑 /spectra-apply Step 8a 可補齊）
+      //   applyInProgress   = 純 evidence missing + impl 還在動工（補 evidence 會撞不存在的 UI/seed，純資訊顯示）
+      // 同時命中 pattern + evidence missing 時優先歸 healthCheckNeeded — pattern 是 spec/data 問題，必先修；
       // 否則跑 Step 8a 補的 evidence 可能對應到「即將被改寫」的 item，做白工。
       const healthCheckNeeded = [];
-      const applyPending = [];
+      const readyForEvidence = [];
+      const applyInProgress = [];
       const feedbackGiven = [];
       const done = [];
       for (const change of state.changes) {
@@ -3845,7 +4658,10 @@ export function renderReviewHtml(): string {
         const evidenceMissingCount = Array.isArray(change.evidenceMissing) ? change.evidenceMissing.length : 0;
         if (kind === 'done') done.push(change);
         else if ((change.readinessHits || 0) > 0) healthCheckNeeded.push(change);
-        else if (evidenceMissingCount > 0) applyPending.push(change);
+        else if (evidenceMissingCount > 0) {
+          if (isApplyComplete(change)) readyForEvidence.push(change);
+          else applyInProgress.push(change);
+        }
         else if (
           (change.malformed || 0) === 0 &&
           (change.userActionPending || 0) === 0 &&
@@ -3873,14 +4689,28 @@ export function renderReviewHtml(): string {
           '</div>'
         );
       }
-      if (applyPending.length) {
+      if (readyForEvidence.length) {
         blocks.push(
           '<div class="change-group">' +
           '<div class="change-group-heading with-action">' +
-            '<span>⏳ 等 apply 後就可處理 · ' + applyPending.length + '</span>' +
+            '<span>✅ Apply 已完成、可補 evidence · ' + readyForEvidence.length + '</span>' +
             '<button class="copy-handoff-btn group" data-group-handoff="apply-pending" type="button" title="複製整批補 evidence prompt：讓 Claude 一次跑 /spectra-apply Step 8a Verify Channel 補齊所有缺項，全做完此群就清空、change 進 ready">📋 補 evidence prompt（整批）</button>' +
           '</div>' +
-          applyPending.map(renderChangeCard).join('') +
+          readyForEvidence.map(renderChangeCard).join('') +
+          '</div>'
+        );
+      }
+      if (applyInProgress.length) {
+        // 純資訊顯示：這群 change 標了 [verify:*] 但 §3 UI / §6 Fixtures 等核心 impl section 還沒動完。
+        // 不給 batch button — 派 agent 跑 Step 8a 會撞 UI 404、seed 找不到 sample id、curl 打不通；
+        // 等 impl section 完成後這群會自動進「✅ Apply 已完成」群。
+        blocks.push(
+          '<div class="change-group">' +
+          '<div class="change-group-heading">' +
+            '<span>⏳ Apply 還在動工，evidence 暫不可補 · ' + applyInProgress.length + '</span>' +
+          '</div>' +
+          '<div class="change-group-note">這群 change 含 <code>[verify:*]</code> item，但 impl 進度 &lt; ' + Math.round(APPLY_COMPLETE_THRESHOLD * 100) + '%（§3 UI / §6 Fixtures 等核心 section 還沒動完）。等 impl 完成後會自動進「✅ Apply 已完成」群。</div>' +
+          applyInProgress.map(renderChangeCard).join('') +
           '</div>'
         );
       }
@@ -3923,10 +4753,12 @@ export function renderReviewHtml(): string {
             });
             copyHandoffPrompt('health-check-group', { healthCheckChanges: healthCheckChanges }, '健康檢查（' + healthCheckChanges.length + ' change）');
           } else if (kind === 'apply-pending') {
-            // applyPending 桶定義：純 evidence missing（無 pattern hit）
+            // readyForEvidence 桶定義：純 evidence missing（無 pattern hit）+ impl 已大致完成。
+            // applyInProgress 桶不含 batch button（純資訊顯示），所以 click handler 只服務 ready 群。
             const applyPendingChanges = (state.changes || []).filter(function (c) {
               if ((c.readinessHits || 0) > 0) return false;
-              return Array.isArray(c.evidenceMissing) && c.evidenceMissing.length > 0;
+              if (!Array.isArray(c.evidenceMissing) || c.evidenceMissing.length === 0) return false;
+              return isApplyComplete(c);
             });
             copyHandoffPrompt('apply-pending-group', { applyPendingChanges: applyPendingChanges }, '補 evidence（' + applyPendingChanges.length + ' change）');
           } else if (kind === 'feedback-given') {
@@ -3973,7 +4805,16 @@ export function renderReviewHtml(): string {
     function renderCurrent() {
       const change = state.current;
       if (!change) return;
+      // textContent 一次清掉舊內容，再 appendChild 可選 wt badge。
+      el.currentTitle.classList.remove('loading-spin');
       el.currentTitle.textContent = change.name;
+      if (change.worktreeSlug) {
+        const badge = document.createElement('span');
+        badge.className = 'wt-badge detail';
+        badge.title = 'Worktree: ' + (change.sourceRoot || '');
+        badge.textContent = 'wt:' + change.worktreeSlug;
+        el.currentTitle.appendChild(badge);
+      }
       if (change.malformedLines.length) {
         showBannerWithHandoff('人工檢查格式錯誤，需先修正下列 tasks.md 行才能寫入', 'error', 'malformed', '格式錯誤', '');
       }
@@ -3989,14 +4830,48 @@ export function renderReviewHtml(): string {
         { kind: 'verify:api', tag: 'api', listKey: 'verifiedApiList', singleKey: 'verifiedApi' },
         { kind: 'verify:ui', tag: 'ui', listKey: 'verifiedUiList', singleKey: 'verifiedUi' },
       ];
+      // Mirror server-side rollup: parent has evidence if either own annotation present OR
+      // all scoped children of the same kind have annotation. 詳見 server evidenceTargets
+      // 段落註解（雙路認定）。對齊 manual-review.md「Parent State Derivation」+ archive-gate.sh
+      // L323-329「semantic fully aggregated from scoped children」。
+      // NOTE: 內聯識別符不加 backtick — backtick + 後接中文觸發 Node strip-types parser bug。
+      const childrenByParent = new Map();
+      for (const it of items) {
+        if (it && it.scoped && it.parentId) {
+          if (!childrenByParent.has(it.parentId)) childrenByParent.set(it.parentId, []);
+          childrenByParent.get(it.parentId).push(it);
+        }
+      }
+      function hasEvidenceFor(item, c) {
+        if (annotationList(item, c.listKey, c.singleKey).length) return true;
+        const children = childrenByParent.get(item.id) || [];
+        if (children.length === 0) return false;
+        // 詳見 server-side hasEvidenceFor 雙路註解：Path A strict（children 有 explicit
+        // verify marker 走 kind-matching 全 annotate）vs Path B lenient fallback（children
+        // 全無 verify marker → 用 annotation presence 推導 evidence intent）。
+        // 安全網用以兜底 propose hygiene 漏網（[verify:api+ui] parent + 未補 marker 的 child）。
+        const childrenHaveAnyVerifyMarker = children.some((ch) =>
+          itemKinds(ch).some((k) => k.startsWith('verify:'))
+        );
+        if (childrenHaveAnyVerifyMarker) {
+          const relevant = children.filter((ch) => itemKinds(ch).includes(c.kind));
+          if (relevant.length === 0) return false;
+          return relevant.every((ch) => annotationList(ch, c.listKey, c.singleKey).length > 0);
+        }
+        return children.some((ch) => annotationList(ch, c.listKey, c.singleKey).length > 0);
+      }
       const byItem = new Map();
       for (const item of items) {
         if (!item || item.checked) continue;
+        // 對齊 server-side evidenceMissing (見此檔 summarizeChange 內 evidenceTargets)：
+        // （issue: ...） annotation 是規約定義的 deferred state（manual-review.md：任一 channel
+        // 通不過 → 保留 [ ] + 寫 （issue: ...）），不該被當「缺 evidence」。
+        // NOTE: 內聯識別符不加 backtick — backtick + 後接中文觸發 oxfmt 0.1.21 parser bug。
+        if (item.raw && /（issue:[^）]*）/.test(item.raw)) continue;
         const kinds = itemKinds(item);
         for (const c of checks) {
           if (!kinds.includes(c.kind)) continue;
-          const list = annotationList(item, c.listKey, c.singleKey);
-          if (list.length) continue;
+          if (hasEvidenceFor(item, c)) continue;
           if (!byItem.has(item.id)) byItem.set(item.id, { itemId: item.id, description: item.description || '', kinds: [], item: item });
           byItem.get(item.id).kinds.push(c.tag);
         }
@@ -4013,7 +4888,14 @@ export function renderReviewHtml(): string {
       }
       const missing = computeMissingEvidence(change);
       const pairCount = missing.reduce(function (acc, m) { return acc + m.kinds.length; }, 0);
-      if (!pairCount) {
+      // Sweep button 只在 change 屬「✅ Apply 已完成、可補 evidence」群（readyForEvidence）時顯示。
+      // - applyInProgress（impl < APPLY_COMPLETE_THRESHOLD）：UI page 不存在 / curl 打不通，
+      //   生成的 Step 8a prompt 會誤導 agent 跑 verify 撞 404
+      // - healthCheckNeeded（readinessHits > 0）：spec/data 缺漏，該先跑 spectra-ingest 補資料
+      //   而不是 Step 8a verify
+      // 與 renderChanges 分組邏輯（L4225-4236）對齊：只有 readyForEvidence 群可進 Step 8a。
+      const readyForStep8a = isApplyComplete(change) && !(change.readinessHits || 0);
+      if (!pairCount || !readyForStep8a) {
         el.evidenceSweepButton.hidden = true;
         return;
       }
@@ -4067,7 +4949,10 @@ export function renderReviewHtml(): string {
 
     function localFileHref(path) {
       if (!path) return '#';
-      const root = state.repoRoot ? state.repoRoot.replace(/\\/$/, '') : '';
+      // 優先用當前 change 的 sourceRoot（worktree 路徑）；fallback main repoRoot。
+      const fromChange = state.current && state.current.sourceRoot;
+      const baseRaw = fromChange || state.repoRoot || '';
+      const root = baseRaw.replace(/\\/$/, '');
       const abs = path.startsWith('/') ? path : (root ? root + '/' + path : path);
       return 'file://' + encodeURI(abs).replace(/#/g, '%23');
     }
@@ -4075,7 +4960,11 @@ export function renderReviewHtml(): string {
     function screenshotUrl(path) {
       if (!path) return '';
       if (path.startsWith('screenshots/')) {
-        return '/api/screenshot/' + path.split('/').map(encodeURIComponent).join('/');
+        // 帶 rootId namespace 才能對應正確的 worktree screenshots/
+        const rootId = (state.current && state.current.worktreeSlug)
+          ? 'wt-' + state.current.worktreeSlug
+          : 'main';
+        return '/api/screenshot/' + encodeURIComponent(rootId) + '/' + path.split('/').map(encodeURIComponent).join('/');
       }
       return localFileHref(path);
     }
@@ -5021,8 +5910,12 @@ export function renderReviewHtml(): string {
 
     loadChanges().catch(function (err) {
       showBanner(err.message || String(err), 'error');
+      el.changeStatus.classList.remove('loading-spin');
       el.changeStatus.textContent = '無法載入 change 清單';
+      el.currentTitle.classList.remove('loading-spin');
+      el.currentTitle.textContent = '選擇一個 change 開始';
     });
+
   </script>
 </body>
 </html>`
@@ -5140,6 +6033,7 @@ function parseArgs(argv: string[]): CliOptions {
     repoRoot: process.cwd(),
     openBrowser: true,
     scan: false,
+    explicitRepo: false,
   }
   for (let i = 2; i < argv.length; i++) {
     const arg = argv[i]
@@ -5147,8 +6041,10 @@ function parseArgs(argv: string[]): CliOptions {
     else if (arg === '--scan') opts.scan = true
     else if (arg === '--host') opts.host = argv[++i] || opts.host
     else if (arg === '--port') opts.port = Number(argv[++i] || DEFAULT_PORT)
-    else if (arg === '--repo') opts.repoRoot = resolve(argv[++i] || opts.repoRoot)
-    else if (arg === '--help' || arg === '-h') {
+    else if (arg === '--repo') {
+      opts.repoRoot = resolve(argv[++i] || opts.repoRoot)
+      opts.explicitRepo = true
+    } else if (arg === '--help' || arg === '-h') {
       console.log(
         'Usage: review-gui.mts [--repo <path>] [--host 127.0.0.1] [--port 5174] [--no-open] [--scan]',
       )
@@ -5160,10 +6056,69 @@ function parseArgs(argv: string[]): CliOptions {
   return opts
 }
 
+/**
+ * Worktree-aware preflight — review-gui aggregates main + all worktrees from the
+ * main repo (see listSourceRoots). Starting from a non-main worktree produces:
+ *   - stale snapshots: process reads worktree's review-gui.mts version (may not
+ *     have latest collision fix), then becomes long-lived singleton serving
+ *     wrong data
+ *   - main-only changes missing from /api/changes home (worktree's stale copy
+ *     of openspec/changes/<name>/ shadows main's authoritative version under
+ *     pre-b3a6b86 collision rules; even with the fix, starting from worktree
+ *     means singleton outlives propagate cycles)
+ *
+ * Refuse running from a non-main worktree. Skip if user passed `--repo` explicitly
+ * (treat as intentional override, e.g. CI scan against absolute path).
+ */
+function preflightCwd(options: CliOptions): void {
+  if (options.explicitRepo) return
+  let gitDir: string
+  let commonDir: string
+  try {
+    const gitDirResult = spawnSync('git', ['rev-parse', '--git-dir'], {
+      cwd: options.repoRoot,
+      encoding: 'utf8',
+    })
+    const commonDirResult = spawnSync('git', ['rev-parse', '--git-common-dir'], {
+      cwd: options.repoRoot,
+      encoding: 'utf8',
+    })
+    if (gitDirResult.status !== 0 || commonDirResult.status !== 0) return
+    gitDir = (gitDirResult.stdout || '').trim()
+    commonDir = (commonDirResult.stdout || '').trim()
+  } catch {
+    return
+  }
+  if (!gitDir || !commonDir) return
+  const absGitDir = resolve(options.repoRoot, gitDir)
+  const absCommonDir = resolve(options.repoRoot, commonDir)
+  if (absGitDir === absCommonDir) return
+  const mainRoot = absCommonDir.replace(/[\\/]\.git[\\/]*$/, '')
+  console.error('')
+  console.error('✗ review-gui refuses to start from a non-main worktree.')
+  console.error(`  cwd: ${options.repoRoot}`)
+  console.error(`  Detected worktree git-dir: ${absGitDir}`)
+  console.error(`  Main worktree git-dir:    ${absCommonDir}`)
+  console.error('')
+  console.error('  Reason: review-gui aggregates main + all worktrees from the main')
+  console.error('  repo. Starting from a worktree creates a long-lived singleton with')
+  console.error('  stale code that survives propagate cycles, and may shadow main-only')
+  console.error('  changes from /api/changes home page.')
+  console.error('')
+  console.error('  Run from main worktree:')
+  console.error(`    cd ${mainRoot}`)
+  console.error('    pnpm review:ui')
+  console.error('')
+  console.error('  To override (e.g. CI scan against an absolute path):')
+  console.error(`    review-gui.mts --repo ${mainRoot}${options.scan ? ' --scan' : ''}`)
+  process.exit(2)
+}
+
 async function main() {
   const options = parseArgs(process.argv)
   if (!existsSync(options.repoRoot))
     throw new Error(`Repo root does not exist: ${options.repoRoot}`)
+  preflightCwd(options)
   if (options.scan) {
     await runScan(options.repoRoot)
     return
@@ -5182,21 +6137,23 @@ async function main() {
  * Headless scan：reuse listPendingChanges 的同一份 evaluator，輸出 JSON 給 skill 消費。
  * 結構穩定（任何欄位異動需更新 review-readiness-scan SKILL.md），避免 skill 端解析漂移。
  */
+function isChangeNotReady(change: ChangeSummary): boolean {
+  return change.readinessHits > 0 || change.malformed > 0 || change.evidenceMissing.length > 0
+}
+
 async function runScan(repoRoot: string): Promise<void> {
   const changes = await listPendingChanges(repoRoot)
   // pending=0 的 change 從 home page 隱藏不列；scan 也排除（review readiness 只關注待處理項目）。
   const active = changes.filter((change) => change.pending > 0)
-  const isNotReady = (change: ChangeSummary): boolean =>
-    change.readinessHits > 0 || change.malformed > 0 || change.evidenceMissing.length > 0
   const ready = active
-    .filter((change) => !isNotReady(change))
+    .filter((change) => !isChangeNotReady(change))
     .map((change) => ({
       name: change.name,
       pending: change.pending,
       issued: change.issued,
       total: change.total,
     }))
-  const notReady = active.filter(isNotReady).map((change) => ({
+  const notReady = active.filter(isChangeNotReady).map((change) => ({
     name: change.name,
     pending: change.pending,
     issued: change.issued,

@@ -43,11 +43,11 @@ Local edits will be reverted by the next sync.
 
 各 routing 的參數差異：
 
-| Routing | `<topic>` | `<cwd>` | reasoning effort | 預期動作 | Plan-first |
-| --- | --- | --- | --- | --- | --- |
-| WebSearch | `websearch` | `/tmp` | `medium` | 純讀（搜尋網頁/查文件） | 否 |
-| Spectra propose（draft） | `spectra-propose` | consumer repo root | `xhigh` | 寫 spec/proposal 到 `openspec/changes/<change>/`（主線之後 cross-check） | **是** |
-| Spectra apply phase（非 Design Review、非 UI view） | `spectra-apply-<phase-id>` | consumer repo root | `high` | 完成單一 phase 內所有 tasks，回報 tasks.md checkbox 狀態 | **是** |
+| Routing | `<topic>` | `<cwd>` | reasoning effort | 預期動作 | Plan-first | Commit Prohibition |
+| --- | --- | --- | --- | --- | --- | --- |
+| WebSearch | `websearch` | `/tmp` | `medium` | 純讀（搜尋網頁/查文件） | 否 | N/A（不寫檔） |
+| Spectra propose（draft） | `spectra-propose` | consumer repo root | `xhigh` | 寫 spec/proposal 到 `openspec/changes/<change>/`（主線之後 cross-check） | **是** | **是** |
+| Spectra apply phase（非 Design Review、非 UI view） | `spectra-apply-<phase-id>` | consumer repo root | `high` | 完成單一 phase 內所有 tasks，回報 tasks.md checkbox 狀態 | **是** | **是** |
 
 > sandbox flag 統一使用 `--dangerously-bypass-approvals-and-sandbox`，不再分 `-s read-only` / `-s workspace-write`（在背景 codex 會擋 MCP）。「預期動作」由主線在 prompt 內陳述，靠 codex 自律。
 
@@ -105,16 +105,116 @@ hub:bootstrap 自動同步產生（請完全忽略，與本次工作無關）：
 
 派工視窗保護：若派 codex 期間預期會再跑 `pnpm install` / `pnpm hub:check` 等可能觸發 sync 的動作，**先在主線跑完讓 baseline 穩定**再派 codex；不要在 codex 跑的同時讓 hub:bootstrap 又撐出新 LOCKED diff，否則 codex 會再次按 scope discipline 停手。
 
-理由：codex 內建 scope discipline——看到工作目標範圍外的修改會合理地停下來避免越權踩到別 session WIP。兩種 dirty 來源 codex 都觀念正確：(1) 主線剛跑完 ingest / propose / TD / handoff 後 working tree 自然 dirty；(2) `pnpm install` postinstall 自動觸發 hub:bootstrap 把 main 的 clade 更新拉進來（實證：`.claude/.hub-state.json` syncedAt 跳到當天近期時間）。兩種都不告知就會逼 codex 走「未知既有變更 → 停手」路徑，回來再 round-trip 重派比 prompt 多寫兩行貴得多。**禁止**把這當「codex 觀念錯」處理——它觀念是對的，是主線 prompt 沒給 git baseline。
+理由：codex 內建 scope discipline——看到工作目標範圍外的修改會合理地停下來避免越權踩到別 session WIP。兩種 dirty 來源 codex 都觀念正確：(1) 主線剛跑完 ingest / propose / TD / handoff 後 working tree 自然 dirty；(2) `pnpm install` postinstall 自動觸發 hub:bootstrap 把 main 的 clade 更新拉進來<!-- starter:strip-begin -->（實證：`.claude/.hub-state.json` syncedAt 跳到當天近期時間）<!-- starter:strip-end -->。兩種都不告知就會逼 codex 走「未知既有變更 → 停手」路徑，回來再 round-trip 重派比 prompt 多寫兩行貴得多。**禁止**把這當「codex 觀念錯」處理——它觀念是對的，是主線 prompt 沒給 git baseline。
 
 例外：
 
 - `codex review --uncommitted` 與 WebSearch 不需要這段（review 的本質就是讀 dirty diff、WebSearch 純讀不動檔）
 - 同一條派工 round-trip ≥ 2 次都因**同類 dirty** 停手（例：hub:bootstrap 反覆觸發 LOCKED projection 更新），且**剩餘工作是純 mechanical**（明確檔案 swap、< 5 行 edit），主線改自己做合理；但同步要 root-cause baseline 為什麼沒穩定（hub:bootstrap 重複跑？missing path？）並修，不是只把當下 task 收掉跳過教訓
 
+### Commit Authorization（codex 派工 hard rule）
+
+派 Codex **寫 code / 改檔** 時，prompt **MUST** 內含以下硬指令（**WebSearch / `codex review` 不需要** — 它們純讀不寫）：
+
+```
+## Commit Authorization（**MUST**）
+
+你**可以**在 worktree 內 commit，但 **MUST** 遵守規約。每完成一個 phase 的全部 tasks 後，commit 一次：
+
+**允許**：
+
+- 一 phase 結束 commit 一次（多檔可同一 commit）
+- Selective stage：`git add -- <each scoped file path>`
+- Commit：`git commit --no-verify -m "wt: <change>-phase-<N> — <一行說明>"`
+
+**禁止**：
+
+- `git add -A` / `git add .`（會撈到 main fork 過來的 baseline）
+- 跨 phase 混 commit（一個 commit 含多 phase 的改動 → 主線無法用 `git log main..HEAD` 對齊 phase 邊界）
+- 改 commit message format（**MUST** 用 `wt: <change>-phase-<N> — <short>`，commitlint 會擋，所以 **MUST** 加 `--no-verify`）
+- `git push` / `git push --force`
+- `git stash` / `git stash push` / `git stash pop`（中途 stash 抹掉 working tree 會繞過主線監看）
+- `git commit --amend`（一 phase 一 commit、不要 amend 修飾）
+- `/commit` / `/spectra-commit`（commit ceremony 在 main 跑、不在 worktree）
+
+**Commit 前 self-check（MUST，任一條命中即 abort、NEVER commit）**：
+
+1. **View-layer drift**：
+
+   git diff --staged --name-only | grep -E '\.vue$|\.tsx$|\.jsx$|\.css$|\.scss$|app/(pages|components|layouts)/|^(pages|components|layouts|views)/'
+
+   命中 → 回報「view layer drift detected: <files>」並中止 commit。
+
+2. **Scope discipline**：
+
+   git diff --staged --name-only
+
+   對比 phase 內預期落點（task → 檔案對應表）— 超出範圍 → 回報「scope drift: <files>」並中止 commit。
+
+**Commit message format（MUST）**：
+
+   wt: <change-name>-phase-<N> — <一行說明 codex 做了什麼>
+
+範例：`wt: consumable-po-link-phase-3 — admin PO entry page + handler + types`
+
+Commit 完直接停手回報，**NEVER** 自己跑下一 phase。主線會在 commit 後做 phase boundary 對齊 + view-layer drift 再驗 + scope cross-check，再決定 [接受 / reset 重派 / 中止]。
+```
+
+理由：worktree 內的 commit 在 archive merge-back 階段會被 `git merge --squash` squash 進 main 的 working tree、再走 `/commit` 0-A codex review + 0-B Design Review + 0-C check 才進 main HEAD。所以 worktree 內 codex 自 commit **沒有跳過 review** 的風險（commit 在 squash 時就消失、不會留在 main history）。
+
+仍 enforce 的 guardrail 純粹是 phase boundary 對齊（一 phase 一 commit、message format 機械化解析）+ drift 早攔截（codex 自驗比主線事後 reset 便宜）。Win：主線收到完工通知後直接 inspect → 派下一 phase，不必停下來做 staging。
+
+例外：
+
+- `codex review --uncommitted` 與 WebSearch 不寫檔，本節不適用
+- 對 `claude` type subagent（如 `/spectra-ingest` 在 /wt 內派出的 wt subagent）規約相同（`wt:` prefix + `--no-verify` + selective stage + self-check），per worktree-default.md §5
+
 ## Codex Watch Protocol（防止主線乾等與卡住盲區）
 
 **核心命題**：派出 codex 後**主線不能單純等 `<task-notification>`**。codex 中途可能 `fetch failed`、sandbox 拒絕、互動 prompt、或長時間靜默；若沒有監看，主線完全不知道進度，使用者也只能空等。
+
+### 跨 sandbox 可見度約束（主線 ↔ subagent 中介）
+
+派 codex 透過 subagent 中介（例 `/spectra-apply` Phase Dispatch 用 `Agent` tool 開 subagent，subagent 在自家 sandbox 派 codex）時，主線跟 subagent 是**不同 bash sandbox**（Claude Code Agent tool 的 process namespace isolation）。本約束**不適用**主線直接 Bash 派 codex 的情境 — 那種情況下 BashOutput / ps 都在主線 sandbox 內正常 work。
+
+#### NEVER 用主線 ps 驗 subagent 的 background bash（失敗模式 1：false positive panic）
+
+Subagent 回報「codex PID X running, awaiting notification」後，主線跑 `ps aux | grep codex` **必然**看不到 — 不是 codex 死了，是 sandbox 隔離，subagent sandbox 內的 process 主線看不到屬正常。
+
+- **NEVER** 用 `ps aux | grep codex` 從主線驗證 subagent 的 background process — 沒輸出**不**代表 codex 死了
+- 要驗證 → `SendMessage({to: <agent-id>, message: "回報 BashOutput shell <id> 進度"})`，由 subagent 自家 sandbox 跑 BashOutput / `ps -p <PID>` 驗
+- 要看實質進展 → 透過**共享 filesystem**（worktree git log、`/tmp/codex-*-stdout.log`、tasks.md checkbox），不透過 process tree
+
+#### MUST 每 ~3 分鐘主動 poll 共享 FS，不死等 task-notification（失敗模式 2：false negative silent miss）
+
+`<task-notification>` 是 subagent → 主線的理想路徑，但 subagent 可能 yield 在不 resume 狀態 → codex 已 exit、worktree 已長出 phase commit、log 已寫「hook: Stop Completed」「tokens used」，主線**乾等** 5-15 分鐘才發現 codex 早完成。
+
+派 subagent 走 codex 路徑後，主線 **MUST** 每 ~3 分鐘主動跑共享 FS poll（**不**依賴 subagent 主動 surface）：
+
+```bash
+cd <worktree> && \
+  git log main..HEAD --oneline | head -3 && \
+  grep -c '\- \[x\]' openspec/changes/<change>/tasks.md && \
+  /bin/ls -la /tmp/codex-phase-*-stdout.log && \
+  tail -15 /tmp/codex-phase-<N>-stdout.log
+```
+
+訊號判讀：
+
+| 觀察 | 判定 | 動作 |
+| --- | --- | --- |
+| log 末尾含「hook: Stop Completed」/「tokens used:」 | codex 已 exit，subagent 未 surface | **MUST** SendMessage 給 subagent 詢問結果，**不**自行進下一步 |
+| log mtime > 3 min 沒動 + 無「Stop Completed」 | codex 卡住或被殺 | **MUST** SendMessage 給 subagent 詢問 BashOutput 狀態 |
+| log 持續變長 + tasks.md `[x]` count 上升 | codex 跑中健康 | 繼續下次 poll，不打擾 subagent |
+| `git log main..HEAD` commit count 上升 | phase 完成（subagent 端 codex 已 self-commit per § Commit Authorization） | **MUST** SendMessage 給 subagent 進下個 phase |
+
+**`<task-notification>` 與主動 FS poll 並行**，poll 是**兜底**不是冗餘 — notification 路徑健康時 poll 也只是讀靜態檔，成本極低。
+
+#### 為什麼不違反「監看期間紀律」
+
+下方「監看期間的紀律」§ 寫 **NEVER** 在 wakeup loop 跑與監看無關的探索動作（grep / 額外 Read / 開新 subagent）。本節的 FS poll **就是**監看本身（讀 git log / 讀 stdout log / 讀 tasks.md 都是進度信號讀取），不算違反。違反的是趁 poll 順手做別的事（grep 其他模組、讀無關檔）。
+
+> 對應 pitfall（含完整 root cause、Symptom log 樣例、反面範例）：`docs/pitfalls/2026-05-18-subagent-background-bash-invisible-from-main-ps.md`
 
 ### 監看排程
 
@@ -184,6 +284,8 @@ codex 跑了 N 分鐘，目前狀態：<一句話卡點>
 - **NEVER** 在 watch 中途自行決定殺掉 / 重派 codex — 必須先 AskUserQuestion
 - **NEVER** 看到健康訊號就提早終止 watch loop（例如「應該快好了」直接放著） — 必須跑到收到 `<task-notification>` 為止
 - **MUST** 收到 `<task-notification>` 後**不再** ScheduleWakeup（否則 wakeup 會在 codex 已結束後重複觸發）
+- **NEVER** 在 subagent dispatch 後用主線 `ps aux | grep codex` 驗證 subagent 的 background process — 屬 sandbox 隔離正常，會誤判 codex 死亡（見 § 跨 sandbox 可見度約束 失敗模式 1）
+- **MUST** 透過 subagent 中介派 codex 時，主線**每 ~3 分鐘**主動 poll 共享 FS（git log / tasks.md / stdout log），不只等 `<task-notification>`（見 § 跨 sandbox 可見度約束 失敗模式 2）
 
 ## Spectra Propose Handoff（具體做法）
 
@@ -219,11 +321,21 @@ Claude Code session 收到 spectra propose 請求時：
    - prompt 內容：phase 標題、該 phase 全部 tasks、相關 design.md / specs / tasks 段落、acceptance criteria、`spectra task done <change> <task-id>` 完成標記指令
    - prompt 內**MUST**附帶硬指令：「**禁止**修改 view 層檔案（`.vue` / `.tsx` / `.jsx` / `app/pages/` / `app/components/` / `pages/` / `components/` / `views/` / `layouts/` / `.css` / `.scss`）；若 task 需要 view 層改動，回報 'view layer change required, defer to main thread' 並跳過該 task」
    - `<topic>=spectra-apply-<phase-id>`、`<cwd>=consumer repo root`、`-c model_reasoning_effort=high`
-5. 收到 `<task-notification status=completed>` 後，主線 **MUST**：
+5. 收到 `<task-notification status=completed>` 後，主線 **MUST**（codex 已在 worktree 自 commit per § Commit Authorization）：
+   - Read codex stdout 的 `PHASE_X_RESULT` + Plan section（事前公開的思路）
    - Read tasks.md 確認該 phase 所有 checkbox 已勾
-   - sanity check（typecheck、相關 test、git diff）
-   - **MUST** 額外驗證 codex 沒踩到 view 層：`git diff --name-only` 過濾 `.vue` / `.tsx` / `.jsx` / `pages/` / `components/` / `views/` / `layouts/` / `.css` / `.scss`，若有任何 view 層檔案被 codex 動過 → **AskUserQuestion**：[1] 主線 revert + 重派 codex（剝除 view 改動）/ [2] 接受並由主線自己跑該 view phase / [3] 中止
-   - 若有遺漏 → **AskUserQuestion** 給使用者 [1] 主線補 / [2] 重派 codex / [3] 中止
+   - **Phase boundary 對齊**：`git -C <wt> log main..HEAD --oneline` — confirm exactly one new commit per dispatched phase, format `wt: <change>-phase-<N> — ...`。多 commit / missing commit / format 不符 → **AskUserQuestion**：[1] 主線 squash codex 的多 commits / [2] `git -C <wt> reset --soft main` 退 staging 重派 / [3] 中止
+   - **View-layer drift double-check**：codex 端 self-check 命中時應已 abort，主線此處再驗一次保險：
+     ```bash
+     git -C <wt> diff main..HEAD --name-only \
+       -- '*.vue' '*.tsx' '*.jsx' '*.css' '*.scss' \
+          'app/pages/**' 'app/components/**' 'app/layouts/**' \
+          'pages/**' 'components/**' 'layouts/**' 'views/**'
+     ```
+     有任何 view 層 file 被 codex 動過 → **AskUserQuestion**：[1] `git -C <wt> reset --soft main` 退 staging + 主線剔除 view 改動 + 重派 codex / [2] 接受並由主線自己重跑該 view phase / [3] 中止
+   - **Scope discipline cross-check**：`git -C <wt> diff main..HEAD --name-only` 對比 prompt 內 scope 宣告；超出範圍 → AskUserQuestion 處理
+   - **Sanity check**（typecheck、相關 test）
+   - 若有遺漏 → **AskUserQuestion**：[1] 主線在 worktree 內 commit 補丁 / [2] reset 重派 codex / [3] 中止
 6. 全部 phases 完成後，主線**自己**跑 Section 7 Design Review（不派出去）
 
 ## screenshot-review Verify Mode Dispatch & Watch Protocol

@@ -57,14 +57,14 @@ Runner requirements: `jq` and `curl` available. GitHub-hosted runners ship both.
 
 ## Inputs
 
-| Input         | Required | Type          | Default  | Notes                                                                       |
-| ------------- | -------- | ------------- | -------- | --------------------------------------------------------------------------- |
-| `webhook_url` | yes      | string        | —        | Empty value → action skips with `::warning::`, exits 0.                     |
-| `title`       | no       | string        | `Deploy` | Embed title prefix.                                                         |
-| `target`      | no       | string        | `""`     | When set, appended to title as `[<abbrev>]` (see abbreviation table below). |
-| `results`     | no       | string (JSON) | `[]`     | Array of `{name: string, result: string}` per upstream job.                 |
-| `language`    | no       | string        | `zh`     | Enum: `zh` \| `en`. Invalid value → action fails the step.                  |
-| `tag`         | no       | string        | `""`     | Empty → falls back to `${{ github.ref_name }}`.                             |
+| Input         | Required | Type          | Default | Notes                                                       |
+| ------------- | -------- | ------------- | ------- | ----------------------------------------------------------- |
+| `webhook_url` | yes      | string        | —       | Empty value → action skips with `::warning::`, exits 0.     |
+| `title`       | no       | string        | `Deploy` | Embed title prefix.                                          |
+| `target`      | no       | string        | `""`    | When set, appended to title as `[<abbrev>]` (see abbreviation table below). |
+| `results`     | no       | string (JSON) | `[]`    | Array of `{name: string, result: string}` per upstream job. |
+| `language`    | no       | string        | `zh`    | Enum: `zh` \| `en`. Invalid value → action fails the step. |
+| `tag`         | no       | string        | `""`    | Empty → falls back to `${{ github.ref_name }}`.            |
 
 `result` values are mapped to icons:
 
@@ -78,17 +78,17 @@ Runner requirements: `jq` and `curl` available. GitHub-hosted runners ship both.
 
 Title status string by language:
 
-| Language | Success               | Failure            |
-| -------- | --------------------- | ------------------ |
-| `zh`     | `✅ 部署成功`         | `❌ 部署失敗`      |
+| Language | Success            | Failure          |
+| -------- | ------------------ | ---------------- |
+| `zh`     | `✅ 部署成功`      | `❌ 部署失敗`    |
 | `en`     | `✅ Deploy succeeded` | `❌ Deploy failed` |
 
 `target` abbreviation table (applied when `target` is non-empty; rendered as `[<abbrev>]`):
 
-| `target` value                       | Abbrev rendered                 |
-| ------------------------------------ | ------------------------------- |
-| `production`                         | `Prod`                          |
-| `staging`                            | `Stg`                           |
+| `target` value | Abbrev rendered |
+| -------------- | --------------- |
+| `production`   | `Prod`          |
+| `staging`      | `Stg`           |
 | any other (e.g. `dev`, `e2e-canary`) | rendered literally inside `[ ]` |
 
 Example titles: `target=production language=zh tag=v1.2.3` → `❌ 部署失敗 — Deploy [Prod] — v1.2.3`. `target=staging language=en` → `✅ Deploy succeeded — Deploy [Stg]`. `target=dev` → `❌ Deploy failed — Deploy [dev]`.
@@ -106,7 +106,6 @@ Overall status is `succeeded` only when every entry in `results` has `result == 
 Earlier iteration of this action lived at `YuDefine/discord-deploy-notify` (public repo) and consumers referenced it via `uses: YuDefine/discord-deploy-notify@v1`. That model has a single point of failure: if the public repo is deleted, archived, or the `v1` tag is force-updated to broken code, every consumer breaks at once.
 
 Vendoring eliminates that failure mode:
-
 - Each consumer's action.yml is a regular tracked file in their main branch.
 - Workflows resolve `./` against the consumer's checked-out tree — no network call to a remote repo.
 - A clade upgrade is required to receive a new version; consumers stay frozen on whatever they have until the next `propagate.mjs` cycle.

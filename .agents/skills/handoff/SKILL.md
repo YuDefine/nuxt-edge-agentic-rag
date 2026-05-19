@@ -31,6 +31,28 @@ metadata:
 
 宣布偵測結果一句話：「偵測到 Mode A（理由：當前 session TaskList 有 N 個 in-progress / 對話脈絡顯示 mid-task on X）」或「偵測到 Mode B（當前 session 清空）」。
 
+## Step 1.5 — 路徑解析 invariant（Mode A / B 共用）
+
+`HANDOFF.md` / `docs/tech-debt.md` / `openspec/ROADMAP.md` 是「跨 change 全局狀態」，**不該** per-worktree 分裂。`/handoff` 若在 linked worktree 內跑、寫到 cwd-相對的 `HANDOFF.md`，得等 squash merge-back 才出現在 main，下一 session 接手會看到舊版。
+
+**MUST** 在進入 Step 2A / 2B 寫入動作前先解析 main worktree absolute path：
+
+```bash
+GIT_COMMON_DIR="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)"
+if [ -z "$GIT_COMMON_DIR" ]; then
+  echo "warn: not inside a git repo; falling back to cwd for HANDOFF writes" >&2
+  MAIN_WT_PATH="$(pwd)"
+else
+  # linked worktree: .git/worktrees/<slug>/.. → main repo's .git dir
+  # so dirname(GIT_COMMON_DIR) 是 main worktree path（main 與 linked 都成立）
+  MAIN_WT_PATH="$(dirname "$GIT_COMMON_DIR")"
+fi
+```
+
+實際操作：所有 `HANDOFF.md` / `docs/tech-debt.md` / `openspec/ROADMAP.md` / `docs/archives/<yyyy-mm>-<topic>.md` 寫入路徑都用 `$MAIN_WT_PATH/<rel>` 絕對路徑（Edit / Write tool 的 `file_path` 參數）；**禁止**用 cwd-相對路徑寫這幾個檔。其餘檔案（`.claude/rules/local/*.md` 讀取、`tasks/<date>-*.md` 清理）保持 cwd 相對行為。
+
+> Why：`git rev-parse --path-format=absolute --git-common-dir` 在 main worktree 回 `.../.git`，在 linked worktree 回 `.../.git/worktrees/<slug>`；兩者的 dirname 就是 main worktree path（main 自己 / linked 的 main）。`git stash list` 跟 `git worktree list` 都是 repo-wide（`refs/stash` 與 worktree 索引共享所有 worktree），所以 Step 3 audit 的讀取階段無關當前 cwd，但寫入 HANDOFF.md 仍 MUST 用 `$MAIN_WT_PATH/HANDOFF.md`。
+
 ## Step 2A — Mode A 流程（只做交接寫入）
 
 只做以下，不做 reorganize、不做下一步推薦：
@@ -57,18 +79,19 @@ metadata:
    | 規模膨脹（要動 spec / design review / 跨多檔） | 新 spectra change（先 `/spectra-propose`） |
    | 純放棄 | 直接刪 |
 
-3. **寫入**：依分類 Edit / Write 對應檔案。HANDOFF.md `## In Progress` 條目 MUST 含：
+3. **寫入**：依分類 Edit / Write 對應檔案，path **MUST** 用 Step 1.5 解析出的 `$MAIN_WT_PATH/<rel>` 絕對路徑（即使當前 cwd 在 linked worktree）。HANDOFF.md `## In Progress` 條目 MUST 含：
    - change / task 名稱
    - 主要檔案路徑（讓接手者直接跳）
    - 目前做到哪裡 / 還剩什麼
    - 已踩過的坑（避免下一 session 重踩）
    - **若來自 [[worktree-default]] §8 死鎖**：額外加 Stop hook 攔點摘要、missing acceptance criterion、改過檔案的 selective stash ref（若有，例 `stash@{0}: <slug>-handoff`）、下一 session 接手指引（直接從 main 跑 `/<next-skill> <change-name>`，apply / ingest / debug 內建 worktree dispatch；若是 archive，直接從 main 跑 `/spectra-archive <change-name>`）
 4. **清理 session-tasks**：所有未完項升級完成後 → 只 `mv` / 刪「當前 session 自己開的」`tasks/<date>-*.md`（依 `rules/core/session-tasks.md`「NEVER 動別人的 tasks 檔」）。若當前 session 從頭到尾沒開 tasks 檔，跳過此步。
-5. **回報**：一句話總結升級數量（如「升級 3 到 HANDOFF / 1 到 tech-debt / 砍 2」）。**禁止**追加「下一步建議」或「要不要繼續做 X」。
+5. **Worktree & Stash audit**：跑 **Step 3 共用 audit block**（見下文）。Mode A 為「靜默寫入」—— audit 段寫進 HANDOFF.md，但**不**在 chat 訊息輸出 audit 全文或摘要（避免雜訊干擾當前 session 交接收尾）。
+6. **回報**：一句話總結升級數量（如「升級 3 到 HANDOFF / 1 到 tech-debt / 砍 2」）。**禁止**追加「下一步建議」或「要不要繼續做 X」。Audit 因為靜默不出現在回報；user 想看走 HANDOFF.md。
 
 ## Step 2B — Mode B 流程（整理 + 推薦）
 
-### 2B.0 Session-end pitfall sweep（呼叫 /oops Mode C）
+### 2B.0 Session-end pitfall sweep（呼叫 /oops Mode C — from `hub-maintenance-full` plugin；無此 plugin 時跳過整段並繼續 2B.1）
 
 在動 HANDOFF.md 前，先回顧當前 chat session transcript 掃 missed lessons。觸發訊號：
 
@@ -107,6 +130,12 @@ metadata:
 | 仍 valid 的稽核 baseline 表 / outstanding follow-up | 保留 |
 
 **MUST** 載入 `.claude/rules/local/*.md` 內所有自治區規則。若有 `clade-role-and-todo-discipline.md` 之類 local rule 限定 HANDOFF 寫法，整理時必須遵守。
+
+寫入 `HANDOFF.md` 與 archive 檔的路徑 **MUST** 用 Step 1.5 解析出的 `$MAIN_WT_PATH/HANDOFF.md` / `$MAIN_WT_PATH/docs/archives/<yyyy-mm>-<topic>.md`，不用 cwd 相對。
+
+### 2B.1.5 Worktree & Stash 稽核
+
+跑 **Step 3 共用 audit block**（見下文）。Mode B 完成 audit 後，在 chat 訊息加一行摘要：「Audit: N 個 worktree / M 個 stash 寫進 HANDOFF.md `## Worktree & Stash Audit` 段」。具體判定邏輯不在此重複，避免兩處規約走 drift。
 
 ### 2B.2 盤點剩餘 outstanding
 
@@ -183,17 +212,86 @@ User 透過 `request_user_input` 選定下一步 outstanding（含明確的 next
 
 **判定條件**：
 
-- 觸發此 dispatch path **MUST** 全部成立：當前 chat session 剛跑完 Mode B、user 已選定下一步、cwd 在 main worktree
-- 若 cwd 不在 main worktree（罕見 — 應該是 user 在 worktree session 跑了 `/handoff`）→ Mode B 已不適用，警示後返回
+- 觸發此 dispatch path **MUST** 全部成立：當前 chat session 剛跑完 Mode B、user 已選定下一步
+- Mode B 的寫入動作（§2B.1 / §2B.1.5）透過 Step 1.5 的 `$MAIN_WT_PATH` 已落到 main worktree absolute path，與 cwd 無關
+- 若 cwd 不在 main worktree（user 在 linked worktree session 跑了 `/handoff`）→ dispatch 階段 **MUST** 在內呼 `/wt` / next-skill 前先 `cd "$MAIN_WT_PATH"` 切換工作目錄，dispatch 完成後不必還原（session 已收尾交接）。直接 dispatch 純 read-only / propose / discuss 類 skill 不寫 tracked file 時可省略此切換
 
 **Slug 解析**：`/wt <slug>: /<next-skill> <change-name>` 的 `<slug>` 由 change-name 直接帶入（wt-helper 自動 normalize per [[worktree-default]] §3）。
 
 **Parent cwd 不動 invariant**：`/wt` Form 3 內部用 subagent 進 worktree 跑 next-skill，主線（當前 chat session）cwd 全程在 main worktree，per [[worktree-default]] §1。先前 `wt-relax-for-archive-and-handoff` change 引入的 `--dispatch-from-handoff` flag 已**移除**，**禁止**在 args 內帶此 flag。
 
+## Step 3 — Worktree & Stash 稽核（共用 block，Mode A / B 都會 invoke）
+
+目的：把所有 linked worktree + stash 的當前狀態 + 下一步建議寫進 HANDOFF.md `## Worktree & Stash Audit` 段，避免歷史包袱累積。**讀取 + 寫入摘要**，不執行 drop / cleanup / merge-back。
+
+### 3.1 Worktree audit
+
+```bash
+node "$MAIN_WT_PATH/vendor/scripts/wt-helper.mjs" list --json 2>/dev/null
+git -C "$MAIN_WT_PATH" worktree list --porcelain 2>/dev/null
+```
+
+對每條 wt-helper 列出的 linked worktree，套以下判定表：
+
+| 條件 | kind | 下一步建議 |
+| --- | --- | --- |
+| `mergedToMain: true` | `merged` | `cleanup` — `node vendor/scripts/wt-helper.mjs cleanup <slug>` |
+| `mergedToMain: false` + `openspec/changes/archive/<slug>/` 存在 | `archived-change` | `verify-then-cleanup` — change 已 archive 但 branch 未 merged-into-main，先 `git log -1 <branch>` 檢視 commits 是否已含在 archive squash；若是 → `wt-helper cleanup <slug>` |
+| `mergedToMain: false` + `openspec/changes/<slug>/` 仍 active + `daysOld > 7` | `active-stale` | `merge-back-or-resume` — `node vendor/scripts/wt-helper.mjs merge-back <slug>` 或 dispatch `/spectra-apply <slug>` 續攻 |
+| `mergedToMain: false` + change 仍 active + `daysOld <= 7` | `active-fresh` | `keep` — 在用中 |
+| `mergedToMain: false` + `openspec/changes/<slug>/` 跟 `archive/<slug>/` 都不在 | `orphan` | `verify-then-cleanup` — 孤兒 worktree，`git log <branch>` 檢視內容再決定 cleanup |
+
+額外掃 `git worktree list --porcelain`：若有 linked worktree 不在 wt-helper list 結果裡（即不在 `~/offline/<consumer>-wt/<slug>/` 規約路徑），加 `unmanaged` 條目 → `manual review`（非規約 worktree，user 自管，audit 只記不建議動）。
+
+### 3.2 Stash audit
+
+```bash
+node "$MAIN_WT_PATH/vendor/scripts/stash-reconcile.mjs" --include-all --json 2>/dev/null
+```
+
+對 `entries[*]` **每一筆**寫入 audit 段（不再過濾 archived-only 或 stale>7d；user 要求「所有 stash 都有狀況與下一步建議」）：
+- ref（`stash@{N}`）
+- kind（`namespace.kind`，無 namespace 時為 `unknown`）
+- slug（`namespace.slug` 或 `(unknown)`）
+- 下一步建議（`recommendation.action` — `apply` / `view diff first` / `drop` / `manual review`）
+- 理由（`recommendation.reason`）
+
+若 `stash-reconcile` 回傳 `{ "entries": [] }`，audit 段 stash 子節寫 `No stashes.`（仍保留節標題）。
+
+### 3.3 寫入 HANDOFF.md
+
+寫到 `$MAIN_WT_PATH/HANDOFF.md` `## Worktree & Stash Audit` 段（不存在就建）。每跑一次 audit **整段覆寫**（不是 append，避免重複累積）。格式：
+
+```markdown
+## Worktree & Stash Audit
+
+_Updated: <YYYY-MM-DD>_
+
+### Worktrees (N)
+
+- `<slug>` (`<branch>`) — **<kind>** — <下一步建議>
+  - `<path>` (last activity <Nd> ago)
+
+若 0 條：`No linked worktrees.`
+
+### Stashes (M)
+
+- `stash@{0}` (`<kind>`, slug=`<slug>`) — **<action>** — <reason>
+
+若 0 條：`No stashes.`
+```
+
+### 3.4 禁止行為
+
+- ❌ 自動跑 `git stash drop` / `git worktree remove` / `wt-helper cleanup` / `wt-helper merge-back` —— Step 3 只寫 audit 段，user 自行抉擇是否動作（可跑 `stash-reconcile --interactive` 或 `wt-helper cleanup <slug>`）
+- ❌ 把 audit 條目改寫進 `## In Progress` / `## Blocked` 段 —— audit 是「待清紀錄」，不是 in-progress 工作
+- ❌ Mode A 跑時在 chat 訊息輸出 audit 全文或摘要 —— 完全靜默寫入 HANDOFF.md（避免雜訊干擾交接收尾）
+- ❌ 偵測到無 worktree + 無 stash 就跳過整段 —— **仍要寫**「## Worktree & Stash Audit」段，內含 `No linked worktrees.` + `No stashes.`，讓接手 session 能確認 audit 已跑過、結果為空
+
 ## Output contract
 
-- Mode A：成功 = HANDOFF.md / tech-debt / ROADMAP 有對應寫入 + tasks 檔已清；訊息只含升級摘要
-- Mode B：成功 = 2B.0 pitfall sweep 已執行（dispatch `/oops` 或宣告「無 missed lesson」）+ HANDOFF.md 已整理 + 盤點訊息 + `request_user_input` 已發出讓 user 選 + user 選定後 2B.5 dispatch 已完成（直接 dispatch 或內呼 `/wt <slug>: /<next-skill> <change-name>`）
+- Mode A：成功 = HANDOFF.md / tech-debt / ROADMAP 有對應寫入 + tasks 檔已清 + Step 3 audit 已靜默寫入 HANDOFF.md `## Worktree & Stash Audit` 段；訊息只含升級摘要（不含 audit）
+- Mode B：成功 = 2B.0 pitfall sweep 已執行（dispatch `/oops` 或宣告「無 missed lesson」）+ HANDOFF.md 已整理 + 2B.1.5 → Step 3 audit 已寫入並在訊息摘要一行 + 盤點訊息 + `request_user_input` 已發出讓 user 選 + user 選定後 2B.5 dispatch 已完成（直接 dispatch 或內呼 `/wt <slug>: /<next-skill> <change-name>`）
 - 失敗 / blocked：明確說明卡點，不假裝完成
 
 ## 與其他 skill 的銜接
@@ -201,5 +299,5 @@ User 透過 `request_user_input` 選定下一步 outstanding（含明確的 next
 - `/spectra-commit` — Mode A 升級 spectra change WIP 時，commit 用此 skill 走 selective stage
 - `/spectra-propose` — Mode A「規模膨脹」分類升級時，後續開新 change 入口
 - `/spectra-apply` — Mode B `request_user_input` user 選定起手 active change 後的執行入口
-- `/oops` — Mode B 2B.0 sweep missed lessons 時的 dispatch 目標（pitfall / memory / lessons.md 三層分流）
+- `/oops` — Mode B 2B.0 sweep missed lessons 時的 dispatch 目標（pitfall / memory / lessons.md 三層分流；from `hub-maintenance-full` plugin，不在 starter consumer 內安裝）
 - `subagent-dev` — Mode B `request_user_input` user 選 parallel 後，subagent fan-out 由此 skill 執行

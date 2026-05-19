@@ -1,0 +1,149 @@
+---
+description: PR-isolated DB preview environment capability + safety contract（不限工具、不限 topology）
+paths: ['supabase/migrations/**/*.sql', '.github/workflows/**/*.yml', 'docker-compose*.yml', 'infra/**/*']
+---
+<!--
+🔒 LOCKED — managed by clade
+Source: rules/core/db-preview-env.md
+Edit at: /Users/charles/offline/clade
+Local edits will be reverted by the next sync.
+-->
+
+
+# DB Preview Environment（capability + safety contract）
+
+**核心命題**：兩條 PR 同時改 schema 不能在 shared staging 互踩。本檔規約「應該具備什麼能力、應該守住什麼風險邊界」，**不**規定 topology — 用 docker-compose / LXC / cloud preview / 任何方案都可以，只要滿足下列契約。
+
+> Self-host Supabase 的實作細節（compose-per-PR / schema-migration-gate / role password alignment / image quirk）見 `rules/modules/db-runtime/supabase-self-hosted/preview-env.md`。
+>
+> Cookbook 範本：`~/offline/clade/vendor/snippets/db-preview-env/`。
+>
+> Audit signal：`vendor/scripts/db-preview-env-audit.mjs`。
+
+## 為什麼不規定 topology
+
+Self-host Supabase 在 platform-only Branching 之外的選項地景已收斂：
+
+- ❌ **Schema-per-branch**（同 PG 多 schema）：Auth/Storage/Realtime/RLS 共用狀態，假隔離
+- ❌ **PG TEMPLATE clone**：Postgres `CREATE DATABASE ... TEMPLATE` 不是 CoW、template 期間禁 active conn、且 Auth/Storage 仍共用 → 一旦補 per-branch service stack 就是 compose-per-PR，B 是 dead-end
+- ✅ **schema-migration-gate**（CI throwaway-DB replay + diff）：最便宜、立即解 reviewer 漏看，**MUST 第一階段必備**
+- ✅ **compose-per-PR**（docker-compose per PR，unique JWT/port/volume）：完整 preview，**可選**升級路徑
+- ⏸️ **LXC-per-PR**：LXC 同構在錯的層（OS/Tailscale/DNS/secret 不該每 PR 重建）；rare high-fidelity lane、不自動化
+
+clade 規約管 capability，consumer 在 `registry/consumers.json` 宣告自家當前能力。
+
+## MUST
+
+### 1. Schema migration gate（必備）
+
+- **MUST** migration change 時 CI 跑 schema diff 或 migration replay（trigger 由 `workflow_model` 決定）
+- **MUST** diff 結果以 commit comment / PR comment / artifact / status 形式可被 reviewer 看到
+- **MUST** disposable DB instance 完全脫離 shared staging — 不允許用 staging schema 當 diff baseline
+- **MUST** schema-gate 結果**真的擋住** staging migration（trunk-based: `deploy-staging.yml` 的 migrate job `needs: [schema-gate]`；pr-based: required check 鎖 merge）
+
+### Trigger 由 `workflow_model` 決定
+
+| Consumer `workflow_model` | Schema-gate trigger | 評論去處 | 阻擋方式 |
+| --- | --- | --- | --- |
+| `trunk-based`（目前 5 個 consumer 全部）| `on: push: [main]`，pre-deploy step | commit comment | deploy-staging.yml migrate `needs: schema-gate` |
+| `pr-merge-based`（rare，目前無）| `on: pull_request:` | PR comment | required status check |
+
+**有 PR-CI infra 的 trunk-based consumer** 可同時跑 pr-based template 當早期 gate — 兩個並存無衝突。範本：`vendor/snippets/db-preview-env/schema-migration-gate/{trunk-based,pr-based}.workflow.yml.template`。
+
+### 2. Staging isolation（必備）
+
+- **MUST** staging environment 不承擔 pre-validation 角色 — schema 變動**MUST** 先過 schema-migration-gate 才能套 staging
+- **NEVER** 讓 main push 直接觸發 staging migrate 而**跳過** schema-gate
+- **MUST** PR / push validation 用 disposable PG（schema-migration-gate 即可滿足）
+
+如果 consumer 目前 staging migrate 沒擋 schema-gate（即 main push 直接到 staging migrate 不經 throwaway diff），**MUST** 在 `docs/tech-debt.md` 開 TD 追蹤；不能無限延期。
+
+### 3. Production data sanitization（必備條件）
+
+凡 production data subset 進 non-prod 環境（無論是 preview、staging、本機）：
+
+- **MUST** 先 sanitize（PII / secrets / credentials 全 masked）才能離開 production host
+- **MUST** sanitization script version-controlled + reviewer-checkable
+- **MUST** sanitize 以 `supabase_admin` / postgres super 等 RLS bypass 角色跑（否則 RLS 隱藏的 row 永遠不會 mask，是 leak risk）
+- **MUST** masking 是 deterministic（FK / cross-table join 保留）+ type-preserving（email 還是 @-formed、phone 還是 +886-9...）
+- **MUST** salt 來自 secret manager、每次 sanitize run 重抽，**NEVER** 把 salt commit 進 repo
+- **NEVER** 把 sanitization 留到「preview runner 內」做 — 那已經太晚，raw PII 已進 non-prod
+
+範本：`vendor/snippets/db-preview-env/sanitize/`（pgcrypto-based 因為 `postgresql-anonymizer` 不在 supabase/postgres image）。
+
+### 4. Preview lifecycle（compose-stack / lxc-stack 才適用）
+
+如果採用 ephemeral preview env（非僅 CI gate）：
+
+- **MUST** 每 preview 有 unique secrets（JWT secret、DB password）— **NEVER** 跨 preview 共用
+- **MUST** 有 TTL 或 close-signal 觸發的 teardown（trunk-based: tag-based / branch-deleted 觸發；pr-based: PR close 觸發）
+- **MUST** 有 reconciliation job 清孤兒 stack
+- **MUST** 命名規範 `<consumer>-<scope>-<n>`，避免跨 consumer 撞名（trunk-based scope 可為 commit-sha-prefix / branch-name；pr-based 為 pr-<n>）
+
+### 5. Production migration classification + gate
+
+沿用既有 supabase-migration skill 的三分類：
+
+- `online-safe`：直接 push 即可
+- `expand-contract`：需 N+1 deploy 流程 + 暫態驗證
+- `maintenance-required`：需停機窗口
+
+**MUST** commit / PR 描述標出 migration 風險分類；reviewer **MUST** 對 `expand-contract` / `maintenance-required` 拍板才能 merge / tag。
+
+**現成自動化工具**：clade 已散播 `vendor/scripts/postgrest-migration-risk.mjs`（per-consumer 自動分類）+ `postgrest-ready-gate.mjs` + `postgrest-smoke.mjs`。consumer 可串 GitHub Actions `workflow_dispatch` input 把分類做成手動 gate — 範例：TDMS `.github/workflows/ci.yml` `approve_high_risk_migration: choice` input。
+
+### 6. 主幹 deploy gate
+
+至少**兩條獨立 workflow**：一條 **PR-validation gate**（schema-migration-gate 即滿足），一條 **production deploy**（tag-triggered）。
+
+- **MUST** PR-validation gate 在 PR 階段跑，**NEVER** 用 shared staging 當 validation 環境
+- **MUST** production deploy 走 tag-trigger（tag pattern 由 consumer 自選 — `v*` 是 semver convention，`*` 也合法；perno 用 `v*`、TDMS 用 `*`）
+- **MUST** production workflow 內有明確 confirm gate（環境變數 / GitHub environment protection / approval reviewer / `workflow_dispatch` approve input 都算）
+- **NEVER** 讓 PR / main push 直接打到 production
+- **NEVER** 把 production deploy 跟 PR-validation 寫在同一條 workflow 內共用 trigger
+
+**兩個典型 pattern**（consumer 自選）：
+
+| Pattern | 適用 | 範例 consumer |
+| --- | --- | --- |
+| `main → staging` push + `tag → production` | 有 persistent staging LXC 作 merge 整合環境 | perno（`bigbyte-perno-staging` LXC）|
+| `PR → schema-migration-gate` + `tag → production`（trunk-based，無 staging）| 單 dev LXC + tag-driven prod | TDMS（`fc-supabase-dev` 單 LXC）|
+
+兩種 pattern 都滿足契約 — 重點是 PR 驗證**不**污染 shared writeable env。
+
+## SHOULD
+
+- **SHOULD** PR comment 包含 schema diff 行數 + lint 結果 + 自動產出的 TypeScript types diff
+- **SHOULD** preview env 大小限制（per-host concurrent preview cap）寫進 cookbook，避免 host RAM/disk 爆掉
+- **SHOULD** sanitize script 同步維護「reviewer PII checklist」— 每次 schema 加新欄位，checklist 標註是否 PII + masking strategy
+
+## Capability declaration
+
+`registry/consumers.json` 每個 self-host Supabase consumer **MUST** 宣告：
+
+```jsonc
+"capabilities": {
+  "preview_db": "none | diff-only | compose-stack | lxc-stack",
+  "data_branching": "none | synthetic | sanitized-subset"
+}
+```
+
+`db-preview-env-audit.mjs` 比對宣告 vs 現實 — drift 進 `improvement-digest`，由人判斷是否該升 capability。
+
+## 反模式
+
+- ❌ 「先用 staging 驗 PR，merge 後 staging 跟 prod 同步」：靜默把 staging 變 PR 互踩戰場
+- ❌ 「production dump 直接給 dev 同事」：raw PII 出 prod boundary
+- ❌ 「自建 image 裝 postgresql-anonymizer」：image 升版會破壞、portable 差；用 pgcrypto-based deterministic SQL
+- ❌ 「PR preview 共用 JWT secret」：跨 stack token 互用 = preview env 等於 prod
+- ❌ 「migration 改動只跑 lint、不跑 disposable replay」：lint 只看 SQL 文法、不抓「這條 migration 跟既有 schema 衝突」
+
+## 與其他規約關係
+
+- `rules/core/audit-pattern.md`：D-pattern audit 結果**不**等於 schema diff — 兩者都要做
+- `rules/modules/db-runtime/supabase-self-hosted/postgrest-resilience.md`：preview env 跑起來時也適用同樣的 PostgREST topology / reload channel 規則
+- `plugins/hub-db-schema-supabase/skills/supabase-migration/SKILL.md`：migration 寫作規範（DDL / view security / SECURITY DEFINER 位置）
+
+## 變體
+
+詳細的「self-host Supabase 該選哪一個變體、cookbook 範本怎麼用、image quirk 怎麼繞」見 `rules/modules/db-runtime/supabase-self-hosted/preview-env.md`。Cloud Supabase consumer 規約另寫（暫無 active cloud consumer，留 TD）。

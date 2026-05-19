@@ -13,6 +13,8 @@ description: >-
 Migration 核心規則已定義在 AGENTS.md（Local-First、MCP 禁止 DDL、search_path、不可變原則）。
 本 skill 補充 AGENTS.md 未涵蓋的實作細節。
 
+> **PR-isolated DB preview env / schema diff gate / production data sanitization** 規約見 `rules/core/db-preview-env.md`（capability + safety contract）與 `rules/modules/db-runtime/supabase-self-hosted/preview-env.md`（self-host 實作層 + image trip-wires）。Cookbook 範本：`vendor/snippets/db-preview-env/`。
+
 ## MCP 禁止執行 DDL
 
 **禁止使用以下 MCP 工具執行 DDL（CREATE / ALTER / DROP）：**

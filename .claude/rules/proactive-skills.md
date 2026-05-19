@@ -109,7 +109,7 @@ Local edits will be reverted by the next sync.
 
 正確流程：
 
-1. **首選（DEFAULT）**：tasks.md 仍有 `## 人工檢查` 未勾項 → 主線回「請在**該 change 所在的 worktree root** 執行 `pnpm review:ui` 開本地 GUI 驗收」（**MUST** 給絕對路徑，例 `cd /Users/charles/offline/perno-wt/<slug>`，不要寫成「consumer repo root」這種對 worktree workflow 會誤導的措辭——main worktree 沒有該 change 的 `openspec/changes/<name>/` 與 `screenshots/local/<name>/`，跑了會看不到任何項目），等使用者跑完 GUI 流程回報後繼續
+1. **首選（DEFAULT）**：tasks.md 仍有 `## 人工檢查` 未勾項 → 主線回「從 **main consumer root**（`~/offline/<consumer>/`）執行 `pnpm review:ui` 開本地 GUI 驗收」（review-gui 跑 `git worktree list --porcelain` 自動聚合 main + 所有 worktree 的 change，每條帶 `wt:<slug>` badge；從 worktree 跑反而只看到該 worktree 那條，main + 其他 worktree 的 change 不見），等使用者跑完 GUI 流程回報後繼續
 2. **Fallback**（GUI 不可用時）：截圖 → 逐項展示 → 使用者回覆 OK / 問題 / skip → 依答覆更新 checkbox
 
 GUI 不可用的具體情境（觸發 fallback 的條件）：
@@ -136,9 +136,8 @@ http://127.0.0.1:5174/review/<change-name>
 #### 訊息格式（必須照這個 shape）
 
 ```
-請在該 change 所在的 worktree root 執行 `pnpm review:ui` 開本地 GUI 驗收：
+請在 main consumer root 執行 `pnpm review:ui` 開本地 GUI 驗收（review-gui 會自動聚合 main + 所有 worktree 的 change，**不必 cd**）：
 
-  cd <change-worktree-absolute-path>
   pnpm review:ui
 
 GUI 啟動後直接打開：
@@ -154,19 +153,19 @@ GUI 會自動：
 完成後回報，我繼續下一步。
 ```
 
-#### cwd 必須是 change 所在的 worktree（不是 main repo）
+#### cwd：main consumer root（review-gui 自動聚合 worktree）
 
-per [[worktree-default]] §1，會寫 tracked code 的 spectra-apply 跑在 isolated worktree。Change 的 `openspec/changes/<name>/tasks.md` 與 `screenshots/local/<name>/` 只存在於這個 worktree，main repo（`~/offline/<consumer>/`）的對應目錄看不到。
+review-gui (`vendor/scripts/review-gui.mts:1890` `listSourceRoots`) 從啟動 cwd 跑 `git worktree list --porcelain` 列出 main + 所有 worktree，逐一掃描 `openspec/changes/`，把所有 change 聚合到同一個 UI；每條帶 `wt:<slug>` badge、screenshot API 用 `rootId = wt-<slug>` namespace 不撞。從 **main consumer root** 跑一次就涵蓋所有 worktree 的 change。
 
 **MUST**：
 
-- 給使用者**完整絕對路徑**（從 `git rev-parse --git-dir` 解出 `.git/worktrees/<slug>` 父目錄的工作樹路徑，或從 `node scripts/wt-helper.mjs list --json` 抓對應 slug 的 `path`）
-- 訊息開頭明寫「該 change 所在的 worktree root」，不要寫「consumer repo root」「專案根目錄」這類對 worktree workflow 模糊的措辭
+- 預設使用者從 main consumer root（`~/offline/<consumer>/`）跑 `pnpm review:ui`
+- 訊息**不要**包含 `cd <path>`——增加 user 認知負擔，且 review-gui 從 worktree 跑反而會丟失其他 change
 
 **NEVER**：
 
-- 寫「consumer repo root」當預設措辭——使用者開新 terminal 時常會落在 main worktree，跑了會空畫面
-- 假設使用者已經在對的 cwd——絕對路徑寫進訊息成本極低、收益明顯
+- 寫「請在 worktree root 執行」當預設措辭——除非使用者明確只想 review 該 worktree 一條 change，否則從 worktree 跑會少看 change
+- 假設使用者要 cd 到 worktree——review-gui 設計上就是聚合，不需要 cd
 
 #### 不該列的東西
 
@@ -187,6 +186,69 @@ per [[worktree-default]] §1，會寫 tracked code 的 spectra-apply 跑在 isol
 只有當 `pnpm review:ui` 不可用（consumer 沒這 script / user 明確拒絕 GUI / pure backend 完全無 UI 證據），才轉走 chat-based 逐項展示，那時才會用到 dev server URL 給 user。預設路徑（DEFAULT path）只給 review-gui deep-link。
 
 靜態 screenshot review 是證據，不等同於使用者驗收。詳細 marker / flow / kind 分類見 `manual-review.md` 與其 reference 檔。
+
+### Dev Server Auto-Spawn（agent 自起，不要叫 user cd）
+
+當 review-gui 顯示某 item 的 screenshot 不存在 / outdated，或 user 想開瀏覽器親自操作 sanity check 時，**agent 自己起 dev server**，禁止叫使用者「請 cd 到 worktree 跑 `pnpm dev`」。
+
+行為依該 consumer 的 OAuth port-pin 屬性分流（讀 [`consumer-meta.md`](./consumer-meta.md) snapshot 的 `auth.portPinned` 欄位）：
+
+| Consumer 屬性 | 啟動方式 | 衝突處理 |
+|---|---|---|
+| `auth.portPinned = true` + `dev.leaseMode = strict` | **MUST** 走 [`vendor/scripts/dev-singleton.mjs`](../../vendor/scripts/dev-singleton.mjs) wrapper，鎖在 manifest 宣告的固定 port | cwd-mismatch → **refuse**（需 user 顯式 `--takeover`），參照 [`verification-lease.md`](./verification-lease.md) |
+| `auth.portPinned = true` + `dev.leaseMode = advisory` | 同上，但 advisory | cwd-mismatch → warn + reuse |
+| `auth.portPinned = false`（無 OAuth pin） | 走 scan-free-port 邏輯（下方 MUST） | 一 worktree 一 port，不互搶 |
+| 無 `.claude/consumer-meta.json`（未採用 manifest） | 沿用既有 scan-free-port 邏輯 | 一 worktree 一 port |
+
+#### Pinned consumer path（`auth.portPinned = true`）
+
+- **MUST** 用 `node vendor/scripts/dev-singleton.mjs --consumer-meta .claude/consumer-meta.json --label "<purpose>" -- pnpm dev`
+- **NEVER** 直接 `nuxt dev` / `pnpm dev` 不經 wrapper（會繞過 lease + cwd 檢查）
+- spawn 前先讀 `/tmp/<consumer_id>-verification-lease.json`，若有別人 hold → wrapper 自動印衝突訊息 + exit 1，agent **MUST** 把訊息原樣呈給 user，**NEVER** 自行 `--takeover`
+- 若 consumer 採用 [`vendor/snippets/dev-auth/`](../../vendor/snippets/dev-auth/) cookbook（dev-only signin endpoint，繞過 OAuth），manifest 的 `auth.devSigninEnabled` 變 `true` → port-pin 約束放寬，可改走下方 scan-free-port 邏輯
+
+#### Non-pinned consumer path（`auth.portPinned = false` 或未採用 manifest）
+
+##### MUST
+
+- **解析 sourceRoot**：review-gui `/api/changes` response 已帶該 change 對應的 working tree absolute path（main 或 `wt/<slug>`）；直接用作 `Bash(cwd=...)`
+- **掃 free port**：`lsof -iTCP:<port> -sTCP:LISTEN -t` 從 3001 掃到 3050 找第一個 free 的；**禁止**用 3000（使用者慣用，留給 user 自己的 dev server）
+- **背景啟動**：`Bash(cwd=<sourceRoot>, run_in_background=true)` 跑 `pnpm dev --port <N>`；stderr/stdout 自然導向 background output（不必額外 redirect）
+- **回報 user**：URL（`http://127.0.0.1:<N>`）、background shell ID、以及一條 kill 指令（`lsof -ti:<N> | xargs kill`）
+- **Lifecycle**：一個 worktree 同時只開 1 個 dev server（spawn 前先 `lsof` 該 worktree 對應 port 是否已被自己開過）；不同 worktree 可並行（各自選不同 free port）；session 結束或 user 喊停時主動 kill
+
+##### 訊息格式
+
+```
+Dev server 已啟動於 worktree `<slug>` (port <N>)：
+
+  http://127.0.0.1:<N>
+
+shellId: <bg-id>
+停止：`lsof -ti:<N> | xargs kill`
+```
+
+#### Consumer 政策參照
+
+consumer 若有 local rule 明確禁止 agent 自起（base infra 共享風險、上游頻寬限制等），fallback 給 user 一條一行指令：
+
+```
+請執行（agent 因 `<local-rule-path>` 不能自起）：
+
+  ( cd <sourceRoot> && pnpm dev --port <N> )
+```
+
+例外查詢：consumer `.claude/rules/local/` 下若有 `no-auto-dev-server*.md` / `dev-server-policy*.md` 之類檔案，啟動前先讀過。
+
+#### Worktree 環境檔 bootstrap
+
+開新 worktree 後，第一次 `dev:agent` 通常會因 gitignored env file（`.env.local`、`.env.bigbyte` 等）缺漏失敗。**MUST** 在 worktree 啟動前跑：
+
+```bash
+node vendor/scripts/wt-env-bootstrap.mjs --consumer-meta .claude/consumer-meta.json
+```
+
+它會依 `dev.envSyncPolicy.filesToCopy` 從 main worktree 拷貝必要檔。Consumer 自家 wt-helper 應該在 `worktree add` 後自動 invoke 一次。
 
 ## Review Tiers
 

@@ -40,11 +40,19 @@
  * or already inside a session worktree.
  */
 
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 import { existsSync, readFileSync, realpathSync } from 'node:fs'
 import { basename, dirname, join, resolve } from 'node:path'
 import { stdin, stdout } from 'node:process'
 import { createInterface } from 'node:readline/promises'
+import {
+  dropClaim,
+  findClaimByWorktree,
+  genSessionId,
+  readActiveClaims,
+  writeClaim,
+} from './claim-helper.mjs'
+import { isLockedProjectionPath } from './locked-projection.mjs'
 
 function git(args, opts = {}) {
   const out = execFileSync('git', args, {
@@ -143,6 +151,151 @@ async function prompt(question) {
   }
 }
 
+// Paths under clade-managed projection control are matched by
+// LOCKED_PROJECTION_RE / isLockedProjectionPath imported from
+// `./locked-projection.mjs` (single source of truth shared with the clade
+// _validate-manifests.mjs cross-check — see Phase 6 / closes TD-018).
+
+/**
+ * Simple glob matcher for claim expected_paths. Supports:
+ *   - exact path match
+ *   - "<prefix>/**" → recursive prefix match (any depth)
+ *   - "<prefix>/*"  → single-level match (one segment after prefix)
+ */
+function matchClaimGlob(path, pattern) {
+  if (pattern === path) return true
+  if (pattern.endsWith('/**')) {
+    const prefix = pattern.slice(0, -3)
+    return path === prefix || path.startsWith(`${prefix}/`)
+  }
+  if (pattern.endsWith('/*')) {
+    const prefix = pattern.slice(0, -2)
+    if (!path.startsWith(`${prefix}/`)) return false
+    return !path.slice(prefix.length + 1).includes('/')
+  }
+  return false
+}
+
+/**
+ * Classify a list of dirty paths against (1) LOCKED projection layer,
+ * (2) other-session active claims, (3) everything else (user code or
+ * orphan — caller decides downstream).
+ *
+ * `excludeClaim` is the claim attributed to the caller's own session
+ * (typically the merge-back's matching worktree); its expected_paths are
+ * NOT classified as "other session".
+ */
+function formatActiveSessionsForError(claims) {
+  if (claims.length === 0) return '  (none)'
+  return claims
+    .map(
+      (c) =>
+        `  - ${c.session_id} [${c.agent}] change=${c.change_id ?? '(none)'} branch=${c.branch ?? '(none)'} paths=${(c.expected_paths ?? []).length}`,
+    )
+    .join('\n')
+}
+
+function classifyDirtyPaths(consumerRoot, paths, { excludeClaim = null } = {}) {
+  const locked = []
+  const otherSession = []
+  const other = []
+  let activeClaims
+  try {
+    activeClaims = readActiveClaims(consumerRoot).filter(
+      (c) => !excludeClaim || c.session_id !== excludeClaim.session_id,
+    )
+  } catch {
+    activeClaims = []
+  }
+  for (const p of paths) {
+    if (isLockedProjectionPath(p)) {
+      locked.push({ path: p })
+      continue
+    }
+    const matchedClaim = activeClaims.find((c) =>
+      (c.expected_paths ?? []).some((pat) => matchClaimGlob(p, pat)),
+    )
+    if (matchedClaim) {
+      otherSession.push({
+        path: p,
+        session_id: matchedClaim.session_id,
+        change_id: matchedClaim.change_id,
+        branch: matchedClaim.branch,
+      })
+      continue
+    }
+    other.push({ path: p })
+  }
+  return { locked, otherSession, other }
+}
+
+// Whitelist of consumer-local paths where merge-back may auto-commit oxfmt
+// drift without user confirmation. These files are NOT in LOCKED_PROJECTION_RE
+// (they are consumer-managed, not clade-projection), but they receive
+// auto-format passes from hooks and routinely produce zero-semantic drift
+// inside worktrees. Adding a path here is a deliberate trust decision: any
+// diff against HEAD that can be reproduced by `oxfmt(HEAD-version)` is
+// guaranteed to be format-only and safe to land via auto-commit.
+const OXFMT_AUTO_PATHS = new Set(['.claude/settings.json'])
+
+// Returns oxfmt's stdout when piping `text` through `oxfmt --stdin-filepath`,
+// or null if oxfmt is unavailable / errored. Tries direct `oxfmt` first, then
+// `pnpm exec oxfmt` as fallback. `cwd` matters because oxfmt resolves its
+// config (vite.config.ts / .oxfmtrc) from there — pass wtPath so config
+// matches what the worktree's hook would have applied.
+function runOxfmtStdin(text, filePath, cwd) {
+  const attempts = [
+    { cmd: 'oxfmt', args: [`--stdin-filepath=${filePath}`] },
+    { cmd: 'pnpm', args: ['exec', 'oxfmt', `--stdin-filepath=${filePath}`] },
+  ]
+  for (const { cmd, args } of attempts) {
+    try {
+      const r = spawnSync(cmd, args, {
+        input: text,
+        encoding: 'utf8',
+        cwd,
+        stdio: ['pipe', 'pipe', 'pipe'],
+      })
+      if (r.status === 0 && typeof r.stdout === 'string') return r.stdout
+    } catch {}
+  }
+  return null
+}
+
+// Whitelist gate for the auto-commit branch in cmdMergeBack. Returns true iff:
+//   1. filePath is in OXFMT_AUTO_PATHS, AND
+//   2. `oxfmt(HEAD:filePath)` byte-equals the current working-tree content
+//      (modulo trailing-newline normalization).
+// Condition 2 mathematically excludes semantic drift: if running oxfmt on
+// HEAD reproduces the current file, the only difference between HEAD and
+// working tree is format normalization. False on any failure path (file
+// missing in HEAD, oxfmt unavailable, content differs) → caller falls back
+// to the existing STOP + 4-option guidance.
+function isFormatOnlyDrift(wtPath, filePath) {
+  if (!OXFMT_AUTO_PATHS.has(filePath)) return false
+  let headText
+  try {
+    headText = execFileSync('git', ['show', `HEAD:${filePath}`], {
+      cwd: wtPath,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+  } catch {
+    return false
+  }
+  let currentText
+  try {
+    currentText = readFileSync(join(wtPath, filePath), 'utf8')
+  } catch {
+    return false
+  }
+  const formatted = runOxfmtStdin(headText, filePath, wtPath)
+  if (formatted === null) return false
+  return stripTrailingNewlines(formatted) === stripTrailingNewlines(currentText)
+}
+
+const stripTrailingNewlines = (s) => s.replace(/\n+$/, '')
+
 async function cmdAdd(slug, opts = {}) {
   if (!slug) {
     throw new Error(
@@ -173,6 +326,10 @@ async function cmdAdd(slug, opts = {}) {
   // Unmerged paths are triaged by classifyUnmergedSafety: stale UU (no
   // markers + no in-progress op state) auto-resolves via `git add`; real
   // conflicts or mid-operation state still stop with diagnostics.
+  // Pre-gen session_id so the pre-fork baseline stash carries it in the name;
+  // the same id is later passed to writeClaim() so stash + claim share identity.
+  // Phase 7 (Q8): stash-reconcile namespace tags map back to a specific session.
+  const preGenSessionId = genSessionId()
   let pendingStashName = null
   let pendingBaselineRef = null
   if (opts.precheckBaseline !== undefined) {
@@ -208,6 +365,37 @@ async function cmdAdd(slug, opts = {}) {
     }
     const dirtyCount = dirty.modified.length + dirty.untracked.length
     if (dirtyCount > 0) {
+      // Phase 3 (Q5) audit: classify dirty paths so user sees ownership
+      // before strategy selection. Other-session paths force STOP — we don't
+      // know how to safely fork on top of someone else's WIP.
+      const allDirtyPaths = [
+        ...dirty.modified.map((m) => m.path),
+        ...dirty.untracked.map((u) => u.path),
+      ]
+      const preForkCls = classifyDirtyPaths(consumerRoot, allDirtyPaths)
+      if (preForkCls.otherSession.length > 0) {
+        const preview = preForkCls.otherSession
+          .slice(0, 10)
+          .map(
+            (o) =>
+              `  ${o.path}  ← session ${o.session_id} / change ${o.change_id ?? '(none)'} / branch ${o.branch ?? '(none)'}`,
+          )
+          .join('\n')
+        const more =
+          preForkCls.otherSession.length > 10
+            ? `\n  ... and ${preForkCls.otherSession.length - 10} more`
+            : ''
+        throw new Error(
+          `Pre-fork baseline STOP: ${preForkCls.otherSession.length} dirty path(s) belong to another active session:\n` +
+            preview +
+            more +
+            `\n\nForking on top of another session's WIP would mix unrelated work into the new branch's baseline. ` +
+            `Wait for the other session to merge-back or coordinate before re-running.\n\n` +
+            `Override only if the other claim is stale:\n` +
+            `  node scripts/claim-helper.mjs drop <session-id>\n` +
+            `  node scripts/wt-helper.mjs add ${cleanSlug} ...`,
+        )
+      }
       const strategy = opts.baselineStrategy || 'warn'
       if (strategy === 'commit') {
         const scopePaths = String(opts.baselineScopePaths || '')
@@ -234,7 +422,8 @@ async function cmdAdd(slug, opts = {}) {
         gitSelectiveCommit(consumerRoot, scopePaths, message)
       } else if (strategy === 'stash') {
         const iso = new Date().toISOString().replace(/[:.]/g, '-')
-        const stashName = opts.baselineStashName || `wt-baseline/${cleanSlug}/${iso}`
+        const stashName =
+          opts.baselineStashName || `wt-baseline/${cleanSlug}/${preGenSessionId}/${iso}`
         const baselineRef = `refs/wt-baseline/${cleanSlug}/${iso}`
         console.log(`Pre-fork baseline: stash ${dirtyCount} file(s) as '${stashName}'`)
         git(['stash', 'push', '-u', '-m', stashName], {
@@ -296,18 +485,142 @@ async function cmdAdd(slug, opts = {}) {
   if (pendingStashName) {
     try {
       git(['stash', 'apply', 'stash@{0}'], { cwd: wtPath, stdio: 'inherit' })
+      // Reset worktree index so the baseline files land as unstaged modifications
+      // (or untracked, for -u stash entries). git-stash-apply restores the stash's
+      // staged state, including untracked files brought in via `-u`. Without this
+      // reset, a subsequent `git add -- <single-file>` won't unstage the baseline
+      // files, leading to scope leak in the next commit (TDMS 2026-05-18 incident:
+      // fix-devlogin-loopback commit picked up 46 files / 7472 insertions).
+      // See pitfall-wt-helper-baseline-staged-index.
+      git(['reset', 'HEAD', '--'], { cwd: wtPath, stdio: 'inherit' })
       const stashSha = git(['rev-parse', 'stash@{0}'], { cwd: consumerRoot })
       git(['update-ref', pendingBaselineRef, stashSha], { cwd: consumerRoot })
       git(['stash', 'drop', 'stash@{0}'], { cwd: consumerRoot, stdio: 'inherit' })
       console.log(
         `Pre-fork baseline: stash '${pendingStashName}' applied to worktree; pinned as '${pendingBaselineRef}' (permanently reachable — use 'wt-helper rescue' to inspect/restore).`,
       )
+
+      // Audit baseline content (BOTH untracked tree AND tracked modifications) for
+      // non-LOCKED-projection paths. These are likely in-flight feature code (e.g. a
+      // spectra change in deferred-to-user phase). If merge-back later fails with
+      // conflicts and the agent goes "Path X" (reset worktree branch to subagent commit
+      // + squash + cleanup), these files vanish from main's working tree silently —
+      // main HEAD never had them, so typecheck/runtime don't catch it.
+      //
+      // Two scan targets:
+      //   • Untracked tree from `<ref>^3` parent (git-stash -u packs untracked into ^3).
+      //   • Tracked mods from `<ref>^1..<ref>` diff (^1 = HEAD-at-stash-time; the diff
+      //     surfaces files modified in working tree at stash time, which the stash
+      //     commit carries forward).
+      //
+      // See pitfall-pre-fork-baseline-hides-in-flight-feature (2026-05-18 TDMS
+      // fix-vending-dispatch-dialog incident, 53-file vending feature stack lost from
+      // main). Original audit only inspected `^3` — tracked-file feature drift slipped
+      // through silently.
+      try {
+        const baselinePaths = new Set()
+
+        try {
+          const untrackedTree = git(['ls-tree', '-r', `${pendingBaselineRef}^3`, '--name-only'], {
+            cwd: consumerRoot,
+          })
+          untrackedTree
+            .split('\n')
+            .filter(Boolean)
+            .forEach((p) => baselinePaths.add(p))
+        } catch (untrackedErr) {
+          // ^3 parent may not exist if stash had no untracked content (`-u` saw no
+          // untracked files). Silently swallow benign "Not a valid object name" /
+          // "unknown revision"; surface other errors.
+          const msg = untrackedErr?.message ?? String(untrackedErr)
+          if (!/Not a valid object name|unknown revision/.test(msg)) {
+            console.error(`note: baseline untracked-tree scan skipped: ${msg}`)
+          }
+        }
+
+        try {
+          const trackedDiff = git(
+            ['diff', '--name-only', `${pendingBaselineRef}^1`, pendingBaselineRef],
+            { cwd: consumerRoot },
+          )
+          trackedDiff
+            .split('\n')
+            .filter(Boolean)
+            .forEach((p) => baselinePaths.add(p))
+        } catch (trackedErr) {
+          // ^1 parent should always exist (the HEAD at stash-creation time), but tolerate
+          // edge cases (e.g. shallow clone, dangling ref) and surface non-benign errors.
+          const msg = trackedErr?.message ?? String(trackedErr)
+          if (!/Not a valid object name|unknown revision/.test(msg)) {
+            console.error(`note: baseline tracked-diff scan skipped: ${msg}`)
+          }
+        }
+
+        const nonProjection = [...baselinePaths].filter((p) => !isLockedProjectionPath(p))
+        if (nonProjection.length > 0) {
+          const sample = nonProjection.slice(0, 5).join(', ')
+          const more = nonProjection.length > 5 ? `, ... +${nonProjection.length - 5} more` : ''
+          console.warn('')
+          console.warn(
+            `⚠️  Pre-fork baseline contains ${nonProjection.length} non-LOCKED-projection file(s) (untracked + tracked-modified).`,
+          )
+          console.warn(`    These may be in-flight feature code (not just clade projection drift).`)
+          console.warn(`    Sample: ${sample}${more}`)
+          console.warn(`    If merge-back later fails with overwrite / conflict errors:`)
+          console.warn(
+            `      • NEVER run 'git reset --hard <subagent-commit>' (Path X) before auditing baseline.`,
+          )
+          console.warn(
+            `      • Audit untracked: git ls-tree -r ${pendingBaselineRef}^3 --name-only`,
+          )
+          console.warn(
+            `      • Audit tracked mods: git diff --name-only ${pendingBaselineRef}^1 ${pendingBaselineRef}`,
+          )
+          console.warn(
+            `      • Recovery (untracked): git checkout ${pendingBaselineRef}^3 -- <paths>`,
+          )
+          console.warn(
+            `      • Recovery (tracked mods): git checkout ${pendingBaselineRef} -- <paths>`,
+          )
+          console.warn(
+            `    See pitfall-pre-fork-baseline-hides-in-flight-feature for full root cause.`,
+          )
+          console.warn('')
+        }
+      } catch (auditErr) {
+        // Outer guard: if both scans throw unexpectedly, surface but never block.
+        const msg = auditErr?.message ?? String(auditErr)
+        console.error(`note: baseline content audit skipped: ${msg}`)
+      }
     } catch (e) {
       console.error(
         `warn: stash apply to worktree failed; stash '${pendingStashName}' preserved in 'git stash list' for manual recovery.`,
       )
       console.error(`error detail: ${e?.message ?? e}`)
     }
+  }
+
+  // Write session claim so publish / propagate / /commit / other wt-helper
+  // invocations can see this worktree is active. expected_paths starts empty;
+  // SessionStart heartbeat hook refreshes; cleanup / successful merge-back
+  // drops the claim. See rules/core/session-claims.md.
+  try {
+    const expectedPaths = String(opts.expectedPaths ?? '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean)
+    const claim = writeClaim(consumerRoot, {
+      session_id: preGenSessionId,
+      agent: opts.agent ?? 'claude-code',
+      consumer: basename(consumerRoot),
+      worktree_path: wtPath,
+      branch,
+      change_id: cleanSlug,
+      expected_paths: expectedPaths,
+    })
+    console.log(`  Claim: ${claim.session_id} (.clade/claims/${claim.session_id}.json)`)
+  } catch (e) {
+    console.error(`note: claim write skipped: ${e.message ?? e}`)
   }
 
   console.log('')
@@ -534,12 +847,19 @@ export function classifyUnmergedSafety(consumerRoot, conflicted) {
 
 // Stage a specific path list + commit — never `git add -A`, which would catch
 // cross-session WIP. Used by pre-fork baseline guard's `commit` strategy.
+//
+// --no-verify: baseline pre-fork sync is wt-helper-internal mechanic, not a
+// feature commit. Message is hardcoded (`baseline: <change> pre-fork sync`),
+// so any commitlint config requiring emoji-conventional / scopes / specific
+// types (e.g. TDMS) will reject it. Skipping pre-commit + commit-msg hooks is
+// the right call: no user content to lint, no test to run, no fmt to apply
+// beyond what was already in working tree.
 function gitSelectiveCommit(consumerRoot, scopePaths, message) {
   if (!Array.isArray(scopePaths) || scopePaths.length === 0) {
     throw new Error('gitSelectiveCommit: scopePaths must be a non-empty array')
   }
   git(['add', '--', ...scopePaths], { cwd: consumerRoot, stdio: 'inherit' })
-  git(['commit', '-m', message], { cwd: consumerRoot, stdio: 'inherit' })
+  git(['commit', '--no-verify', '-m', message], { cwd: consumerRoot, stdio: 'inherit' })
 }
 
 // Detect files in main's working tree that would block `git merge --squash <branch>`:
@@ -635,6 +955,94 @@ function detectUnlandedFiles(consumerRoot, branchName) {
   return unlanded
 }
 
+// Merge main into the session worktree branch before merge-back squash, so
+// conflicts (if any) surface in the worktree's working tree rather than main's.
+// Legacy merge-back ran `git merge --squash <branch>` at main, contaminating
+// main on conflict (recovery required `merge --abort` + stash pop dance and
+// repeatedly destabilized publish/propagate flows). Pre-sync inverts direction:
+// `git merge origin/main` inside <wtPath> isolates conflict resolution there.
+//
+// Strategy: merge (not rebase). Final merge-back is squash so wt commit-chain
+// shape is irrelevant; rebase would force per-commit replay on multi-phase wt
+// (e.g. 9-commit feature branches), strictly more painful than one merge pass.
+//
+// Returns { synced: false, behind: 0 } if wt is up-to-date with target.
+// Returns { synced: true, behind: N } on clean merge (creates a discrete
+// `wt: pre-sync main into <branch>` commit on the wt branch).
+// Throws with structured guidance on conflict — does NOT auto-abort; leaves wt
+// in unmerged state so user can inspect markers, resolve, commit, re-run.
+export function syncWorktreeWithMain(wtPath, branchName, slug) {
+  let targetRef = 'main'
+  let hasOriginMain = false
+  try {
+    git(['rev-parse', '--verify', 'origin/main'], { cwd: wtPath })
+    hasOriginMain = true
+  } catch {}
+
+  if (hasOriginMain) {
+    try {
+      git(['fetch', 'origin', 'main'], { cwd: wtPath, stdio: 'inherit' })
+      targetRef = 'origin/main'
+    } catch (e) {
+      console.error(
+        `warn: pre-sync fetch origin main failed (${e.message ?? e}); falling back to local main`,
+      )
+    }
+  }
+
+  let behind = 0
+  try {
+    const out = git(['rev-list', '--count', `${branchName}..${targetRef}`], { cwd: wtPath })
+    behind = parseInt(out, 10) || 0
+  } catch {
+    return { synced: false, behind: 0 }
+  }
+
+  if (behind === 0) {
+    return { synced: false, behind: 0 }
+  }
+
+  const commitMsg = `wt: pre-sync main into ${branchName}`
+  let mergeError = null
+  try {
+    git(['merge', '--no-ff', '-m', commitMsg, targetRef], { cwd: wtPath, stdio: 'inherit' })
+  } catch (e) {
+    mergeError = e
+  }
+
+  const statusRaw = git(['status', '--porcelain'], { cwd: wtPath })
+  const conflicted = statusRaw
+    .split('\n')
+    .filter((line) => /^(UU|AA|DD|AU|UA|UD|DU) /.test(line))
+    .map((line) => line.slice(3).trim())
+
+  if (conflicted.length > 0 || mergeError) {
+    const preview = conflicted
+      .slice(0, 10)
+      .map((f) => `  ${f}`)
+      .join('\n')
+    const more = conflicted.length > 10 ? `\n  ... and ${conflicted.length - 10} more` : ''
+    const detail =
+      conflicted.length > 0
+        ? `${conflicted.length} file(s) hit conflict during pre-sync:\n${preview}${more}`
+        : `pre-sync merge failed: ${mergeError?.message ?? mergeError}`
+    throw new Error(
+      `merge-back pre-sync blocked: ${detail}\n\n` +
+        `Worktree '${wtPath}' is left in unmerged state — main's working tree was NOT touched.\n` +
+        `Resolution — resolve in worktree, then re-run merge-back:\n` +
+        `  cd ${wtPath}\n` +
+        `  # resolve conflict markers, git add <files>\n` +
+        `  git commit --no-edit       # finalize the pre-sync merge\n` +
+        `  cd -\n` +
+        `  node scripts/wt-helper.mjs merge-back ${slug}\n\n` +
+        `Override (NOT recommended): re-run with --skip-pre-sync to attempt squash directly\n` +
+        `(legacy path — conflicts would surface in main's working tree).`,
+    )
+  }
+
+  return { synced: true, behind }
+}
+
 async function cmdCleanup(slug, opts) {
   if (!slug)
     throw new Error(
@@ -721,6 +1129,15 @@ async function cmdCleanup(slug, opts) {
   } catch {
     console.error(`warn: branch ${branchName} could not be deleted; keep manually`)
   }
+  try {
+    const claim = findClaimByWorktree(consumerRoot, target.path)
+    if (claim) {
+      dropClaim(consumerRoot, claim.session_id)
+      console.log(`Dropped claim ${claim.session_id}`)
+    }
+  } catch {
+    // best-effort claim cleanup; never block worktree removal
+  }
   console.log(`Removed ${target.path}`)
 }
 
@@ -730,7 +1147,7 @@ async function cmdCleanup(slug, opts) {
 async function cmdMergeBack(slug, opts = {}) {
   if (!slug) {
     throw new Error(
-      'Usage: wt-helper merge-back <slug> [--dry-run] [--auto-stash] [--include-worktree-wip] [--no-cleanup] [--noop-if-missing]',
+      'Usage: wt-helper merge-back <slug> [--dry-run] [--auto-stash] [--include-worktree-wip] [--no-cleanup] [--noop-if-missing] [--skip-pre-sync]',
     )
   }
   const cleanSlug = makeSlugSafe(slug)
@@ -756,27 +1173,33 @@ async function cmdMergeBack(slug, opts = {}) {
   // this check, `git merge --squash` silently drops worktree WIP, then cleanup
   // permanently destroys the worktree → WIP gone with no recovery path.
   //
-  // Filter clade-managed projection paths (.agents/, .codex/, hub.json,
-  // wt-helper.mjs itself): those are propagate residue, not user WIP, and they
-  // re-materialize on next propagate. User code (server/, src/, app/, ...)
-  // and untracked files are real WIP and must be committed before squash.
-  const CLADE_MANAGED_PREFIXES = ['.agents/', '.codex/']
-  const CLADE_MANAGED_EXACT = new Set([
-    '.claude/hub.json',
-    '.claude/.hub-state.json',
-    'scripts/wt-helper.mjs',
-  ])
-  const isCladeManagedPath = (p) =>
-    CLADE_MANAGED_PREFIXES.some((pre) => p.startsWith(pre)) || CLADE_MANAGED_EXACT.has(p)
+  // Filter clade-managed projection paths via the shared LOCKED_PROJECTION
+  // regex (kept in sync with hub:bootstrap auto-sync range — see top-of-file
+  // constant). Those are propagate residue, not user WIP, and re-materialize
+  // on next bootstrap. User code (server/, src/, app/, ...) and untracked
+  // non-projection files are real WIP and must be committed before squash.
   const wtDirty = detectUncommittedWorktreeFiles(target.path)
-  const wtUserDirty = [
+  const wtUserDirtyAll = [
     ...wtDirty.modified
-      .filter((m) => !isCladeManagedPath(m.path))
+      .filter((m) => !isLockedProjectionPath(m.path))
       .map((m) => ({ ...m, kind: 'modified' })),
     ...wtDirty.untracked
-      .filter((u) => !isCladeManagedPath(u.path))
+      .filter((u) => !isLockedProjectionPath(u.path))
       .map((u) => ({ ...u, status: '??', kind: 'untracked' })),
   ]
+  // Partition: OXFMT_AUTO_PATHS entries whose drift is purely oxfmt
+  // normalization of the HEAD version are auto-commit candidates (no user
+  // prompt). Everything else stays as semantic user WIP and falls through to
+  // the existing STOP gate.
+  const wtFmtDrift = []
+  const wtUserDirty = []
+  for (const d of wtUserDirtyAll) {
+    if (d.kind === 'modified' && isFormatOnlyDrift(target.path, d.path)) {
+      wtFmtDrift.push(d)
+    } else {
+      wtUserDirty.push(d)
+    }
+  }
 
   // Surface pinned pre-fork baselines for this slug so the user knows what's
   // available for rescue if cleanup later detects uncommitted-baseline loss
@@ -788,6 +1211,14 @@ async function cmdMergeBack(slug, opts = {}) {
     })
     baselineRefs = raw.split('\n').filter(Boolean)
   } catch {}
+
+  let preSyncBehind = 0
+  if (!opts.skipPreSync) {
+    try {
+      const out = git(['rev-list', '--count', `${branchName}..main`], { cwd: target.path })
+      preSyncBehind = parseInt(out, 10) || 0
+    } catch {}
+  }
 
   if (opts.dryRun) {
     console.log(`merge-back dry-run for ${cleanSlug}:`)
@@ -807,8 +1238,20 @@ async function cmdMergeBack(slug, opts = {}) {
     if (wtUserDirty.length > 20) {
       console.log(`    ... and ${wtUserDirty.length - 20} more`)
     }
+    console.log(`  Fmt-only drift:  ${wtFmtDrift.length} (would auto-commit on real run)`)
+    for (const d of wtFmtDrift.slice(0, 20)) {
+      console.log(`    ${(d.status ?? '??').padEnd(3)} ${d.path}`)
+    }
+    if (wtFmtDrift.length > 20) {
+      console.log(`    ... and ${wtFmtDrift.length - 20} more`)
+    }
     console.log(`  Pinned baselines: ${baselineRefs.length}`)
     for (const r of baselineRefs) console.log(`    ${r}`)
+    if (opts.skipPreSync) {
+      console.log(`  Pre-sync:        SKIPPED (--skip-pre-sync)`)
+    } else {
+      console.log(`  Pre-sync behind: ${preSyncBehind} commit(s) on main`)
+    }
     if (wtUserDirty.length > 0) {
       console.log(
         `  Action: worktree has uncommitted WIP; without --include-worktree-wip, merge-back would refuse.`,
@@ -817,10 +1260,23 @@ async function cmdMergeBack(slug, opts = {}) {
       console.log(
         `  Action: blockers detected; without --auto-stash, merge-back would fail at pre-flight.`,
       )
+    } else if (preSyncBehind > 0 && !opts.skipPreSync) {
+      console.log(
+        `  Action: would merge origin/main into wt (${preSyncBehind} commit(s)), then squash + cleanup. Conflicts (if any) stay in wt.`,
+      )
     } else {
       console.log(`  Action: would squash + cleanup cleanly.`)
     }
-    return { absorbed: false, slug: cleanSlug, dryRun: true, blockers, wtUserDirty, baselineRefs }
+    return {
+      absorbed: false,
+      slug: cleanSlug,
+      dryRun: true,
+      blockers,
+      wtUserDirty,
+      wtFmtDrift,
+      baselineRefs,
+      preSyncBehind,
+    }
   }
 
   if (baselineRefs.length > 0) {
@@ -829,22 +1285,61 @@ async function cmdMergeBack(slug, opts = {}) {
     console.log(
       `  → if cleanup later detects uncommitted files, inspect via 'wt-helper rescue --show <ref>'.`,
     )
+    console.log(
+      `  → redundant 'wt-baseline/${cleanSlug}/<ISO>' stash entries are safe to drop via 'node scripts/stash-reconcile.mjs --slug ${cleanSlug} --interactive'.`,
+    )
     console.log('')
+  }
+
+  // Auto-commit format-only drift on OXFMT_AUTO_PATHS files (no user prompt).
+  // Branch runs BEFORE the wtUserDirty STOP gate, so mixed cases (format-only
+  // drift on settings.json + real WIP on server/foo.ts) auto-land the trivial
+  // bit first, then STOP cleanly on the remaining semantic edits. Uses
+  // --no-verify to skip re-running the same format hooks that produced the
+  // drift in the first place.
+  if (wtFmtDrift.length > 0) {
+    const paths = wtFmtDrift.map((d) => d.path)
+    try {
+      git(['add', '--', ...paths], { cwd: target.path })
+      const msg = `wt: ${cleanSlug} — oxfmt drift on ${paths.join(', ')}`
+      git(['commit', '--no-verify', '-m', msg], { cwd: target.path, stdio: 'inherit' })
+      console.log(
+        `merge-back: auto-committed ${paths.length} format-only drift file(s) on ${branchName} (oxfmt(HEAD) === current)`,
+      )
+    } catch (e) {
+      throw new Error(
+        `merge-back: format-only auto-commit failed: ${e.message ?? e}\n` +
+          `Affected paths: ${paths.join(', ')}\n` +
+          `Resolution — commit manually in worktree, then re-run merge-back.`,
+        { cause: e },
+      )
+    }
   }
 
   // Act on worktree WIP detection from pre-flight: either auto-amend (opt-in)
   // or refuse with clear remediation steps. See computation above for rationale.
+  //
+  // Helper-internal amend uses --no-verify per worktree-default.md §5: the wt:
+  // prefix on HEAD commit message fails commitlint emoji-conventional with
+  // subject-empty. Main-line manual amend (the else-branch remediation below)
+  // keeps the --no-verify-free form because commit.md hard rule forbids it for
+  // main-line user actions; users are expected to write a non-wt: subject.
   if (wtUserDirty.length > 0) {
     if (opts.includeWorktreeWip) {
       const paths = wtUserDirty.map((d) => d.path)
       try {
         git(['add', '--', ...paths], { cwd: target.path })
-        git(['commit', '--amend', '--no-edit'], { cwd: target.path, stdio: 'inherit' })
+        git(['commit', '--amend', '--no-edit', '--no-verify'], {
+          cwd: target.path,
+          stdio: 'inherit',
+        })
         console.log(
           `merge-back: --include-worktree-wip auto-amended ${paths.length} dirty file(s) into ${branchName} HEAD`,
         )
       } catch (e) {
-        throw new Error(`merge-back: --include-worktree-wip auto-amend failed: ${e.message ?? e}`)
+        throw new Error(`merge-back: --include-worktree-wip auto-amend failed: ${e.message ?? e}`, {
+          cause: e,
+        })
       }
     } else {
       const preview = wtUserDirty
@@ -870,8 +1365,61 @@ async function cmdMergeBack(slug, opts = {}) {
     }
   }
 
+  if (!opts.skipPreSync) {
+    const syncResult = syncWorktreeWithMain(target.path, branchName, cleanSlug)
+    if (syncResult.synced) {
+      console.log(
+        `merge-back: pre-synced wt with main (${syncResult.behind} commit(s) behind, merge commit: 'wt: pre-sync main into ${branchName}')`,
+      )
+    }
+  }
+
   let stashRef = null
   if (blockers.length > 0) {
+    // Classify blockers — if any belong to ANOTHER active session's claim,
+    // stop with explicit ownership diagnosis rather than silently stashing
+    // their WIP. This is Phase 3 (Q5) audit: claim-aware pre-merge-back gate.
+    // LOCKED projection blockers fall through to existing auto-stash path
+    // (they are clade-managed, safe to stash). Everything else is left for
+    // user decision via the existing --auto-stash flow.
+    const myClaim = findClaimByWorktree(consumerRoot, target.path)
+    const cls = classifyDirtyPaths(
+      consumerRoot,
+      blockers.map((b) => b.path),
+      { excludeClaim: myClaim },
+    )
+    if (cls.otherSession.length > 0) {
+      const preview = cls.otherSession
+        .slice(0, 10)
+        .map(
+          (o) =>
+            `  ${o.path}  ← session ${o.session_id} / change ${o.change_id ?? '(none)'} / branch ${o.branch ?? '(none)'}`,
+        )
+        .join('\n')
+      const more =
+        cls.otherSession.length > 10 ? `\n  ... and ${cls.otherSession.length - 10} more` : ''
+      const claims = readActiveClaims(consumerRoot).filter(
+        (c) => !myClaim || c.session_id !== myClaim.session_id,
+      )
+      throw new Error(
+        `merge-back STOP: ${cls.otherSession.length} blocker(s) overlap with another active session's claim:\n` +
+          preview +
+          more +
+          `\n\n` +
+          `These paths belong to a DIFFERENT session's worktree. Stashing them ` +
+          `would silently swallow that session's WIP — wt-helper refuses.\n\n` +
+          `Active sessions on this consumer (excluding self):\n` +
+          formatActiveSessionsForError(claims) +
+          `\n\nResolution paths:\n` +
+          `  1. Let the other session finish (merge-back its own work) first, then re-run.\n` +
+          `  2. If the other claim is stale (session no longer running):\n` +
+          `       node scripts/claim-helper.mjs drop <session-id>\n` +
+          `     then re-run merge-back.\n` +
+          `  3. If the path overlap is intentional cross-session collaboration:\n` +
+          `     coordinate manually (commit / stash by the other session) before re-running.`,
+      )
+    }
+
     if (!opts.autoStash) {
       const preview = blockers
         .slice(0, 10)
@@ -882,19 +1430,42 @@ async function cmdMergeBack(slug, opts = {}) {
         `merge-back blocked: ${blockers.length} file(s) in main's working tree would be overwritten by squash:\n` +
           preview +
           more +
-          `\n\nRe-run with --auto-stash to stash these as 'wt-merge-block/${cleanSlug}/<ISO>'\n` +
-          `for later reconciliation via \`node scripts/stash-reconcile.mjs\`.`,
+          `\n\nRe-run with --auto-stash to bulk-stash main's dirty state as 'wt-merge-block/${cleanSlug}/<ISO>'\n` +
+          `(blockers + any unrelated dirty paths); reconcile later via \`node scripts/stash-reconcile.mjs\`.`,
       )
     }
     const isoTs = new Date().toISOString().replace(/[:.]/g, '-')
-    const stashMsg = `wt-merge-block/${cleanSlug}/${isoTs}`
-    const blockerPaths = blockers.map((b) => b.path)
+    // Phase 7 (Q8): stash namespace carries the merge-back's session_id (from
+    // its worktree claim) so stash-reconcile can attribute a stash back to a
+    // specific session. Fallback to slug-only when no claim found (warn so
+    // path-detection-only attribution is visible).
+    let mergeBackClaim = null
     try {
-      git(['stash', 'push', '-u', '-m', stashMsg, '--', ...blockerPaths], { cwd: consumerRoot })
+      mergeBackClaim = findClaimByWorktree(consumerRoot, target.path)
+    } catch {}
+    const sessionPart = mergeBackClaim?.session_id ? `/${mergeBackClaim.session_id}` : ''
+    if (!mergeBackClaim) {
+      console.error(
+        `note: no .clade/claims/ entry for worktree ${target.path} — stash falls back to slug-only namespace`,
+      )
+    }
+    const stashMsg = `wt-merge-block/${cleanSlug}${sessionPart}/${isoTs}`
+    try {
+      // Bulk stash (no pathspec) — matches cmdAdd's baseline-stash strategy.
+      // Previously this used `git stash push -u -m <msg> -- <blocker-paths>`,
+      // but `git stash push -u` with pathspec hits a scope-leak bug on
+      // git 2.50.1 (TDMS 2026-05-18: 22 blockers requested → 74 files stashed
+      // including unrelated main tracked-tree mods). Bulk stash makes the
+      // semantics explicit: "snapshot main's dirty state so squash can land,
+      // user reconciles via stash-reconcile.mjs". See pitfall-git-stash-
+      // pathspec-scope-leak (merge-back surface).
+      git(['stash', 'push', '-u', '-m', stashMsg], { cwd: consumerRoot })
       stashRef = stashMsg
-      console.log(`merge-back: stashed ${blockers.length} blocker(s) as '${stashMsg}'`)
+      console.log(
+        `merge-back: bulk-stashed main's dirty state as '${stashMsg}' (covers ${blockers.length} blocker(s) + any unrelated dirty paths)`,
+      )
     } catch (e) {
-      throw new Error(`merge-back: failed to stash blockers: ${e.message ?? e}`)
+      throw new Error(`merge-back: failed to stash blockers: ${e.message ?? e}`, { cause: e })
     }
   }
 
@@ -984,6 +1555,12 @@ async function cmdMergeBack(slug, opts = {}) {
     (stashRef ? ` (blockers stashed as ${stashRef})` : '') +
     (cleanupDone ? ' + worktree cleaned' : ' (cleanup skipped/failed)')
   console.log(summary)
+  if (stashRef) {
+    console.log('')
+    console.log(`Reconcile blocker stash for '${cleanSlug}':`)
+    console.log(`  node scripts/stash-reconcile.mjs --slug ${cleanSlug} --interactive`)
+    console.log(`(Stash preserved in 'git stash list' — apply/drop is user's call.)`)
+  }
   return { absorbed: true, slug: cleanSlug, stashRef, cleanupDone, blockers, baselineRefs }
 }
 
@@ -1007,7 +1584,7 @@ async function cmdRescue(opts) {
         stdio: 'inherit',
       })
     } catch (e) {
-      throw new Error(`rescue --show ${opts.show}: ${e?.message ?? e}`)
+      throw new Error(`rescue --show ${opts.show}: ${e?.message ?? e}`, { cause: e })
     }
     return
   }
@@ -1131,6 +1708,7 @@ async function main() {
     includeWorktreeWip: flags.has('--include-worktree-wip'),
     cleanup: !flags.has('--no-cleanup'),
     noopIfMissing: flags.has('--noop-if-missing'),
+    skipPreSync: flags.has('--skip-pre-sync'),
     precheckBaseline: Object.prototype.hasOwnProperty.call(values, '--precheck-baseline')
       ? values['--precheck-baseline']
       : undefined,
@@ -1206,9 +1784,23 @@ async function main() {
       console.error(
         '                            (default: refuse with remediation; explicit commit safer)',
       )
+      console.error(
+        '                            NB: dirty files matching OXFMT_AUTO_PATHS whose drift',
+      )
+      console.error(
+        '                            reproduces from oxfmt(HEAD) are auto-committed as a',
+      )
+      console.error('                            separate "wt: <slug> — oxfmt drift on ..." commit')
+      console.error(
+        '                            with no prompt (no flag needed; semantic drift still STOPs).',
+      )
       console.error('    --no-cleanup            skip worktree cleanup after squash')
       console.error(
         '    --noop-if-missing       silently no-op if no matching worktree (for hooks)',
+      )
+      console.error('    --skip-pre-sync         skip wt-side merge of origin/main before squash')
+      console.error(
+        '                            (default: pre-sync isolates conflicts in wt, not main)',
       )
       console.error('  land-pending <slug>       Alias of merge-back for grandfathered worktrees')
       console.error('  rescue [--show <ref|sha>] [--json]')
