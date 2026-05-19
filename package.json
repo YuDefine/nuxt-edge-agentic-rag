@@ -132,5 +132,8 @@
     "vue-tsc": "^3.2.7",
     "yaml": "^2.8.3"
   },
+  "engines": {
+    "node": "^24"
+  },
   "packageManager": "pnpm@10.33.2"
 }
