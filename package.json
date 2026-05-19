@@ -38,7 +38,7 @@
     "prepare": "husky && nuxt prepare",
     "preprepare": "node scripts/patch-evlog-nuxthub-skip-prompt.mjs",
     "preview": "nuxt preview",
-    "review:ui": "node scripts/review-gui.mts",
+    "review:ui": "node ${CLADE_HOME:-$HOME/offline/clade}/vendor/scripts/review-gui.mts",
     "skills:install": "bash ./scripts/install-skills.sh",
     "skills:list": "bash ./scripts/check-skills.sh",
     "skills:update": "bash ./scripts/install-skills.sh",
