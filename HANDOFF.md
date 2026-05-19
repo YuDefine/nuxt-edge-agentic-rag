@@ -2,6 +2,14 @@
 
 ## In Progress
 
+- [ ] **TD: deploy-docs-staging fail — vitepress 解析 `docs/tech-debt.md` 撞 dynamic-import-vars**（2026-05-19 perno session Phase B 第三輪 CI 暴露）
+  - Run: https://github.com/YuDefine/nuxt-edge-agentic-rag/actions/runs/26090866330
+  - Symptom：`vitepress build docs` 跑 `builtin:vite-dynamic-import-vars` plugin 試圖把 `docs/tech-debt.md` 當作含 dynamic import 的程式碼 parse → `Unexpected token`
+  - 根因猜測：vite-plus-core `0.1.21` 的 vite-dynamic-import-vars plugin 對 `.md` 檔的 scan 行為比 `0.1.20` 嚴格；或 vitepress upstream 跟 vite-plus 0.1.21 互動 regression
+  - 不在 Phase B node-pinning 或 lint cleanup 範圍；屬獨立 pre-existing infra issue
+  - 修法選項：(a) 排除 `docs/**` 從 dynamic-import-vars plugin scope；(b) 調整 vite.config.ts 對 docs/ 的 build 行為；(c) 鎖 vite-plus 回 0.1.20（會跟 catalog 不一致）
+  - CI 主流程（Format/Lint/Typecheck/Unit tests）皆綠，僅 deploy-docs-staging 卡此
+
 - [ ] **dev-login canonical migration**（clade v0.5.10 設計同步） — 已實作未 commit（2026-05-09 由 perno session 主線派 subagent 完成）
   - `server/api/_dev/login.post.ts` (+50/-10): 加 `as` body param（`z.enum(['admin','member','guest']).optional()`）、`DevLoginRole` 型別、403→404、`as=admin` 必須 ALLOWLIST 否則 403、`as=guest` 400 stub、結構化 `log.info('[dev-login]', {...})` 含 route/requestedAs/requestedEmail/resolvedRole/action/environment
   - `e2e/helpers.ts` (+24/-9): `devLogin(page, email, options?: { as? })` 接 optional `as` field
