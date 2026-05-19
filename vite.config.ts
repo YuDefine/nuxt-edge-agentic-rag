@@ -1,4 +1,5 @@
 import { defineConfig } from 'vite-plus'
+import { fmtBase, lintBase } from './vendor/oxc-shared/preset.mjs'
 
 export default defineConfig({
   test: {
@@ -9,61 +10,28 @@ export default defineConfig({
     },
   },
   lint: {
-    categories: {
-      correctness: 'error',
-      suspicious: 'warn',
-      pedantic: 'off',
-      perf: 'warn',
-      style: 'off',
-      restriction: 'off',
-      nursery: 'off',
-    },
+    ...lintBase,
     rules: {
+      ...lintBase.rules,
       'no-console': 'warn',
-      'no-debugger': 'warn',
-      'no-alert': 'error',
-      'no-undef': 'off',
-      '@typescript-eslint/no-unused-vars': 'warn',
-      eqeqeq: ['error', 'always'],
-      'no-await-in-loop': 'off',
       'import/no-named-as-default': 'off',
       'unicorn/no-thenable': 'off',
-    },
-    plugins: ['typescript', 'unicorn', 'import', 'promise'],
-    env: {
-      browser: true,
-      node: true,
-      es2024: true,
+      // test mock fallback intentionally uses `throw … return … as unknown as T`
+      // for TS narrowing crutch (see test/integration/conversation-*.test.ts).
+      // Downgrade until those mocks adopt Promise<never> return type — ~19 sites.
+      'no-unreachable': 'warn',
     },
     ignorePatterns: [
-      'node_modules/',
-      '.nuxt/',
-      '.output/',
+      ...(lintBase.ignorePatterns ?? []),
       '.wrangler/',
-      'dist/',
-      'coverage/',
       'local/',
       '.agent/skills/',
-      '.agents/skills/',
-      '.claude/skills/',
-      '.codex/skills/',
       '.github/skills/',
       'scripts/',
-      '*.d.ts',
     ],
   },
   fmt: {
-    semi: false,
-    singleQuote: true,
-    printWidth: 100,
-    tabWidth: 2,
-    useTabs: false,
-    trailingComma: 'all',
-    quoteProps: 'as-needed',
-    arrowParens: 'always',
-    endOfLine: 'lf',
-    htmlWhitespaceSensitivity: 'css',
-    vueIndentScriptAndStyle: true,
+    ...fmtBase,
     experimentalTailwindcss: {
       stylesheet: './app/assets/css/main.css',
       attributes: ['class'],
@@ -71,21 +39,15 @@ export default defineConfig({
       preserveDuplicates: false,
       preserveWhitespace: false,
     },
-    experimentalSortPackageJson: {
-      sortScripts: true,
-    },
     ignorePatterns: [
-      'coverage/**',
-      '.nuxt/**',
-      '.output/**',
+      ...fmtBase.ignorePatterns,
       'dist/**',
       'node_modules/**',
       'local/**',
-      'pnpm-lock.yaml',
-      '.agent/skills/',
-      '.agents/skills/',
+      '.agent/',
+      '.agents/',
+      '.codex/',
       '.claude/skills/',
-      '.codex/skills/',
       '.github/skills/',
     ],
   },
