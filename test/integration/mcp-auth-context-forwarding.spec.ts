@@ -1,3 +1,4 @@
+/* eslint-disable no-underscore-dangle */
 import type { H3Event } from 'h3'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 

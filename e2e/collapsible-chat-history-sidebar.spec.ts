@@ -1,3 +1,4 @@
+/* eslint-disable no-underscore-dangle */
 import AxeBuilder from '@axe-core/playwright'
 import { expect, test, type Page } from '@playwright/test'
 import fs from 'node:fs'

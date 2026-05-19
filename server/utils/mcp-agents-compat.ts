@@ -1,3 +1,4 @@
+/* eslint-disable no-underscore-dangle */
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js'
 
 import { parseBooleanFlag } from '#shared/schemas/knowledge-runtime'

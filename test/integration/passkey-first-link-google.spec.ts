@@ -1,3 +1,4 @@
+/* eslint-disable no-underscore-dangle */
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { SignJWT, exportJWK, generateKeyPair } from 'jose'
 

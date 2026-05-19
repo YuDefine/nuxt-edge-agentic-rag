@@ -1,3 +1,4 @@
+/* eslint-disable no-underscore-dangle */
 type CloudflareBoundEvent = {
   context: Record<string, unknown> & {
     cloudflare?: {

@@ -1,3 +1,4 @@
+/* eslint-disable no-underscore-dangle */
 import { useLogger } from 'evlog'
 import { describe, expect, it, vi } from 'vitest'
 

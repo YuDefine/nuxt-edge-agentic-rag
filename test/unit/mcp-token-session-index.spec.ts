@@ -1,3 +1,4 @@
+/* eslint-disable no-underscore-dangle */
 import { describe, expect, it } from 'vitest'
 
 import type { KvBindingLike } from '#server/utils/cloudflare-bindings'

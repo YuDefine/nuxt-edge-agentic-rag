@@ -1,3 +1,4 @@
+/* eslint-disable no-underscore-dangle */
 /**
  * Task 5.2 — flag=true / flag=false 分流驗證
  *

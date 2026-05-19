@@ -1,3 +1,4 @@
+/* eslint-disable no-underscore-dangle */
 import { test, Page } from '@playwright/test'
 import { fileURLToPath } from 'url'
 import path from 'path'

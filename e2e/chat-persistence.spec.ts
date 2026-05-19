@@ -1,3 +1,4 @@
+/* eslint-disable no-underscore-dangle */
 import { expect, test, type Page } from '@playwright/test'
 import fs from 'fs'
 import path from 'path'

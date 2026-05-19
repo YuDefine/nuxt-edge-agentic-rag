@@ -1,3 +1,4 @@
+/* eslint-disable no-underscore-dangle */
 import type { Transport, TransportSendOptions } from '@modelcontextprotocol/sdk/shared/transport.js'
 import type {
   JSONRPCMessage,
