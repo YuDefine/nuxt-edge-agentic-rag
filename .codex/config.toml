@@ -8,6 +8,7 @@ includeGitInstructions = false
 "hub-db-runtime-cf-workers@clade" = true
 "hub-runtime-cf-workers@clade" = true
 "hub-framework-nuxt@clade" = true
+"hub-maintenance-full@clade" = true
 
 [features]
 hooks = true

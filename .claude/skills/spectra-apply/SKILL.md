@@ -176,6 +176,20 @@ Implement tasks from a Spectra change.
    - `schemaName`: The workflow being used (e.g., "spec-driven")
    - Which artifact contains the tasks (typically "tasks" for spec-driven, check status for others)
 
+2.5. **Stash Reconcile (clade fork; not in upstream spectra)**
+
+   Scan namespaced stashes related to this change before starting work. Catches resume scenarios where the previous session's WIP got auto-stashed by wt-helper / propagate / clade-publish and never reapplied — without this, apply will run on a clean baseline while real WIP rots in stash.
+
+   - Run: `node scripts/stash-reconcile.mjs --slug "<change-name>" --json`
+   - Parse stdout JSON. If `entries.length === 0`, continue silently to Step 3.
+   - If hits: print one-line summary `⚠ Stash Reconcile: N entries match slug '<change>'`, then use **AskUserQuestion**:
+     - **Show full report** — print each entry's `ref`, `namespace.kind`, `createdAt`, file list, and `recommendation.action`/`recommendation.reason`; then re-ask the same question
+     - **Apply recommended** — for every entry where `recommendation.action === "apply"`, run `git stash apply <ref>` (safety contract: NEVER `pop` / `drop` here; the stash entries stay intact). Then continue to Step 3.
+     - **Ignore and continue** — proceed with apply on current tree without touching stash
+     - **Stop cycle** — abort spectra-apply (user will reconcile manually)
+   - **Skip condition**: if user passed `--no-reconcile` (or said "不要掃 stash" / "skip reconcile" when invoking the skill), skip this step and print `Stash reconcile: skipped (user --no-reconcile)`.
+   - **Failure handling**: if `stash-reconcile.mjs` exits non-zero or JSON parse fails, print the error and continue to Step 3 (reconcile is advisory — do NOT block apply).
+
 3. **Get apply instructions**
 
    ```bash
@@ -328,6 +342,14 @@ If there is no AskUserQuestion tool available, present options as plain text and
 
       <每個 task 的編號 + 描述，從 tasks.md 抓>
 
+      Worktree workaround（clade TD-015 / spectra ≤2.3.1）：
+      你在 session worktree 內跑 `spectra task done` 時，`.spectra/touched/` 會正確寫到當前 worktree ✅，
+      但 tasks.md 的 `[ ] → [x]` 翻轉可能寫到 Claude Code system-managed agent worktree（`<consumer>/.claude/worktrees/agent-*/`），
+      導致**當前 worktree 的 tasks.md 沒翻**。每跑完一次 `spectra task done`：
+      1. `git -C $(pwd) diff -- openspec/changes/<change>/tasks.md` 確認當前 worktree 看得到 `[ ] → [x]`
+      2. 若 diff 空 → 手動 Edit tasks.md 把對應行 `- [ ] <task-id>` 改成 `- [x] <task-id>`
+      3. **NEVER** 動 `<consumer>/.claude/worktrees/agent-*/` 內任何檔（harness 自管，session 結束會 GC）
+
       Plan-first（**MUST**，per `.claude/rules/agent-routing.md` Plan-first 條目）：
       在動任何 Edit / Write / Bash 寫入動作之前，先在 stdout 最開頭輸出一段 `## Plan` section，包含：
       - **要動的具體檔案**（每條一行的相對路徑；對應到 phase <N> 內每個 task 的預期落點）
@@ -349,7 +371,31 @@ If there is no AskUserQuestion tool available, present options as plain text and
       - 目錄：`app/pages/` / `app/components/` / `pages/` / `components/` / `views/` / `layouts/`
       若 task 需要 view 層改動，回報 "view layer change required, defer to main thread" 並跳過該 task（不要勾 checkbox），主線會自己處理。
 
-      Acceptance：所有 phase <N> 的 tasks 完成、checkbox 已勾、相關 typecheck / unit test 通過、git diff 對應預期變更。
+      Commit Authorization（**MUST**，per `.claude/rules/agent-routing.codex-watch-protocol.md` § Commit Authorization）：
+      完成 phase <N> 全部 tasks 後，**MUST** 在 worktree 內 commit 一次（一 phase 一 commit）：
+
+      1. **Commit 前 self-check（任一條命中即 abort、NEVER commit）**：
+         - View-layer drift：
+
+           git diff --staged --name-only | grep -E '\.vue$|\.tsx$|\.jsx$|\.css$|\.scss$|app/(pages|components|layouts)/|^(pages|components|layouts|views)/'
+
+           命中 → 回報 "view layer drift: <files>" 並中止
+         - Scope discipline：
+
+           git diff --staged --name-only
+
+           對比本 phase 預期落點 — 超出範圍 → 回報 "scope drift: <files>" 並中止
+      2. **Selective stage**：`git add -- <each scoped file path>` — **禁止** `git add -A` / `git add .`（會撈到 baseline）
+      3. **Commit**：
+
+         git commit --no-verify -m "wt: <change-name>-phase-<N> — <一行說明>"
+
+         - **MUST** `--no-verify`（commitlint 會擋 `wt:` prefix）
+         - **MUST** 用 `wt: <change-name>-phase-<N>` format（主線用 `git log main..HEAD` 對齊 phase）
+
+      仍禁止：`git push` / `git stash`（中途）/ `git commit --amend` / `/commit` / `/spectra-commit` / 跨 phase 混 commit。
+
+      Acceptance：所有 phase <N> 的 tasks 完成、checkbox 已勾、相關 typecheck / unit test 通過、phase commit 已在 worktree 內成立、`git log main..HEAD` 顯示 `wt: <change>-phase-<N> — ...`。
       不要動 phase <N> 以外的 tasks。不要碰 ## Design Review 區塊（主線會自己做）。
       不要呼叫 /spectra-archive。
       ```
@@ -367,12 +413,14 @@ If there is no AskUserQuestion tool available, present options as plain text and
 
    3. Inform user briefly + start Codex Watch Protocol（見 `agent-routing.md`）
 
-   4. After `<task-notification status=completed>`:
+   4. After `<task-notification status=completed>` — codex 已在 worktree 自 commit per § Commit Authorization：
       - BashOutput → read full stdout
       - Read tasks.md → confirm phase <N> all checkboxes are `[x]`
-      - Sanity check: `pnpm typecheck` (or equivalent), relevant tests, `git diff` review
-      - **MUST view-layer drift check**: `git diff --name-only HEAD~? -- '*.vue' '*.tsx' '*.jsx' '*.css' '*.scss' 'app/pages/**' 'app/components/**' 'pages/**' 'components/**' 'views/**' 'layouts/**'`（取自上次 codex dispatch 之前 commit 為 base；若無 commit 用 working tree diff）。**若有任何 view 層檔案被 codex 動過** → AskUserQuestion: [1] 主線 revert view 改動 + 重派 codex（剝除 view 改動）/ [2] 接受並由主線自己重跑該 view phase / [3] 中止
-      - **If gaps detected** → AskUserQuestion: [1] 主線補齊 / [2] 重派 codex / [3] 中止
+      - **MUST commit boundary check**: `git -C <wt> log main..HEAD --oneline` — confirm exactly one new commit per dispatched phase, format `wt: <change>-phase-<N> — ...`. Multiple commits per phase / missing commit / format mismatch → AskUserQuestion: [1] 主線 squash codex 的 multiple commits / [2] `git -C <wt> reset --soft main` 退 staging 重派 / [3] 中止
+      - **MUST view-layer drift double-check**: `git -C <wt> diff main..HEAD --name-only -- '*.vue' '*.tsx' '*.jsx' '*.css' '*.scss' 'app/pages/**' 'app/components/**' 'app/layouts/**' 'pages/**' 'components/**' 'layouts/**' 'views/**'`（codex 自驗應已 abort，此處再驗保險）。**若有任何 view 層檔案被 codex 動過** → AskUserQuestion: [1] `git -C <wt> reset --soft main` 退 staging + 主線剔除 view 改動 + 重派 codex / [2] 接受並由主線自己重跑該 view phase / [3] 中止
+      - **Scope discipline cross-check**: `git -C <wt> diff main..HEAD --name-only` vs prompt 內 phase scope 宣告。超出範圍 → AskUserQuestion 處理
+      - Sanity check: `pnpm typecheck` (or equivalent), relevant tests
+      - **If gaps detected** → AskUserQuestion: [1] 主線在 worktree 內 commit 補丁 / [2] reset 重派 codex / [3] 中止
 
    5. Move to next phase (re-classify and dispatch or self-execute)
 
@@ -412,6 +460,11 @@ If there is no AskUserQuestion tool available, present options as plain text and
    - **Verify before marking done** — re-read the task description from the tasks file AND the relevant Implementation Contract content from design.md. For each requirement stated in the task description and each contract item that covers this task's scope, confirm it is addressed by your changes. Confirm the verification target named by the task (test name, CLI invocation, analyzer check, or manual assertion) actually passes. If any contract item, task requirement, or verification target is missing or failing, implement/fix it now. Do not mark the task complete until every part of the description is covered and the contract for this task is satisfied.
    - Mark task complete by running: `spectra task done --change "<name>" <task-id>`
      This command marks the checkbox in tasks.md AND records which files were modified for this task.
+
+     **Worktree workaround (clade TD-015 / spectra ≤2.3.1)**: when running inside a session worktree (path `<consumer>-wt/<slug>/`), `spectra task done` writes `.spectra/touched/<change>.json` to the current worktree ✅ but its `tasks.md` checkbox flip can land in the Claude Code system-managed agent worktree (`<consumer>/.claude/worktrees/agent-*/`) instead. Workaround:
+       1. After `spectra task done`, **MUST** verify `git -C $(pwd) diff -- openspec/changes/<change>/tasks.md` shows the `[ ] → [x]` flip in the current worktree.
+       2. If diff is empty → mirror-flip manually with Edit (change `- [ ] <task-id>` to `- [x] <task-id>` on the matching line). The `.spectra/touched/` write already happened, so this is a UI-only sync.
+       3. **NEVER** touch `<consumer>/.claude/worktrees/agent-*/`; that's Claude Code harness state — let it GC at session end.
    - Continue to next task
 
    **Parallel task dispatch**: When consecutive `[P]`-marked tasks are found and `parallel_tasks: true` is configured (see Step 5), dispatch them as parallel agents in a single message. If any `[P]` task fails, pause and report.
@@ -580,9 +633,8 @@ If there is no AskUserQuestion tool available, present options as plain text and
    When tasks.md still contains unchecked items in the `## 人工檢查` section (typical at this point — implementation tasks `[x]` but manual-review items `[ ]`), **MUST** hand off to the local manual-review GUI rather than walking through items inline in chat.
 
    - **DEFAULT path**: Reply to the user with something like:
-     > Implementation 完成。Step 8a 已處理 verify channels：automatic `[verify:e2e]` / `[verify:api]` items 已寫 annotation 並自動完成；含 `[verify:ui]` / `[review:ui]` 的 `<N>` 項仍待你確認。請在**該 change 所在的 worktree root** 執行 `pnpm review:ui` 開本地 GUI 驗收：
+     > Implementation 完成。Step 8a 已處理 verify channels：automatic `[verify:e2e]` / `[verify:api]` items 已寫 annotation 並自動完成；含 `[verify:ui]` / `[review:ui]` 的 `<N>` 項仍待你確認。請在 main consumer root 執行 `pnpm review:ui` 開本地 GUI 驗收（review-gui 會自動聚合 main + 所有 worktree 的 change，**不必 cd**）：
      >
-     >   cd <change-worktree-absolute-path>
      >   pnpm review:ui
      >
      > GUI 啟動後直接打開：
@@ -590,7 +642,7 @@ If there is no AskUserQuestion tool available, present options as plain text and
      >   http://127.0.0.1:5174/review/<change-name>
      >
      > GUI 會自動配對 `screenshots/local/<change-name>/#<N>-*.png`、conflict-aware 寫回 tasks.md、對 `[verify:e2e]` / `[verify:api]` automatic-only items 自動勾 `[x]`、對 `[verify:ui]` / `[review:ui]` items 顯示 evidence 等你 OK / Issue / Skip。完成後回報，我繼續 Step 9 status。
-   - **MUST 直接給 review-gui deep-link + worktree 絕對路徑**（per `rules/core/proactive-skills.md` § Inline Review-GUI Deep-Link）：訊息 **MUST** 含 (1) `cd <change-worktree-absolute-path>` 完整路徑（從 `git rev-parse --git-dir` 或 wt-helper list 抓），(2) `http://127.0.0.1:5174/review/<change-name>` 完整 URL。**NEVER** 寫「consumer repo root」「專案根目錄」當預設措辭——`openspec/changes/<name>/` 與 `screenshots/local/<name>/` 只在 worktree、main repo 沒有，使用者開新 terminal 落在 main 跑 `pnpm review:ui` 會空畫面。**NEVER** 列 dev server URL（`http://localhost:3040/admin/...`）當替代——review-gui 內部已有 final-state screenshot + evidence；列 dev server URL 反而模糊驗收入口。`5174` 是 `vendor/scripts/review-gui.mts` `DEFAULT_PORT`，找不到時會 fallback 到 5174-5194，由 GUI startup banner 告知 user，主線不必猜。
+   - **MUST 直接給 review-gui deep-link**（per `rules/core/proactive-skills.md` § Inline Review-GUI Deep-Link）：訊息 **MUST** 含 `http://127.0.0.1:5174/review/<change-name>` 完整 URL。**NEVER** 寫「請在 worktree root 執行」當預設措辭——review-gui (`vendor/scripts/review-gui.mts:1890` `listSourceRoots`) 從 cwd 跑 `git worktree list --porcelain` 聚合 main + 所有 worktree 的 change，從 main consumer root 跑一次就涵蓋；從 worktree 跑反而少看 change。**NEVER** 列 dev server URL（`http://localhost:3040/admin/...`）當替代——review-gui 內部已有 final-state screenshot + evidence。若 review 過程發現需要 fresh screenshot 或 user 想 sanity check，**MUST** 由 agent 自起 dev server（per `rules/core/proactive-skills.md` § Dev Server Auto-Spawn：scan free port 3001–3050、避開 3000、`run_in_background`、回報 URL + shellId），**NEVER** 叫 user cd worktree 跑 `pnpm dev`。`5174` 是 `vendor/scripts/review-gui.mts` `DEFAULT_PORT`，找不到時會 fallback 到 5174-5194，由 GUI startup banner 告知 user，主線不必猜。
    - Wait for the user to complete the GUI flow and report back. Do NOT proceed to Step 9 / propose archive until the user signals manual review is done.
    - **NEVER** default to `AskUserQuestion` chat dialog walking items one-by-one — it burns tokens, ignores the screenshot pool, and contradicts `rules/core/manual-review.md` 標準流程.
 
