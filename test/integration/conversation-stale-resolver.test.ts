@@ -61,10 +61,8 @@ function createFakeDatabase(input: { messages: MessageRow[]; versions: VersionRo
                   citations_json: match.citations_json,
                 } as unknown as T
               },
-              async all<T>() {
+              async all<_T>() {
                 throw new Error('unexpected all() call on latest-assistant query')
-                // type assertion below to keep TS happy even though we throw
-                return { results: [] as unknown as T[] }
               },
             }
           },

@@ -1,3 +1,4 @@
+/* eslint-disable no-underscore-dangle */
 import { AsyncLocalStorage } from 'node:async_hooks'
 
 import type { H3Event } from 'h3'

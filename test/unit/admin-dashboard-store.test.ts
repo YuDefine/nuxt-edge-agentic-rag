@@ -1,3 +1,4 @@
+/* eslint-disable no-underscore-dangle */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { createAdminDashboardStore, isoDaysAgo } from '../../server/utils/admin-dashboard-store'

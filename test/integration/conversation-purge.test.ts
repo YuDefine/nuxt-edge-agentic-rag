@@ -87,9 +87,8 @@ function createPurgeFakeDatabase(input: {
                 if (!match) return null
                 return { id: match.id, deleted_at: match.deleted_at } as unknown as T
               },
-              async all<T>() {
+              async all<_T>() {
                 throw new Error('unexpected all() on ownership query')
-                return { results: [] as unknown as T[] }
               },
               async run() {
                 throw new Error('unexpected run() on ownership query')
@@ -116,13 +115,11 @@ function createPurgeFakeDatabase(input: {
                 }
                 return {}
               },
-              async first<T>() {
+              async first<_T>() {
                 throw new Error('unexpected first() on conversation update')
-                return null as unknown as T
               },
-              async all<T>() {
+              async all<_T>() {
                 throw new Error('unexpected all() on conversation update')
-                return { results: [] as unknown as T[] }
               },
             }
           },
@@ -147,13 +144,11 @@ function createPurgeFakeDatabase(input: {
                 }
                 return {}
               },
-              async first<T>() {
+              async first<_T>() {
                 throw new Error('unexpected first() on messages purge')
-                return null as unknown as T
               },
-              async all<T>() {
+              async all<_T>() {
                 throw new Error('unexpected all() on messages purge')
-                return { results: [] as unknown as T[] }
               },
             }
           },
@@ -188,9 +183,8 @@ function createPurgeFakeDatabase(input: {
                   updated_at: match.updated_at,
                 } as unknown as T
               },
-              async all<T>() {
+              async all<_T>() {
                 throw new Error('unexpected all() on detail query')
-                return { results: [] as unknown as T[] }
               },
               async run() {
                 throw new Error('unexpected run() on detail query')
@@ -223,9 +217,8 @@ function createPurgeFakeDatabase(input: {
                   }))
                 return { results: rows as unknown as T[] }
               },
-              async first<T>() {
+              async first<_T>() {
                 throw new Error('unexpected first() on messages list')
-                return null as unknown as T
               },
               async run() {
                 throw new Error('unexpected run() on messages list')

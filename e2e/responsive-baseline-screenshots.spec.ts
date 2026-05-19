@@ -1,3 +1,4 @@
+/* eslint-disable no-underscore-dangle */
 /**
  * Responsive baseline screenshots for spectra changes:
  *   - responsive-and-a11y-foundation §5.6, §9.4, §10.5, §10.8

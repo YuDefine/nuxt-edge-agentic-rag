@@ -16,10 +16,9 @@ export default defineConfig({
       'no-console': 'warn',
       'import/no-named-as-default': 'off',
       'unicorn/no-thenable': 'off',
-      // test mock fallback intentionally uses `throw … return … as unknown as T`
-      // for TS narrowing crutch (see test/integration/conversation-*.test.ts).
-      // Downgrade until those mocks adopt Promise<never> return type — ~19 sites.
-      'no-unreachable': 'warn',
+      // 19 處 test mock fallback 原本用 `throw … return … as unknown as T` TS narrowing
+      // crutch 已逐個移除 dead return (modern TS narrows throw 為 never，不需 explicit return)。
+      // 對齊 clade preset no-unreachable: 'error' 嚴格門檻。
     },
     ignorePatterns: [
       ...(lintBase.ignorePatterns ?? []),
@@ -28,6 +27,7 @@ export default defineConfig({
       '.agent/skills/',
       '.github/skills/',
       'scripts/',
+      'build/',
     ],
   },
   fmt: {

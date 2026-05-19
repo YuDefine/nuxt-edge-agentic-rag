@@ -1,3 +1,4 @@
+/* eslint-disable no-underscore-dangle */
 import { consola } from 'consola'
 
 import { DEFAULT_GUEST_POLICY, guestPolicySchema, type GuestPolicy } from '#shared/types/auth'

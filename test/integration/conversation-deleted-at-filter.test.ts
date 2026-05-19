@@ -80,9 +80,8 @@ function createFakeDatabase(input: { conversations: ConversationRow[]; messages?
 
                 return { results: filtered as unknown as T[] }
               },
-              async first<T>() {
+              async first<_T>() {
                 throw new Error('unexpected first() on list query')
-                return null as unknown as T
               },
               async run() {
                 throw new Error('unexpected run() on list query')
@@ -124,9 +123,8 @@ function createFakeDatabase(input: { conversations: ConversationRow[]; messages?
                   updated_at: match.updated_at,
                 } as unknown as T
               },
-              async all<T>() {
+              async all<_T>() {
                 throw new Error('unexpected all() on detail query')
-                return { results: [] as unknown as T[] }
               },
               async run() {
                 throw new Error('unexpected run() on detail query')
@@ -160,9 +158,8 @@ function createFakeDatabase(input: { conversations: ConversationRow[]; messages?
 
                 return { results: results as unknown as T[] }
               },
-              async first<T>() {
+              async first<_T>() {
                 throw new Error('unexpected first() on messages query')
-                return null as unknown as T
               },
               async run() {
                 throw new Error('unexpected run() on messages query')
@@ -190,13 +187,11 @@ function createFakeDatabase(input: { conversations: ConversationRow[]; messages?
                 }
                 return {}
               },
-              async first<T>() {
+              async first<_T>() {
                 throw new Error('unexpected first() on messages purge')
-                return null as unknown as T
               },
-              async all<T>() {
+              async all<_T>() {
                 throw new Error('unexpected all() on messages purge')
-                return { results: [] as unknown as T[] }
               },
             }
           },
@@ -230,9 +225,8 @@ function createFakeDatabase(input: { conversations: ConversationRow[]; messages?
                   deleted_at: match.deleted_at,
                 } as unknown as T
               },
-              async all<T>() {
+              async all<_T>() {
                 throw new Error('unexpected all() on ownership query')
-                return { results: [] as unknown as T[] }
               },
               async run() {
                 throw new Error('unexpected run() on ownership query')
@@ -265,13 +259,11 @@ function createFakeDatabase(input: { conversations: ConversationRow[]; messages?
 
                 return {}
               },
-              async first<T>() {
+              async first<_T>() {
                 throw new Error('unexpected first() on update')
-                return null as unknown as T
               },
-              async all<T>() {
+              async all<_T>() {
                 throw new Error('unexpected all() on update')
-                return { results: [] as unknown as T[] }
               },
             }
           },
@@ -303,13 +295,11 @@ function createFakeDatabase(input: { conversations: ConversationRow[]; messages?
 
                 return {}
               },
-              async first<T>() {
+              async first<_T>() {
                 throw new Error('unexpected first() on insert')
-                return null as unknown as T
               },
-              async all<T>() {
+              async all<_T>() {
                 throw new Error('unexpected all() on insert')
-                return { results: [] as unknown as T[] }
               },
             }
           },
@@ -335,9 +325,8 @@ function createFakeDatabase(input: { conversations: ConversationRow[]; messages?
 
                 return match ? ({ exists_flag: 1 } as unknown as T) : null
               },
-              async all<T>() {
+              async all<_T>() {
                 throw new Error('unexpected all() on exists probe')
-                return { results: [] as unknown as T[] }
               },
               async run() {
                 throw new Error('unexpected run() on exists probe')

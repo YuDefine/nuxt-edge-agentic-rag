@@ -1,3 +1,4 @@
+/* eslint-disable no-underscore-dangle */
 import { expect, test } from '@playwright/test'
 
 /**

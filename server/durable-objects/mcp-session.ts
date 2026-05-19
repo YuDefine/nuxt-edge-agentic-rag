@@ -1,3 +1,4 @@
+/* eslint-disable no-underscore-dangle */
 /**
  * Task 4.2 / 4.3 — `MCPSessionDurableObject`
  *

@@ -1,3 +1,4 @@
+/* eslint-disable no-underscore-dangle */
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
