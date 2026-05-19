@@ -1,12 +1,12 @@
 {
   "cladeRoot": "/Users/charles/offline/clade",
-  "syncedAt": "2026-05-19T12:55:16.051Z",
+  "syncedAt": "2026-05-19T13:54:54.439Z",
   "checksums": {
     "rules/agent-routing.codex-watch-protocol.md": "1a37e5c863689dde",
     "rules/agent-routing.md": "d9cb26fff5d22483",
     "rules/audit-pattern.md": "706d3ba1ac21f49f",
     "rules/code-style.md": "72fefde3e4c46add",
-    "rules/commit.md": "acb20250453aa5f0",
+    "rules/commit.md": "d3e0f01f951d58b4",
     "rules/consumer-meta.md": "dbf253d87443018d",
     "rules/db-preview-env.md": "ae0edbd2ec44d5bf",
     "rules/error-handling.md": "5cbe9562e589e0e0",
@@ -28,7 +28,7 @@
     "rules/proactive-skills.ingest-triggers.md": "1950b59c41b0d2a4",
     "rules/proactive-skills.md": "08e53b5ecc41bdda",
     "rules/review-tiers.md": "c7d2b4b58d58954a",
-    "rules/scope-discipline.md": "0085d12f60c79987",
+    "rules/scope-discipline.md": "7cc100b3f9ab3b0a",
     "rules/screenshot-strategy.md": "47bf0733bb10c82d",
     "rules/session-claims.md": "b69ee503556361ec",
     "rules/session-tasks.md": "68fdf68141e449ac",
