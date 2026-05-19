@@ -54,7 +54,9 @@ async function findTargets() {
   for (const entry of entries) {
     if (!entry.isDirectory()) continue
     if (!entry.name.startsWith('@evlog+nuxthub@')) continue
-    targets.push(join(pnpmRoot, entry.name, 'node_modules', '@evlog', 'nuxthub', 'dist', 'module.mjs'))
+    targets.push(
+      join(pnpmRoot, entry.name, 'node_modules', '@evlog', 'nuxthub', 'dist', 'module.mjs'),
+    )
   }
   return targets
 }
@@ -75,7 +77,9 @@ async function patchOne(target) {
     return
   }
   if (!current.includes(SEARCH)) {
-    console.log(`[patch-evlog-nuxthub-skip-prompt] target pattern not found (already different version?): ${target}`)
+    console.log(
+      `[patch-evlog-nuxthub-skip-prompt] target pattern not found (already different version?): ${target}`,
+    )
     return
   }
   const next = current.replace(SEARCH, REPLACE)
