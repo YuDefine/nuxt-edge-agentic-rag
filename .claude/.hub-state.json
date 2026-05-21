@@ -1,6 +1,6 @@
 {
   "cladeRoot": "/Users/charles/offline/clade",
-  "syncedAt": "2026-05-21T03:49:17.371Z",
+  "syncedAt": "2026-05-21T04:04:36.534Z",
   "checksums": {
     "rules/agent-routing.codex-watch-protocol.md": "7000105354b5a9aa",
     "rules/agent-routing.md": "f8692d17e5d298d6",
@@ -57,7 +57,7 @@
     "rules/nuxt-security.md": "8fb13f9c77568a33",
     "scripts/codex-review-safe.sh": "78cbe2e389ab3cbe",
     "scripts/commit-lock.mjs": "f81c79df484ce5db",
-    "skills/commit/SKILL.md": "f304456930f43d51",
+    "skills/commit/SKILL.md": "055af62ed1c76f94",
     "skills/spectra/SKILL.md": "2ed77598eba98de6",
     "skills/spectra-analyze/SKILL.md": "531951f39aff871d",
     "skills/spectra-apply/SKILL.md": "24ab8bb68418b18b",
