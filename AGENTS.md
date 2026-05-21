@@ -67,6 +67,7 @@ Changes can be parked（暫存）— temporarily moved out of `openspec/changes/
 - `.claude/rules/code-style.md`
 - `.claude/rules/commit.md`
 - `.claude/rules/consumer-meta.md`
+- `.claude/rules/data-layer-d1.md`
 - `.claude/rules/database-access.md`
 - `.claude/rules/db-preview-env.md`
 - `.claude/rules/dev-login.md`
