@@ -196,12 +196,24 @@ rg --type md "<關鍵字>" ~/offline/clade/docs/pitfalls/
 
 ### Step 3 — Cross-consumer scan 自動回填 impact
 
-對 5 個 consumer 跑 detection grep，自動填 `cross_consumer_impact`：
+對 `registry/consumers.json` 列的 `role: consumer` 條目跑 detection grep，自動填 `cross_consumer_impact`（**MUST** 從 registry 動態讀，**NEVER** 寫死路徑清單 — 新 consumer 加入 registry 時 sweep 才會自動覆蓋）：
 
 ```bash
-for d in ~/offline/perno ~/offline/TDMS ~/offline/nuxt-edge-agentic-rag \
-         ~/offline/yuntech-usr-sroi ~/offline/nuxt-supabase-starter; do
-  consumer=$(basename "$d")
+# 從 registry 動態抽 consumer_id（排除 role=source-of-truth 的 clade）
+mapfile -t CONSUMERS < <(
+  node -e '
+    const r = JSON.parse(require("fs").readFileSync("/Users/charles/offline/clade/registry/consumers.json", "utf8"));
+    for (const c of r.consumers) {
+      if (c.role === "source-of-truth") continue;
+      console.log(c.consumer_id);
+    }
+  '
+)
+
+for consumer in "${CONSUMERS[@]}"; do
+  d="$HOME/offline/$consumer"
+  # starter 的 .claude/ 在 template/ 下（registry projection_paths.rules = "template/.claude/rules/"）
+  [ "$consumer" = "nuxt-supabase-starter" ] && scan_root="$d/template" || scan_root="$d"
   echo "=== $consumer ==="
   # 跑 detection.grep_patterns 的 command（從 Step 2 寫好的 regex）
   hits=$(<跑 grep, 數匹配檔案數>)
@@ -400,9 +412,11 @@ Mode D 是**分析 + 候選清單**，不是執行；user 看完 `tasks/<date>-c
 | 1 | `docs/pitfalls/*.md`（不含 `_archive/`） | `mcp__codebase-memory-mcp__search_code` w/ `path_filter="^docs/pitfalls/"` + 抽 frontmatter（`status`, `prevention[].status`, `cross_consumer_impact`） | (a) `prevention.status = accepted` 但對應 TD 仍 `open` 超過 N 天；(b) `cross_consumer_impact` ≥ 3 個 consumer `affected` 但 prevention 全部 `candidate`；(c) `status = open` 超過 30 天 |
 | 2 | `docs/digests/*.md`（排除 `_bootstrap-*`） | Read 最近 3 份；抽 `DIG-` id + `kind` + `severity` | (a) 同一 DIG- 連續 ≥ 2 份 digest 都出現未收斂；(b) candidate kind 集中在某個主題（如同主題 tech-debt 反覆出現） |
 | 3 | `vendor/signals/ledger/*.jsonl`（若存在） | `ls vendor/signals/ledger/ 2>/dev/null` → 若有檔，`tail -200` 抽最近事件；frequency map by `event_type` | (a) 高頻 reject 比率（validator 擋訊號）；(b) 高頻同類 event；(c) 某 consumer signal 量驟降（instrumentation 可能壞了） |
-| 4 | 5 consumer git log（最近 30 天） | 對 `registry/consumers.json` 內每個 consumer 跑 `git -C <path> log --since="30 days ago" --pretty=format:"%h %s" \| head -50`；consumer 路徑用 `~/offline/<consumer_id>` 推（starter 例外：用 `nuxt-supabase-starter`） | (a) commit message 反覆出現某 keyword（如 `fix typecheck`, `revert`, `hotfix`）→ 標準層可能缺；(b) 多個 consumer 同期出現相似 commit pattern → 系統性問題 |
-| 5 | 5 consumer `tasks/lessons.md` | `cat ~/offline/<consumer>/tasks/lessons.md 2>/dev/null`（檔案常不存在，skip 即可） | (a) 多個 consumer lessons.md 出現同一類 pattern → 該 promote 進 `rules/core/` |
-| 6 | 5 consumer `.claude/rules/local/*.md` | `ls ~/offline/<consumer>/.claude/rules/local/ 2>/dev/null`；列出檔名 + 一行 description（讀檔頭） | (a) 多個 consumer 自寫同主題 local rule → clade core 該補的 signal；(b) 出現「workaround clade 限制」字眼 |
+| 4 | consumer git log（最近 30 天） | 對 `registry/consumers.json` 內 `role: consumer` 條目跑 `git -C <path> log --since="30 days ago" --pretty=format:"%h %s" \| head -50`；consumer 路徑用 `~/offline/<consumer_id>` 推（starter 例外：scan root = `~/offline/nuxt-supabase-starter/template`，因 `projection_paths.rules = "template/.claude/rules/"`） | (a) commit message 反覆出現某 keyword（如 `fix typecheck`, `revert`, `hotfix`）→ 標準層可能缺；(b) 多個 consumer 同期出現相似 commit pattern → 系統性問題 |
+| 5 | consumer `tasks/lessons.md` | `cat ~/offline/<consumer>/tasks/lessons.md 2>/dev/null`（檔案常不存在，skip 即可） | (a) 多個 consumer lessons.md 出現同一類 pattern → 該 promote 進 `rules/core/` |
+| 6 | consumer `.claude/rules/local/*.md` | `ls ~/offline/<consumer>/.claude/rules/local/ 2>/dev/null`（starter 換 `template/.claude/rules/local/`）；列出檔名 + 一行 description（讀檔頭） | (a) 多個 consumer 自寫同主題 local rule → clade core 該補的 signal；(b) 出現「workaround clade 限制」字眼 |
+
+**規約**：來源 4 / 5 / 6 的 consumer 列表 **MUST** 從 `registry/consumers.json` 抽 `role: consumer` 條目動態決定，**NEVER** 在 SKILL 內寫死「N 個 consumer」或路徑清單（registry 加 consumer 時 sweep 自動覆蓋；硬編碼必導致漏掃）。
 
 **MCP 缺失時 fallback** — Step 1#1 改用 `rg --files-with-matches "<keyword>" docs/pitfalls/`。其他來源都是純檔案讀，不依賴 MCP。
 
@@ -438,9 +452,11 @@ Mode D 是**分析 + 候選清單**，不是執行；user 看完 `tasks/<date>-c
 - pitfalls: <N> 條目掃描完成
 - digests: 最近 <N> 份
 - signals/ledger: <available | not-bootstrapped>
-- consumer git log: <N>/5 reachable
-- consumer lessons.md: <N>/5 present
-- consumer local rules: <N>/5 has rules/local/
+- consumer git log: <N>/<TOTAL> reachable
+- consumer lessons.md: <N>/<TOTAL> present
+- consumer local rules: <N>/<TOTAL> has rules/local/
+
+> `<TOTAL>` = `registry/consumers.json` 內 `role: consumer` 條目數。
 
 ## Candidates
 
