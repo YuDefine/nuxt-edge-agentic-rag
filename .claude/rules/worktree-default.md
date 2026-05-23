@@ -395,6 +395,27 @@ node scripts/wt-helper.mjs merge-back <slug> [flags]
 
 **為什麼步驟 2 必要**<!-- starter:strip-begin -->（TDMS-1J 2026-05-18 incident）<!-- starter:strip-end -->：worktree 的「helper 在 commit、wiring 在 working tree」切錯型錯誤是無聲 footgun — 沒這道 check 時 squash 只搬 commit，cleanup 把 worktree 砍掉，wiring WIP 永久遺失沒 recovery path（baseline ref 只 cover fork 前 main 的 WIP，沒 cover worktree 內事後新增的 user edit）。
 
+### Stash 操作必 verify create
+
+`git stash push -u -m <msg>` 對乾淨 working tree exit 0 + stdout `No local changes to save`，**不會丟 exception**、stash list 不會多 entry。任何 wt-helper / spectra script 跑 `git stash push` 都 **MUST** 在 push 前後比對 `git rev-parse --verify refs/stash` 確認 stash entry 真的建立：
+
+```js
+let before = null
+try { before = git(['rev-parse', '--verify', 'refs/stash'], { cwd }) } catch {}
+git(['stash', 'push', '-u', '-m', msg], { cwd })
+let after = null
+try { after = git(['rev-parse', '--verify', 'refs/stash'], { cwd }) } catch {}
+if (!after || after === before) {
+  // 工作樹已乾淨 → push 為 no-op，stashRef 不該指派
+  stashRef = null
+  console.warn('stash push exited clean but no new entry created (concurrent session cleared it?)')
+} else {
+  stashRef = msg
+}
+```
+
+不 verify 的後果見 `pitfall-wt-helper-merge-back-silent-stash-miss`：merge-back log 印「bulk-stashed ...」但 stash list 沒對應 entry，user 跑 `stash-reconcile --slug <slug>` 找不到任何 stash → 誤判 data loss。任何**未來**新加的 stash push 路徑（spectra-apply phase suffixes、clade-propagate、clade-publish 等）都套同樣 contract。
+
 ### Stash reconcile（後續清理）
 
 ```bash
@@ -546,6 +567,33 @@ Session 開頭判定要動 code 就 **SHOULD** 立刻打 `/wt <task>`，不要�
 ### 可選 helper
 
 未來可加 `vendor/scripts/spectra-worktree-check.mjs` 對 `<change-name>` 比對 main disk vs sibling worktree disk，輸出物化位置，避免每次 session 手動跑 `find` / `mdfind`。
+
+## §9.5 Spectra change artifact 必須活在 git，禁止靠 ephemeral worktree 的 park/unpark
+
+`Agent` tool 自動把 subagent 隔離進 `~/offline/<consumer>/.claude/worktrees/agent-<hex>/` ephemeral worktree（system-managed，session 結束 GC）。Subagent 收到的 `cwd` 是這個 ephemeral path，**不是**主線預期的 `<consumer>-wt/<slug>/`。
+
+後果（per [[pitfall-agent-tool-subagent-worktree-bypass]]）：
+
+- 若 subagent 跑 `spectra unpark <change>` → artifacts 寫進 ephemeral cwd 的 `openspec/changes/<name>/`
+- Session GC 把 ephemeral worktree 砍掉 → artifacts 永久遺失（SQLite `.git/spectra-app/spectra.db` 的 parked_changes 條目仍指該 change，但 `.git/spectra-app/changes/<name>/` 是 empty → ghost park）
+- Recovery 只能靠 git log 撈個別已 commit 的 artifact（如 design.md）；未 commit 的 proposal / specs / tasks **無 recovery path**
+
+### MUST
+
+- **MUST** 跑 `/spectra-propose` 收尾時把 artifacts **commit 進 git**（不要光 park 就交給下游 dispatch）— park 是 SQLite blob，subagent 在 ephemeral cwd 跑 unpark 等於 silent data loss
+- **MUST** `/spectra-apply` Step 2 把 `spectra unpark` 移到主線預先做（讓 artifacts 落 main disk），後續 dispatch subagent 直接從已物化的 disk read；**禁止**把 unpark 動作派給 subagent 跑
+- **NEVER** 假設 subagent cwd = `<consumer>-wt/<slug>/`：派工前一定 echo cwd / 用 `process.cwd()` 確認，看到 `.claude/worktrees/agent-*` 就 STOP
+
+### Detection
+
+- `spectra list --parked --json` = `{"parked":[]}` 但 `spectra list --json` 顯示某 change `status: in-progress, totalTasks: 0` + `/usr/bin/find .git/spectra-app/changes/ -type f` 為 empty → ghost-park（artifacts 已 GC）
+- subagent 完成回報含「only `design.md` exists in the change directory」/「proposal.md, specs/**/*.md, and tasks.md are absent」→ 大概率 unpark 跑進了 ephemeral cwd
+
+### Recovery（事後）
+
+`git log -- openspec/changes/<name>/` 找近期 commit；對 missing artifacts 一條條 `git show <sha>:<path>` 復原。未 commit 的部分 → 死，重跑 propose 階段。
+
+完整 prevention 設計（rule-section: propose-stage commit reminder + apply-stage main-side unpark）見 pitfall frontmatter prevention[]，候選狀態待 user 拍板升級。
 
 ## §10 review-gui 與 worktree 互動的已知坑
 
