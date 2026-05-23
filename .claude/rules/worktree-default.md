@@ -50,35 +50,17 @@ git worktree 從根本解掉這兩件事（per-session 獨立檔案系統 + 獨�
 
 ### §1.x 階段間 setup chore：主線一行式 `cd` 進 worktree 自動跑
 
-Multi-phase worktree orchestration 中，subagent 完成階段性 commit 後、下一階段 dispatch 之前若需要在 worktree 跑 setup chore（**local-only** 操作），主線 **MUST** 自己用 Bash `cd <worktree-path> && <cmd>` 一行式跑掉，**NEVER** 把指令清單貼給 user 叫他切 cd 去跑。
+Multi-phase orchestration 中，phase 切換之間若需在 worktree 跑 **local-only** setup chore，主線 **MUST** 用 Bash `cd <wt> && <cmd>` 一行式自跑，**NEVER** 把指令清單推回 user。Bash 每呼叫是獨立子 shell，subshell `cd` 不影響 parent session cwd（§1 invariant 講的是 sticky cwd，不是禁 subshell cd）。
 
-**為什麼不違反 §1 invariant**：Bash tool 每次呼叫是獨立子 shell，`cd` 只在該子 shell 內生效，session cwd 不變、後續 Bash 呼叫不受影響。invariant 講的是「parent session 的 persistent cwd 不動」（影響 file watcher / Read window / Bash tool state 那種跨呼叫的 sticky cwd），不是「禁止 subshell 內用 cd」。
+**自動代勞 OK**：`pnpm install` / `pnpm db:reset` / `pnpm db:push` / `pnpm db:types` / `pnpm supabase:sync` / `pnpm build` / `pnpm lint` / `pnpm test` / `vp check` / `tsc --noEmit` / local pnpm script（無 push/publish/deploy 副作用）。
 
-**為什麼主線該自己跑**：user 已把 worktree orchestration 託付給主線；把「cd 過去跑 4 條命令」chore 推回 user 等於白白拉一輪 context switch + 等回報，違背並行 worktree 自動化的初衷。對齊 [[scope-discipline]] 自給自足、`~/.claude/CLAUDE.md` 自主修 bug / 不要把工作往後放 原則。
+**仍需 user 拍板（真 destructive）**：`rm -rf <wt>`、`git push --force` / `git push origin`（已被 §5 禁）、Prod DB migration（`supabase db push --linked` / `wrangler d1 execute --remote`）、Prod creds（`wrangler secret put`、`.env.production`）、outbound 訊息、shared infra。
 
-**自動代勞 OK 的操作**：
-- 依賴安裝：`pnpm install` / `npm install` / `yarn install`
-- Local DB 操作：`pnpm db:reset` / `pnpm db:push` / `pnpm db:types` / `pnpm supabase:sync`（worktree 隔離 local DB，不 touch prod）
-- Build / lint / test：`pnpm build` / `pnpm lint` / `pnpm test` / `vitest run` / `vp check`
-- Type generation：`pnpm db:types` / `tsc --noEmit`
-- Project local script：`pnpm <local-script>`（無 push / publish / deploy 副作用）
+**失敗處理**：跑爆主線自己診斷（讀 log + `git status` + 修），不丟回 user。
 
-**仍需 user 拍板的真 destructive**：
-- `rm -rf <worktree>` 砍 worktree
-- `git push --force` / `git push origin <branch>`（worktree 內 push 已被 §5 禁止）
-- Prod DB migration：`supabase db push --linked` / `wrangler d1 execute --remote` / prod-targeting alembic
-- Prod creds / secrets：`wrangler secret put`（prod env）/ touch `.env.production`
-- Outbound 訊息：Slack / email / GitHub issue / PR comment
-- Shared infra：Cloudflare DNS / KV namespace / R2 bucket 改動
+**反模式**（立刻停手）：列「請你 cd 過去跑」清單、進度表卡在 phase 間貼 N 條 bash 叫 user 切 cd 跑、「跑完回我 OK」。
 
-**失敗處理**：跑爆了主線自己診斷（讀 error log + `git status` + 修），不要把錯訊息丟回 user 叫他看。
-
-**反模式偵測**（看到自己準備寫這些立刻停手）：
-- 「請你在 worktree 跑：\n cd <path>\n pnpm install\n pnpm <cmd>...」
-- 「跑完回我 OK，有錯誤貼錯訊息」
-- 進度表 + 卡在某 Phase 之間 + 列 N 條 bash 命令叫 user 切 cd 跑
-
-**例外**：user 明確說「我自己跑」「我要先看一下」「先別動」就尊重。
+**例外**：user 明確說「我自己跑」/「先別動」尊重。
 
 ### §1 Pre-fork baseline guard
 
@@ -97,58 +79,14 @@ Fork 出 worktree 之前（無論透過 `/wt` ad-hoc 或 `/spectra-apply` Step 0
 
 #### Stash strategy 的隱性風險（hard rule）
 
-`--baseline-strategy stash` 設計**假設** dirty main = clade projection drift（`.agents/` / `.codex/` / `.claude/` 等 LOCKED 投影層的 lint sync），safe to stash and later drop。**實際 dirty main 可能包含**：
-
-- ✅ clade projection drift（預期）
-- ❌ **in-flight feature code 還沒 commit**（屬於某 spectra change 在 `deferred-to-user: db:reset / db:types must run on main before /commit` 之類的 deferred 階段）
-- ❌ 另一 parallel session 的 user WIP
-
-stash 不區分這三類，全部一起 push 進 pinned ref + apply 到 worktree。後續 merge-back 撞 conflict 時若 agent 走「reset worktree branch 到 subagent commit + 乾淨 squash + cleanup」（即俗稱 Path X 救援），baseline 中的 in-flight feature code 會從 main working tree 整段消失，只活在 `refs/wt-baseline/<slug>/<ISO>` pinned ref，typecheck / runtime 都不會抓（main HEAD 從沒 commit 過該 feature，import / type 在 HEAD 視角下「合理消失」）。
-
-**Pre-fork audit（agent MUST 跑）**：
-
-```bash
-# wt-helper add --baseline-strategy stash 之前
-git status --porcelain | grep '^??' \
-  | grep -vE '^\?\? (\.agents/|\.codex/|\.claude/)' \
-  | head -20
-# 非空 → baseline 含非 projection untracked 檔，高機率是 in-flight feature；
-# 建議先 commit baseline、或改走 commit-then-fork（如果有 change context）
-```
-
-**Merge-back 撞 conflict 時（agent MUST 跑）**：
-
-```bash
-# 撞到 'untracked working tree files would be overwritten by merge' 之類
-SLUG=<your-slug>
-REF=$(git for-each-ref refs/wt-baseline/$SLUG/ --format='%(refname)' | head -1)
-git ls-tree -r "$REF^3" --name-only \
-  | grep -vE '^(\.agents/|\.codex/|\.claude/(rules|skills|commands|agents|scripts|hooks)/|scripts/wt-helper\.mjs$|AGENTS\.md$|CLAUDE\.md$)' \
-  | head -20
-# 非空 → baseline 含非 LOCKED projection 路徑，NEVER 走 Path X
-# 改走：手動 git checkout "$REF^3" -- <feature-paths> + git checkout "$REF" -- <tracked-modified-paths> 把 baseline 帶回 main，再手動 squash / cherry-pick
-```
-
-**Recovery（已撞坑後）**：
-
-```bash
-SLUG=<your-slug>
-REF=$(git for-each-ref refs/wt-baseline/$SLUG/ --format='%(refname)' | head -1)
-# 列消失的檔案
-git ls-tree -r "$REF^3" --name-only   # untracked tree（feature 通常在這）
-git ls-tree -r "$REF" --name-only      # tracked-modified tree
-# 選擇性還原
-git checkout "$REF^3" -- <untracked-paths>
-git checkout "$REF" -- <tracked-modified-paths>
-```
+`--baseline-strategy stash` **假設** dirty main = clade projection drift（safe to stash）。**實際**可能含 in-flight feature code 或別 session WIP，stash 不區分全部 push 進 pinned ref。後續 merge-back 撞 conflict 走 Path X 救援會讓 feature 從 main 整段消失（只活在 `refs/wt-baseline/` ref，typecheck 不抓）。
 
 **NEVER**：
-
 - `--baseline-strategy stash` 跑完未 pre-fork audit 就直接 dispatch subagent
 - merge-back 撞 conflict 時不查 baseline 內容、直接 `git reset --hard <subagent-commit>` 走 Path X
 - cleanup `--force-discard-uncommitted` 不先 `wt-helper rescue` 確認 baseline 內容
 
-完整 root cause + recovery：[`pitfall-pre-fork-baseline-hides-in-flight-feature`](../../docs/pitfalls/2026-05-18-pre-fork-baseline-hides-in-flight-feature.md)。
+完整 audit script / conflict diagnostic / recovery 命令：[`pitfall-pre-fork-baseline-hides-in-flight-feature`](../../docs/pitfalls/2026-05-18-pre-fork-baseline-hides-in-flight-feature.md)。
 
 > Rationale (2026-05-18)：原規約「unmerged 永遠 STOP」過嚴，stale UU（index residue 無實際衝突）會強制 user 介入解 `git add`，跟 worktree 自動化目標衝突。Helper 端兩條 safety check（marker scan + in-progress state 偵測）對 stale 場景 false-positive 風險極低，對真衝突仍 fail-safe。
 
@@ -274,84 +212,36 @@ v3 atomic landing 解這些：
 
 本段「Subagent 在 worktree commit」**對 Claude subagent 與 codex 都適用**（兩者規約相同：`🧹 chore: wt …` 前綴 + selective stage + self-check + hook 必跑）。差別只在 subject 後綴：Claude subagent 用 `🧹 chore: wt <slug> — <free-form>`，codex 派工強制 `🧹 chore: wt <change>-phase-<N> — <short>` 以利主線對齊 phase。
 
-1. **Subagent 在 worktree 內 commit**（由 `/wt` Form 1 / 2 / 3 的 prompt template 強制執行）：
-
-   ```bash
-   # 在 subagent cwd（= worktree path）
-   git add -- <each scoped file>          # selective stage，禁止 git add -A
-   git commit -m "🧹 chore: wt <slug> — <short>"   # 可多個 commit；pre-commit / commit-msg hook 必跑
-   ```
-
-   **NEVER**：`git push` / `/commit` / `/spectra-commit` — 都在 subagent prompt 內顯式禁止。
-
+1. **Subagent 在 worktree 內 commit**（`/wt` prompt template 強制）：`git add -- <scoped file>` selective stage（**禁止** `git add -A`） + `git commit -m "🧹 chore: wt <slug> — <short>"`，可多 commit，pre-commit / commit-msg hook 必跑。**NEVER**：`git push` / `/commit` / `/spectra-commit`。
 2. **`/wt` 返回時**：**不** squash，**不** cleanup。worktree + branch 保留，主線只報告 status。
-
-3. **`/spectra-archive <change-name>` Step 0 — atomic merge-back**（per [[spectra-archive]] Step 0）：
-
-   ```bash
-   node scripts/wt-helper.mjs merge-back <change-name> --auto-stash --noop-if-missing
-   ```
-
-   `merge-back` 內部執行：
-   - 偵測 main worktree blockers（branch changeset 路徑上的 M / untracked 檔）
-   - `--auto-stash`：把 blockers 用 `wt-merge-block/<slug>/<ISO>` 前綴 stash 起來
-   - `git merge --squash <branch>` 把 branch 改動 land 到 main 的 working tree（**不** commit）
-   - cleanup worktree（`git worktree remove --force` + `git branch -D`）
-   - conflict → abort + 復原 stash + 保留 worktree + report
-   - `--noop-if-missing`：找不到對應 worktree 時 silent no-op（solo path — change 是直接在 main 做的）
-
-4. **Archive 後續 step**（gates / spec sync / screenshot sweep / archive folder mv）跑於 post-squash main 狀態。所有 gate 檢查看到的是 worktree 工作 + main 既有狀態 merge 後的結果。
-
-5. **User 在 main 跑 `/commit`**（時機由 user 決定，可累積多個 archive 的結果再一次 commit）：
-
-   ```bash
-   claude "/commit"        # 或 user 在當前 main session 直接 invoke
-   ```
-
-   `/commit` 走 selective stage + 0-A/B/C 品質閘門（lint/type/test）+ commit + push。
-
-   **此時 commit gate 不應被 人工檢查 Gate 擋** — 該 change 已 archive，tasks.md 已 mv 到 `openspec/changes/archive/`，commit.md 人工檢查 Gate 的 scope rule 排除 archive 子目錄。
+3. **`/spectra-archive <name>` Step 0 — atomic merge-back**：跑 `node scripts/wt-helper.mjs merge-back <name> --auto-stash --noop-if-missing`。內部：偵測 main blockers → `--auto-stash` 把 blockers stash 成 `wt-merge-block/<slug>/<ISO>` → `git merge --squash <branch>` land 進 main → cleanup worktree；conflict → abort + 復原 stash + 保留 worktree。
+4. **Archive 後續 step**（gates / spec sync / screenshot sweep / folder mv）跑於 post-squash main，gate 檢查看到 merge 後結果。
+5. **User 在 main 跑 `/commit`**（時機 user 決定，可累積多 archive 再一次 commit）：selective stage + 0-A/B/C 品質閘門 + commit + push。Archive 後 tasks.md 已 mv 到 `openspec/changes/archive/`，commit.md 人工檢查 Gate scope rule 排除 archive 子目錄，不擋。
 
 ### Ad-hoc Form-1 worktree（非 spectra change）
 
-`/wt <task>` Form-1 ad-hoc 任務不對應任何 spectra change，因此沒有 `/spectra-archive` 觸發 merge-back。User 要 land 時手動跑：
-
-```bash
-node scripts/wt-helper.mjs merge-back <slug> --auto-stash
-```
-
-之後同樣走 `/commit` 收尾。
-
-`/wt` 此處故意保留 deferred-landing — 因為 `/wt` 是「通用 worktree 建造器 primitive」，user 可能想連續開多條 worktree、靠 review 完一輪再 land、或讓多 session 累積進度由 `/spectra-archive` 統一吸收。**這條 deferred-landing 例外只屬於 `/wt` 本身**；任何把 `/wt` 包進更大 lifecycle 的 skill 都受下面「Skill-owned worktree lifecycle」管轄。
+無 `/spectra-archive` 觸發 merge-back，user 手動跑 `wt-helper merge-back <slug> --auto-stash` 後走 `/commit`。`/wt` 保留 deferred-landing 是「通用 primitive」設計——user 可連續開多 worktree、review 完一輪再 land。**此例外只屬於 `/wt` 本身**；包裝 `/wt` 的 skill 走下面 Skill-owned 管轄。
 
 ### Skill-owned worktree lifecycle（auto merge-back contract）
 
-當某 skill **自己** fork worktree（無論透過 `wt-helper add` 直呼或 `/wt` 委派），且該 skill 有**清楚的 end-of-skill 完成點**、**無下游 skill 接手 landing**，則該 skill **MUST** 在完成點自主執行 merge-back + selective stage on main，**NEVER** 把這幾步當「下一步」丟給 user 自己跑。
+Skill 自己 fork worktree、有**清楚 end-of-skill 完成點**、**無下游 skill 接手 landing** → **MUST** 在完成點自主 merge-back + selective stage on main，**NEVER** 把這幾步丟回 user。
 
-**典型符合**（自主 land 必為）：
+**符合**：`/dep-upgrade` § Outdated mode、機械化 codemod / bulk rename / 批次重構 skill。
 
-- `/dep-upgrade` § Outdated mode — 跑完所有 package codex 派工就是終點，沒下游 skill
-- 任何未來「fork worktree 做機械化工作（migration、codemod、bulk rename、批次重構）→ 跑完就收工」的 skill
+**不符合（保留 deferred-landing）**：`/wt` primitive、`/spectra-apply`（archive 吸收）、`/spectra-ingest`、`/spectra-debug`、`/spectra-propose`（不寫 product code）。
 
-**典型不符合**（保留 deferred-landing 例外）：
+**Auto merge-back 標準流程**：
 
-- `/wt`（primitive，per 上節「Ad-hoc Form-1 worktree」）
-- `/spectra-apply` — 完成點交給 `/spectra-archive`，archive Step 0 已自動 `wt-helper merge-back --auto-stash --noop-if-missing`（per [[spectra-archive]] Step 0）
-- `/spectra-ingest` / `/spectra-debug` — 同 apply，後續 archive 吸收
-- `/spectra-propose` — fork 純粹預備 worktree 給後續 apply 寫 product code，propose 本身不寫 product code（per §1「Pre-flight guard 不適用範圍」），無 merge-back 對象
+1. **cd 回 main consumer root**（merge-back 完會 cleanup worktree，cwd 停在 worktree 會炸）：`cd "$(git worktree list --porcelain | head -1 | awk '{print $2}')"`
+2. `node scripts/wt-helper.mjs merge-back <slug> --auto-stash`
+3. **Pre-fork baseline blocker 自動清理**：撞 `merge-back blocked: ... N uncommitted edit(s)` → 解析 blocker paths，對每條 `git -C <wt> checkout HEAD -- <path>` 後重跑。安全性靠 §1 pinned `refs/wt-baseline/` 兜底。
+4. **真衝突 STOP**：wt-helper 已 abort + 救 stash + 保留 worktree；**NEVER** 主線自決，AskUserQuestion 拍板。
+5. **Selective stage on main**：`git reset HEAD && git add <skill 範圍檔>`（**禁止** `git add -A`），並行 session WIP 退回 unstaged。
+6. **NEVER 自動 `/commit`**：commit 時機留 user。
 
-**Auto merge-back 標準流程**（skill 內部實作必含）：
+**摘要彙報硬性**：skill 結束**必印**「worktree absorbed + cleaned」「main staged 哪些檔」「並行 WIP 退回 unstaged」「下一步走 `/commit`」四要素。
 
-1. **主線 cd 回 main consumer root**：merge-back 完成會 cleanup worktree，parent session cwd 若還停在 worktree 內會撞「no such file or directory」；先跑 `MAIN_PATH=$(git worktree list --porcelain | head -1 | awk '{print $2}'); cd "$MAIN_PATH"`
-2. **跑 `node scripts/wt-helper.mjs merge-back <slug> --auto-stash`**：捕捉 stdout/stderr
-3. **Pre-fork baseline blocker 自動清理**：撞 `merge-back blocked: worktree '<wt>' has N uncommitted edit(s)` 時，解析 blocker paths，對每條跑 `git -C <wt-path> checkout HEAD -- <path>` 退回 HEAD，再重跑 merge-back。**安全性**靠 §1 Pre-fork baseline guard 的 pinned `refs/wt-baseline/<slug>/<ISO>` 永久 ref 兜底（IDENTICAL data 在 main 還在、DIVERGED 可用 `wt-helper rescue --show <ref>` 救回）
-4. **真衝突（pre-sync / squash conflict）STOP**：wt-helper 已內部 abort + 救 stash + 保留 worktree；skill **NEVER** 主線自決，AskUserQuestion 給 user 拍板（手動解 / 丟掉 / 先看一下）
-5. **Selective stage on main**：merge-back 成功後 main 上有 squash diff + 並行 session 的 staged WIP；skill **MUST** 跑 `git reset HEAD && git add <skill 範圍檔>`（**禁止** `git add -A` / `git add .`），把並行 session 的 staged WIP 退回 unstaged 留 working tree
-6. **NEVER 自動 `/commit`**：commit 時機 / message / sign-off 留給 user（per 「禁止項」）
-
-**摘要彙報硬性**：skill 結束前**必印**摘要含「worktree absorbed + cleaned」「main staged 了哪些檔」「並行 session WIP 退回 unstaged」「下一步走 `/commit`」四要素，讓 user 知道現況不必猜。
-
-**例外**：user 在 skill 啟動前明確說「先別 land」/「我要 review worktree 內容」/「保留 worktree」等字眼 → skill 跳過 auto merge-back，只印手動指令清單。**NEVER** 主動延遲 — 預設一律自主完成。
+**例外**：user 明確說「先別 land」/「保留 worktree」→ skip auto，印手動指令。**NEVER** 預設主動延遲。
 
 ### 禁止項
 
@@ -383,38 +273,19 @@ node scripts/wt-helper.mjs merge-back <slug> [flags]
 
 ### 預設行為
 
-1. 找 slug 對應的 session worktree（依 branch name `session/<date>-<slug>` + path `<consumer>-wt/<slug>` 比對）。找不到 → 預設 error（除非 `--noop-if-missing`）。
-2. **偵測 worktree 內 uncommitted user WIP**：`git -C <wtPath> status --porcelain` 列出 modified + untracked，過濾掉 clade-managed projection（`.agents/`、`.codex/`、`.claude/hub.json`、`.claude/.hub-state.json`、`scripts/wt-helper.mjs`），剩下的就是 user WIP。**有 user WIP 但無 `--include-worktree-wip` → throw with 修法**：建議 user `cd <wtPath> && git add <files> && git commit --amend --no-edit` 後再回來跑 merge-back。Atomic-landing 要求 worktree 的所有 user 變更都要 commit，否則 `git merge --squash` 不會帶走，cleanup 還會永久砍掉。**有 `--include-worktree-wip` → auto-amend**（不建議；commit message 會空）。
-2.5. **Pre-sync wt with main**（預設開啟；`--skip-pre-sync` 關閉）：在 `<wtPath>` 跑 `git fetch origin main`（若 `origin/main` 存在；否則用 local main）+ `git rev-list --count <branch>..<targetRef>` 算落差。落差為 0 → no-op。落差 > 0 → `git merge --no-ff -m "🧹 chore: wt pre-sync main into <branch>" <targetRef>` 把 main 灌進 wt 分支。Conflict 留在 wt 內（不 auto-abort），main working tree **完全不動**；user 在 wt 解完衝突 + commit 後重跑 merge-back。設計動機：把衝突隔離在 wt path，避免汙染 main（過往 squash conflict 一炸 main 就要靠 stash 救，多次造成 publish / propagate 流程不穩——對應 `clade_publish_interleaved_wip_same_file` / `clade_propagate_stash_pop_loop` 教訓）。
-3. 偵測 main worktree 的 blockers：`git diff --name-only main..<branch>` 列出 branch 動過的檔，跟 main `git status --porcelain` 的 M / untracked 路徑取交集。
-4. 有 blocker 但無 `--auto-stash` → throw with 建議「re-run with --auto-stash」+ 列出 blocker（最多 10 筆）。
-5. 有 `--auto-stash`：`git stash push -u -m "wt-merge-block/<slug>/<ISO>" -- <blocker paths>`，stash entry 保留待 user 後續用 `stash-reconcile.mjs` 處理。
-6. 沒 blocker 或 stash 完成 → `git merge --squash <branch>` 把改動 land 到 main 的 working tree + index（**不** commit）。
-7. 偵測 conflict：若有 unmerged file，`git merge --abort` + pop 回 stash + 保留 worktree + throw with 衝突檔清單。Worktree + branch 保留供 user 手動 reconcile，user 跑修完後再 `merge-back` 一次。
-8. Squash 成功 → 跑 `cmdCleanup(slug, { force: true, forceDiscardUnland: true })` 移除 worktree dir + delete branch。
+1. 找 slug 對應 session worktree（branch `session/<date>-<slug>` + path `<consumer>-wt/<slug>`）。找不到 → error（除非 `--noop-if-missing`）。
+2. **偵測 worktree 內 uncommitted user WIP**：filter 掉 clade projection（`.agents/`、`.codex/`、`.claude/hub.json`、`.claude/.hub-state.json`、`scripts/wt-helper.mjs`），剩下是 user WIP。**有 WIP 無 `--include-worktree-wip` → throw**：建議 `cd <wtPath> && git add <files> && git commit --amend --no-edit` 後重跑。否則 squash 不帶走，cleanup 永久砍掉。
+3. **Pre-sync wt with main**（預設；`--skip-pre-sync` 關閉）：fetch + `git rev-list --count <branch>..<targetRef>` 算落差，>0 跑 `git merge --no-ff <targetRef>` 灌進 wt 分支。Conflict 留 wt 內（**不** auto-abort），main working tree 不動。動機：隔離衝突避免汙染 main（對應 `clade_publish_interleaved_wip_same_file` / `clade_propagate_stash_pop_loop` 教訓）。
+4. 偵測 main blockers：`git diff --name-only main..<branch>` ∩ main `status --porcelain`。
+5. 有 blocker 無 `--auto-stash` → throw 建議 re-run。有 `--auto-stash` → `git stash push -u -m "wt-merge-block/<slug>/<ISO>" -- <blocker paths>`。
+6. `git merge --squash <branch>` land 進 main working tree + index（**不** commit）。Conflict → abort + pop stash + 保留 worktree + throw。
+7. Squash 成功 → cleanup（remove worktree dir + delete branch）。
 
-**為什麼步驟 2 必要**<!-- starter:strip-begin -->（TDMS-1J 2026-05-18 incident）<!-- starter:strip-end -->：worktree 的「helper 在 commit、wiring 在 working tree」切錯型錯誤是無聲 footgun — 沒這道 check 時 squash 只搬 commit，cleanup 把 worktree 砍掉，wiring WIP 永久遺失沒 recovery path（baseline ref 只 cover fork 前 main 的 WIP，沒 cover worktree 內事後新增的 user edit）。
+**為什麼步驟 2 必要**：worktree 的「helper 在 commit、wiring 在 working tree」切錯型錯誤是無聲 footgun — 沒這道 check 時 squash 只搬 commit，cleanup 砍 worktree 後 wiring WIP 永久遺失（baseline ref 只 cover fork 前的 WIP，沒 cover 事後 user edit）。
 
 ### Stash 操作必 verify create
 
-`git stash push -u -m <msg>` 對乾淨 working tree exit 0 + stdout `No local changes to save`，**不會丟 exception**、stash list 不會多 entry。任何 wt-helper / spectra script 跑 `git stash push` 都 **MUST** 在 push 前後比對 `git rev-parse --verify refs/stash` 確認 stash entry 真的建立：
-
-```js
-let before = null
-try { before = git(['rev-parse', '--verify', 'refs/stash'], { cwd }) } catch {}
-git(['stash', 'push', '-u', '-m', msg], { cwd })
-let after = null
-try { after = git(['rev-parse', '--verify', 'refs/stash'], { cwd }) } catch {}
-if (!after || after === before) {
-  // 工作樹已乾淨 → push 為 no-op，stashRef 不該指派
-  stashRef = null
-  console.warn('stash push exited clean but no new entry created (concurrent session cleared it?)')
-} else {
-  stashRef = msg
-}
-```
-
-不 verify 的後果見 `pitfall-wt-helper-merge-back-silent-stash-miss`：merge-back log 印「bulk-stashed ...」但 stash list 沒對應 entry，user 跑 `stash-reconcile --slug <slug>` 找不到任何 stash → 誤判 data loss。任何**未來**新加的 stash push 路徑（spectra-apply phase suffixes、clade-propagate、clade-publish 等）都套同樣 contract。
+`git stash push -u -m <msg>` 對乾淨 working tree exit 0 + stdout `No local changes to save`，**不會丟 exception**、stash list 不會多 entry。任何 wt-helper / spectra script 跑 `git stash push` 都 **MUST** 在 push 前後比對 `git rev-parse --verify refs/stash` 確認 stash entry 真的建立；mismatch → 把 stashRef 設 null 並 warn，**禁止**仍宣稱 stashed。詳見 `pitfall-wt-helper-merge-back-silent-stash-miss`。未來新加 stash push 路徑（spectra-apply phase suffixes、clade-propagate、clade-publish 等）皆套同樣 contract。
 
 ### Stash reconcile（後續清理）
 
@@ -433,31 +304,29 @@ node scripts/stash-reconcile.mjs --include-all         # 含 unnamespaced（手�
 
 ### Stash 命名空間
 
-| 前綴 / 樣態 | 何時產生 | 何時清掉 |
+| 前綴 | 來源 | 收尾 |
 | --- | --- | --- |
-| `wt-baseline/<slug>/<ISO>` (stash list) | `wt-helper add ... --baseline-strategy stash`（§1 Pre-fork baseline guard / `/wt` ad-hoc 路徑）fork 之前 stash main dirty | Fork 後 worktree 內 `git stash apply` 成功 → pin sha 到 `refs/wt-baseline/<slug>/<ISO>` 永久 ref → `git stash drop` 從 stash list 移除（物件仍 reachable）；apply 失敗則殘留供手動恢復；殘留時 `stash-reconcile` 偵測對應 `refs/wt-baseline/` 已 pin 會推薦 `drop` |
-| `wt-final-baseline/<slug>/<ISO>` | `wt-helper add` 變種（rare：second snapshot 在 apply 前/後） | 同上；`stash-reconcile` 視為 `wt-baseline` 等價處理 |
-| `refs/wt-baseline/<slug>/<ISO>` (永久 ref) | 由 `wt-helper add --baseline-strategy stash` 在 apply 成功後 pin（2026-05-17 後） | **不自動清** — 由 `wt-helper rescue --prune <ref>` 或 user 手動 `git update-ref -d <ref>` 釋放給 gc。設計理念：救援優先於 ref namespace 整潔 |
-| `wt-merge-block/<slug>/<ISO>` | `wt-helper merge-back ... --auto-stash` squash 之前 stash main blockers | merge-back 收尾印 `--slug <slug>` reconcile hint，user 跑 `stash-reconcile --interactive` 自決 apply / drop |
-| `clade-propagate-v<ver>-<ts>` | `scripts/propagate.mjs` dirty consumer 流程 stash pop 失敗時保留（v0.3.45+） | publish 收尾跑 `stash-reconcile --include-all --stale-days 1` 收掉；通常 user WIP 已自動 restore，stash 可 drop |
-| `clade-publish: <free-form>` | clade-publish skill Step 3 selective stage 前 user 手動 stash 並行 session WIP | publish + propagate 收尾跑 `stash-reconcile --interactive` 看 recommendAction 自決 |
-| Legacy `cross-session-block-*` | v2 失敗 squash 累積（v3 已不再產生） | `stash-reconcile` 給建議命令處理 |
-| spectra-apply phase suffixes（`-baseline-drift` / `-p7-wip` / 其他） | spectra-apply / change 內部 phase 切換時手動 stash | `stash-reconcile` 偵測 change 是否 archive，已 archive 推薦 `view-diff` 再決定 drop |
+| `wt-baseline/<slug>/<ISO>` | `wt-helper add --baseline-strategy stash` fork 前 stash main dirty | apply 成功 pin 到 `refs/wt-baseline/<slug>/<ISO>` 後 drop；apply 失敗殘留 → `stash-reconcile --slug` 自決 |
+| `wt-final-baseline/<slug>/<ISO>` | rare second snapshot 變種 | 同上 |
+| `refs/wt-baseline/<slug>/<ISO>` (永久 ref) | apply 成功後 pin（2026-05-17 後） | **不自動清** — `wt-helper rescue --prune <ref>` 或手動 `git update-ref -d` |
+| `wt-merge-block/<slug>/<ISO>` | `wt-helper merge-back --auto-stash` 前 stash main blockers | merge-back 收尾印 `--slug` reconcile hint，跑 `stash-reconcile --interactive` |
+| `clade-propagate-v<ver>-<ts>` | `propagate.mjs` dirty consumer stash pop 失敗保留（v0.3.45+） | publish 收尾 `stash-reconcile --include-all --stale-days 1` |
+| `clade-publish: <free-form>` | clade-publish Step 3 selective stage 前手動 stash | publish/propagate 收尾走 reconcile |
+| Legacy `cross-session-block-*` | v2 失敗 squash 累積（v3 不再產生） | reconcile 給命令處理 |
+| spectra-apply phase suffix（`-baseline-drift` / `-p7-wip` 等） | apply phase 切換手動 stash | reconcile 偵測 change 已 archive 推薦 view-diff |
 
-`wt-baseline/*` stash 殘留是 rare — worktree 起步從 main HEAD 分出，stash apply 理論不該衝突，除非 .gitignore 或 worktree-init hook 寫入撞檔。出現時用 `stash-reconcile --slug <slug>` 看建議或人工 `git stash apply <ref>` 進 worktree 內 / `git stash drop` 放棄。
-
-`refs/wt-baseline/*` 永久 ref 是事故救援的最後保險絲：subagent 守 scope discipline 只 commit 它的範圍時，baseline 47+ 檔可能整批留在 worktree working tree 但沒被任何 commit 帶走；merge-back squash 不會帶走未 commit 檔，cleanup `--force-discard-uncommitted` 才會砍 worktree。即使整條鏈走完導致 working tree 消失，`refs/wt-baseline/` 還活著 → `wt-helper rescue --show <ref>` 看 patch → `git stash apply <ref>` 或 `git checkout <ref> -- <paths>` 救回。
+`refs/wt-baseline/*` 永久 ref 是事故救援的最後保險絲：subagent 守 scope discipline 時 baseline 可能整批留在 worktree 未 commit，cleanup 砍 worktree 後 → `wt-helper rescue --show <ref>` 看 patch → `git checkout <ref> -- <paths>` 救回。
 
 ### 失敗 fallback
 
 | 情境 | 處理 |
 | --- | --- |
-| Subagent 在 worktree 跑爆（沒 commit）| 保留 worktree + branch；user 從 main `git -C <wt-path> log/diff` 檢查；修完用同一 `/wt` Form 重派 subagent，或 `wt-helper cleanup <slug> --force --force-discard-unland` 放棄 |
-| `merge-back` blocker 偵測命中但 user 不想 stash | 不加 `--auto-stash`，user 手動處理 main 上 blocker（commit / stash / discard）後再 `merge-back` |
-| `merge-back` pre-sync 撞 conflict（branch 改動跟 main 既有 commit 衝突）| Wt 留在 unmerged 狀態（**不** auto-abort），main working tree 不動；user 在 wt path 內解 conflict markers + `git commit --no-edit` 完成 merge commit 後重跑 `merge-back`。常見情境：multi-day session 期間 main 推進到撞同檔。 |
-| `merge-back` squash 撞 conflict（pre-sync 後 rare：branch 改動跟 main 取交集仍 conflict）| auto-abort + pop stash + 保留 worktree；user 在 worktree 內 rebase / cherry-pick 修衝突後再 `merge-back`。**若用 `--skip-pre-sync` 跳過 pre-sync**，conflict 會直接炸在 main 的 working tree（legacy path），救法同此列。 |
-| `merge-back` 成功但 cleanup 失敗（rare：stale lock）| 改動已在 main、squash 已成功；report 「worktree 殘留」+ 命令 `wt-helper cleanup <slug> --force --force-discard-unland`，user 手動清 |
-| `cleanup` 拒絕：worktree 內有 uncommitted（典型：pre-fork baseline 沒被 commit 帶走）| `--force-discard-uncommitted` gate 擋住 — 別急著加 flag。先 `wt-helper rescue` 列 pinned baseline ref，用 `--show <ref>` 看 patch 確認哪些是真要救的；要救的用 `git checkout <ref> -- <paths>` 撈進 main 再 cleanup |
+| Subagent 跑爆沒 commit | 保留 worktree；main 端 `git -C <wt> log/diff` 檢查；修完重派或 `cleanup --force --force-discard-unland` |
+| blocker 命中不想 stash | 移掉 `--auto-stash`，手動處理 main 上 blocker 後再 `merge-back` |
+| Pre-sync conflict | wt 留 unmerged，main 不動；wt 內解衝突 + commit 後重跑 `merge-back` |
+| Squash conflict（pre-sync 後 rare） | auto-abort + pop stash + 保留 worktree；wt 內 rebase / cherry-pick 修完再 `merge-back`。`--skip-pre-sync` 場景 conflict 落 main 救法同此列 |
+| 成功但 cleanup 失敗（stale lock） | 改動已 land；手動 `cleanup --force --force-discard-unland` |
+| `cleanup` 拒絕 uncommitted | **NEVER** 急加 `--force-discard-uncommitted`。先 `wt-helper rescue --show <ref>` 看 patch，要救的 `git checkout <ref> -- <paths>` 撈進 main 再 cleanup |
 
 ## §6 操作工具：`/wt`、`wt-helper.mjs`、`stash-reconcile.mjs`
 
@@ -485,42 +354,16 @@ node scripts/stash-reconcile.mjs --include-all         # 含 unnamespaced（手�
 
 ## §7 升級路徑與 grandfathered worktree
 
-### 命名 grandfather（v1 → v2 既有規約）
+命名不符 `session/*` 的舊 worktree **grandfathered**，不強制重命名；`wt-helper list` / `prune` 只認 `session/` 前綴。新建一律走 `/wt` + `session/<date>-<slug>`。
 
-既有的、命名不符 `session/*` 的 worktree（例如 clade 上的 `[perno-session-treat-publish-untracked]`）**grandfathered**，不強制重命名。`wt-helper list` 與 `prune` 只認 `session/` 前綴的 worktree，舊命名不受影響。
+V2 → V3 in-flight worktree（subagent 已 commit 但還沒 squash）處置：
 
-新建一律走 `/wt` + `session/<date>-<slug>` 規約。
+- 對應 spectra change ready archive → `/spectra-archive <name>`（Step 0 自動 merge-back）
+- 還在 implementation → 不動，archive 時吸收
+- ad-hoc Form-1（無 change）→ `wt-helper land-pending <slug>`（alias of merge-back，容忍 multi-commit branch）
+- 過時不要 → `cleanup --force --force-discard-unland`（**永久砍 commit**）
 
-### Migration from pre-atomic worktree flow（v2 → v3）
-
-v2 model：`/wt` 返回時 squash + cleanup。Consumer 端可能有從 v2 留下的 in-flight session worktree，subagent 已 commit 但還沒 squash（user 該 session 終止了 `/wt` 中途，或多 session 累積）。
-
-V3 model 對這些 worktree 的處置：
-
-1. **盤點現有 session worktree**：
-   ```bash
-   node scripts/wt-helper.mjs list
-   ```
-   每條都看 branch HEAD 是否 ahead of main（若 ahead = 有未 land 的 commit）。
-
-2. **依 worktree 對應的 spectra change 是否已完成人工檢查**分流：
-
-   - **若該 change 已完成人工檢查、ready archive** → 跑 `/spectra-archive <change-name>`。Archive Step 0 自動 merge-back 吸收 worktree。
-   - **若該 change 還在 implementation 中（人工檢查未完）** → 不動 worktree，繼續做。Archive 時自動吸收。
-   - **若 worktree 是 ad-hoc Form-1 task（無 spectra change）** → user 自決時機跑 `wt-helper land-pending <slug>`（alias of `merge-back`），手動 land 進 main。
-   - **若 worktree 已過時 / 工作不要了** → `wt-helper cleanup <slug> --force --force-discard-unland`（**永久砍 commit**，要保留工作必先 land-pending）。
-
-3. **Legacy `cross-session-block-*` stash**（從 v2 失敗 squash 累積的）：
-   ```bash
-   node scripts/stash-reconcile.mjs
-   ```
-   產出 markdown report 含 17 條 perno legacy stash 的建議命令。User 自決定 apply / drop / view。
-
-4. **HANDOFF.md drift**：session-start 時 `handoff-drift-scan.mjs` 自動跑（透過 `session-start-roadmap-sync.sh` hook），對每條 session worktree 比對 branch HEAD 跟 HANDOFF.md 內 slug 提及，drift → stderr 警告。User 看到警告 → 跑 `/handoff` refresh。
-
-### 為什麼需要這條 migration 路徑
-
-V2 → V3 切換時，consumer 端可能正好有 mid-flow 的 worktree（subagent 已 commit 但還沒 squash）。直接套用 V3 規約會讓 `/wt` 不再自動 squash，舊 worktree 永遠不 land。`land-pending` 是 explicit migration tool — 同 `merge-back` 但容忍 multi-commit branch（V2 path 留下的 worktree 通常有多 commit），文件層面更清楚標明「這是給遷移用的」。
+Legacy `cross-session-block-*` stash 用 `stash-reconcile.mjs` 處理。HANDOFF drift 由 session-start `handoff-drift-scan.mjs` 偵測，drift → `/handoff` refresh。
 
 ## §8 Stop hook 死鎖 fallback
 
@@ -539,71 +382,36 @@ Session 開頭判定要動 code 就 **SHOULD** 立刻打 `/wt <task>`，不要�
 
 ## §9 spectra DB 跨 worktree 共享心智模型
 
-`.git/spectra-app/spectra.db` 是 **單一 SQLite 檔案、跨所有 worktree 共享**（住在 `.git/` 共用目錄）。從任何 worktree 跑 `spectra list / status / park / unpark / archive / task done` 都讀寫同一個 DB。後果：
+`.git/spectra-app/spectra.db` 是**單一 SQLite，跨所有 worktree 共享**。任一 worktree 跑 `spectra list / park / unpark / archive` 都讀寫同一 DB。`spectra list` 從 main 跑會列出所有 sibling worktree 的 active change；「main disk 無 directory + spectra list 顯示 active + park/unpark 失敗」**不**代表 zombie，多半是別 session 在 sibling worktree 物化。
 
-- `spectra list` 從 main 跑會列出 **所有 sibling worktree 內的 active change**（不只 main disk 上看得到的）
-- 「main disk 沒對應 directory + spectra list 顯示 active + spectra park/unpark 回 'does not exist' / 'is not parked'」**不**代表 zombie / DB 髒；多半是別 session 在 sibling worktree 物化內容
+**MUST**：
+- **NEVER** 對 `spectra.db` 跑 `DELETE` / `UPDATE` / `INSERT` — 會影響別 worktree state
+- **NEVER** 把「main 無 directory + list 顯示 active + park/unpark 失敗」當 zombie / 系統性 bug
+- 偵測「zombie」前 **MUST** 先 `git worktree list` + `find ~/offline/<consumer>-wt -path "*<name>*"` + `mdfind "<name>"`
+- 啟動 active / parked change `apply` 前 **MUST** `git worktree list` 確認別 session 沒在同 change 做
 
-<!-- starter:strip-begin -->
-2026-05-18 TDMS session 連續犯兩次：誤判 `single-equipment-kiosk-return` / `consumable-po-warehouse-item-link` 為 zombie，跑 `DELETE FROM in_progress_change` 想 surgical fix，**直接破壞 sibling worktree session 的 in_progress state**（後 mdfind 才發現位置在 `~/offline/<consumer>-wt/<slug>/`，從 `/tmp/spectra-db-backup-*.db` restore 復原）。
-<!-- starter:strip-end -->
+碰到看似 zombie 一律 **STOP + AskUserQuestion**。誤動 DB 後：`cp /tmp/spectra-db-backup-*.db .git/spectra-app/spectra.db` restore。
 
-### MUST
+## §9.5 Spectra change artifact 必須活在 git，禁止靠 ephemeral worktree park/unpark
 
-- **NEVER** 對 `.git/spectra-app/spectra.db` 跑 `DELETE` / `UPDATE` / `INSERT` — 跨 worktree 共享，本 session 的 surgery 會影響別 worktree 的 in_progress / parked / archived state
-- **NEVER** 把「main disk 無 directory + spectra list 顯示 active + park/unpark 失敗」直接判為 zombie 或系統性 bug
-- 偵測 "zombie" 前 **MUST** 先跑：
-  - `git worktree list` 看是否有 sibling worktree
-  - `find ~/offline/<consumer>-wt -path "*<change-name>*"` 找實際物化位置
-  - `mdfind "<change-name>"` 全機 search 確認沒漏
-- 啟動 active / parked change `apply` 前 **MUST** 先 `git worktree list`，確認別 session 沒在同一 change 上做（避免雙 session apply 同一 change）
+`Agent` tool 把 subagent 隔離進 `~/offline/<consumer>/.claude/worktrees/agent-<hex>/` ephemeral worktree（session 結束 GC）。Subagent cwd **不是** `<consumer>-wt/<slug>/`。後果（per [[pitfall-agent-tool-subagent-worktree-bypass]]）：subagent 跑 `spectra unpark` → artifacts 寫進 ephemeral cwd → GC 後永久遺失（parked_changes 仍指 change 但 `.git/spectra-app/changes/<name>/` empty = ghost park）。未 commit 的 proposal / specs / tasks **無 recovery path**。
 
-### Workaround / Recovery
+**MUST**：
+- `/spectra-propose` 收尾把 artifacts **commit 進 git**（不要光 park 交給下游 dispatch）
+- `/spectra-apply` Step 2 把 `spectra unpark` 移到主線預先做，artifacts 落 main disk 後再 dispatch；**禁止**派 unpark 給 subagent
+- **NEVER** 假設 subagent cwd = `<consumer>-wt/<slug>/`：派工前 echo cwd 確認，看到 `.claude/worktrees/agent-*` 立刻 STOP
 
-碰到看似 zombie pattern 一律 **STOP + AskUserQuestion**，不擅自 DB surgery。
-
-若已誤動 DB：`cp /tmp/spectra-db-backup-*.db .git/spectra-app/spectra.db` restore（前提是 session 內有先 backup；若未 backup，看 `.git/logs/` 或 SQLite WAL 復原可能性）。
-
-### 可選 helper
-
-未來可加 `vendor/scripts/spectra-worktree-check.mjs` 對 `<change-name>` 比對 main disk vs sibling worktree disk，輸出物化位置，避免每次 session 手動跑 `find` / `mdfind`。
-
-## §9.5 Spectra change artifact 必須活在 git，禁止靠 ephemeral worktree 的 park/unpark
-
-`Agent` tool 自動把 subagent 隔離進 `~/offline/<consumer>/.claude/worktrees/agent-<hex>/` ephemeral worktree（system-managed，session 結束 GC）。Subagent 收到的 `cwd` 是這個 ephemeral path，**不是**主線預期的 `<consumer>-wt/<slug>/`。
-
-後果（per [[pitfall-agent-tool-subagent-worktree-bypass]]）：
-
-- 若 subagent 跑 `spectra unpark <change>` → artifacts 寫進 ephemeral cwd 的 `openspec/changes/<name>/`
-- Session GC 把 ephemeral worktree 砍掉 → artifacts 永久遺失（SQLite `.git/spectra-app/spectra.db` 的 parked_changes 條目仍指該 change，但 `.git/spectra-app/changes/<name>/` 是 empty → ghost park）
-- Recovery 只能靠 git log 撈個別已 commit 的 artifact（如 design.md）；未 commit 的 proposal / specs / tasks **無 recovery path**
-
-### MUST
-
-- **MUST** 跑 `/spectra-propose` 收尾時把 artifacts **commit 進 git**（不要光 park 就交給下游 dispatch）— park 是 SQLite blob，subagent 在 ephemeral cwd 跑 unpark 等於 silent data loss
-- **MUST** `/spectra-apply` Step 2 把 `spectra unpark` 移到主線預先做（讓 artifacts 落 main disk），後續 dispatch subagent 直接從已物化的 disk read；**禁止**把 unpark 動作派給 subagent 跑
-- **NEVER** 假設 subagent cwd = `<consumer>-wt/<slug>/`：派工前一定 echo cwd / 用 `process.cwd()` 確認，看到 `.claude/worktrees/agent-*` 就 STOP
-
-### Detection
-
-- `spectra list --parked --json` = `{"parked":[]}` 但 `spectra list --json` 顯示某 change `status: in-progress, totalTasks: 0` + `/usr/bin/find .git/spectra-app/changes/ -type f` 為 empty → ghost-park（artifacts 已 GC）
-- subagent 完成回報含「only `design.md` exists in the change directory」/「proposal.md, specs/**/*.md, and tasks.md are absent」→ 大概率 unpark 跑進了 ephemeral cwd
-
-### Recovery（事後）
-
-`git log -- openspec/changes/<name>/` 找近期 commit；對 missing artifacts 一條條 `git show <sha>:<path>` 復原。未 commit 的部分 → 死，重跑 propose 階段。
-
-完整 prevention 設計（rule-section: propose-stage commit reminder + apply-stage main-side unpark）見 pitfall frontmatter prevention[]，候選狀態待 user 拍板升級。
+**Detection**：`spectra list --parked --json` empty 但 `spectra list --json` 顯示 in-progress + `.git/spectra-app/changes/` empty → ghost-park。Recovery：`git log -- openspec/changes/<name>/` + `git show <sha>:<path>` 復原 committed 部分。
 
 ## §10 review-gui 與 worktree 互動的已知坑
 
-`vendor/scripts/review-gui.mts` 跑 home page 時要從多個 worktree（main + active worktree disks）aggregate `openspec/changes/`。aggregation 邏輯與 singleton process 有 3 條已記錄的踩坑（看到對應 symptom 時直接跳 pitfall 不要重 debug）：
+`vendor/scripts/review-gui.mts` 從多 worktree aggregate `openspec/changes/`，3 條已記坑：
 
-- **home list silent skip main change** — active worktree 存在時 `listPendingChanges` 可能 silent skip main 上的 change（個別 `/api/changes/<name>` detail 仍能取到）。見 [[pitfall-review-gui-collision-typo-and-worktree-startup]]
-- **source aggregation collision** — main 端 hook 報 0 violation 但 GUI 顯示 N hits + banner 顯示無關 worktree slug → review-gui 對 worktree-inherited-untouched files 過度 prefer worktree 副本。見 [[pitfall-review-gui-source-aggregation-collision]]
-- **apply-pending 群 batch button 陷阱** — 「等 apply 後就可處理」群把 impl 完成度天差地別的 change 混在一起；按 batch evidence button 前 **MUST** spot check 每張 change impl 完成度（§3 UI / §6 Fixtures 沒做完按下去會把 agent 推進 404 trap）。見 [[pitfall-review-gui-apply-pending-mid-apply-changes]]
+- **home list silent skip main change**：active worktree 存在時 `listPendingChanges` 可能 skip main change（detail 仍可取）。見 [[pitfall-review-gui-collision-typo-and-worktree-startup]]
+- **source aggregation collision**：main hook 報 0 但 GUI 顯示 N hits + 無關 wt slug。見 [[pitfall-review-gui-source-aggregation-collision]]
+- **apply-pending batch button 陷阱**：按前 **MUST** spot check 每張 change impl 完成度。見 [[pitfall-review-gui-apply-pending-mid-apply-changes]]
 
-review-gui singleton 跑在共享 SQLite 端口；改 review-gui.mts 後 consumer 端需 `pnpm review:ui:kill` + `pnpm review:ui` 重啟才會吃到新版（與 §9 spectra DB 共享心智模型同源）。
+改 review-gui.mts 後 consumer 端 `pnpm review:ui:kill && pnpm review:ui` 重啟才吃到新版。
 
 ## 相關規則
 
