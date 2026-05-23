@@ -241,6 +241,52 @@ done
 
 **NEVER** 留全部 `unknown` 而不寫 reason — audit script 會 block。
 
+### Step 3.5 — Sweep regression check
+
+對 candidate incident 跑（root cause 已確認、frontmatter cross-consumer 掃完、body 還沒寫死前）：
+
+```bash
+node --experimental-strip-types vendor/scripts/check-sweep-regression.mts \
+  --symptom "<candidate symptom one-liner>" \
+  --body-file "<candidate body draft path or /dev/null>" \
+  --json
+```
+
+該 script:
+
+- 掃 `docs/sweeps/*.md` 每個 `SWEEP-XX-NNN` 的 `incident_pattern_for_oops.grep`
+- 對 candidate symptom + body 做 regex / 字串 match
+- 命中 → 回傳 `{ "regression_of": "SWEEP-V2-XXX", "matched_pattern": "...", "matched_in": "symptom" | "body", "sweep_id": "SWEEP-V2" }`
+- 未命中 → 回傳 `{ "regression_of": null, "matched_pattern": null, ... }`
+
+#### Step 3.5.1 — Regression hit（命中）
+
+若 `regression_of` 不為 null：
+
+1. **MUST** 在 pitfall frontmatter 加：
+   ```yaml
+   regression_of: SWEEP-V2-XXX
+   ```
+2. 在 pitfall body 開頭（`# <title>` 之後、`## Symptom` 之前）加 banner：
+   ```markdown
+   > ⚠ **Regression of SWEEP-V2-XXX** — 預防失效，回頭補強對應 prevention。
+   ```
+3. /oops 結尾 surface user：「這條是 `SWEEP-V2-XXX` regression — 該 prevention 不夠，需下一輪 sweep 補強，或直接立刻補 RNI（後續 audit-sweep-regression --window 14 跑會把這條算進 regression matrix）」
+
+#### Step 3.5.2 — 未命中（新類）
+
+加 frontmatter（最新 sweep id，視 `docs/sweeps/` 最末檔案決定）：
+
+```yaml
+discovered_after: SWEEP-V2
+```
+
+讓 `audit-sweep-regression.mts` 知道這條是「新類」，不算 regression。
+
+#### 為什麼這步在 Step 4 之前
+
+`regression_of: SWEEP-V2-XXX` 屬於 frontmatter — Step 4 寫 markdown body 時要在 banner block 就反映出來；事後再回頭補容易漏。Step 3.5 跑 check-sweep-regression 已有 root cause 一行 symptom + frontmatter，足以餵 grep。
+
 ### Step 4 — 寫 markdown body
 
 從 TEMPLATE.md copy body section 結構：

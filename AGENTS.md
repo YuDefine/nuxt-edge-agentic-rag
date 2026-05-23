@@ -64,6 +64,7 @@ Changes can be parked（暫存）— temporarily moved out of `openspec/changes/
 - `.claude/rules/audit-pattern.md`
 - `.claude/rules/audit-schema.md`
 - `.claude/rules/auth.md`
+- `.claude/rules/cloudflare-workers.md`
 - `.claude/rules/code-style.md`
 - `.claude/rules/commit.md`
 - `.claude/rules/consumer-meta.md`
