@@ -69,7 +69,7 @@ echo ""
 # Modern Web Guidance（Chrome team / Baseline-aware）
 # 對應 clade ~/.claude/rules/modern-web-mcp.md + vendor/snippets/modern-web-guidance/README.md
 echo "📦 Modern Web Guidance Skill..."
-npx skills add GoogleChrome/modern-web-guidance $COPY_FLAGS
+npx skills add GoogleChrome/modern-web-guidance@modern-web-guidance $COPY_FLAGS
 echo "  ✓ Modern Web Guidance 完成"
 echo ""
 
