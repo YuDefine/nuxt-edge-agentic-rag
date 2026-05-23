@@ -66,6 +66,13 @@ echo ""
 echo "📝 注意：design orchestrator 為手動管理，位於 .claude/skills/design/"
 echo ""
 
+# Modern Web Guidance（Chrome team / Baseline-aware）
+# 對應 clade ~/.claude/rules/modern-web-mcp.md + vendor/snippets/modern-web-guidance/README.md
+echo "📦 Modern Web Guidance Skill..."
+npx skills add GoogleChrome/modern-web-guidance $COPY_FLAGS
+echo "  ✓ Modern Web Guidance 完成"
+echo ""
+
 echo "✅ 所有 skills 安裝完成！"
 echo ""
 echo "💡 提示："
