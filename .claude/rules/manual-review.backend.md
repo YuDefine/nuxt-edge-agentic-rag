@@ -118,16 +118,20 @@ Verify channel baseline 是 consumer 端**已預先 ready** 的 codebase 層長�
 
 判斷 consumer 是否有 dev-login route 前，**MUST** 使用以下兩種路徑之一，**NEVER** lazy grep literal `_dev-login*` pattern：
 
-1. **CLI**（一次性 / cross-consumer 全景）：
+1. **CLI**（一次性 / cross-consumer 全景；**MUST 從 clade home 跑**，script 不散播到 consumer）：
    ```bash
-   node scripts/audit-dev-login-adoption.mjs --consumer .         # 單 consumer
-   node scripts/audit-dev-login-adoption.mjs --json               # 全 consumer JSON
+   cd ~/offline/clade
+   node scripts/audit-dev-login-adoption.mjs --consumer <consumer-abs-path>  # 單 consumer
+   node scripts/audit-dev-login-adoption.mjs --json                          # 全 consumer JSON
    ```
-2. **Programmatic**（dispatcher / 自家 tool 內 inline）：
+2. **Programmatic**（dispatcher / 自家 tool 內 inline；helper 住 clade 中央倉）：
    ```js
-   import { detectDevLoginRoute, detectAuthModule } from 'vendor/snippets/dev-auth/lib/detect-dev-login-route.mjs'
-   const route = detectDevLoginRoute(consumerPath)  // { kind, path, monorepoSubpath }
-   const auth = detectAuthModule(consumerPath)      // { module, source, stackHint }
+   // dispatcher / clade-side tool 用 relative import
+   import { detectDevLoginRoute, detectAuthModule } from '../snippets/dev-auth/lib/detect-dev-login-route.mjs'
+   // consumer-side ad-hoc 用 absolute path
+   const helper = require('/Users/<you>/offline/clade/vendor/snippets/dev-auth/lib/detect-dev-login-route.mjs')
+   const route = helper.detectDevLoginRoute(consumerPath)  // { kind, path, monorepoSubpath }
+   const auth = helper.detectAuthModule(consumerPath)      // { module, source, stackHint }
    ```
 
 **Why hard rule**：lazy grep 在 2026-05-24 TDMS session 實證**漏判 4/6 consumer**（legacy `__test-login.*` / monorepo subpath / better-auth POST shape 全沒命中），誤升級「結構性 adoption gap」task，浪費一輪 subagent + publish + 主線 token。Audit script + helper module 是清掉這類錯誤推理的單一 SoT。
