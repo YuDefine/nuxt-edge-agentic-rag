@@ -60,6 +60,8 @@ description: 管理兩層 review 規則清單（clade / project）— 新增、�
 
 不要直接 disable 選項 — user 可能還沒切目錄。**讓 user 看到完整選單 + 切換提示**，自己決定。
 
+> User 選了跟當前 cwd 不符的層（例：在 consumer 卻選 clade）= **明確授權 cross-boundary 切換**，per [[clade-role-and-todo-discipline]] § user-explicit cross-boundary authorization Direction B（consumer session → clade）。切過去後**走 clade workflow**（plan mode、`tasks/<date>-<slug>.md`），**禁止**對 clade 自身跑 `/spectra-*`。改完跑完整 `/clade-publish` 流程再回 consumer。
+
 ### 選完後跳到對應 flow
 
 | 選 | 跳到 | 一句話說明 |

@@ -86,6 +86,7 @@ Changes can be parked（暫存）— temporarily moved out of `openspec/changes/
 - `.claude/rules/logging.md`
 - `.claude/rules/manual-review.backend.md`
 - `.claude/rules/manual-review.data-readiness.md`
+- `.claude/rules/manual-review.discuss.md`
 - `.claude/rules/manual-review.evidence.md`
 - `.claude/rules/manual-review.md`
 - `.claude/rules/mcp-remote.md`
