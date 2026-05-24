@@ -403,6 +403,75 @@ cd /Users/charles/offline/clade && node scripts/pitfalls-audit.mjs
 - ✅ audit script all signals green
 - 待 user 決定：要不要立即 propagate clade（按 memory rule「Propagate 需授權」）
 
+### Step 10 — Surface clade 治根快速路徑（optional, conditional）
+
+**何時 surface**（**MUST** 同時成立才提供此選項；任一不成立 → skip 本 step）：
+
+1. 至少一條 `prevention[].status = accepted`
+2. 該條 prevention `type ∈ {rule-section, cookbook, audit-signal}`（純 clade 標準層 SoT 改動，propagate 投影層後 consumer 立即拿到新版）
+3. CWD ≠ `~/offline/clade`（已在 clade 直接動手，不用提示切換）
+
+**為什麼硬限制 type**：
+
+- ✅ `rule-section` / `cookbook` / `audit-signal` — 改 `rules/core/` / `vendor/snippets/` / `scripts/*-audit.mjs`，propagate 後 consumer `.claude/rules/<topic>.md` 投影層立即更新
+- ❌ `upstream-pr` — 要去外部 repo 開 PR，無法靠 clade propagate 解
+- ❌ `pre-commit-hook` — 雖然 hook 在 `plugins/hub-core/hooks/` 可改，但 hook 行為通常需在 consumer 自家先 prototype 才確定 contract
+- ❌ `catalog-adoption` — 即使 clade 升 `catalog.*` baseline，consumer 還要自行升 catalog version
+
+`accepted` 條件 + 上述 type 同時成立 = 治根動作清楚 + 治法明確 + propagate 立刻見效 = 走快速路徑性價比最高。其他組合 user 仍可手動切去 clade 處理（skill 不擋，只是不主動 surface）。
+
+**Surface 內容範本**：
+
+```text
+[/oops] 偵測到 clade 標準層治根候選：
+
+  pitfall: <id>
+  accepted prevention:
+    - type: <rule-section | cookbook | audit-signal>
+      target: <具體 file path>
+      note: <一行說明>
+  TD: <TD-NNN>
+
+選項：
+  A. 切去 clade 立刻治根 + propagate（推薦）
+     依 [[clade-role-and-todo-discipline]] § Direction B「user-explicit cross-boundary authorization」執行：
+       1. cd ~/offline/clade
+       2. 走 plan mode（非瑣碎工作）或直接 Edit + vp check（簡單 § 補強）
+       3. vp check + git commit --only -- <paths>（per § Ad-hoc commit hard rule）
+       4. node scripts/publish.mjs patch + git push && git push --tags
+       5. node scripts/propagate.mjs（同時散播投影層 + plugin update）
+       6. 切回 <current consumer>：
+          - 跑 pnpm hub:check 確認投影層 banner / checksum 已是新版
+          - 注意：plugin update 需要 AI Agent session 重啟才會 reload plugin cache（CLI 限制）
+          - 大多數 rule / cookbook / audit-signal 改動不需重啟 session（投影層直接生效）
+       7. 繼續原 consumer 工作
+
+  B. 只留 TD-<NNN>（已建），之後另開 session 處理
+     建議：若當前 consumer 工作有時間壓力 / 治根改動較大需獨立 session 拍板，選此
+
+  C. 先繼續 consumer 工作，自行決定何時治根
+     skill 不再追蹤；user 想跑時可重新觸發 /oops 或直接到 clade 動手
+
+請告知選擇（A/B/C），或說「都不要」結束 /oops。
+```
+
+**選 A 時的執行紀律**：
+
+- skill **MAY** 在同一 chat session 內 agent 自行切 CWD 到 clade、執行步驟 1-5、再切回 consumer
+- 切換時**MUST** 明示 user：「現在切到 ~/offline/clade 治根，完成後回到 <consumer> 繼續」「現在切回 <consumer>」
+- **NEVER** 在 clade 端順手做其他 unrelated 改動（per [[clade-role-and-todo-discipline]] § Direction A/B 共通「授權僅及該次明確指定範圍」）
+- **NEVER** 跳過 propagate（半成品狀態）；clade 標準層改動完整跑完 publish + propagate 才算治根完成
+- propagate 後在 consumer 端**MUST** 給 verify 指令（`pnpm hub:check`）但**不**替 user 自動跑（per request_user_input 答覆，user 想自己驗）
+
+**選 B 時的後續**：
+
+- TD-NNN 已在 Step 8 建好，本 step 不額外動作
+- user 之後想跑時可重觸發 /oops 或自行到 clade 動手
+
+**選 C 時的後續**：
+
+- 不再追蹤；skill 結束
+
 ---
 
 ## Mode C：handoff sweep（被 /handoff Mode B 2B.0 呼叫）

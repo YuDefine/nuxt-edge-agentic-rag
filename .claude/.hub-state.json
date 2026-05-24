@@ -1,6 +1,6 @@
 {
   "cladeRoot": "/Users/charles/offline/clade",
-  "syncedAt": "2026-05-24T09:52:12.706Z",
+  "syncedAt": "2026-05-24T10:09:22.646Z",
   "checksums": {
     "rules/agent-routing.codex-watch-protocol.md": "7000105354b5a9aa",
     "rules/agent-routing.md": "0735390d6521151f",
@@ -37,7 +37,7 @@
     "rules/session-claims.md": "b69ee503556361ec",
     "rules/session-tasks.md": "68fdf68141e449ac",
     "rules/tech-debt-routing.md": "61355abb39bd2eac",
-    "rules/test-scripts.md": "b9120b586d603941",
+    "rules/test-scripts.md": "660749233b4ae7c4",
     "rules/testing-anti-patterns.md": "3739c04316c6bc4b",
     "rules/truth-layers.md": "6187f5e5616ec5bc",
     "rules/ux-completeness.md": "f9068951b3bd1d38",
