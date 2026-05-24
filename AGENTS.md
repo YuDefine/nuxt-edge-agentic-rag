@@ -105,6 +105,7 @@ Changes can be parked（暫存）— temporarily moved out of `openspec/changes/
 - `.claude/rules/secrets.md`
 - `.claude/rules/session-claims.md`
 - `.claude/rules/session-tasks.md`
+- `.claude/rules/spectra-workflow.md`
 - `.claude/rules/storage.md`
 - `.claude/rules/tech-debt-routing.md`
 - `.claude/rules/test-scripts.md`
