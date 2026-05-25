@@ -116,7 +116,9 @@ Verify channel baseline 是 consumer 端**已預先 ready** 的 codebase 層長�
 
 ##### Detection（hard rule）
 
-判斷 consumer 是否有 dev-login route 前，**MUST** 使用以下兩種路徑之一，**NEVER** lazy grep literal `_dev-login*` pattern：
+任何時候要**斷定** consumer **有沒有** dev-login route——不論目的是 (a) 決定要不要 scaffold、(b) 判斷某 `[verify:api]` item 是否 baseline-blocked、(c) **向 user 報告 dev-login 不存在 / verify 被 baseline 擋住**、還是 (d) **確認 review-gui「🚧 baseline 不齊」badge**——**MUST** 使用以下兩種路徑之一，**NEVER** 用 lazy grep / narrow `find`（如 `find server app -path "*_dev-login*"`、`grep -r _dev-login server/`）。這類 root-only 搜尋對 monorepo consumer（perno 的 route 在 `packages/core/server/...`）**必** false-negative：
+
+> **review-gui 的「🚧 baseline 不齊」badge 不是 file-existence 真相。** 它是 derived signal（且曾因自身 root-only 偵測對 monorepo consumer false-positive）。看到 badge **不代表** route 不存在；要斷定 absence **MUST** 跑下方 helper / audit script 交叉確認，**NEVER** 把 badge 當證據直接回報 user。
 
 1. **CLI**（一次性 / cross-consumer 全景；**MUST 從 clade home 跑**，script 不散播到 consumer）：
    ```bash
@@ -135,6 +137,8 @@ Verify channel baseline 是 consumer 端**已預先 ready** 的 codebase 層長�
    ```
 
 **Why hard rule**：lazy grep 在 2026-05-24 TDMS session 實證**漏判 4/6 consumer**（legacy `__test-login.*` / monorepo subpath / better-auth POST shape 全沒命中），誤升級「結構性 adoption gap」task，浪費一輪 subagent + publish + 主線 token。Audit script + helper module 是清掉這類錯誤推理的單一 SoT。
+
+**2026-05-25 perno incident（second occurrence，跨工具）**：主線看到 review-gui 對 3 個 perno change 標「baseline 不齊」，再用 `find server app -path "*_dev-login*"`（root-only）「確認」後**向 user 斷言 dev-login 不存在**。兩個依據犯同一個 monorepo root-only 盲區——perno 的 route 一直在 `packages/core/server/routes/auth/_dev-login.get.ts`。Root cause 雙重：(1) review-gui `detectVerifyBaseline()` 重刻 root-only path 清單、沒復用本 helper（**已修**，改 delegate `detectDevLoginRoute()`）；(2) 主線在「確認 badge → 向 user 報告」的框架下沒套用本 hard rule（觸發條件已於上方擴寫涵蓋 (c)/(d)）。詳見 [[pitfall-review-gui-baseline-detection-root-only-monorepo-miss]]。
 
 ##### Canonical route shapes by auth-module（detection 真相層）
 
