@@ -98,6 +98,7 @@ Changes can be parked（暫存）— temporarily moved out of `openspec/changes/
 - `.claude/rules/proactive-skills.ingest-triggers.md`
 - `.claude/rules/proactive-skills.md`
 - `.claude/rules/query-optimization.md`
+- `.claude/rules/review-gui-surface.md`
 - `.claude/rules/review-tiers.md`
 - `.claude/rules/rls-policy.md`
 - `.claude/rules/scope-discipline.md`
