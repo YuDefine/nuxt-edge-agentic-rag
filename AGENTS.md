@@ -60,6 +60,7 @@ Changes can be parked（暫存）— temporarily moved out of `openspec/changes/
 
 - `.claude/rules/agent-routing.codex-watch-protocol.md`
 - `.claude/rules/agent-routing.md`
+- `.claude/rules/agent-self-verification.md`
 - `.claude/rules/api-patterns.md`
 - `.claude/rules/audit-pattern.md`
 - `.claude/rules/audit-schema.md`

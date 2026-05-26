@@ -1,9 +1,10 @@
 {
   "cladeRoot": "/Users/charles/offline/clade",
-  "syncedAt": "2026-05-26T17:09:51.232Z",
+  "syncedAt": "2026-05-26T17:20:40.104Z",
   "checksums": {
     "rules/agent-routing.codex-watch-protocol.md": "7000105354b5a9aa",
     "rules/agent-routing.md": "3249591e763c02e8",
+    "rules/agent-self-verification.md": "f690b6b0d1f1df4d",
     "rules/audit-pattern.md": "706d3ba1ac21f49f",
     "rules/cloudflare-workers.md": "732de594f25fdad1",
     "rules/code-style.md": "5d6b8f1060176243",
