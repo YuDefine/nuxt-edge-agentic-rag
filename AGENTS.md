@@ -92,6 +92,7 @@ Changes can be parked（暫存）— temporarily moved out of `openspec/changes/
 - `.claude/rules/manual-review.md`
 - `.claude/rules/mcp-remote.md`
 - `.claude/rules/migration.md`
+- `.claude/rules/nuxt-dev-watch.md`
 - `.claude/rules/nuxt-security.md`
 - `.claude/rules/nuxt-ui-mcp.md`
 - `.claude/rules/output-hygiene.md`
