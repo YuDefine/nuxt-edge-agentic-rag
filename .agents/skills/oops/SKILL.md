@@ -323,7 +323,7 @@ discovered_after: SWEEP-V2
 - **Detection**：grep + mcp 各一塊 code block，可 copy-paste 直接跑
 - **Fix Recipe**：寫「在 X 補 Y」「把 A 改 B」，不是 diff dump
 - **Cross-Consumer Impact**：人類可讀 markdown table（frontmatter 已是 canonical SoT；table 只是 view）
-- **Prevention**：5 種 type 列表（audit-signal / pre-commit-hook / upstream-pr / rule-section / catalog-adoption）+ status + ref + note
+- **Prevention**：7 種 type 列表（audit-signal / pre-commit-hook / upstream-pr / rule-section / catalog-adoption / cookbook / regression-test）+ status + ref + note
 - **References**：session、相關 ADR、upstream issue URL、修正 commit SHA
 
 ### Step 5 — 寫進 clade（Bash workaround）
@@ -641,7 +641,7 @@ Mode D 是**分析 + 候選清單**，不是執行；user 看完 `tasks/<date>-c
 
 `accepted` **MUST** 同時建 `docs/tech-debt.md` TD-NNN，並把 ID 填進 frontmatter `prevention[].ref`，否則 audit `prevention.acceptedWithoutRef` block。
 
-5 種類型：`audit-signal` / `pre-commit-hook` / `upstream-pr` / `rule-section` / `catalog-adoption`。
+7 種類型：`audit-signal` / `pre-commit-hook` / `upstream-pr` / `rule-section` / `catalog-adoption` / `cookbook`（vendor/snippets 可重用範本）/ `regression-test`（fixtures / typecheck / publish gate）。
 
 ## Archive Policy
 
