@@ -526,7 +526,7 @@ Mode D 是**分析 + 候選清單**，不是執行；user 看完 `tasks/<date>-c
 | --- | --- | --- | --- |
 | 1 | `docs/pitfalls/*.md`（不含 `_archive/`） | `mcp__codebase-memory-mcp__search_code` w/ `path_filter="^docs/pitfalls/"` + 抽 frontmatter（`status`, `prevention[].status`, `cross_consumer_impact`） | (a) `prevention.status = accepted` 但對應 TD 仍 `open` 超過 N 天；(b) `cross_consumer_impact` ≥ 3 個 consumer `affected` 但 prevention 全部 `candidate`；(c) `status = open` 超過 30 天 |
 | 2 | `docs/digests/*.md`（排除 `_bootstrap-*`） | Read 最近 3 份；抽 `DIG-` id + `kind` + `severity` | (a) 同一 DIG- 連續 ≥ 2 份 digest 都出現未收斂；(b) candidate kind 集中在某個主題（如同主題 tech-debt 反覆出現） |
-| 3 | `vendor/signals/ledger/*.jsonl`（若存在） | `ls vendor/signals/ledger/ 2>/dev/null` → 若有檔，`tail -200` 抽最近事件；frequency map by `event_type` | (a) 高頻 reject 比率（validator 擋訊號）；(b) 高頻同類 event；(c) 某 consumer signal 量驟降（instrumentation 可能壞了） |
+| 3 | `vendor/ledger/*.jsonl`（**data** 在此；`vendor/signals/` 只放 code）| `wc -l vendor/ledger/*.jsonl 2>/dev/null` 看 `signals.jsonl` 行數；有檔則 `tail -200 vendor/ledger/signals.jsonl` 抽最近事件，frequency map by `event_type`。對照 [[improvement-loop]] § 8：`signals.jsonl` < 10 = bootstrap-only（signal 分析無意義，跳本源）；≥ 10 = partial / steady-state 才做 frequency 分析 | (a) 高頻 reject 比率（validator 擋訊號）；(b) 高頻同類 event；(c) 某 consumer signal 量驟降（instrumentation 可能壞了） |
 | 4 | consumer git log（最近 30 天） | 對 `registry/consumers.json` 內 `role: consumer` 條目跑 `git -C <path> log --since="30 days ago" --pretty=format:"%h %s" \| head -50`；consumer 路徑用 `~/offline/<consumer_id>` 推（starter 例外：scan root = `~/offline/nuxt-supabase-starter/template`，因 `projection_paths.rules = "template/.claude/rules/"`） | (a) commit message 反覆出現某 keyword（如 `fix typecheck`, `revert`, `hotfix`）→ 標準層可能缺；(b) 多個 consumer 同期出現相似 commit pattern → 系統性問題 |
 | 5 | consumer `tasks/lessons.md` | `cat ~/offline/<consumer>/tasks/lessons.md 2>/dev/null`（檔案常不存在，skip 即可） | (a) 多個 consumer lessons.md 出現同一類 pattern → 該 promote 進 `rules/core/` |
 | 6 | consumer `.claude/rules/local/*.md` | `ls ~/offline/<consumer>/.claude/rules/local/ 2>/dev/null`（starter 換 `template/.claude/rules/local/`）；列出檔名 + 一行 description（讀檔頭） | (a) 多個 consumer 自寫同主題 local rule → clade core 該補的 signal；(b) 出現「workaround clade 限制」字眼 |
@@ -595,7 +595,7 @@ Mode D 是**分析 + 候選清單**，不是執行；user 看完 `tasks/<date>-c
 
 ## 工具鏈缺口（若有）
 
-- <例：vendor/signals/ledger/ 目錄不存在 → improvement-loop instrumentation 還沒 bootstrap>
+- <例：`vendor/ledger/signals.jsonl` 行數 < 10 → improvement-loop instrumentation 仍 bootstrap-only（已知 TD-111 / TD-125 / TD-152 追蹤 shim 採用率），signal-based 分析跳過>
 - <例：consumer X repo 路徑不通 → registry 可能要更新>
 ```
 
