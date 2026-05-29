@@ -99,7 +99,7 @@ Verify channel baseline 是 consumer 端**已預先 ready** 的 codebase 層長�
 | all `verify:*` | env-gated dev-login route 已就緒（用 audit script / detection helper 偵測，詳見下方 § Dev-login route missing → scaffold-first hard rule） |
 | `verify:e2e` | Playwright config + `e2e/fixtures/index.ts` style three-role fixture（`adminPage` / `managerPage` / `staffPage`） |
 | `verify:api` | `__test-login` 或等價 session bypass route，可讓 curl / ofetch 建立 role session |
-| `verify:ui` | canonical seed data（`supabase/seed.sql` 或專案等價 seed 檔）覆蓋 final-state URL 所需 entity |
+| `verify:ui` | canonical seed data 覆蓋 final-state URL 所需 entity，**且該 fixture 在 verify 連的 dev DB 實際可查得到**——remote db-runtime（非 `supabase-local`）的 `seed.sql` 檔有 ≠ dev DB 有，見下方 § Seed-file ≠ dev-DB |
 
 **Why**：baseline 維護不是任何單一 spectra change 的臨時工作。每次 verify dispatch 才問 user 或讓 agent 補 seed，會把長期 codebase baseline 拖進錯誤時機，且會製造 seed.sql source-of-truth 漂移。
 
@@ -111,6 +111,18 @@ Verify channel baseline 是 consumer 端**已預先 ready** 的 codebase 層長�
 - Dispatch `verify:api` 前 **MUST** 確認可用 session bypass route。
 - Dispatch `verify:ui` 前 **MUST** 確認 dev-login route + seed file 存在。
 - Baseline 不完整時，將缺口登記到 consumer 的 `ROADMAP.md` / `docs/tech-debt.md` / dedicated infra change，而不是降低 verification channel。
+- **Dispatch `verify:ui` / `verify:e2e` 前，對 remote db-runtime consumer MUST 用 API/MCP 實際查 fixture 在 dev DB（不只 grep seed.sql）** — 見下方 § Seed-file ≠ dev-DB。
+
+#### Seed-file ≠ dev-DB（remote db-runtime 的 fixture baseline，hard rule）
+
+`verify:ui` / `verify:e2e` 的 seed baseline **不是「`seed.sql` 檔裡有 sample」**，而是「**該 fixture 在 verify 實際連的 dev DB 可查得到**」。兩者在 remote db-runtime 會分離：
+
+- consumer `db-runtime ∈ {supabase-self-hosted, supabase-cloud, cf-workers}`（即**非** `supabase-local`）→ dev DB 是**遠端**實例，`seed.sql` 只是 repo 內的檔；檔裡有 fixture **不代表** dev DB 已載入（self-hosted 要 `pnpm supabase:sync` → `pnpm db:reset` 才會進 dev DB）。
+- **MUST**：dispatch verify 前，對 remote db-runtime consumer 用 **API / MCP 實際查** fixture（如打 `?search=<sample>` 回 ≥1 筆、或 MCP `execute_sql` count）確認 dev DB 有，**NEVER** 只 grep `seed.sql` 就當 baseline 通過。
+- 檔有但 dev DB 沒 → 走該 consumer 的 sanctioned fixture-apply 路徑（self-hosted：`pnpm supabase:sync` + `pnpm db:reset`，⚠️ 共享 dev DB **先協調**），**NEVER** 起 local supabase 繞過（per [[db-topology-invariant]]）。
+- `supabase-local` consumer 不受此限：seed.sql + 本地 `supabase db reset` 即 dev DB 真實狀態。
+
+**實證（2026-05-30）**：TDMS（`db-runtime: supabase-self-hosted`）的 receiving-capacity verify items 引用 `φ12x50` / `PO-2026-*` fixture，存在 `seed.sql` 檔但 dev DB `?search=φ12x50` 回 0（從未 sync+reset 到 LXC）→ verify 撞空資料。grep-seed-only 的 baseline check 把它誤判為 ready，agent 又因 path-scoped `database.md` 沒載入而誤試 local supabase。
 
 #### Dev-login route missing → scaffold-first hard rule
 
