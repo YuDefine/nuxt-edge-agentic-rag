@@ -265,7 +265,7 @@ node scripts/wt-helper.mjs merge-back <slug> [flags]
 | Flag | 行為 |
 | --- | --- |
 | `--dry-run` | 預覽 blocker + worktree WIP 清單，不執行 squash / stash / cleanup |
-| `--auto-stash` | 把 main blockers stash 起來（`wt-merge-block/<slug>/<ISO>` 前綴）後再 squash |
+| `--auto-stash` | 把 main **全部** dirty bulk-stash 起來（`wt-merge-block/<slug>/<ISO>` 前綴，非只 blockers）後再 squash。bulk-stash 前先跑 claim guard 比對全部 dirty，差集含別 session WIP 即 refuse（見 § Claim guard scope ⊇ bulk-stash scope） |
 | `--include-worktree-wip` | Worktree 內有 uncommitted user WIP 時自動 `git add -- <paths> && git commit --amend --no-edit` 到 branch HEAD。**不建議** — 顯式 commit 比較安全（commit message 有語意） |
 | `--no-cleanup` | squash 成功後不 cleanup worktree（debug 用） |
 | `--noop-if-missing` | 找不到對應 worktree 時 silent no-op（給 archive hook 用） |
@@ -277,11 +277,21 @@ node scripts/wt-helper.mjs merge-back <slug> [flags]
 2. **偵測 worktree 內 uncommitted user WIP**：filter 掉 clade projection（`.agents/`、`.codex/`、`.claude/hub.json`、`.claude/.hub-state.json`、`scripts/wt-helper.mjs`），剩下是 user WIP。**有 WIP 無 `--include-worktree-wip` → throw**：建議 `cd <wtPath> && git add <files> && git commit --amend --no-edit` 後重跑。否則 squash 不帶走，cleanup 永久砍掉。
 3. **Pre-sync wt with main**（預設；`--skip-pre-sync` 關閉）：fetch + `git rev-list --count <branch>..<targetRef>` 算落差，>0 跑 `git merge --no-ff <targetRef>` 灌進 wt 分支。Conflict 留 wt 內（**不** auto-abort），main working tree 不動。動機：隔離衝突避免汙染 main（對應 `clade_publish_interleaved_wip_same_file` / `clade_propagate_stash_pop_loop` 教訓）。
 4. 偵測 main blockers：`git diff --name-only main..<branch>` ∩ main `status --porcelain`。
-5. 有 blocker 無 `--auto-stash` → throw 建議 re-run。有 `--auto-stash` → `git stash push -u -m "wt-merge-block/<slug>/<ISO>" -- <blocker paths>`。
+5. 有 blocker 無 `--auto-stash` → throw 建議 re-run。有 `--auto-stash` → 先跑 claim guard（見 § Claim guard scope ⊇ bulk-stash scope）比對 main 全部 dirty，通過後 `git stash push -u -m "wt-merge-block/<slug>/<ISO>"`（**bulk-stash，不帶 pathspec** — 因 git 2.50.1 pathspec stash 有 scope leak bug，見 `pitfall-git-stash-pathspec-scope-leak`；故捲走的是 main 全部 dirty，不只 blockers）。
 6. `git merge --squash <branch>` land 進 main working tree + index（**不** commit）。Conflict → abort + pop stash + 保留 worktree + throw。
 7. Squash 成功 → cleanup（remove worktree dir + delete branch）。
 
 **為什麼步驟 2 必要**：worktree 的「helper 在 commit、wiring 在 working tree」切錯型錯誤是無聲 footgun — 沒這道 check 時 squash 只搬 commit，cleanup 砍 worktree 後 wiring WIP 永久遺失（baseline ref 只 cover fork 前的 WIP，沒 cover 事後 user edit）。
+
+### Claim guard scope ⊇ bulk-stash scope（hard rule）
+
+`--auto-stash` 實際執行的是 **bulk-stash（`git stash push -u`，不帶 pathspec）**，捲走 main **全部** dirty —— 不只 `blockers`（= branch changeset ∩ main dirty）。因此 `--auto-stash` 在真正 bulk-stash **之前**，claim guard 的檢查範圍 **MUST ⊇ 將被 bulk-stash 捲走的全部 dirty**，**NEVER** 只查 `blockers` 子集。
+
+- bulk-stash 前 **MUST** 對 main **全部** dirty（`detectMainDirty`）跑 claim 比對（`classifyDirtyPaths`，`excludeClaim` 為本 merge-back worktree 的 claim）；
+- 差集（`allDirty \ blockers`）若含**別 session 認領**（`otherSession`）的 dirty → **fail-loud STOP / refuse auto-stash**（與既有 blocker-only / pre-fork guard 一致），列出 `<path> → <session-id>` 並要 user 等別 session 收斂或協調，**NEVER** 默默 bulk-stash 捲走別 session WIP；
+- 差集為空 / 全屬本 change / 為**無主**（unclaimed）dirty → 維持既有正常 flow（`--auto-stash` 本就設計來吞無主 dirty，user 後續走 `stash-reconcile`）。
+
+**為什麼**：claim guard 原本只假設「危險 = branch 要 land 的改動撞到別 session 改同檔」，但 bulk-stash 的副作用是「為清出乾淨 working tree 做 squash，把**所有** dirty 移走」——範圍遠大於 branch changeset。不在 branch changeset 的別 session 認領檔不是 blocker，guard 從未檢查，bulk-stash 照捲（2026-05-29 TDMS：vending merge-back `--auto-stash` 捲走別 session my-kpi 19 檔 WIP）。**正解是擴大 guard 檢查範圍，不是縮小 stash 範圍**（pathspec stash 會踩 git 2.50.1 scope leak，見 `pitfall-git-stash-pathspec-scope-leak`）。詳見 `pitfall-merge-back-autostash-bulk-captures-other-session-wip`。
 
 ### Stash 操作必 verify create
 
@@ -309,7 +319,7 @@ node scripts/stash-reconcile.mjs --include-all         # 含 unnamespaced（手�
 | `wt-baseline/<slug>/<ISO>` | `wt-helper add --baseline-strategy stash` fork 前 stash main dirty | apply 成功 pin 到 `refs/wt-baseline/<slug>/<ISO>` 後 drop；apply 失敗殘留 → `stash-reconcile --slug` 自決 |
 | `wt-final-baseline/<slug>/<ISO>` | rare second snapshot 變種 | 同上 |
 | `refs/wt-baseline/<slug>/<ISO>` (永久 ref) | apply 成功後 pin（2026-05-17 後） | **不自動清** — `wt-helper rescue --prune <ref>` 或手動 `git update-ref -d` |
-| `wt-merge-block/<slug>/<ISO>` | `wt-helper merge-back --auto-stash` 前 stash main blockers | merge-back 收尾印 `--slug` reconcile hint，跑 `stash-reconcile --interactive` |
+| `wt-merge-block/<slug>/<ISO>` | `wt-helper merge-back --auto-stash` 前 bulk-stash main 全部 dirty（含 blockers + 無主 unrelated dirty；別 session 認領的差集會在 stash 前被 claim guard refuse，見 § Claim guard scope ⊇ bulk-stash scope） | merge-back 收尾印 `--slug` reconcile hint，跑 `stash-reconcile --interactive` |
 | `clade-propagate-v<ver>-<ts>` | `propagate.mjs` dirty consumer stash pop 失敗保留（v0.3.45+） | publish 收尾 `stash-reconcile --include-all --stale-days 1` |
 | `clade-publish: <free-form>` | clade-publish Step 3 selective stage 前手動 stash | publish/propagate 收尾走 reconcile |
 | Legacy `cross-session-block-*` | v2 失敗 squash 累積（v3 不再產生） | reconcile 給命令處理 |
