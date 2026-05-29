@@ -203,7 +203,8 @@ const { values, positionals } = parseArgs({
 
 const controlHost = values['control-host']
 const mainRepoRootForDetect = resolveMainRepoRoot()
-const consumerId = mainRepoRootForDetect.split('/').filter(Boolean).pop() || 'app'
+const detectPathSegments = mainRepoRootForDetect.split('/').filter(Boolean)
+const consumerId = detectPathSegments[detectPathSegments.length - 1] || 'app'
 const APPS = detectApps(mainRepoRootForDetect)
 const appNames = Object.keys(APPS)
 if (!appNames.length) {
@@ -503,6 +504,18 @@ function printState(state, daemonRunning) {
   console.log('')
 }
 
+// ── kill 整個 process group（負 pid）──
+// backend / tunnel 都用 detached:true spawn，child.pid 是 group leader pid；
+// 送負 pid 收整串（pnpm→sh→nuxt / node→cloudflared），避免 orphan。
+function killGroup(pid, signal = 'SIGTERM') {
+  if (!pid) return
+  try {
+    process.kill(-pid, signal)
+  } catch {
+    /* group already gone */
+  }
+}
+
 // ════════════════════════════════════════════════════════════════════════
 // 常駐 daemon 模式
 // ════════════════════════════════════════════════════════════════════════
@@ -623,18 +636,6 @@ async function runDaemon() {
     clientSockets.clear()
 
     console.log(`[dev-router] active backend → "${slug}" (:${backendPort})`)
-  }
-
-  // ── kill 整個 process group（負 pid）──
-  // backend / tunnel 都用 detached:true spawn，child.pid 是 group leader pid；
-  // 送負 pid 收整串（pnpm→sh→nuxt / node→cloudflared），避免 orphan。
-  function killGroup(pid, signal = 'SIGTERM') {
-    if (!pid) return
-    try {
-      process.kill(-pid, signal)
-    } catch {
-      /* group already gone */
-    }
   }
 
   // ── stop：kill backend（active 拒絕）──
