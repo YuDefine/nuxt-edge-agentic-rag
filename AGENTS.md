@@ -74,6 +74,7 @@ Changes can be parked（暫存）— temporarily moved out of `openspec/changes/
 - `.claude/rules/db-preview-env.md`
 - `.claude/rules/dev-login.md`
 - `.claude/rules/dev-port-allocation.md`
+- `.claude/rules/dev-tunnel-convention.md`
 - `.claude/rules/development.md`
 - `.claude/rules/error-handling.md`
 - `.claude/rules/evlog-adoption.md`
