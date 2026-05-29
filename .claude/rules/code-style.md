@@ -241,7 +241,7 @@ baseline 內容（自 `vendor/oxc-shared/preset.mjs`）：
 - @ v0.39.2: `Found 2 warnings and 0 errors`
 - @ main (v0.40.0): `Found 0 warnings and 1 error`
 
-`pnpm-lock.yaml` 自 v0.39.2 後重生兩次，oxlint 在 `^0.1.21` 內升 patch，把 `no-underscore-dangle` rule level 從 warn 升 error。perno 5 個 consumer 都吃 clade 同一份 oxlint dep range — preset 已 pin 此 rule 為 `['warn', { allow: ['__dirname', '__filename'] }]`，import 即享 single source of truth。
+`pnpm-lock.yaml` 自 v0.39.2 後重生兩次，oxlint 在 `^0.1.21` 內升 patch，把 `no-underscore-dangle` rule level 從 warn 升 error。各 consumer 都吃 clade 同一份 oxlint dep range — preset 已 pin 此 rule 為 `['warn', { allow: ['__dirname', '__filename'] }]`，import 即享 single source of truth。
 <!-- starter:strip-end -->
 
 ### 用 vp 命令做 lint / format

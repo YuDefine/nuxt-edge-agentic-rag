@@ -13,12 +13,12 @@ metadata:
 
 繁體中文
 
-**核心命題**：5 consumer 跑同一套標準（evlog / Supabase / Cloudflare Workers / nuxt-security / supabase-js / vite-plus / Better Auth / vue / nuxt / pinia），任一依賴升版或 contract 變更時 bug 會以同樣型態散落各 consumer。本 skill 是**唯一**對外入口，提供兩個 mode：
+**核心命題**：各 consumer 跑同一套標準（evlog / Supabase / Cloudflare Workers / nuxt-security / supabase-js / vite-plus / Better Auth / vue / nuxt / pinia），任一依賴升版或 contract 變更時 bug 會以同樣型態散落各 consumer。本 skill 是**唯一**對外入口，提供兩個 mode：
 
 - **Mode A 查詢**：遇到問題先查 clade 經驗庫，命中 → 直接套 fix recipe（節省 debug 時間）
 - **Mode B 新增**：踩到新坑 → 沉澱到中央庫，避免重踩 + 跨 consumer 散播警示
 - **Mode C handoff sweep**：被 /handoff 呼叫，掃 session 內 missed lessons
-- **Mode D clade self-improvement sweep**（clade-only）：在 clade session 主動掃 pitfalls + digest + signals + 5 consumer 狀態，分析跨 consumer 反覆出現的 pattern，輸出「clade 標準層該怎麼補」的 candidate list 進 `tasks/<date>-clade-improve-sweep.md`
+- **Mode D clade self-improvement sweep**（clade-only）：在 clade session 主動掃 pitfalls + digest + signals + 各 consumer 狀態，分析跨 consumer 反覆出現的 pattern，輸出「clade 標準層該怎麼補」的 candidate list 進 `tasks/<date>-clade-improve-sweep.md`
 
 此 skill 優先於個別 skill 內嵌的踩坑指示。
 
@@ -184,7 +184,7 @@ rg --type md "<關鍵字>" ~/offline/clade/docs/pitfalls/
 | `tags` | controlled vocabulary | **MUST** 在 `docs/pitfalls/tags.yml` 註冊；1-6 個 |
 | `detection.mcp_patterns` | 可執行 search_code pattern | **MUST** 用 `path_filter` regex，**NEVER** `path_glob` |
 | `detection.grep_patterns` | 可執行 grep 命令 | command_ref 指向 markdown body 段落 |
-| `cross_consumer_impact` | 5 個 consumer 都列 | 走 Step 3 自動填 |
+| `cross_consumer_impact` | 每個 consumer 都列 | 走 Step 3 自動填 |
 | `prevention` | candidate list | 至少 1 條，**MUST** 有 status |
 | `references` | session + commits + upstream | sessions 必填 |
 
@@ -398,7 +398,7 @@ cd /Users/charles/offline/clade && node scripts/pitfalls-audit.mjs
 回報使用者：
 
 - ✅ 新 pitfall id + 路徑
-- ✅ Cross-consumer scan 結果（5 consumer 哪幾個受影響）
+- ✅ Cross-consumer scan 結果（各 consumer 哪幾個受影響）
 - ✅ Prevention candidates list + 對應 TD-NNN（若 accepted）
 - ✅ audit script all signals green
 - 待 user 決定：要不要立即 propagate clade（按 memory rule「Propagate 需授權」）
@@ -578,7 +578,7 @@ Mode D 是**分析 + 候選清單**，不是執行；user 看完 `tasks/<date>-c
 ### SWEEP-001 — <一句話標題>
 
 - **行動類型**: `rule-section` | `cookbook` | `audit-signal` | `pitfall-upgrade` | `rule-promotion`
-- **跨 consumer 證據**: <N>/5 consumer 出現；list: <consumer ids>
+- **跨 consumer 證據**: <N>/<TOTAL> consumer 出現；list: <consumer ids>
 - **clade 覆蓋現況**: <既有 rule / cookbook / audit 路徑，或「無」>
 - **建議落地位置**: <具體 file path + § 名>
 - **Evidence**:
@@ -631,8 +631,8 @@ Mode D 是**分析 + 候選清單**，不是執行；user 看完 `tasks/<date>-c
 | Status | 條件 | 判定方式 |
 | --- | --- | --- |
 | `open` | 尚有未知 consumer / 未修 consumer / prevention 未決 | 新建預設 |
-| `mitigated` | 5 consumer 都 scanned + 受影響者已 fixed + 至少一條 prevention `implemented` 或明確 `rejected` | audit script 推導 |
-| `fixed-upstream` | upstream 已 release fix **且** 5 consumer 都升到安全版本（不只是 upstream release） | 人工 + 版本掃描守住 |
+| `mitigated` | 所有 consumer 都 scanned + 受影響者已 fixed + 至少一條 prevention `implemented` 或明確 `rejected` | audit script 推導 |
+| `fixed-upstream` | upstream 已 release fix **且** 所有 consumer 都升到安全版本（不只是 upstream release） | 人工 + 版本掃描守住 |
 | `wontfix` | 明確放棄；**MUST** 填 `wontfix_reason` | 人工 |
 
 ## Prevention Promotion Path
@@ -694,7 +694,7 @@ binary 由 `codebase-memory-mcp install` 安裝到 `~/.local/bin/codebase-memory
 - **`follow-up-register.md`**：pitfall `prevention.status = accepted` 必須在 `docs/tech-debt.md` 建 TD-NNN 條目，由 follow-up register 規則接管
 - **`evlog-adoption.md` / `audit-pattern.md` / `logging.md`**：主題 rule 規範**正向**做法；pitfalls 補上**反向**真實踩過的坑，幫助 agent 理解規則背後動機
 - **`/handoff` skill**：session 結束時觸發本 skill Mode C
-- **Mode D vs improvement-digest.mjs**：兩者輸入有重疊（pitfalls / signals / tech-debt），但 cadence 與輸出不同。digest 是**事件觸發** batch，產出 `docs/digests/<date>.md`（半結構化候選，走 DIG-hash + evidence predicate）；Mode D 是 **user 觸發** ad-hoc sweep，產出 `tasks/<date>-clade-improve-sweep.md`（session-tied 候選清單，含 5 consumer 即時狀態如 git log / lessons.md / local rules，digest 不掃這些）。Mode D **不**寫 digest，避免污染 auto pipeline；digest 若已有對應 DIG-id，Mode D candidate 標 `related: DIG-xxxx` 交叉引用
+- **Mode D vs improvement-digest.mjs**：兩者輸入有重疊（pitfalls / signals / tech-debt），但 cadence 與輸出不同。digest 是**事件觸發** batch，產出 `docs/digests/<date>.md`（半結構化候選，走 DIG-hash + evidence predicate）；Mode D 是 **user 觸發** ad-hoc sweep，產出 `tasks/<date>-clade-improve-sweep.md`（session-tied 候選清單，含各 consumer 即時狀態如 git log / lessons.md / local rules，digest 不掃這些）。Mode D **不**寫 digest，避免污染 auto pipeline；digest 若已有對應 DIG-id，Mode D candidate 標 `related: DIG-xxxx` 交叉引用
 
 ## 違反時的回報方式
 
