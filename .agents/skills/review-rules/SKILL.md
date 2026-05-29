@@ -29,7 +29,7 @@ description: 管理兩層 review 規則清單（clade / project）— 新增、�
 
 ## Step 0: Layer-pick 選單（新增 / 編輯 / 刪除 動作必跑）
 
-當使用者要新增 / 編輯 / 刪除規則但**沒明說哪一層**，agent **MUST** 用 `request_user_input` 強制選層，**NEVER** 自行猜測。猜錯會落到錯誤 scope（在 consumer 寫的條目擴散成跨 5 consumer 共用，或反過來），這是飄移最常見的來源。
+當使用者要新增 / 編輯 / 刪除規則但**沒明說哪一層**，agent **MUST** 用 `request_user_input` 強制選層，**NEVER** 自行猜測。猜錯會落到錯誤 scope（在 consumer 寫的條目擴散成跨所有 consumer 共用，或反過來），這是飄移最常見的來源。
 
 ### 必跑 question shape
 
@@ -45,7 +45,7 @@ description: 管理兩層 review 規則清單（clade / project）— 新增、�
     },
     {
       "label": "clade — 跨所有 consumer 共用嚴格條目",
-      "description": "在 clade 中央倉編輯 plugins/hub-core/agents/references/clade-review-rules.md；自動散播到 5 個 consumer；條目必須是「真的所有 Nuxt consumer 都該強制遵守」的規則（典型場景：security baseline / 元件替代 / Nuxt UI 公約 / data leak 防護 / 命名公約）。需要 cd 到 ~/offline/clade + publish + propagate。"
+      "description": "在 clade 中央倉編輯 plugins/hub-core/agents/references/clade-review-rules.md；自動散播到所有 consumer；條目必須是「真的所有 Nuxt consumer 都該強制遵守」的規則（典型場景：security baseline / 元件替代 / Nuxt UI 公約 / data leak 防護 / 命名公約）。需要 cd 到 ~/offline/clade + publish + propagate。"
     }
   ]
 }
@@ -67,7 +67,7 @@ description: 管理兩層 review 規則清單（clade / project）— 新增、�
 | 選 | 跳到 | 一句話說明 |
 | --- | --- | --- |
 | **project** | 下方「Project 層 flow」 | 在當前專案自己的 `project-review-rules.md` 增 / 改 / 刪 — **不需 publish** |
-| **clade** | 下方「Clade 層 flow」 | 在 clade 中央倉 `clade-review-rules.md` 增 / 改 / 刪 — 強制 grep pattern + 走 `/clade-publish` 散播到 5 consumer |
+| **clade** | 下方「Clade 層 flow」 | 在 clade 中央倉 `clade-review-rules.md` 增 / 改 / 刪 — 強制 grep pattern + 走 `/clade-publish` 散播到所有 consumer |
 
 ## Project 層 flow
 
@@ -103,7 +103,7 @@ description: 管理兩層 review 規則清單（clade / project）— 新增、�
 
 對 clade `~/offline/clade/plugins/hub-core/agents/references/clade-review-rules.md` 操作。**MUST 在 clade 工作目錄**，consumer 端是 LOCKED 投影副本（chmod 444），改了會被下次 sync 還原。
 
-> 影響面提醒：改 clade 層等於改所有 5 consumer 的共用 baseline，跟業務 / 命名公約 / security 等同等重要。新增條目前 agent 應確認 user 確實意圖讓所有 consumer 都遵守，避免把 single-consumer 偏好寫進 clade 害其他 consumer 被擋 commit。
+> 影響面提醒：改 clade 層等於改所有 consumer 的共用 baseline，跟業務 / 命名公約 / security 等同等重要。新增條目前 agent 應確認 user 確實意圖讓所有 consumer 都遵守，避免把 single-consumer 偏好寫進 clade 害其他 consumer 被擋 commit。
 
 ### 新增 / 修改 / 刪除條目
 
