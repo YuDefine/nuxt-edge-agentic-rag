@@ -120,6 +120,7 @@ Changes can be parked（暫存）— temporarily moved out of `openspec/changes/
 - `.claude/rules/unused-features.md`
 - `.claude/rules/ux-completeness.md`
 - `.claude/rules/verification-lease.md`
+- `.claude/rules/vite-doctor.md`
 - `.claude/rules/work-claims.md`
 - `.claude/rules/worktree-default.md`
 
