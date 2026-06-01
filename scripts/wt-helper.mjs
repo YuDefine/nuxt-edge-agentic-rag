@@ -439,7 +439,7 @@ function pinPreForkBaseline(consumerRoot, cleanSlug, iso, opts = {}) {
 async function cmdAdd(slug, opts = {}) {
   if (!slug) {
     throw new Error(
-      'Usage: wt-helper add <slug> [--precheck-baseline [<change>]] [--baseline-strategy commit|stash|warn] [--baseline-scope-paths <comma>] [--baseline-stash-name <name>] [--skip-prefork-audit]',
+      'Usage: wt-helper add <slug> [--precheck-baseline [<change>]] [--baseline-strategy commit|stash|warn] [--baseline-scope-paths <comma>] [--baseline-stash-name <name>] [--skip-prefork-audit] [--include-unrelated-dirty]',
     )
   }
   const cleanSlug = makeSlugSafe(slug)
@@ -532,16 +532,24 @@ async function cmdAdd(slug, opts = {}) {
       const thresholdRaw = process.env.WT_PREFORK_AUDIT_THRESHOLD
       const threshold = thresholdRaw !== undefined ? Number(thresholdRaw) : 50
       const safeThreshold = Number.isFinite(threshold) && threshold >= 0 ? threshold : 50
+      // P2 (pitfall 2026-06-01): count untracked too. An in-flight batch is
+      // often mostly untracked (new migration / archive dir / new files), which
+      // a tracked-only count misses. Block policy stays warn-only by design
+      // (see pitfall-pre-fork-baseline-hides-in-flight-feature 'audit must not
+      // block'); the unambiguous archive/migration markers handle the hard STOP.
       const trackedCount = dirty.modified.length
-      if (trackedCount >= safeThreshold) {
+      const untrackedCount = dirty.untracked.length
+      const totalDirtyCount = trackedCount + untrackedCount
+      if (totalDirtyCount >= safeThreshold) {
         const sample = dirty.modified
           .slice(0, 20)
           .map((m) => `  ${m.status}  ${m.path}`)
           .join('\n')
-        const more = trackedCount > 20 ? `\n  ... and ${trackedCount - 20} more` : ''
+        const more = totalDirtyCount > 20 ? `\n  ... and ${totalDirtyCount - 20} more` : ''
         console.warn('')
         console.warn(
-          `⚠️  Pre-fork audit: main has ${trackedCount} staged+unstaged tracked change(s) (threshold ${safeThreshold}).`,
+          `⚠️  Pre-fork audit: main has ${totalDirtyCount} staged+unstaged+untracked change(s) ` +
+            `(${trackedCount} tracked, ${untrackedCount} untracked; threshold ${safeThreshold}).`,
         )
         console.warn(
           `    These may be in-flight feature code; baseline strategy (especially 'stash') could`,
@@ -641,17 +649,71 @@ async function cmdAdd(slug, opts = {}) {
         )
         gitSelectiveCommit(consumerRoot, scopePaths, message)
       } else if (strategy === 'stash') {
-        const iso = baselineIso
-        const stashName =
-          opts.baselineStashName || `wt-baseline/${cleanSlug}/${preGenSessionId}/${iso}`
-        const baselineRef = `refs/wt-baseline/${cleanSlug}/${iso}`
-        console.log(`Pre-fork baseline: stash ${dirtyCount} file(s) as '${stashName}'`)
-        git(['stash', 'push', '-u', '-m', stashName], {
-          cwd: consumerRoot,
-          stdio: 'inherit',
-        })
-        pendingStashName = stashName
-        pendingBaselineRef = baselineRef
+        // P1 (pitfall 2026-06-01-prefork-baseline-stash-sweeps-unclaimed-main-work, TD-181):
+        // `git stash push -u` bulk-captures ALL main dirty into the worktree +
+        // refs/wt-baseline/*, silently sweeping another session's live work (or a
+        // verified-but-uncommitted archive batch) out of main. Unclaimed dirty is
+        // invisible to the otherSession STOP above (main sessions never write a
+        // claim; claims expire after 24h), so the only safe default is to NOT
+        // capture anything — the fork starts clean from HEAD and does not need
+        // main's WIP. Capture is opt-in (--include-unrelated-dirty for all), never
+        // the silent default.
+        const scopePaths = String(opts.baselineScopePaths || '')
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean)
+        if (scopePaths.length > 0) {
+          // No safe scoped stash: `git stash push -u -- <pathspec>` leaks the full
+          // tracked working tree (the -u snapshot ignores pathspec — see
+          // pitfall-git-stash-pathspec-scope-leak). Route scoped capture through
+          // the commit strategy, which does a proven selective commit.
+          throw new Error(
+            `Pre-fork baseline guard: --baseline-strategy=stash does not support --baseline-scope-paths ` +
+              `(git stash -u ignores pathspec and would leak the full tracked tree — see ` +
+              `pitfall-git-stash-pathspec-scope-leak; there is no safe scoped stash).\n` +
+              `For scoped capture, re-run with the commit strategy (selectively commits only the scoped paths):\n` +
+              `  node scripts/wt-helper.mjs add ${cleanSlug} --precheck-baseline${opts.precheckBaseline ? ` ${opts.precheckBaseline}` : ''} --baseline-strategy commit --baseline-scope-paths ${scopePaths.join(',')}\n` +
+              `To carry ALL main dirty into the worktree instead, re-run stash with --include-unrelated-dirty.`,
+          )
+        }
+        if (!opts.includeUnrelatedDirty) {
+          // DEFAULT: capture nothing. Leave every main dirty path untouched; the
+          // worktree forks clean from HEAD. This is the fail-safe that closes the
+          // incident — unclaimed dirty is never silently swept.
+          const preview = [
+            ...dirty.modified.map((m) => `  ${m.status}  ${m.path}`),
+            ...dirty.untracked.map((u) => `  ??  ${u.path}`),
+          ]
+            .slice(0, 10)
+            .join('\n')
+          const more = dirtyCount > 10 ? `\n  ... and ${dirtyCount - 10} more` : ''
+          console.log(
+            `Pre-fork baseline: stash strategy leaves main's ${dirtyCount} dirty file(s) in place; ` +
+              `the worktree forks clean from HEAD (no bulk-capture).`,
+          )
+          console.log(preview + more)
+          console.log(
+            `  To carry specific WIP into the worktree: --baseline-strategy commit --baseline-scope-paths <comma>.\n` +
+              `  To carry ALL main dirty (only when it genuinely belongs to this fork): re-run with --include-unrelated-dirty.`,
+          )
+          // No pendingStashName → nothing applied to the worktree; main untouched.
+        } else {
+          // Explicit opt-in: bulk-capture ALL main dirty. The caller affirms the
+          // dirty belongs to this fork.
+          const iso = baselineIso
+          const stashName =
+            opts.baselineStashName || `wt-baseline/${cleanSlug}/${preGenSessionId}/${iso}`
+          const baselineRef = `refs/wt-baseline/${cleanSlug}/${iso}`
+          console.log(
+            `Pre-fork baseline: --include-unrelated-dirty → stash ${dirtyCount} file(s) as '${stashName}'`,
+          )
+          git(['stash', 'push', '-u', '-m', stashName], {
+            cwd: consumerRoot,
+            stdio: 'inherit',
+          })
+          pendingStashName = stashName
+          pendingBaselineRef = baselineRef
+        }
       } else if (strategy === 'warn') {
         const preview = [
           ...dirty.modified.map((m) => `  ${m.status}  ${m.path}`),
@@ -2277,6 +2339,7 @@ async function main() {
     noopIfMissing: flags.has('--noop-if-missing'),
     skipPreSync: flags.has('--skip-pre-sync'),
     skipPreforkAudit: flags.has('--skip-prefork-audit'),
+    includeUnrelatedDirty: flags.has('--include-unrelated-dirty'),
     precheckBaseline: Object.prototype.hasOwnProperty.call(values, '--precheck-baseline')
       ? values['--precheck-baseline']
       : undefined,
@@ -2328,10 +2391,24 @@ async function main() {
       console.error(
         '                            commit: selective stage + commit baseline on main;',
       )
-      console.error('                            stash: stash main → apply inside new worktree;')
+      console.error(
+        '                            stash: leave main dirty + fork clean (default); carry',
+      )
+      console.error(
+        '                            ALL main dirty into worktree only with --include-unrelated-dirty;',
+      )
       console.error('                            warn: stop with report (default).')
       console.error(
         '    --baseline-scope-paths <comma>   Required for commit strategy; selective stage scope.',
+      )
+      console.error(
+        '                            (Not supported by stash — use commit for scoped capture.)',
+      )
+      console.error(
+        '    --include-unrelated-dirty        stash strategy only: bulk-capture ALL main dirty',
+      )
+      console.error(
+        '                            into the worktree (off by default — fork forks clean).',
       )
       console.error(
         '    --baseline-stash-name <name>     Override default `wt-baseline/<slug>/<ISO>` stash name.',
