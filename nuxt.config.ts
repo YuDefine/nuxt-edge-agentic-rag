@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url'
 import { createNitroRollupConfig } from './build/nitro/rollup'
 import { createKnowledgeRuntimeConfig } from './shared/schemas/knowledge-runtime'
 import { parseMcpConnectorClientsEnv } from './shared/utils/mcp-connector-client-registry'
+import { doctorConfig } from './vendor/doctor-shared/preset.mjs'
 
 const isVitest = process.env.VITEST === 'true'
 const disableNuxtHints =
@@ -111,6 +112,7 @@ export default defineNuxtConfig({
     ...(!disableNuxtHints ? ['@nuxt/hints'] : []),
     '@nuxtjs/mcp-toolkit',
     '@nuxt/a11y',
+    ['vite-doctor/nuxt', doctorConfig],
   ],
 
   // NuxtHub - auto-detects environment:
@@ -260,7 +262,7 @@ export default defineNuxtConfig({
       crossOriginEmbedderPolicy: false,
       contentSecurityPolicy: {
         'base-uri': ["'none'"],
-        'connect-src': ["'self'", 'https://api.iconify.design'],
+        'connect-src': ["'self'", 'https://api.iconify.design', 'https://cloudflareinsights.com'],
         'font-src': ["'self'", 'https:', 'data:'],
         'form-action': ["'self'"],
         'frame-ancestors': ["'none'"],
