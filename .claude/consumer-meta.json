@@ -1,0 +1,74 @@
+{
+  "$schema": "../../../clade/registry/consumer-meta.schema.json",
+  "$comment": "Fleet sweep TD-159, scaffolded by clade scripts/scaffold-consumer-meta.mjs 2026-06-04. Nuxt 4 + NuxtHub on Cloudflare Workers + better-auth + libsql on port 3010.",
+  "schemaVersion": "1",
+  "consumerId": "nuxt-edge-agentic-rag",
+
+  "dev": {
+    "ports": [
+      {
+        "port": 3010,
+        "alias": "main",
+        "purpose": "primary nuxt dev (OAuth pinned)"
+      }
+    ],
+    "leaseMode": "strict",
+    "commands": {
+      "spawn": "pnpm dev:agent",
+      "status": "pnpm dev:status",
+      "kill": "pnpm dev:kill"
+    },
+    "singleton": "scripts/dev-singleton.mjs",
+    "worktreePattern": "../nuxt-edge-agentic-rag-wt/<branch>",
+    "envSyncPolicy": {
+      "filesToCopy": [],
+      "filesToGenerate": [],
+      "source": "main"
+    }
+  },
+
+  "auth": {
+    "provider": "better-auth",
+    "portPinned": true,
+    "oauthRedirectUris": [],
+    "devSigninEnabled": false,
+    "devSigninEndpoint": null,
+    "devSigninFlag": null,
+    "cookieNamespace": null
+  },
+
+  "browser": {
+    "cdpPort": 9333,
+    "profileMode": "dedicated-bh-chrome",
+    "loginRequired": true
+  },
+
+  "database": {
+    "kind": "libsql",
+    "instances": {},
+    "envVarNames": {},
+    "seedCommand": null,
+    "previewEnvCapability": null
+  },
+
+  "commands": {
+    "typecheck": "pnpm typecheck",
+    "lint": "pnpm lint",
+    "test": "pnpm test",
+    "build": "pnpm build",
+    "smoke": null
+  },
+
+  "deploy": {
+    "platform": "cloudflare-workers",
+    "prodUrl": null,
+    "previewUrlShape": null,
+    "deployTrigger": "push-main"
+  },
+
+  "verification": {
+    "healthEndpoints": [],
+    "smokePaths": [],
+    "manualGates": []
+  }
+}
