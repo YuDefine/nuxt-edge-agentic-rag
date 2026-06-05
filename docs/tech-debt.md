@@ -68,6 +68,7 @@
 | TD-065 | `UpdateQueryLog.rewriterStatus` 型別 `string \| null` 與 `query_logs.rewriter_status` NOT NULL 不一致；潛在 5xx                                                                                                                                               | low      | open        | 2026-04-26 `/commit` 0-A code-review                             | —     |
 | TD-066 | `retrieveVerifiedEvidence` 用 `=== 'success'` 比對 `RewriterStatus`，違反專案 `switch + assertNever` exhaustiveness rule；新增 enum 值時不會 compiler error                                                                                                   | low      | open        | 2026-04-26 `/commit` 0-A code-review                             | —     |
 | TD-067 | `test/tsconfig.json` baseline 191 errors（component module not found + fixture type drift + Nitro route key excessive depth + `allowImportingTsExtensions` 缺 + middleware signature 漂移）                                                                   | mid      | open        | 2026-05-04 clade v0.3.10 cutover pre-push test-typecheck 揭露    | —     |
+| TD-070 | `rag-query-rewriting` 人工檢查對齊新 manual-review 規範（補 `[discuss]` marker + verify channel + Pre-Review Data Readiness）                                                                                                                                 | mid      | open        | 2026-05-12 clade v1.3.6 manual-review.md 新規散播                | —     |
 
 ---
 
@@ -2530,3 +2531,98 @@ build env 那邊雖然有 `${{ secrets.PROD_BETTER_AUTH_SECRET }}` / `${{ secret
 ### 為什麼登記不立即修
 
 當下 session（2026-05-09 21:30）user 指示「先登記不處理」— agentic-rag 自家 worker 的 secret 拓樸需要時間 audit（多個 build env / runtime secret / NuxtHub bindings 混合），且觸碰 deploy workflow 風險高，要排獨立 session 處理。
+
+## TD-069 — T3 evlog 落地 production 缺 D1 `evlog_events` migration（drain 在 prod 是 dead-write）
+
+**Status**: open
+**Priority**: high — T3 evlog 在 production 形同無作用，所有 wide event drain 都會 silently fail
+**Discovered**: 2026-05-10 — clade HANDOFF §2.4 dev smoke 跑 `wrangler d1 execute agentic-rag-db --remote --command "SELECT count(*) FROM evlog_events"` 回 `no such table: evlog_events: SQLITE_ERROR [code: 7500]`
+**Location**: `server/database/migrations/`（缺檔）+ `nuxt.config.ts` `@evlog/nuxthub` module wire（已 wire 但未生 migration）
+**Related markers**: 對應 spectra change `archive/...adopt-evlog-nuxthub-ai-t3/` tasks §7.1-7.4 全部 unchecked
+
+### Problem
+
+T3 spec apply（commit `dbea28d`）後 `@evlog/nuxthub` module 已正確 wire 進 `nuxt.config.ts:96-114,119-124`，runtime drain plugin 也會在每筆 wide event 時嘗試 INSERT 進 D1 `evlog_events` table。但 production D1 從來沒這張 table — 因為 T3 apply 時沒跑 `pnpm hub:db:migrations:create` 把 `@evlog/nuxthub` 經 `hub:db:schema:extend` hook 注入的 schema 落成 drizzle migration。
+
+驗證命令：
+
+```bash
+cd ~/offline/nuxt-edge-agentic-rag
+export CLOUDFLARE_API_TOKEN=$(grep -E "^CLOUDFLARE_API_TOKEN=" .env | head -1 | cut -d= -f2-)
+npx wrangler d1 execute agentic-rag-db --remote --command "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE '%evlog%'"
+```
+
+回傳：空（沒任何 evlog\* table）。
+
+`server/database/migrations/` 16 條 SQL（0001 → 0016）grep `evlog_events` 0 命中。
+
+機制：`@evlog/nuxthub` `setup()` 內 `nuxt.hook('hub:db:schema:extend', ({ dialect, paths }) => paths.push(resolve2('./runtime/db/schema/events.${dialect}')))` 只負責**註冊** schema 到 nuxthub drizzle pipeline；要實際生成 migration 必跑 `pnpm hub:db:migrations:create`，不是 deploy 時自動執行。
+
+### Impact
+
+T3 evlog adoption 表面 audit clean（`drain.pipelineWraps=1 / nuxthub.moduleInstalled=1 / enrichers.installed=5`，audit script 0/4 block），但實際 production runtime 每筆 wide event drain 都會 INSERT 進不存在的 table → 失敗 → drain.js retry 3 次 → 全敗 → silently swallowed。**production 上 0 筆 evlog wide event 被持久化**。
+
+對應 spectra change tasks §7.1（`SELECT count > 0`）/ §7.2（`event.ai.cost_usd` 寫入）/ §7.3（SSE child event 入 D1）/ §7.4（`event.actor.id` 在 D1 row）全部無法驗。
+
+### Fix approach
+
+```bash
+cd ~/offline/nuxt-edge-agentic-rag
+pnpm hub:db:migrations:create
+# 應該產生 server/database/migrations/0017_<auto-name>.sql 含 CREATE TABLE evlog_events
+ls server/database/migrations/
+git diff server/database/migrations/    # 檢查 schema 是否符合 @evlog/nuxthub 預期
+git add server/database/migrations/
+git commit -m "🐛 fix(evlog): missing D1 migration for evlog_events table (TD-069)"
+git push origin main   # staging deploy 自動套 migration
+# 或對 production：tag + deploy production 路徑
+```
+
+deploy 完跑：
+
+```bash
+npx wrangler d1 execute agentic-rag-db --remote --command "SELECT count(*) FROM evlog_events"
+# 應回非 0（@evlog/nuxthub drain 開始 INSERT 後）
+```
+
+### Acceptance
+
+- production D1 `evlog_events` table 存在
+- `SELECT count(*) FROM evlog_events WHERE created_at > now() - interval '1 hour'` > 0（chat endpoint 觸發後）
+- `event.ai.cost_usd / event.ai.tokens / event.ai.tool_calls` 在新 row 內可查
+- spectra change `adopt-evlog-nuxthub-ai-t3/tasks.md §7.1-7.4` 可勾完成
+
+### 風險
+
+`pnpm hub:db:migrations:create` 會根據 drizzle schema diff 生 migration。若 nuxthub `events.sqlite` schema 跟 production D1 已有 schema 有 indirectly conflict（例如 index name 撞），需 review migration SQL 再 commit。**不要直接 `migrations:create` 後盲 push**。
+
+---
+
+## TD-070 — rag-query-rewriting 人工檢查對齊新 manual-review 規範
+
+**Status**: open  
+**Priority**: mid  
+**Discovered**: 2026-05-12 — clade v1.3.6 manual-review.md 新增 Pre-Review Data Readiness + `[review:ui]` 收斂原則 + verify channel marker schema（散播到 consumer LOCKED 投影）  
+**Location**: `openspec/changes/rag-query-rewriting/tasks.md` `## 人工檢查` section（items 1-7）  
+**Related markers**: 此 TD 屬「整批 ingest 工作」追蹤，不在 tasks.md 內標 `@followup` marker
+
+### Problem
+
+`rag-query-rewriting` 的 `## 人工檢查` 7 items 未標 marker。按 clade v1.3.6 新規 manual-review.md「Fallback ≠ 允許省略」：所有新寫或 ingest 修改的 items **MUST** 顯式標 marker。7 items 內容多屬 staging acceptance evidence 抽查（retrieval_score / latency p95 / fallback rate / 抽 `query_log_debug` 記錄 / production safety check / Decision Q1 / Decision Q2）→ 該全部標 `[discuss]`（Claude 主導 evidence 收集 + user walkthrough 拍板）。
+
+User 決定本次 session **登記不處理**（2026-05-12 對話中明示「agentic-rag 全部都登記 不處理」）。
+
+### Fix approach
+
+對 7 items 各加 `[discuss]` marker（schema: `- [ ] #N [discuss] <description> @no-screenshot` if applicable）。逐項 evidence 在 spectra-archive Step 2.5 Discuss Walkthrough 流程由 Claude 準備、user 拍板 OK 後寫 `(claude-discussed: <ISO>)` annotation。Items 1-7 對應動作：
+
+- #1-#3：retrieval_score / latency / fallback rate — 對應 task §6.5 acceptance evidence
+- #4：抽 3 條 staging `query_log_debug` 記錄人工判斷改寫合理性
+- #5：production safety check（features.queryRewriting=false）
+- #6-#7：Decision Q1/Q2 商業判斷
+
+### Acceptance
+
+- 7 items 都有 `[discuss]` marker
+- `archive-gate.sh` Check 4 驗 `[discuss]` items 都有 evidence trail 或勾選
+- `spectra-archive` 可通過 manual-review hygiene gate
