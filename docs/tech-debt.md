@@ -2507,7 +2507,11 @@ clade v0.3.10 把 test-tsconfig 放 pre-push 後立即擋下；clade v0.3.11 把
 
 兩個 wrangler-action step 只有 `apiToken` / `accountId` / `command`，沒帶 `secrets: |` block。意味 worker runtime 用到的 secret（`BETTER_AUTH_SECRET` / `NUXT_SESSION_PASSWORD` / `ADMIN_EMAIL_ALLOWLIST` / `MCP_CONNECTOR_CLIENTS_JSON` 等）目前**不會在每次 deploy 時自動 sync** — 必須過去某個 session 手動跑 `wrangler secret put` 推上去，後續 rotation 容易脫節。
 
+<div v-pre>
+
 build env 那邊雖然有 `${{ secrets.PROD_BETTER_AUTH_SECRET }}` / `${{ secrets.STAGING_BETTER_AUTH_SECRET }}` 等，但那是 build-time 注入，build artifact 編進去；runtime secret 仍要走 wrangler secret API（wrangler-action `secrets:` list 或手動 `wrangler secret put`）。
+
+</div>
 
 違反 clade rule `rules/modules/runtime/cf-workers/secrets.md`：「Single source of truth = GitHub repo secret；MUST 在 deploy yaml 用 wrangler-action `secrets:` list 推進 worker；NEVER 手動 `wrangler secret put`」。
 
@@ -2517,7 +2521,7 @@ build env 那邊雖然有 `${{ secrets.PROD_BETTER_AUTH_SECRET }}` / `${{ secret
 2. 確認 GitHub repo 對應的 `PROD_*` / `STAGING_*` Secret 都在
 3. 改 deploy.yml 兩個 step：
    - 加 `secrets: |` list 列出所有 runtime secret name（worker 端的名稱，不帶前綴）
-   - 加 `env:` block 對應 `${{ secrets.PROD_<NAME> }}` / `${{ secrets.STAGING_<NAME> }}`
+   - 加 `env:` block 對應 <code v-pre>${{ secrets.PROD_&lt;NAME&gt; }}</code> / <code v-pre>${{ secrets.STAGING_&lt;NAME&gt; }}</code>
 4. 比對 Notion 是否有 agentic-rag 的 secret 紀錄頁面；無則補
 5. 跑 staging deploy 驗證 `secrets:` list 自動 sync
 
