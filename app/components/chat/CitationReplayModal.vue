@@ -58,7 +58,9 @@
     status.value = 'pending'
     error.value = null
     try {
-      const response = await $fetch<{ data: CitationData }>(`/api/citations/${citationId}`)
+      const response = await useRequestFetch()<{ data: CitationData }>(
+        `/api/citations/${citationId}`,
+      )
       if (requestId !== activeRequestId) return
       citationData.value = response.data
       status.value = 'success'

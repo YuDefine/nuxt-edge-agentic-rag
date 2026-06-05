@@ -15,12 +15,12 @@
     selectedConversationId?: string | null
   }
 
-  const props = withDefaults(defineProps<Props>(), {
-    collapsed: false,
-    disabled: false,
-    refreshKey: 0,
-    selectedConversationId: null,
-  })
+  const {
+    collapsed = false,
+    disabled = false,
+    refreshKey = 0,
+    selectedConversationId = null,
+  } = defineProps<Props>()
 
   const emit = defineEmits<{
     'conversation-cleared': []
@@ -53,14 +53,14 @@
     ? createChatConversationHistory($csrfFetch, toast, {
         onConversationCleared: () => emit('conversation-cleared'),
         onConversationSelected: (payload) => emit('conversation-selected', payload),
-        selectedConversationId: toRef(props, 'selectedConversationId'),
+        selectedConversationId: toRef(() => selectedConversationId),
       })
     : null
 
   const history = injectedHistory ?? ownedInstance!.api
 
   async function refreshHistory(): Promise<void> {
-    await ownedInstance!.refreshAndReconcile(props.selectedConversationId ?? null)
+    await ownedInstance!.refreshAndReconcile(selectedConversationId ?? null)
   }
 
   function formatUpdatedAt(value: string): string {
@@ -68,7 +68,7 @@
   }
 
   function isSelected(conversationId: string): boolean {
-    return props.selectedConversationId === conversationId
+    return selectedConversationId === conversationId
   }
 
   function requestExpand(): void {
@@ -101,7 +101,7 @@
   // pipeline, so the two surfaces don't each fire a fetch on mount.
   if (isOwner) {
     watch(
-      () => props.refreshKey,
+      () => refreshKey,
       async () => {
         await refreshHistory()
       },
@@ -111,7 +111,7 @@
 </script>
 
 <template>
-  <div v-if="props.collapsed" class="flex h-full min-h-0 flex-col items-center px-1 py-3">
+  <div v-if="collapsed" class="flex h-full min-h-0 flex-col items-center px-1 py-3">
     <button
       data-testid="conversation-history-rail"
       type="button"
@@ -139,7 +139,7 @@
       size="xs"
       aria-label="新對話"
       class="mt-2"
-      :disabled="props.disabled"
+      :disabled="disabled"
       @click="requestNewConversation"
     />
   </div>
@@ -156,7 +156,7 @@
           color="primary"
           size="xs"
           aria-label="新對話"
-          :disabled="props.disabled"
+          :disabled="disabled"
           @click="requestNewConversation"
         >
           新對話
@@ -214,7 +214,7 @@
                   type="button"
                   data-testid="conversation-row-button"
                   class="min-w-0 flex-1 rounded-md p-1 text-left"
-                  :disabled="props.disabled"
+                  :disabled="disabled"
                   @click="history.selectConversation(conversation.id)"
                 >
                   <div class="min-w-0">
@@ -230,7 +230,7 @@
                 <button
                   type="button"
                   class="shrink-0 rounded-md p-2 text-muted transition hover:bg-error/10 hover:text-error"
-                  :disabled="props.disabled || deleteInFlightId === conversation.id"
+                  :disabled="disabled || deleteInFlightId === conversation.id"
                   :aria-label="`刪除對話 ${conversation.title}`"
                   @click="history.deleteConversationById(conversation.id)"
                 >

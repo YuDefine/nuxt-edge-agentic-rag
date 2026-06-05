@@ -65,7 +65,7 @@
 
   const { data, state, asyncStatus, error, refetch } = useQuery({
     key: () => ['account', 'credentials'],
-    query: () => $fetch<CredentialsResponse>('/api/auth/me/credentials'),
+    query: () => useRequestFetch()<CredentialsResponse>('/api/auth/me/credentials'),
   })
 
   const fetchStatus = computed(() => {

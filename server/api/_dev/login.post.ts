@@ -212,7 +212,7 @@ async function finishSignedInResponse(
 export default defineEventHandler(async (event) => {
   const log = useLogger(event)
   // Gate: only allow in local environment
-  const runtimeConfig = useRuntimeConfig()
+  const runtimeConfig = useRuntimeConfig(event)
   const knowledgeEnv = runtimeConfig.knowledge?.environment ?? 'local'
 
   if (knowledgeEnv !== 'local') {

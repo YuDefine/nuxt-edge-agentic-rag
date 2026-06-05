@@ -72,9 +72,12 @@
 
   async function checkAvailability(nickname: string): Promise<void> {
     try {
-      const result = await $fetch<{ data: { available: boolean } }>('/api/auth/nickname/check', {
-        query: { nickname },
-      })
+      const result = await useRequestFetch()<{ data: { available: boolean } }>(
+        '/api/auth/nickname/check',
+        {
+          query: { nickname },
+        },
+      )
       if (result.data.available) {
         status.value = 'available'
         errorMessage.value = ''

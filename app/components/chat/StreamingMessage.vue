@@ -7,9 +7,7 @@
     error?: string | null
   }
 
-  const props = withDefaults(defineProps<Props>(), {
-    error: null,
-  })
+  const { content, isStreaming, error = null } = defineProps<Props>()
 
   const messageContainer = ref<HTMLElement | null>(null)
 
@@ -35,9 +33,9 @@
 
   const streamingState = computed<StreamingState>(() =>
     determineStreamingState({
-      content: props.content,
-      isStreaming: props.isStreaming,
-      hasError: !!props.error,
+      content,
+      isStreaming,
+      hasError: !!error,
     }),
   )
 
@@ -54,9 +52,9 @@
 
   // Auto-scroll to bottom when content updates during streaming
   watch(
-    () => props.content,
+    () => content,
     () => {
-      if (props.isStreaming && messageContainer.value) {
+      if (isStreaming && messageContainer.value) {
         nextTick(() => {
           messageContainer.value?.scrollIntoView({ behavior: 'smooth', block: 'end' })
         })

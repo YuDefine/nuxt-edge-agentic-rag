@@ -17,11 +17,14 @@
     loading?: boolean
   }
 
-  const props = withDefaults(defineProps<Props>(), {
-    versionCount: null,
-    sourceChunkCount: null,
-    loading: false,
-  })
+  const {
+    open,
+    action,
+    documentTitle,
+    versionCount = null,
+    sourceChunkCount = null,
+    loading = false,
+  } = defineProps<Props>()
 
   const emit = defineEmits<{
     'update:open': [value: boolean]
@@ -32,7 +35,7 @@
   const { user } = useUserSession()
 
   const isOpen = computed({
-    get: () => props.open,
+    get: () => open,
     set: (value) => emit('update:open', value),
   })
 
@@ -48,11 +51,11 @@
   }
 
   const copy = computed<DialogCopy>(() => {
-    switch (props.action) {
+    switch (action) {
       case 'delete': {
-        const hasCounts = props.versionCount !== null && props.sourceChunkCount !== null
+        const hasCounts = versionCount !== null && sourceChunkCount !== null
         const impactDetail = hasCounts
-          ? `將一併移除 ${props.versionCount} 個版本與 ${props.sourceChunkCount} 個原文片段`
+          ? `將一併移除 ${versionCount} 個版本與 ${sourceChunkCount} 個原文片段`
           : '將一併移除此文件的所有版本與對應原文片段'
         return {
           title: '刪除文件',
@@ -60,11 +63,7 @@
           tone: 'error',
           confirmLabel: '刪除',
           confirmColor: 'error',
-          impactLines: [
-            `此操作將永久刪除「${props.documentTitle}」`,
-            impactDetail,
-            '此動作無法復原',
-          ],
+          impactLines: [`此操作將永久刪除「${documentTitle}」`, impactDetail, '此動作無法復原'],
         }
       }
       case 'archive':
@@ -75,7 +74,7 @@
           confirmLabel: '封存',
           confirmColor: 'neutral',
           impactLines: [
-            `封存「${props.documentTitle}」後，此文件將不再出現於對外檢索`,
+            `封存「${documentTitle}」後，此文件將不再出現於對外檢索`,
             '引用資料仍保留至保留期限期滿',
             '後續可隨時解除封存',
           ],
@@ -88,12 +87,12 @@
           confirmLabel: '解除封存',
           confirmColor: 'neutral',
           impactLines: [
-            `解除封存「${props.documentTitle}」後，此文件將回到對外檢索流程`,
+            `解除封存「${documentTitle}」後，此文件將回到對外檢索流程`,
             '若索引已因保留期限被清除，請重新上傳版本',
           ],
         }
       default:
-        return assertNever(props.action, 'LifecycleConfirmDialog copy')
+        return assertNever(action, 'LifecycleConfirmDialog copy')
     }
   })
 

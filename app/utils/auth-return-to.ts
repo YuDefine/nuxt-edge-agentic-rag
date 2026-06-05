@@ -19,10 +19,6 @@ interface PendingDeleteReauthSignal {
   timestamp: number
 }
 
-function hasSessionStorage(): boolean {
-  return typeof sessionStorage !== 'undefined'
-}
-
 /**
  * Validate a `?redirect=` query value before navigating to it.
  *
@@ -72,18 +68,22 @@ export function buildLoginRedirectUrl(to: { path: string; fullPath: string }): s
 }
 
 function saveReturnTo(key: string, path: string): void {
-  if (!hasSessionStorage()) return
-  sessionStorage.setItem(key, path)
+  if (import.meta.client) {
+    sessionStorage.setItem(key, path)
+  }
 }
 
 function peekReturnTo(key: string): string | null {
-  if (!hasSessionStorage()) return null
-  return sessionStorage.getItem(key)
+  if (import.meta.client) {
+    return sessionStorage.getItem(key)
+  }
+  return null
 }
 
 function clearReturnTo(key: string): void {
-  if (!hasSessionStorage()) return
-  sessionStorage.removeItem(key)
+  if (import.meta.client) {
+    sessionStorage.removeItem(key)
+  }
 }
 
 function consumeReturnTo(key: string): string | null {
@@ -125,27 +125,29 @@ export function clearGenericReturnTo(): void {
 }
 
 export function setPendingDeleteReauth(): void {
-  if (!hasSessionStorage()) return
-  const signal: PendingDeleteReauthSignal = { timestamp: Date.now() }
-  sessionStorage.setItem(PENDING_DELETE_REAUTH_KEY, JSON.stringify(signal))
+  if (import.meta.client) {
+    const signal: PendingDeleteReauthSignal = { timestamp: Date.now() }
+    sessionStorage.setItem(PENDING_DELETE_REAUTH_KEY, JSON.stringify(signal))
+  }
 }
 
 export function consumePendingDeleteReauth(): boolean {
-  if (!hasSessionStorage()) return false
+  if (import.meta.client) {
+    const value = sessionStorage.getItem(PENDING_DELETE_REAUTH_KEY)
+    sessionStorage.removeItem(PENDING_DELETE_REAUTH_KEY)
+    if (!value) return false
 
-  const value = sessionStorage.getItem(PENDING_DELETE_REAUTH_KEY)
-  sessionStorage.removeItem(PENDING_DELETE_REAUTH_KEY)
-  if (!value) return false
+    try {
+      const signal = JSON.parse(value) as Partial<PendingDeleteReauthSignal>
+      if (typeof signal.timestamp !== 'number') return false
 
-  try {
-    const signal = JSON.parse(value) as Partial<PendingDeleteReauthSignal>
-    if (typeof signal.timestamp !== 'number') return false
-
-    const elapsed = Date.now() - signal.timestamp
-    return elapsed >= 0 && elapsed < DELETE_REAUTH_WINDOW_MS
-  } catch {
-    return false
+      const elapsed = Date.now() - signal.timestamp
+      return elapsed >= 0 && elapsed < DELETE_REAUTH_WINDOW_MS
+    } catch {
+      return false
+    }
   }
+  return false
 }
 
 /**

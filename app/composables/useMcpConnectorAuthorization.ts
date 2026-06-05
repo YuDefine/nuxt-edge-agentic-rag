@@ -83,15 +83,18 @@ export function useMcpConnectorAuthorization() {
     loadError.value = null
 
     try {
-      const response = await $fetch<McpAuthorizationResponse>('/api/auth/mcp/authorize', {
-        query: {
-          client_id: request.value.clientId,
-          redirect_uri: request.value.redirectUri,
-          scope: request.value.scope,
-          ...(request.value.resource ? { resource: request.value.resource } : {}),
-          ...(request.value.state ? { state: request.value.state } : {}),
+      const response = await useRequestFetch()<McpAuthorizationResponse>(
+        '/api/auth/mcp/authorize',
+        {
+          query: {
+            client_id: request.value.clientId,
+            redirect_uri: request.value.redirectUri,
+            scope: request.value.scope,
+            ...(request.value.resource ? { resource: request.value.resource } : {}),
+            ...(request.value.state ? { state: request.value.state } : {}),
+          },
         },
-      })
+      )
       authorization.value = response.data
     } catch (error) {
       authorization.value = null
@@ -113,7 +116,7 @@ export function useMcpConnectorAuthorization() {
     actionError.value = null
 
     try {
-      const response = await $fetch<{
+      const response = await useRequestFetch()<{
         data: {
           clientId: string
           code: string

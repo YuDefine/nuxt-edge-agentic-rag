@@ -123,7 +123,15 @@
   }
   const indexingStatus = ref<IndexingStatusSnapshot | null>(null)
   const indexingError = ref<string | null>(null)
-  let indexingTimeoutHandle: ReturnType<typeof setTimeout> | null = null
+
+  const { start: startIndexingTimeout, stop: stopIndexingTimeout } = useTimeoutFn(
+    () => {
+      stopIndexingPolling()
+      indexingError.value = '索引處理超過 5 分鐘仍未完成，請聯絡管理員'
+    },
+    INDEXING_TIMEOUT_MS,
+    { immediate: false },
+  )
 
   const { pause: pauseIndexingPoll, resume: resumeIndexingPoll } = useIntervalFn(
     () => pollIndexStatus(),
@@ -134,7 +142,7 @@
   async function pollIndexStatus() {
     if (!syncResult.value) return
     try {
-      const response = await $fetch<{
+      const response = await useRequestFetch()<{
         data: { indexStatus: string; syncStatus: string; versionId: string }
       }>(
         `/api/documents/${syncResult.value.documentId}/versions/${syncResult.value.versionId}/index-status`,
@@ -160,20 +168,14 @@
   function startIndexingPolling() {
     indexingStatus.value = null
     indexingError.value = null
-    indexingTimeoutHandle = setTimeout(() => {
-      stopIndexingPolling()
-      indexingError.value = '索引處理超過 5 分鐘仍未完成，請聯絡管理員'
-    }, INDEXING_TIMEOUT_MS)
+    startIndexingTimeout()
     resumeIndexingPoll()
     void pollIndexStatus()
   }
 
   function stopIndexingPolling() {
     pauseIndexingPoll()
-    if (indexingTimeoutHandle) {
-      clearTimeout(indexingTimeoutHandle)
-      indexingTimeoutHandle = null
-    }
+    stopIndexingTimeout()
   }
 
   function getIndexingStatusLabel(status: IndexingStatusSnapshot | null): string {
@@ -192,8 +194,14 @@
     return null
   }
 
+  let activeXhr: XMLHttpRequest | null = null
+
   onUnmounted(() => {
     stopIndexingPolling()
+    if (activeXhr) {
+      activeXhr.abort()
+      activeXhr = null
+    }
   })
 
   function createEmptyDraft(): DocumentMeta {
@@ -268,7 +276,7 @@
 
   const debouncedCheckSlug = useDebounceFn(async (slug: string) => {
     try {
-      const { data } = await $fetch<{ data: { available: boolean } }>(
+      const { data } = await useRequestFetch()<{ data: { available: boolean } }>(
         '/api/admin/documents/check-slug',
         { query: { slug } },
       )
@@ -560,6 +568,7 @@
   }): Promise<void> {
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest()
+      activeXhr = xhr
       xhr.open('PUT', params.url, true)
       xhr.setRequestHeader('Content-Type', params.contentType)
       xhr.setRequestHeader('x-amz-checksum-sha256', params.checksum)
@@ -574,6 +583,7 @@
       })
 
       xhr.addEventListener('load', () => {
+        activeXhr = null
         if (xhr.status >= 200 && xhr.status < 300) {
           uploadProgressPercent.value = 100
           resolve()
@@ -582,8 +592,14 @@
         }
       })
 
-      xhr.addEventListener('error', () => reject(new Error('上傳時網路中斷')))
-      xhr.addEventListener('abort', () => reject(new Error('上傳已取消')))
+      xhr.addEventListener('error', () => {
+        activeXhr = null
+        reject(new Error('上傳時網路中斷'))
+      })
+      xhr.addEventListener('abort', () => {
+        activeXhr = null
+        reject(new Error('上傳已取消'))
+      })
 
       xhr.send(params.body)
     })

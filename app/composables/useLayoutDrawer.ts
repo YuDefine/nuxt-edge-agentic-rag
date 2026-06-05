@@ -24,17 +24,6 @@ export const DRAWER_KEYS = ['main', 'chat-history'] as const
 
 export type DrawerKey = (typeof DRAWER_KEYS)[number]
 
-function stateKey(key: DrawerKey): string {
-  switch (key) {
-    case 'main':
-      return 'layout-drawer:main'
-    case 'chat-history':
-      return 'layout-drawer:chat-history'
-    default:
-      return assertNever(key, 'useLayoutDrawer.stateKey')
-  }
-}
-
 export interface LayoutDrawer {
   isOpen: Ref<boolean>
   open: () => void
@@ -42,9 +31,7 @@ export interface LayoutDrawer {
   toggle: () => void
 }
 
-export function useLayoutDrawer(key: DrawerKey = 'main'): LayoutDrawer {
-  const isOpen = useState<boolean>(stateKey(key), () => false)
-
+function createDrawer(isOpen: Ref<boolean>): LayoutDrawer {
   function open() {
     isOpen.value = true
   }
@@ -54,6 +41,16 @@ export function useLayoutDrawer(key: DrawerKey = 'main'): LayoutDrawer {
   function toggle() {
     isOpen.value = !isOpen.value
   }
-
   return { isOpen, open, close, toggle }
+}
+
+export function useLayoutDrawer(key: DrawerKey = 'main'): LayoutDrawer {
+  switch (key) {
+    case 'main':
+      return createDrawer(useState<boolean>('layout-drawer:main', () => false))
+    case 'chat-history':
+      return createDrawer(useState<boolean>('layout-drawer:chat-history', () => false))
+    default:
+      return assertNever(key, 'useLayoutDrawer')
+  }
 }
