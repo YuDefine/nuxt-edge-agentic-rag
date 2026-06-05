@@ -1,6 +1,6 @@
 {
   "cladeRoot": "/Users/charles/offline/clade",
-  "syncedAt": "2026-06-05T05:56:25.011Z",
+  "syncedAt": "2026-06-05T12:00:14.052Z",
   "checksums": {
     "rules/agent-routing.codex-watch-protocol.md": "fd104227063b965f",
     "rules/agent-routing.md": "b8a876015c4ac442",
@@ -15,7 +15,7 @@
     "rules/dev-port-allocation.md": "8aa9d3e24294d0b2",
     "rules/dev-tunnel-convention.md": "4b10bb28ac1b58f4",
     "rules/error-handling.md": "5cbe9562e589e0e0",
-    "rules/evlog-adoption.md": "0088d4d6611dc747",
+    "rules/evlog-adoption.md": "70fd7d629471670b",
     "rules/evlog-investigate.md": "f6075f400e3b56d9",
     "rules/evlog-stream-extend.md": "f19b16e0543db1ed",
     "rules/fixtures-reference.md": "6617dc9558dc11de",
@@ -66,7 +66,7 @@
     "rules/api-patterns.md": "a6c3fb970f0f39a1",
     "rules/secrets.md": "109e090a25f62e76",
     "rules/development.md": "b731d99423f34d57",
-    "rules/nuxt-security.md": "8a40fc85ab09addb",
+    "rules/nuxt-security.md": "2ba3039251d5fb3c",
     "rules/nuxt-ui-mcp.md": "50b1e759e58997df",
     "scripts/codex-review-safe.sh": "02b730f9dbd504a3",
     "scripts/commit-lock.mjs": "f81c79df484ce5db",
@@ -91,22 +91,5 @@
     "agents/db-backup.md": "fd21fd01389c5d29",
     "agents/references/clade-review-rules.md": "c3081fc46f2b799e",
     "agents/screenshot-review.md": "886090feb87d93f1"
-  },
-  "bootstrap": {
-    "at": "2026-06-05T05:56:25.568Z",
-    "version": "1.4.135",
-    "modules": {
-      "auth": "better-auth",
-      "db-schema": "supabase",
-      "db-runtime": "cf-workers",
-      "runtime": "cf-workers",
-      "framework": "nuxt",
-      "domain": [],
-      "maintenance": "full"
-    },
-    "runtime": {
-      "claudeCode": true,
-      "codex": true
-    }
   }
 }
