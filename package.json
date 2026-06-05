@@ -15,7 +15,7 @@
     "docs:build": "vitepress build docs && node scripts/generate-llms-txt.mjs",
     "docs:dev": "vitepress dev docs --host 0.0.0.0 --port 4173",
     "docs:preview": "vitepress preview docs --host 0.0.0.0 --port 4173",
-    "doctor": "vite-doctor scan . --max-warnings 0 --rules '!vue/lifecycle/require-cleanup'",
+    "doctor": "vite-doctor scan . --max-warnings 0",
     "eval": "node scripts/run-eval-with-exit.mjs",
     "eval:report": "evalite run --outputPath .evalite/mcp-tool-selection.json test/evals/mcp-tool-selection.eval.ts",
     "eval:watch": "evalite watch test/evals/mcp-tool-selection.eval.ts",
