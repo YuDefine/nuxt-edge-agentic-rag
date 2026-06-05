@@ -60,7 +60,14 @@ Run for every mode except C (new containerization skips to Step 4 directly).
    - `docker compose -f <file> config --quiet` — syntax validation (safe, no side effects)
    - `docker build --check .` — BuildKit lint checks (requires buildx, safe, no image built)
 
-5. **Check known-accept registry** — suppress expected contextual findings (see § Known-accept registry).
+5. **Dockerfile structure analysis** (for `app-image` and `local-dev-compose` classifications):
+   - Parse `FROM` directives: count stages (multi-stage detection), extract base image tags.
+   - Flag full/default base images: if `FROM` tag has no `-alpine` / `-slim` / `-distroless` suffix and image is a well-known runtime (node, python, ruby, golang, etc.) → P1 `dockerfile.bloated_base_image`.
+   - Flag single-stage app builds: only one `FROM` + repo has a build step (TypeScript compile, Nuxt build, framework build) → P1 `dockerfile.no_multistage`.
+   - Count consecutive unchained `RUN` instructions: ≥ 3 `RUN` lines in sequence performing related work (package install, config, cleanup) without `&&` chaining → P2 `dockerfile.unchained_run_layers`.
+   - Estimate final image size opportunity: if base image is full variant + single stage + no `.dockerignore`, flag compound impact as P1 `dockerfile.image_size_compound` with estimated savings.
+
+6. **Check known-accept registry** — suppress expected contextual findings (see § Known-accept registry).
 
 ## Step 2.5: Runtime baseline
 
@@ -122,6 +129,8 @@ Report findings with the following structure:
 - No memory/CPU limits on shared LXC/VM hosts.
 - Container memory usage > 80% of declared `mem_limit` (runtime).
 - `RestartCount` > 0 or `OOMKilled: true` (runtime).
+- Dockerfile `FROM` uses full/default base image (no `-alpine` / `-slim` / `-distroless` variant) for app-image builds. Full images carry build tools, system docs, and package managers that inflate image 3–10× vs Alpine and expand attack surface.
+- Dockerfile has a single `FROM` stage for app-image builds — no multi-stage build. Build dependencies (compilers, dev packages, full `node_modules` with devDependencies) ship into the production image.
 
 ### P2: important / contextual
 
@@ -132,6 +141,7 @@ Report findings with the following structure:
 - Build cache is suboptimal but correct.
 - Dev/prod compose concerns mixed but not currently broken.
 - No `mem_limit`/`cpus` on dedicated-purpose host (low contention).
+- Multiple consecutive `RUN` instructions (≥ 3) that perform related work (package install + cleanup, config file setup) without `&&` chaining. Each `RUN` creates a separate cached layer; unchained sequences inflate final image and reduce build cache efficiency.
 
 ### P3: polish / maintainability
 
@@ -139,6 +149,7 @@ Report findings with the following structure:
 - Legacy compose file naming or inconsistent env file naming.
 - Duplicate environment values that can be centralized.
 - `GF_SERVER_ROOT_URL` or similar config hardcodes hostname instead of env injection.
+- Final image > 200 MB for a Node/Nuxt app with no evidence of size optimization. Recommend [`wagoodman/dive`](https://github.com/wagoodman/dive) for interactive layer inspection and [`slimtoolkit/slim`](https://github.com/slimtoolkit/slim) for automated minification. For maximum reduction, consider [distroless](https://github.com/GoogleContainerTools/distroless) base images (no shell, no package manager).
 
 ## Step 4: Edit plan
 
@@ -335,3 +346,7 @@ Skipped:
 - Compose profiles: https://docs.docker.com/compose/how-tos/profiles/
 - Compose production override pattern: https://docs.docker.com/compose/how-tos/production/
 - Compose environment variable best practices: https://docs.docker.com/compose/how-tos/environment-variables/best-practices/
+- Image size optimization: https://docs.docker.com/build/building/best-practices/#minimize-the-number-of-layers
+- Distroless images: https://github.com/GoogleContainerTools/distroless
+- Dive (layer inspector): https://github.com/wagoodman/dive
+- Slim (automated optimizer): https://github.com/slimtoolkit/slim
