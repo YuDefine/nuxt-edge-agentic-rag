@@ -1,0 +1,20 @@
+#!/usr/bin/env node
+// clade improvement-loop: same-name PATH shim for `vp`.
+//
+// User invocation is unchanged (`vp check`, `vp fmt`, etc.). The shim records the
+// invocation via the ledger writer on non-zero exit, then exits with the real
+// binary's exit code. Transparent on stdout/stderr.
+//
+// Install: ensure $CLADE_ROOT/bin precedes the real vp install dir in PATH.
+// Verified at SessionStart by plugins/hub-core/hooks/session-start-improvement-loop-path-check.sh.
+
+import { resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+import { runShim } from '../vendor/signals/shim-core.mjs'
+
+await runShim({
+  binName: 'vp',
+  shimAbsPath: resolve(fileURLToPath(import.meta.url)),
+  source: 'shim',
+})
