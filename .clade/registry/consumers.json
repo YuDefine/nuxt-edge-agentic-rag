@@ -36,6 +36,43 @@
       },
       "dev_ports": {
         "nuxt": 3040
+      },
+      "patterns": {
+        "audit-trail": {
+          "variant": "d-pattern",
+          "state": "declared",
+          "adopted_at": "2026-05-08"
+        },
+        "evlog-stack": {
+          "variant": "full",
+          "state": "declared",
+          "adopted_at": "2026-04-29"
+        },
+        "verify-channels": {
+          "variant": "full",
+          "state": "declared"
+        },
+        "dev-login": {
+          "variant": "adopted",
+          "state": "declared"
+        },
+        "code-quality-tooling": {
+          "variant": "vite-plus-aligned",
+          "state": "declared"
+        },
+        "nuxt-security": {
+          "variant": "hardened",
+          "state": "declared"
+        },
+        "user-lifecycle": {
+          "variant": "status-based",
+          "state": "declared",
+          "notes": "status: active | resigned; resign/rehire endpoints"
+        },
+        "deploy-track": {
+          "variant": "wrangler-action",
+          "state": "declared"
+        }
       }
     },
     {
@@ -78,6 +115,40 @@
           "yudefine.com.tw": "<maintainer-domain>"
         },
         "strip_marker_prefix": "starter"
+      },
+      "patterns": {
+        "audit-trail": {
+          "variant": "none",
+          "state": "declared"
+        },
+        "evlog-stack": {
+          "variant": "baseline",
+          "state": "declared"
+        },
+        "verify-channels": {
+          "variant": "manual-only",
+          "state": "declared"
+        },
+        "dev-login": {
+          "variant": "adopted",
+          "state": "declared"
+        },
+        "code-quality-tooling": {
+          "variant": "vite-plus-aligned",
+          "state": "declared"
+        },
+        "nuxt-security": {
+          "variant": "hardened",
+          "state": "declared"
+        },
+        "user-lifecycle": {
+          "variant": "none",
+          "state": "declared"
+        },
+        "deploy-track": {
+          "variant": "wrangler-action",
+          "state": "declared"
+        }
       }
     },
     {
@@ -100,6 +171,43 @@
       },
       "dev_ports": {
         "nuxt": 3010
+      },
+      "patterns": {
+        "audit-trail": {
+          "variant": "none",
+          "state": "declared"
+        },
+        "evlog-stack": {
+          "variant": "minimal",
+          "state": "declared",
+          "notes": "NuxtHub AI variant; @evlog/nuxthub drain"
+        },
+        "verify-channels": {
+          "variant": "full",
+          "state": "declared"
+        },
+        "dev-login": {
+          "variant": "adopted",
+          "state": "declared",
+          "notes": "better-auth-post shape"
+        },
+        "code-quality-tooling": {
+          "variant": "vite-plus-aligned",
+          "state": "declared"
+        },
+        "nuxt-security": {
+          "variant": "hardened",
+          "state": "declared"
+        },
+        "user-lifecycle": {
+          "variant": "suspend-and-delete",
+          "state": "declared",
+          "notes": "banned + banExpires + CASCADE + NO FK on audit"
+        },
+        "deploy-track": {
+          "variant": "wrangler-action",
+          "state": "declared"
+        }
       }
     },
     {
@@ -122,6 +230,44 @@
       },
       "dev_ports": {
         "nuxt": 3060
+      },
+      "patterns": {
+        "audit-trail": {
+          "variant": "none",
+          "state": "declared"
+        },
+        "evlog-stack": {
+          "variant": "minimal",
+          "state": "declared",
+          "notes": "useLogger adopted; Sentry drain only, no durable drain yet"
+        },
+        "verify-channels": {
+          "variant": "manual-only",
+          "state": "declared"
+        },
+        "dev-login": {
+          "variant": "adopted",
+          "state": "declared"
+        },
+        "code-quality-tooling": {
+          "variant": "vite-plus-aligned",
+          "state": "declared"
+        },
+        "nuxt-security": {
+          "variant": "hardened",
+          "state": "declared",
+          "adopted_at": "2026-06-05",
+          "notes": "CSP integration recipes aligned"
+        },
+        "user-lifecycle": {
+          "variant": "status-based",
+          "state": "declared",
+          "notes": "migrating from broken hard-delete to status-based"
+        },
+        "deploy-track": {
+          "variant": "node-server",
+          "state": "declared"
+        }
       }
     },
     {
@@ -144,6 +290,43 @@
       },
       "dev_ports": {
         "nuxt": 3000
+      },
+      "patterns": {
+        "audit-trail": {
+          "variant": "trigger-based",
+          "state": "deprecated",
+          "notes": "trigger-based change_log; migration to d-pattern planned"
+        },
+        "evlog-stack": {
+          "variant": "baseline",
+          "state": "declared"
+        },
+        "verify-channels": {
+          "variant": "full",
+          "state": "declared"
+        },
+        "dev-login": {
+          "variant": "adopted",
+          "state": "declared",
+          "notes": "legacy __test-login shape"
+        },
+        "code-quality-tooling": {
+          "variant": "vite-plus-aligned",
+          "state": "declared"
+        },
+        "nuxt-security": {
+          "variant": "hardened",
+          "state": "declared"
+        },
+        "user-lifecycle": {
+          "variant": "status-based",
+          "state": "declared",
+          "notes": "role=unauthorized as deactivation; 60 tables FK reference"
+        },
+        "deploy-track": {
+          "variant": "wrangler-action",
+          "state": "declared"
+        }
       }
     },
     {
@@ -166,6 +349,42 @@
       },
       "dev_ports": {
         "nuxt": 3050
+      },
+      "patterns": {
+        "audit-trail": {
+          "variant": "none",
+          "state": "declared"
+        },
+        "evlog-stack": {
+          "variant": "none",
+          "state": "declared"
+        },
+        "verify-channels": {
+          "variant": "manual-only",
+          "state": "declared"
+        },
+        "dev-login": {
+          "variant": "none",
+          "state": "declared",
+          "notes": "nuxt-auth-utils + D1; no cookbook template yet"
+        },
+        "code-quality-tooling": {
+          "variant": "vite-plus-aligned",
+          "state": "declared"
+        },
+        "nuxt-security": {
+          "variant": "hardened",
+          "state": "declared"
+        },
+        "user-lifecycle": {
+          "variant": "hard-delete-explicit",
+          "state": "declared",
+          "notes": "explicit cleanup sequence + guard pattern"
+        },
+        "deploy-track": {
+          "variant": "wrangler-action",
+          "state": "declared"
+        }
       }
     },
     {
@@ -188,6 +407,42 @@
       },
       "dev_ports": {
         "nuxt": 3070
+      },
+      "patterns": {
+        "audit-trail": {
+          "variant": "none",
+          "state": "declared"
+        },
+        "evlog-stack": {
+          "variant": "none",
+          "state": "declared"
+        },
+        "verify-channels": {
+          "variant": "manual-only",
+          "state": "declared"
+        },
+        "dev-login": {
+          "variant": "none",
+          "state": "declared",
+          "notes": "nuxt-auth-utils + D1; no cookbook template yet"
+        },
+        "code-quality-tooling": {
+          "variant": "vite-plus-aligned",
+          "state": "declared"
+        },
+        "nuxt-security": {
+          "variant": "hardened",
+          "state": "declared"
+        },
+        "user-lifecycle": {
+          "variant": "hard-delete-explicit",
+          "state": "declared",
+          "notes": "explicit cleanup + guard; identical to rental-scout"
+        },
+        "deploy-track": {
+          "variant": "void-cloud",
+          "state": "declared"
+        }
       }
     },
     {
@@ -210,6 +465,42 @@
       },
       "dev_ports": {
         "nuxt": 3080
+      },
+      "patterns": {
+        "audit-trail": {
+          "variant": "none",
+          "state": "declared"
+        },
+        "evlog-stack": {
+          "variant": "none",
+          "state": "declared"
+        },
+        "verify-channels": {
+          "variant": "none",
+          "state": "declared"
+        },
+        "dev-login": {
+          "variant": "none",
+          "state": "declared"
+        },
+        "code-quality-tooling": {
+          "variant": "vite-plus-aligned",
+          "state": "declared"
+        },
+        "nuxt-security": {
+          "variant": "none",
+          "state": "declared",
+          "notes": "blog, no nuxt-security module"
+        },
+        "user-lifecycle": {
+          "variant": "none",
+          "state": "declared",
+          "notes": "blog, no user management"
+        },
+        "deploy-track": {
+          "variant": "void-cloud",
+          "state": "declared"
+        }
       }
     }
   ]
