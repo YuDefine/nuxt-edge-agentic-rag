@@ -1,0 +1,216 @@
+{
+  "$schema": "./consumers.schema.json",
+  "$comment": "Stable consumer registry for improvement-loop signal aggregation. Digest aggregation MUST resolve consumer identity through this registry, not through local filesystem paths or git remotes. Adding a new consumer here is the only way to make it discoverable to vendor/scripts/improvement-digest.mjs.",
+  "schema_version": "1",
+  "consumers": [
+    {
+      "consumer_id": "clade",
+      "repo_id": "YuDefine/clade",
+      "role": "source-of-truth",
+      "projection_paths": {
+        "rules": ".claude/rules/",
+        "skills": ".claude/skills/",
+        "vendor": "vendor/"
+      },
+      "standard_completeness_columns": ["audit-pattern", "verify-channel", "improvement-loop"],
+      "improvement_loop_enabled": true,
+      "business_activity": "active"
+    },
+    {
+      "consumer_id": "<consumer-a>",
+      "repo_id": "<client-a>/<consumer-a>",
+      "role": "consumer",
+      "onboarded": "2026-04-29",
+      "projection_paths": {
+        "rules": ".claude/rules/",
+        "skills": ".claude/skills/",
+        "vendor": "vendor/"
+      },
+      "standard_completeness_columns": ["audit-pattern", "verify-channel", "improvement-loop"],
+      "improvement_loop_enabled": true,
+      "business_activity": "active",
+      "workflow_model": "trunk-based",
+      "capabilities": {
+        "preview_db": "none",
+        "data_branching": "none"
+      },
+      "dev_ports": {
+        "nuxt": 3040
+      }
+    },
+    {
+      "consumer_id": "nuxt-supabase-starter",
+      "repo_id": "YuDefine/nuxt-supabase-starter",
+      "role": "consumer",
+      "onboarded": "2026-04-29",
+      "projection_paths": {
+        "rules": "template/.claude/rules/",
+        "skills": "template/.claude/skills/",
+        "vendor": "template/vendor/"
+      },
+      "standard_completeness_columns": ["audit-pattern", "verify-channel", "improvement-loop"],
+      "improvement_loop_enabled": false,
+      "business_activity": "paused",
+      "workflow_model": "trunk-based",
+      "capabilities": {
+        "preview_db": "none",
+        "data_branching": "none"
+      },
+      "dev_ports": {
+        "nuxt": 3020
+      },
+      "sanitization_profile": {
+        "consumer_name_map": {
+          "nuxt-edge-agentic-rag": "<consumer-c>",
+          "<consumer-d>": "<consumer-d>",
+          "edge-rag": "<consumer-c>",
+          "<consumer-a>": "<consumer-a>",
+          "<consumer-b>": "<consumer-b>",
+          "<client-a>": "<client-a>",
+          "<client-b>": "<client-b>"
+        },
+        "personal_redactions": {
+          "<HOME>/.local/bin/": "<HOME>/.local/bin/",
+          "<clade-central-repo>": "<clade-central-repo>",
+          "<home>/offline/": "<home>/offline/",
+          "~/": "~/",
+          "charles@yudefine.com.tw": "<maintainer-email>",
+          "yudefine.com.tw": "<maintainer-domain>"
+        },
+        "strip_marker_prefix": "starter"
+      }
+    },
+    {
+      "consumer_id": "nuxt-edge-agentic-rag",
+      "repo_id": "YuDefine/nuxt-edge-agentic-rag",
+      "role": "consumer",
+      "onboarded": "2026-04-29",
+      "projection_paths": {
+        "rules": ".claude/rules/",
+        "skills": ".claude/skills/",
+        "vendor": "vendor/"
+      },
+      "standard_completeness_columns": ["audit-pattern", "verify-channel", "improvement-loop"],
+      "improvement_loop_enabled": true,
+      "business_activity": "active",
+      "workflow_model": "trunk-based",
+      "capabilities": {
+        "preview_db": "none",
+        "data_branching": "none"
+      },
+      "dev_ports": {
+        "nuxt": 3010
+      }
+    },
+    {
+      "consumer_id": "<consumer-d>",
+      "repo_id": "YuDefine/<consumer-d>",
+      "role": "consumer",
+      "onboarded": "2026-04-29",
+      "projection_paths": {
+        "rules": ".claude/rules/",
+        "skills": ".claude/skills/",
+        "vendor": "vendor/"
+      },
+      "standard_completeness_columns": ["audit-pattern", "verify-channel", "improvement-loop"],
+      "improvement_loop_enabled": true,
+      "business_activity": "active",
+      "workflow_model": "trunk-based",
+      "capabilities": {
+        "preview_db": "none",
+        "data_branching": "none"
+      },
+      "dev_ports": {
+        "nuxt": 3060
+      }
+    },
+    {
+      "consumer_id": "<consumer-b>",
+      "repo_id": "<client-b>/<consumer-b>",
+      "role": "consumer",
+      "onboarded": "2026-04-29",
+      "projection_paths": {
+        "rules": ".claude/rules/",
+        "skills": ".claude/skills/",
+        "vendor": "vendor/"
+      },
+      "standard_completeness_columns": ["audit-pattern", "verify-channel", "improvement-loop"],
+      "improvement_loop_enabled": true,
+      "business_activity": "active",
+      "workflow_model": "trunk-based",
+      "capabilities": {
+        "preview_db": "none",
+        "data_branching": "none"
+      },
+      "dev_ports": {
+        "nuxt": 3000
+      }
+    },
+    {
+      "consumer_id": "<consumer-k>",
+      "repo_id": "YuDefine/<consumer-k>",
+      "role": "consumer",
+      "onboarded": "2026-05-20",
+      "projection_paths": {
+        "rules": ".claude/rules/",
+        "skills": ".claude/skills/",
+        "vendor": "vendor/"
+      },
+      "standard_completeness_columns": ["audit-pattern", "verify-channel", "improvement-loop"],
+      "improvement_loop_enabled": true,
+      "business_activity": "active",
+      "workflow_model": "trunk-based",
+      "capabilities": {
+        "preview_db": "none",
+        "data_branching": "none"
+      },
+      "dev_ports": {
+        "nuxt": 3050
+      }
+    },
+    {
+      "consumer_id": "co-purchase",
+      "repo_id": "YuDefine/co-purchase",
+      "role": "consumer",
+      "onboarded": "2026-05-22",
+      "projection_paths": {
+        "rules": ".claude/rules/",
+        "skills": ".claude/skills/",
+        "vendor": "vendor/"
+      },
+      "standard_completeness_columns": ["audit-pattern", "verify-channel", "improvement-loop"],
+      "improvement_loop_enabled": true,
+      "business_activity": "active",
+      "workflow_model": "trunk-based",
+      "capabilities": {
+        "preview_db": "none",
+        "data_branching": "none"
+      },
+      "dev_ports": {
+        "nuxt": 3070
+      }
+    },
+    {
+      "consumer_id": "<consumer-l>",
+      "repo_id": "YuDefine/<consumer-l>",
+      "role": "consumer",
+      "onboarded": "2026-05-24",
+      "projection_paths": {
+        "rules": ".claude/rules/",
+        "skills": ".claude/skills/",
+        "vendor": "vendor/"
+      },
+      "standard_completeness_columns": ["audit-pattern", "verify-channel", "improvement-loop"],
+      "improvement_loop_enabled": true,
+      "business_activity": "active",
+      "workflow_model": "trunk-based",
+      "capabilities": {
+        "preview_db": "none",
+        "data_branching": "none"
+      },
+      "dev_ports": {
+        "nuxt": 3080
+      }
+    }
+  ]
+}
