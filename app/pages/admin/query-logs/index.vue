@@ -5,7 +5,7 @@
   import { formatDateTime } from '~/utils/format-datetime'
 
   import { KNOWLEDGE_CHANNEL_VALUES } from '~~/shared/schemas/knowledge-runtime'
-  import { srOnlyHeader } from '~~/shared/utils/table'
+  import { srOnlyHeader } from '~/utils/table'
   import { getUiPageState } from '~~/shared/utils/ui-state'
 
   /**
