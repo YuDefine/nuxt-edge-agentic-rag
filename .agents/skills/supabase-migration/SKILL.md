@@ -71,6 +71,35 @@ pnpm typecheck                          # 類型檢查
 
 > `supabase db advisors` 需 CLI v2.81.3+。若版本不足，可用 MCP `get_advisors` 替代。
 
+## Migration Timestamp Immutability（hard rule）
+
+Migration 檔名的 timestamp prefix 是 `supabase_migrations.version` 的 identity key。Remote DB apply 後，該 timestamp 就是**不可變的**。
+
+### MUST
+
+- 已 commit 進 main **且** remote DB 已 apply 的 migration **NEVER** rename / delete / regenerate timestamp
+- Worktree 內跑 `supabase db reset` / `supabase migration new` 後 **MUST** 驗證既有 migration 檔名未變（`ls supabase/migrations/ | head` 比對 main）
+- 發現 worktree 內 migration 檔名與 main 不同 → **STOP**，還原成 main 的檔名，不 commit 新 timestamp
+
+### NEVER
+
+- **NEVER** 在 worktree 重新 `supabase migration new <已存在的 migration 名>` — 會產生新 timestamp 取代舊的
+- **NEVER** 手動 rename migration 檔案的 timestamp prefix — 即使 SQL 內容完全相同
+- **NEVER** 假設「local db:reset 過了 = remote 也會過」— local 從 scratch apply 不知道 remote 的 `supabase_migrations` 記錄
+
+### 偵測
+
+```bash
+# commit 前檢查有無 migration rename
+git diff --cached --diff-filter=R -- 'supabase/migrations/' | grep -q . && echo "BLOCK: migration renamed" || echo "OK"
+```
+
+### 為什麼
+
+Supabase `db push` 比對 remote `supabase_migrations.version` 與 local `supabase/migrations/` 的 timestamp prefix。Remote 有 `20260604051558`（已 apply）但 local 改成 `20260605065826`（同內容不同 timestamp）→ `db push` 報 `Remote migration versions not found in local migrations directory` → deploy 失敗。Local `db:reset` 從 scratch 永遠成功（不知道 remote state），是典型 dev-prod parity gap。
+
+Reference: [[pitfall-migration-rename-breaks-remote-db-push]]
+
 ## Production Resilience Classification
 
 Self-host Supabase production migration 前，先分類 migration 風險：
