@@ -37,7 +37,7 @@
       "dev_ports": {
         "nuxt": 3040
       },
-      "patterns": {
+      "conventions": {
         "audit-trail": {
           "variant": "d-pattern",
           "state": "declared",
@@ -116,7 +116,7 @@
         },
         "strip_marker_prefix": "starter"
       },
-      "patterns": {
+      "conventions": {
         "audit-trail": {
           "variant": "none",
           "state": "declared"
@@ -172,7 +172,7 @@
       "dev_ports": {
         "nuxt": 3010
       },
-      "patterns": {
+      "conventions": {
         "audit-trail": {
           "variant": "none",
           "state": "declared"
@@ -231,7 +231,7 @@
       "dev_ports": {
         "nuxt": 3060
       },
-      "patterns": {
+      "conventions": {
         "audit-trail": {
           "variant": "none",
           "state": "declared"
@@ -291,7 +291,7 @@
       "dev_ports": {
         "nuxt": 3000
       },
-      "patterns": {
+      "conventions": {
         "audit-trail": {
           "variant": "trigger-based",
           "state": "deprecated",
@@ -350,7 +350,7 @@
       "dev_ports": {
         "nuxt": 3050
       },
-      "patterns": {
+      "conventions": {
         "audit-trail": {
           "variant": "none",
           "state": "declared"
@@ -408,7 +408,7 @@
       "dev_ports": {
         "nuxt": 3070
       },
-      "patterns": {
+      "conventions": {
         "audit-trail": {
           "variant": "none",
           "state": "declared"
@@ -466,7 +466,7 @@
       "dev_ports": {
         "nuxt": 3080
       },
-      "patterns": {
+      "conventions": {
         "audit-trail": {
           "variant": "none",
           "state": "declared"
