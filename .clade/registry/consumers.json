@@ -124,11 +124,11 @@
         },
         "evlog-stack": {
           "variant": "baseline",
-          "state": "declared"
+          "state": "drift"
         },
         "verify-channels": {
           "variant": "manual-only",
-          "state": "declared"
+          "state": "detected"
         },
         "dev-login": {
           "variant": "adopted",
@@ -136,11 +136,11 @@
         },
         "code-quality-tooling": {
           "variant": "vite-plus-aligned",
-          "state": "declared"
+          "state": "compliant"
         },
         "nuxt-security": {
           "variant": "hardened",
-          "state": "declared"
+          "state": "compliant"
         },
         "user-lifecycle": {
           "variant": "none",
@@ -148,7 +148,7 @@
         },
         "deploy-track": {
           "variant": "wrangler-action",
-          "state": "declared"
+          "state": "compliant"
         }
       }
     },
