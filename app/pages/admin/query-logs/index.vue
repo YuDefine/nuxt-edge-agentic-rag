@@ -104,7 +104,7 @@
   const { data, state, asyncStatus, error, refetch } = useQuery({
     key: () => ['admin', 'query-logs', queryParams.value],
     query: () =>
-      $fetch<ListResponse>('/api/admin/query-logs', {
+      useRequestFetch()<ListResponse>('/api/admin/query-logs', {
         query: queryParams.value,
       }),
   })

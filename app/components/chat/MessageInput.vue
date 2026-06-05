@@ -5,11 +5,11 @@
     placeholder?: string
   }
 
-  const props = withDefaults(defineProps<Props>(), {
-    disabled: false,
-    loading: false,
-    placeholder: '輸入您的問題...',
-  })
+  const {
+    disabled = false,
+    loading = false,
+    placeholder = '輸入您的問題...',
+  } = defineProps<Props>()
 
   const emit = defineEmits<{
     submit: [message: string]
@@ -55,7 +55,7 @@
   }
 
   function handleSubmit() {
-    if (props.disabled || props.loading) return
+    if (disabled || loading) return
 
     const validation = validateMessageInput(inputValue.value)
 
@@ -83,7 +83,7 @@
 
   function handleGlobalSlashKey(event: KeyboardEvent) {
     if (event.isComposing) return
-    if (props.disabled || props.loading) return
+    if (disabled || loading) return
     if (isTypingElement(document.activeElement)) return
     const target = document.getElementById(TEXTAREA_ID)
     if (!(target instanceof HTMLTextAreaElement)) return
@@ -96,18 +96,20 @@
   function focusAndClear() {
     inputValue.value = ''
     validationError.value = null
-    const target = document.getElementById(TEXTAREA_ID)
-    if (target instanceof HTMLTextAreaElement) {
-      nextTick(() => {
-        target.focus()
-      })
+    if (import.meta.client) {
+      const target = document.getElementById(TEXTAREA_ID)
+      if (target instanceof HTMLTextAreaElement) {
+        nextTick(() => {
+          target.focus()
+        })
+      }
     }
   }
 
   defineExpose({ focusAndClear })
 
   const canSubmit = computed(() => {
-    return !props.disabled && !props.loading && inputValue.value.trim().length > 0
+    return !disabled && !loading && inputValue.value.trim().length > 0
   })
 
   const characterCount = computed(() => inputValue.value.trim().length)

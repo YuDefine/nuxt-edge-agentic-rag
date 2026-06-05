@@ -32,11 +32,11 @@
     initialMessages?: ChatMessage[]
   }
 
-  const props = withDefaults(defineProps<Props>(), {
-    disabled: false,
-    activeConversationId: null,
-    initialMessages: () => [],
-  })
+  const {
+    disabled = false,
+    activeConversationId = null,
+    initialMessages = [],
+  } = defineProps<Props>()
   const emit = defineEmits<{
     'busy-change': [isBusy: boolean]
     'conversation-persisted': [
@@ -160,7 +160,7 @@
   }
 
   async function handleSubmit(query: string) {
-    if (props.disabled) return
+    if (disabled) return
     if (isSubmitting.value || isStreaming.value) return
     if (rateLimitRetryAt.value !== null && Date.now() < rateLimitRetryAt.value) {
       toast.add({
@@ -211,7 +211,7 @@
       }
       const response = await $csrfFetch.native('/api/chat', {
         method: 'POST',
-        body: JSON.stringify(buildChatRequestBody(query, props.activeConversationId)),
+        body: JSON.stringify(buildChatRequestBody(query, activeConversationId)),
         headers,
         signal: controller.signal,
       })
@@ -329,7 +329,7 @@
 
   // Scroll to bottom when messages change
   watch(
-    () => props.initialMessages,
+    () => initialMessages,
     (nextMessages) => {
       abortActiveConversationRequest()
       messages.value = cloneChatMessages(nextMessages)
@@ -338,7 +338,7 @@
   )
 
   watch(
-    () => props.activeConversationId,
+    () => activeConversationId,
     (nextConversationId, previousConversationId) => {
       if (nextConversationId !== previousConversationId) {
         abortActiveConversationRequest()
@@ -433,10 +433,10 @@
     <div class="shrink-0 border-t border-default p-4">
       <ChatMessageInput
         ref="messageInputRef"
-        :disabled="props.disabled || isSubmitting || rateLimitCountdown > 0"
+        :disabled="disabled || isSubmitting || rateLimitCountdown > 0"
         :loading="isStreaming"
         :placeholder="
-          props.disabled
+          disabled
             ? '訪客僅可瀏覽，無法提問'
             : rateLimitCountdown > 0
               ? `請於 ${rateLimitCountdown} 秒後再試`

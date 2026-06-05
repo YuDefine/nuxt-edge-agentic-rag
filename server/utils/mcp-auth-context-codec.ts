@@ -218,7 +218,7 @@ export function resolveMcpAuthSigningKey(value: unknown): string {
 }
 
 export function getMcpAuthSigningKey(event?: H3Event): string {
-  const runtimeConfig = event ? useRuntimeConfig(event) : useRuntimeConfig()
+  const runtimeConfig = useRuntimeConfig(event)
 
   return resolveMcpAuthSigningKey(runtimeConfig.mcpAuthSigningKey)
 }

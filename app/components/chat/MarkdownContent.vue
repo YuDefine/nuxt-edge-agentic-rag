@@ -6,13 +6,11 @@
     streaming?: boolean
   }
 
-  const props = withDefaults(defineProps<Props>(), {
-    streaming: false,
-  })
+  const { content, streaming = false } = defineProps<Props>()
 
-  const liveContent = toRef(props, 'content')
+  const liveContent = toRef(() => content)
   const debouncedContent = refDebounced(liveContent, 30)
-  const renderedContent = computed(() => (props.streaming ? debouncedContent.value : props.content))
+  const renderedContent = computed(() => (streaming ? debouncedContent.value : content))
 </script>
 
 <template>

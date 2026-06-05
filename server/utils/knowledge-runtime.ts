@@ -1,11 +1,13 @@
+import type { H3Event } from 'h3'
+
 import {
   deriveAllowedAccessLevels,
   isAdminEmailAllowlisted,
   resolveKnowledgeRuntimeConfig,
 } from '#shared/schemas/knowledge-runtime'
 
-export function getKnowledgeRuntimeConfig() {
-  const runtimeConfig = useRuntimeConfig()
+export function getKnowledgeRuntimeConfig(event?: H3Event) {
+  const runtimeConfig = useRuntimeConfig(event)
 
   return resolveKnowledgeRuntimeConfig(runtimeConfig.knowledge)
 }

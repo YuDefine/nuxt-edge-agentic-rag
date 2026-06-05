@@ -33,7 +33,7 @@ export async function requireInternalDebugAccess(
   // Order matters: surface 403 for non-admins before probing env/flag so the
   // flag never leaks to unauthenticated callers.
   const session = await requireRuntimeAdminSession(event)
-  const runtimeConfig = useRuntimeConfig()
+  const runtimeConfig = useRuntimeConfig(event)
   const environment = String(runtimeConfig.knowledge?.environment ?? 'local')
   const enabledByFlag = Boolean(runtimeConfig.debugSurfaceEnabled)
 

@@ -37,7 +37,7 @@
 
   const { data, state, asyncStatus, error, refetch } = useQuery({
     key: ['admin', 'mcp-tokens'],
-    query: () => $fetch<ListResponse>('/api/admin/mcp-tokens'),
+    query: () => useRequestFetch()<ListResponse>('/api/admin/mcp-tokens'),
   })
 
   // Map pinia-colada asyncStatus to the shared UI state vocabulary.

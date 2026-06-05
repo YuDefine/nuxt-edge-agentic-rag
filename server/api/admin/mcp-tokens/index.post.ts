@@ -24,7 +24,7 @@ const VALID_SCOPES = [
 
 export default defineEventHandler(async (event) => {
   const log = useLogger(event)
-  const runtimeConfig = useRuntimeConfig()
+  const runtimeConfig = useRuntimeConfig(event)
 
   const session = await requireRuntimeAdminSession(event)
 

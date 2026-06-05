@@ -38,7 +38,7 @@
 
   const { data, state, asyncStatus, error, refetch } = useQuery({
     key: ['admin', 'dashboard', 'summary'],
-    query: () => $fetch<SummaryResponse>('/api/admin/dashboard/summary'),
+    query: () => useRequestFetch()<SummaryResponse>('/api/admin/dashboard/summary'),
     // Short stale time: the dashboard is expected to be re-opened often
     // and admins want "roughly current" numbers without every refetch.
     staleTime: 30_000,

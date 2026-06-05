@@ -25,7 +25,7 @@
   const { data: targetDocumentData, status: targetStatus } = await useFetch<{
     data: DocumentWithAllVersions
   }>(() => `/api/admin/documents/${targetDocumentId}`, {
-    key: `admin-document-${targetDocumentId}`,
+    key: `admin-documents-upload-target-${targetDocumentId ?? 'none'}`,
     immediate: targetDocumentId !== null,
     watch: false,
   })

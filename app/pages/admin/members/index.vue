@@ -42,7 +42,7 @@
   const { data, state, asyncStatus, error, refetch } = useQuery({
     key: queryKey,
     query: () =>
-      $fetch<ListResponse>('/api/admin/members', {
+      useRequestFetch()<ListResponse>('/api/admin/members', {
         query: {
           page: page.value,
           pageSize: pageSize.value,
