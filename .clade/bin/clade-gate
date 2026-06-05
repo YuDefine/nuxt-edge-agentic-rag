@@ -1,0 +1,157 @@
+#!/usr/bin/env node
+// clade improvement-loop: repo-script wrapper.
+//
+// Invoked from consumer package.json scripts so the user-facing entry stays
+// `pnpm test`, `pnpm lint`, `pnpm typecheck`. The wrapper records argv, exit code,
+// and stderr head, then exits with the inner command's exit code.
+//
+// Usage in package.json:
+//   "scripts": {
+//     "test":     "clade-gate run test -- vitest",
+//     "lint":     "clade-gate run lint -- oxlint .",
+//     "typecheck":"clade-gate run typecheck -- vue-tsc --noEmit"
+//   }
+//
+// `clade-gate run <gate-name> -- <inner-command> [args...]`
+//   <gate-name> is one of: test | lint | typecheck (controls the signal's gate_name).
+//   Everything after `--` is the actual command to execute.
+
+import { spawn } from 'node:child_process'
+import { resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { randomUUID } from 'node:crypto'
+import { execFileSync } from 'node:child_process'
+import { existsSync, readFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+
+let redactString = (s) => s.replace(/[A-Za-z0-9+/=]{20,}/g, '<REDACTED>')
+let appendRecord = () => {}
+let signalsAvailable = false
+try {
+  const r = await import('../vendor/signals/redact.mjs')
+  const l = await import('../vendor/signals/ledger-writer.mjs')
+  redactString = r.redactString
+  appendRecord = l.appendRecord
+  signalsAvailable = true
+} catch {
+  // vendor/signals not populated (CI, fresh clone without clade home) — passthrough mode
+}
+
+const SHIM_PATH = resolve(fileURLToPath(import.meta.url))
+const CLADE_ROOT = resolve(dirname(SHIM_PATH), '..')
+const STDERR_CAPTURE_BYTES = 2048
+
+function usage(msg) {
+  if (msg) process.stderr.write(`[clade-gate] ${msg}\n`)
+  process.stderr.write('usage: clade-gate run <test|lint|typecheck|other> -- <command> [args...]\n')
+  process.exit(2)
+}
+
+function gitSafe(args, cwd) {
+  try {
+    return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()
+  } catch {
+    return ''
+  }
+}
+
+function detectConsumer(cwd) {
+  try {
+    const registryPath = join(CLADE_ROOT, 'registry', 'consumers.json')
+    if (!existsSync(registryPath)) return { consumer_id: 'unknown', repo_id: 'unknown/unknown' }
+    const registry = JSON.parse(readFileSync(registryPath, 'utf8'))
+    const gitTop = gitSafe(['rev-parse', '--show-toplevel'], cwd) || cwd
+    if (resolve(gitTop) === resolve(CLADE_ROOT)) {
+      const entry = registry.consumers.find((c) => c.consumer_id === 'clade')
+      if (entry) return entry
+    }
+    const originUrl = gitSafe(['config', '--get', 'remote.origin.url'], cwd)
+    if (originUrl) {
+      const repoMatch = originUrl.match(/[:/]([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+?)(?:\.git)?$/)
+      if (repoMatch) {
+        const entry = registry.consumers.find((c) => c.repo_id === repoMatch[1])
+        if (entry) return entry
+      }
+    }
+    return { consumer_id: 'unknown', repo_id: 'unknown/unknown' }
+  } catch {
+    return { consumer_id: 'unknown', repo_id: 'unknown/unknown' }
+  }
+}
+
+function stripAnsi(s) {
+  // eslint-disable-next-line no-control-regex
+  return s.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '')
+}
+
+function buildErrorFingerprint(stderrText, exitCode) {
+  if (!stderrText) return `exit:${exitCode}`
+  const clean = stripAnsi(stderrText)
+  const lines = clean.split('\n').map((l) => l.trim()).filter(Boolean)
+  if (lines.length === 0) return `exit:${exitCode}`
+  const errorLine = lines.find((l) => /^(error|fail|✖|×|FAIL|ERROR)/i.test(l)) ?? lines[0]
+  return redactString(errorLine).slice(0, 200)
+}
+
+const argv = process.argv.slice(2)
+if (argv[0] !== 'run') usage('first argument must be `run`')
+const gateLabel = argv[1]
+const dashIdx = argv.indexOf('--')
+if (dashIdx === -1) usage('missing `--` separator between gate-label and inner command')
+const innerArgv = argv.slice(dashIdx + 1)
+if (innerArgv.length === 0) usage('no inner command after `--`')
+
+const GATE_MAP = {
+  test: 'pnpm-test',
+  lint: 'pnpm-lint',
+  typecheck: 'pnpm-typecheck',
+  other: 'other',
+}
+const gateName = GATE_MAP[gateLabel] ?? 'other'
+
+if (process.env.CLADE_IMPROVEMENT_LOOP_OFF === '1' || !signalsAvailable) {
+  const c = spawn(innerArgv[0], innerArgv.slice(1), { stdio: 'inherit' })
+  c.on('exit', (code, sig) => process.exit(code ?? (sig ? 128 : 0)))
+} else {
+  const stderrChunks = []
+  let stderrLen = 0
+  const child = spawn(innerArgv[0], innerArgv.slice(1), { stdio: ['inherit', 'inherit', 'pipe'] })
+  child.stderr.on('data', (chunk) => {
+    process.stderr.write(chunk)
+    if (stderrLen < STDERR_CAPTURE_BYTES) {
+      const room = STDERR_CAPTURE_BYTES - stderrLen
+      stderrChunks.push(chunk.slice(0, room))
+      stderrLen += Math.min(room, chunk.length)
+    }
+  })
+  child.on('exit', (code, sig) => {
+    const exitCode = code ?? (sig ? 128 : 0)
+    const shouldLog = exitCode !== 0 || process.env.CLADE_IMPROVEMENT_LOOP_LOG_ALL === '1'
+    if (shouldLog) {
+      try {
+        const cwd = process.cwd()
+        const consumer = detectConsumer(cwd)
+        const stderrText = Buffer.concat(stderrChunks).toString('utf8')
+        appendRecord({
+          schema_version: '1',
+          consumer_id: consumer.consumer_id ?? 'unknown',
+          repo_id: consumer.repo_id ?? 'unknown/unknown',
+          event_id: randomUUID(),
+          ts_utc: new Date().toISOString(),
+          session_id: `repo-script-${process.pid}`,
+          gate_name: gateName,
+          command_fingerprint: `clade-gate:${gateLabel}:${innerArgv[0]}`,
+          error_fingerprint: buildErrorFingerprint(stderrText, exitCode),
+          severity: 'P2',
+          redaction_applied: true,
+          source: 'repo-script',
+          commit_sha: gitSafe(['rev-parse', '--short', 'HEAD'], cwd) || 'unknown',
+          branch: gitSafe(['rev-parse', '--abbrev-ref', 'HEAD'], cwd) || 'unknown',
+        })
+      } catch (e) {
+        process.stderr.write(`[clade-gate] capture failed: ${e.message}\n`)
+      }
+    }
+    process.exit(exitCode)
+  })
+}

@@ -1,0 +1,106 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/YuDefine/clade/blob/main/vendor/signals/schema.json",
+  "title": "clade improvement-loop signal record",
+  "description": "JSONL line schema for improvement-loop signal records emitted by shims, wrappers, git hooks, agent hooks, and manual entries. Every persisted record MUST validate; the validator enforces non-bypassable redaction.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "consumer_id",
+    "repo_id",
+    "event_id",
+    "ts_utc",
+    "session_id",
+    "gate_name",
+    "command_fingerprint",
+    "error_fingerprint",
+    "severity",
+    "redaction_applied",
+    "source",
+    "commit_sha",
+    "branch"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "1"
+    },
+    "consumer_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Stable id from registry/consumers.json. Digest aggregation resolves identity through the registry, never through local paths."
+    },
+    "repo_id": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$",
+      "description": "owner/repo form, e.g. BigByte-Education-IT/perno."
+    },
+    "event_id": {
+      "type": "string",
+      "format": "uuid",
+      "minLength": 36,
+      "maxLength": 36
+    },
+    "ts_utc": {
+      "type": "string",
+      "format": "date-time",
+      "description": "RFC3339 UTC timestamp. Local time is rendered only at display, never stored."
+    },
+    "session_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Source-specific session identifier (shim pid, agent session id, hook invocation id)."
+    },
+    "gate_name": {
+      "type": "string",
+      "enum": [
+        "vp-check",
+        "vp-lint",
+        "vp-fmt",
+        "validate-manifests",
+        "publish",
+        "propagate",
+        "pre-commit",
+        "pnpm-test",
+        "pnpm-lint",
+        "pnpm-typecheck",
+        "audit-script",
+        "review-output",
+        "other"
+      ]
+    },
+    "command_fingerprint": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Normalized argv joined by ':' with stable ordering; user paths replaced by symbolic tokens. Used for cross-event grouping."
+    },
+    "error_fingerprint": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Normalized top stack frame, rule code, or error key. Empty failures use the literal string 'unknown'."
+    },
+    "severity": {
+      "type": "string",
+      "enum": ["P0", "P1", "P2"]
+    },
+    "redaction_applied": {
+      "type": "boolean",
+      "const": true,
+      "description": "Non-bypassable. The validator rejects records where this is false; there is no opt-out flag at any level."
+    },
+    "source": {
+      "type": "string",
+      "enum": ["shim", "repo-script", "git-hook", "post-tool-use", "manual"]
+    },
+    "commit_sha": {
+      "type": "string",
+      "pattern": "^([0-9a-f]{7,40}|unknown)$"
+    },
+    "branch": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}
