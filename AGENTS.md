@@ -118,6 +118,7 @@ Changes can be parked（暫存）— temporarily moved out of `openspec/changes/
 - `.claude/rules/trigger.md`
 - `.claude/rules/truth-layers.md`
 - `.claude/rules/unused-features.md`
+- `.claude/rules/user-lifecycle.md`
 - `.claude/rules/ux-completeness.md`
 - `.claude/rules/verification-lease.md`
 - `.claude/rules/vite-doctor.md`
