@@ -2,7 +2,7 @@
   import type { TableColumn } from '@nuxt/ui'
 
   import { formatDateTime } from '~/utils/format-datetime'
-  import { srOnlyHeader } from '~~/shared/utils/table'
+  import { srOnlyHeader } from '~/utils/table'
   import { getUiPageState } from '~~/shared/utils/ui-state'
 
   /**

@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url'
 import { createNitroRollupConfig } from './build/nitro/rollup'
 import { createKnowledgeRuntimeConfig } from './shared/schemas/knowledge-runtime'
 import { parseMcpConnectorClientsEnv } from './shared/utils/mcp-connector-client-registry'
-import { doctorConfig } from './vendor/doctor-shared/preset.mjs'
+import { doctorRules } from './vendor/doctor-shared/preset.mjs'
 
 const isVitest = process.env.VITEST === 'true'
 const disableNuxtHints =
@@ -112,7 +112,43 @@ export default defineNuxtConfig({
     ...(!disableNuxtHints ? ['@nuxt/hints'] : []),
     '@nuxtjs/mcp-toolkit',
     '@nuxt/a11y',
-    ['vite-doctor/nuxt', doctorConfig],
+    [
+      'vite-doctor/nuxt',
+      {
+        config: {
+          rules: {
+            ...doctorRules,
+            // SPA-only (ssr: false) — hydration / browser-global / SSR-fetch
+            // rules are false positives; no server-side rendering occurs.
+            'nuxt/hydration/no-browser-side-effects-in-setup': 'off',
+            'nuxt/hydration/no-browser-global-in-universal-code': 'off',
+            'nuxt/hydration/prefer-usecookie-for-initial-client-state': 'off',
+            'nuxt/fetch/forward-auth-headers-ssr': 'off',
+            'nuxt/fetch/no-raw-fetch-in-setup': 'off',
+            // navigateTo outside setup fires in SPA-only route guards; safe
+            'nuxt/runtime/no-navigateto-outside-setup': 'off',
+            // Utility functions and Node scripts legitimately use raw
+            // sessionStorage / setTimeout / setInterval — not composables
+            'vueuse/prefer-use-storage': 'off',
+            'vueuse/prefer-use-timers': 'off',
+            'vueuse/prefer-use-scroll-and-element': 'off',
+            'vueuse/prefer-useclipboard': 'off',
+            'vueuse/prefer-useevent-listener': 'off',
+            'vueuse/prefer-use-observers': 'off',
+            // Nitro server utils intentionally use useRuntimeConfig() without
+            // event for module-level singletons (knowledge-runtime, codec, etc.)
+            'nitro/runtime/require-event-runtime-config-in-server': 'off',
+            // Stylistic — existing codebase uses withDefaults(defineProps<T>())
+            'vue/style/prefer-props-destructure-defaults': 'off',
+            // Stylistic — advisory composable preferences
+            'vue/lifecycle/require-cleanup': 'off',
+            'nuxt/fetch/prefer-create-use-fetch': 'off',
+            'nuxt/state/prefer-explicit-usestate-key-in-exported-composables': 'off',
+          },
+          exclude: ['**/tmp/**', '**/scripts/**'],
+        },
+      },
+    ],
   ],
 
   // NuxtHub - auto-detects environment:

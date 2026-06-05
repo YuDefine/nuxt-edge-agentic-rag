@@ -3,7 +3,7 @@
   import type { DocumentWithCurrentVersion } from '~~/shared/types/knowledge'
   import { formatDateTime } from '~/utils/format-datetime'
   import { assertNever } from '~~/shared/utils/assert-never'
-  import { srOnlyHeader } from '~~/shared/utils/table'
+  import { srOnlyHeader } from '~/utils/table'
 
   interface Props {
     documents: DocumentWithCurrentVersion[]
