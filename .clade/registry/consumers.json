@@ -45,7 +45,7 @@
         },
         "evlog-stack": {
           "variant": "full",
-          "state": "declared",
+          "state": "drift",
           "adopted_at": "2026-04-29"
         },
         "verify-channels": {
@@ -54,15 +54,15 @@
         },
         "dev-login": {
           "variant": "adopted",
-          "state": "declared"
+          "state": "compliant"
         },
         "code-quality-tooling": {
           "variant": "vite-plus-aligned",
-          "state": "declared"
+          "state": "compliant"
         },
         "nuxt-security": {
           "variant": "hardened",
-          "state": "declared"
+          "state": "compliant"
         },
         "user-lifecycle": {
           "variant": "status-based",
@@ -71,7 +71,7 @@
         },
         "deploy-track": {
           "variant": "wrangler-action",
-          "state": "declared"
+          "state": "drift"
         }
       }
     },
@@ -131,7 +131,7 @@
         },
         "dev-login": {
           "variant": "adopted",
-          "state": "declared"
+          "state": "compliant"
         },
         "code-quality-tooling": {
           "variant": "vite-plus-aligned",
@@ -179,7 +179,7 @@
         },
         "evlog-stack": {
           "variant": "minimal",
-          "state": "declared",
+          "state": "drift",
           "notes": "NuxtHub AI variant; @evlog/nuxthub drain"
         },
         "verify-channels": {
@@ -188,16 +188,16 @@
         },
         "dev-login": {
           "variant": "adopted",
-          "state": "declared",
+          "state": "compliant",
           "notes": "better-auth-post shape"
         },
         "code-quality-tooling": {
           "variant": "vite-plus-aligned",
-          "state": "declared"
+          "state": "compliant"
         },
         "nuxt-security": {
           "variant": "hardened",
-          "state": "declared"
+          "state": "compliant"
         },
         "user-lifecycle": {
           "variant": "suspend-and-delete",
@@ -206,7 +206,7 @@
         },
         "deploy-track": {
           "variant": "wrangler-action",
-          "state": "declared"
+          "state": "compliant"
         }
       }
     },
@@ -238,7 +238,7 @@
         },
         "evlog-stack": {
           "variant": "minimal",
-          "state": "declared",
+          "state": "compliant",
           "notes": "useLogger adopted; Sentry drain only, no durable drain yet"
         },
         "verify-channels": {
@@ -247,15 +247,15 @@
         },
         "dev-login": {
           "variant": "adopted",
-          "state": "declared"
+          "state": "compliant"
         },
         "code-quality-tooling": {
           "variant": "vite-plus-aligned",
-          "state": "declared"
+          "state": "compliant"
         },
         "nuxt-security": {
           "variant": "hardened",
-          "state": "declared",
+          "state": "compliant",
           "adopted_at": "2026-06-05",
           "notes": "CSP integration recipes aligned"
         },
@@ -266,7 +266,7 @@
         },
         "deploy-track": {
           "variant": "node-server",
-          "state": "declared"
+          "state": "drift"
         }
       }
     },
@@ -299,7 +299,7 @@
         },
         "evlog-stack": {
           "variant": "baseline",
-          "state": "declared"
+          "state": "compliant"
         },
         "verify-channels": {
           "variant": "full",
@@ -307,12 +307,12 @@
         },
         "dev-login": {
           "variant": "adopted",
-          "state": "declared",
+          "state": "compliant",
           "notes": "legacy __test-login shape"
         },
         "code-quality-tooling": {
           "variant": "vite-plus-aligned",
-          "state": "declared"
+          "state": "compliant"
         },
         "nuxt-security": {
           "variant": "hardened",
@@ -325,7 +325,7 @@
         },
         "deploy-track": {
           "variant": "wrangler-action",
-          "state": "declared"
+          "state": "compliant"
         }
       }
     },
@@ -361,7 +361,7 @@
         },
         "verify-channels": {
           "variant": "manual-only",
-          "state": "declared"
+          "state": "detected"
         },
         "dev-login": {
           "variant": "none",
@@ -370,7 +370,7 @@
         },
         "code-quality-tooling": {
           "variant": "vite-plus-aligned",
-          "state": "declared"
+          "state": "compliant"
         },
         "nuxt-security": {
           "variant": "hardened",
@@ -383,7 +383,7 @@
         },
         "deploy-track": {
           "variant": "wrangler-action",
-          "state": "declared"
+          "state": "compliant"
         }
       }
     },
@@ -428,7 +428,7 @@
         },
         "code-quality-tooling": {
           "variant": "vite-plus-aligned",
-          "state": "declared"
+          "state": "compliant"
         },
         "nuxt-security": {
           "variant": "hardened",
@@ -441,7 +441,7 @@
         },
         "deploy-track": {
           "variant": "void-cloud",
-          "state": "declared"
+          "state": "drift"
         }
       }
     },
@@ -485,7 +485,7 @@
         },
         "code-quality-tooling": {
           "variant": "vite-plus-aligned",
-          "state": "declared"
+          "state": "compliant"
         },
         "nuxt-security": {
           "variant": "none",
@@ -499,7 +499,7 @@
         },
         "deploy-track": {
           "variant": "void-cloud",
-          "state": "declared"
+          "state": "drift"
         }
       }
     }

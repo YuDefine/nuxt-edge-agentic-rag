@@ -67,7 +67,27 @@ Run for every mode except C (new containerization skips to Step 4 directly).
    - Count consecutive unchained `RUN` instructions: ≥ 3 `RUN` lines in sequence performing related work (package install, config, cleanup) without `&&` chaining → P2 `dockerfile.unchained_run_layers`.
    - Estimate final image size opportunity: if base image is full variant + single stage + no `.dockerignore`, flag compound impact as P1 `dockerfile.image_size_compound` with estimated savings.
 
-6. **Check known-accept registry** — suppress expected contextual findings (see § Known-accept registry).
+6. **`.dockerignore` completeness analysis** (for `app-image` and `local-dev-compose` classifications):
+   - If no `.dockerignore` exists → P1 `dockerignore.missing` (already in § P1).
+   - If `.dockerignore` exists, read it and check for these essential exclusion categories:
+
+     | Category | Expected patterns (any match counts) | If missing |
+     | --- | --- | --- |
+     | Package manager cache | `node_modules`, `.pnpm-store` | P1 `dockerignore.no_node_modules` |
+     | Version control | `.git` | P1 `dockerignore.no_vcs` |
+     | Secrets / env files | `.env*` or `.env` + `.env.*` | P1 `dockerignore.no_env_files` |
+     | Build output | `.nuxt`, `.output`, `dist` (framework-dependent) | P2 `dockerignore.no_build_output` |
+     | Test / coverage | `test/` or `tests/`, `coverage/` | P2 `dockerignore.no_test_dirs` |
+     | Dev tooling | `.claude/`, `.agents/`, `.codex/` | P2 `dockerignore.no_dev_tooling` |
+     | IDE / OS artifacts | `.vscode/` or `.idea/` or `.DS_Store` | P3 `dockerignore.no_ide_artifacts` |
+     | Docker self-reference | `Dockerfile*` or `docker-compose*` | P3 `dockerignore.no_docker_self_ref` |
+     | Documentation | `docs/` or `*.md` | P3 `dockerignore.no_docs` |
+     | Logs | `*.log` | P3 `dockerignore.no_logs` |
+
+   - Pattern matching is case-insensitive glob. Trailing `/` is optional (both `test` and `test/` count).
+   - **Compound escalation**: Dockerfile uses `COPY . .` AND `.dockerignore` has ≥ 2 gaps at P1 level → escalate to P0 `dockerignore.copy_all_plus_gaps` (build context leaks secrets and/or ships host `node_modules` into image).
+
+7. **Check known-accept registry** — suppress expected contextual findings (see § Known-accept registry).
 
 ## Step 2.5: Runtime baseline
 
@@ -117,11 +137,13 @@ Report findings with the following structure:
 - Production deploy compose has `build:` when design is image-only digest deploy.
 - Dockerfile or compose references missing required files — build/deploy cannot work.
 - Healthcheck points to a non-existent endpoint.
+- `COPY . .` in Dockerfile AND `.dockerignore` missing or has ≥ 2 P1-level gaps (`dockerignore.copy_all_plus_gaps`). Build context leaks secrets (`node_modules` platform binaries, `.env*`, `.git` history) directly into image layers.
 
 ### P1: high risk
 
 - Production image uses unpinned mutable tags where digest/pinned tag is expected.
-- No `.dockerignore` for app image builds.
+- No `.dockerignore` for app image builds (`dockerignore.missing`).
+- `.dockerignore` exists but missing critical category: `node_modules` / `.git` / `.env*` (`dockerignore.no_node_modules` / `dockerignore.no_vcs` / `dockerignore.no_env_files`). Host `node_modules` in build context can shadow the container's installed deps and leak platform-specific binaries; `.git` adds 10–100 MB+ of history; `.env*` leaks secrets into image layers.
 - Build context copies entire repo (`COPY . .`) before dependency install — cache invalidation on any file change.
 - No healthcheck for long-running service.
 - No restart policy for self-hosted service.
@@ -134,6 +156,7 @@ Report findings with the following structure:
 
 ### P2: important / contextual
 
+- `.dockerignore` exists but missing recommended category: build output (`.nuxt`/`.output`/`dist`), test dirs (`test/`/`coverage/`), or dev tooling (`.claude/`/`.agents/`/`.codex/`). Not a security risk but inflates build context and image size (`dockerignore.no_build_output` / `dockerignore.no_test_dirs` / `dockerignore.no_dev_tooling`).
 - Container runs as root. Evaluate LXC/AppArmor constraints before forcing non-root.
 - `network_mode: host`. May be intentional for monitoring/exporters.
 - `:latest` tags in infra compose. Risk depends on context.
@@ -145,6 +168,7 @@ Report findings with the following structure:
 
 ### P3: polish / maintainability
 
+- `.dockerignore` missing polish-level patterns: IDE artifacts (`.vscode/`/`.idea/`/`.DS_Store`), Docker self-reference (`Dockerfile*`/`docker-compose*`), documentation (`docs/`/`*.md`), logs (`*.log`) (`dockerignore.no_ide_artifacts` / `dockerignore.no_docker_self_ref` / `dockerignore.no_docs` / `dockerignore.no_logs`).
 - Missing comments around intentional exceptions.
 - Legacy compose file naming or inconsistent env file naming.
 - Duplicate environment values that can be centralized.
