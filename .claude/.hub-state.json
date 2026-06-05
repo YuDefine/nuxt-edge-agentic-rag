@@ -1,6 +1,6 @@
 {
   "cladeRoot": "/Users/charles/offline/clade",
-  "syncedAt": "2026-06-05T06:20:16.201Z",
+  "syncedAt": "2026-06-05T05:56:25.011Z",
   "checksums": {
     "rules/agent-routing.codex-watch-protocol.md": "fd104227063b965f",
     "rules/agent-routing.md": "b8a876015c4ac442",
@@ -68,7 +68,7 @@
     "rules/development.md": "b731d99423f34d57",
     "rules/nuxt-security.md": "8a40fc85ab09addb",
     "rules/nuxt-ui-mcp.md": "50b1e759e58997df",
-    "scripts/codex-review-safe.sh": "bbf8cae784512d09",
+    "scripts/codex-review-safe.sh": "02b730f9dbd504a3",
     "scripts/commit-lock.mjs": "f81c79df484ce5db",
     "skills/commit/SKILL.md": "12ffad4931e9a377",
     "skills/spectra/SKILL.md": "2ed77598eba98de6",
@@ -93,7 +93,7 @@
     "agents/screenshot-review.md": "886090feb87d93f1"
   },
   "bootstrap": {
-    "at": "2026-06-05T06:20:16.848Z",
+    "at": "2026-06-05T05:56:25.568Z",
     "version": "1.4.135",
     "modules": {
       "auth": "better-auth",

@@ -16,13 +16,16 @@
 # Usage:
 #   .claude/scripts/codex-review-safe.sh [reasoning_effort] [extra codex args...]
 #
-# Default reasoning_effort = high. Pass `xhigh` for Round 2.
+# Default reasoning_effort = xhigh. The commit 0-A flow calls this twice:
+# 0-A.1 with `high` (always, unless fast-path skips), and 0-A.2 with `xhigh`
+# (conditional — only when 0-A.1 surfaces Critical/Major). Other contexts
+# (Spectra propose/apply) use xhigh. See .claude/skills/commit/SKILL.md Step 0-A.
 #
 # Exit code: passes through codex review's exit code.
 
 set -uo pipefail
 
-REASONING="${1:-high}"
+REASONING="${1:-xhigh}"
 shift || true  # tolerate no args after reasoning
 
 REAL_HOME="$HOME/.codex"
