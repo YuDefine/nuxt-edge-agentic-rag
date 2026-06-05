@@ -1,6 +1,6 @@
 {
   "cladeRoot": "/Users/charles/offline/clade",
-  "syncedAt": "2026-06-04T06:05:07.676Z",
+  "syncedAt": "2026-06-05T06:20:16.201Z",
   "checksums": {
     "rules/agent-routing.codex-watch-protocol.md": "fd104227063b965f",
     "rules/agent-routing.md": "b8a876015c4ac442",
@@ -8,7 +8,7 @@
     "rules/audit-pattern.md": "706d3ba1ac21f49f",
     "rules/cloudflare-workers.md": "307318850b41f6a1",
     "rules/code-style.md": "cbd2b44c0098870f",
-    "rules/commit.md": "2dcedf523a29a093",
+    "rules/commit.md": "0759521a2022c700",
     "rules/consumer-meta.md": "a22f6b93ba6c5ed3",
     "rules/data-layer-d1.md": "0918c3829fcac7c7",
     "rules/db-preview-env.md": "5074958b92df10d2",
@@ -68,9 +68,9 @@
     "rules/development.md": "b731d99423f34d57",
     "rules/nuxt-security.md": "8a40fc85ab09addb",
     "rules/nuxt-ui-mcp.md": "50b1e759e58997df",
-    "scripts/codex-review-safe.sh": "02b730f9dbd504a3",
+    "scripts/codex-review-safe.sh": "bbf8cae784512d09",
     "scripts/commit-lock.mjs": "f81c79df484ce5db",
-    "skills/commit/SKILL.md": "8e637b9073b9c7b4",
+    "skills/commit/SKILL.md": "12ffad4931e9a377",
     "skills/spectra/SKILL.md": "2ed77598eba98de6",
     "skills/spectra-analyze/SKILL.md": "531951f39aff871d",
     "skills/spectra-apply/SKILL.md": "1d8074571803c06c",
@@ -91,5 +91,22 @@
     "agents/db-backup.md": "fd21fd01389c5d29",
     "agents/references/clade-review-rules.md": "c3081fc46f2b799e",
     "agents/screenshot-review.md": "886090feb87d93f1"
+  },
+  "bootstrap": {
+    "at": "2026-06-05T06:20:16.848Z",
+    "version": "1.4.135",
+    "modules": {
+      "auth": "better-auth",
+      "db-schema": "supabase",
+      "db-runtime": "cf-workers",
+      "runtime": "cf-workers",
+      "framework": "nuxt",
+      "domain": [],
+      "maintenance": "full"
+    },
+    "runtime": {
+      "claudeCode": true,
+      "codex": true
+    }
   }
 }

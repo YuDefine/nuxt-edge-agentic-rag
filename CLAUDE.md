@@ -135,16 +135,17 @@ Subagent 任務應包含（cwd 設為 push 發生的 repo path）：
 <!-- CLADE:SNIPPET:archive-commit-order:END -->
 
 <!-- CLADE:SNIPPET:worktree-default:START -->
-
 ## Session-level Worktree
 
 要動 code 的工作（implement / fix / refactor / migration）**MUST** 在獨立 git worktree 內執行，**NEVER** 直接在 main 改。操作上由 `/wt <task>` 全自動 orchestrate — `/wt` 建 worktree、dispatch subagent 進去做事、subagent commit 完回來主線 squash-merge 進 main 的 working tree、cleanup worktree。主線 chat session cwd 全程不動，user 不必開新 terminal、不必複製 oneliner、不必手動 `git worktree` 任何子命令。
 
 Read-only session（grep、看 log、解釋 code 不寫檔）可留在 main worktree。
 
-**例外：`/spectra-archive` 在 main 跑**。Archive 語意是「把 change 合併進 main」（mv folder、delta sync 進 specs、screenshot sweep），全部寫入 main，走 worktree 反而多一道 merge-back。其他 spectra-\* skill（`/spectra-apply` / `/spectra-ingest` / `/spectra-debug`）仍須走 `/wt` 進 worktree。
+**例外：`/spectra-archive` 在 main 跑**。Archive 語意是「把 change 合併進 main」（mv folder、delta sync 進 specs、screenshot sweep），全部寫入 main，走 worktree 反而多一道 merge-back。其他 spectra-* skill（`/spectra-apply` / `/spectra-ingest` / `/spectra-debug`）仍須走 `/wt` 進 worktree。
 
 **Parent cwd 不動 invariant**：`/wt` **SHALL NOT** 遷移 parent session 的 cwd — 所有 worktree 內的操作由 subagent 執行（subagent cwd = worktree path），主線（cwd = main）負責 dispatch + squash + cleanup。先前 `--dispatch-from-handoff` flag 機制已移除；新 orchestration model 透過 subagent 隔離 cwd 達到同樣的「不切 terminal」UX，且更嚴格地保留 parent cwd invariant。
+
+**階段間 setup chore 由主線自動代勞**：subagent 完成階段性 commit 後、下一階段 dispatch 之前若需要在 worktree 跑 local-only setup（`pnpm install` / `db:reset` / `db:types` / `supabase:sync` / `lint` / `test`），主線 **MUST** 自己用 Bash `cd <worktree-path> && <cmd>` 一行式跑掉，**NEVER** 把指令清單貼給 user 叫他切 cd 去跑。Bash 每次呼叫是獨立子 shell，`cd` 只在 subshell 內、session cwd 不變、不違反 invariant。真 destructive 操作（prod migration / `git push --force` / secrets / outbound 訊息 / shared infra）仍需 user 拍板。
 
 **`/wt` invocation forms**：
 
@@ -161,5 +162,73 @@ Read-only session（grep、看 log、解釋 code 不寫檔）可留在 main work
 **Failure fallback**：subagent fail（test 不過、沒 commit）→ 保留 worktree + branch，主線回報路徑，user 從 main 跑 `git -C <wt> diff/log` 檢查；squash conflict（平行 task 改同檔）→ 保留該 worktree，main 維持上一個成功 squash 的狀態；cleanup 失敗 → 改動已在 main，報告 worktree 殘留路徑由 user 手動 `wt-helper cleanup --force`。
 
 詳見 `.claude/rules/worktree-default.md`。
-
 <!-- CLADE:SNIPPET:worktree-default:END -->
+
+<!-- CLADE:SNIPPET:evlog-prod-triage:START -->
+## Prod 問題 → 先查 evlog（runtime triage 反射）
+
+當訊息描述的是 **prod / staging 的 runtime 症狀**（壞了、報錯、500/503/5xx、Toast 出現 error、「全部失敗」、特定 user/request 行為異常、變慢、間歇）而**不是**「改 code / 加 feature」時：
+
+**第一個證據動作 MUST 是查 evlog wide event** —— 撈實際發生過的 request（path / status / duration_ms / error_json / request.id / user / 時間窗），**先於** grep code、codebase-memory-mcp、或派 Explore agent 推測 root cause。
+
+> code 告訴你「**可能**發生什麼」（假設）；evlog 告訴你「**實際**發生了什麼」（ground truth）。prod 症狀不要從 code 猜原因 —— 先用 evlog 把症狀釘到具體 request，再回 code 對因。從 code 推出的 root cause 在驗證前一律視為**未證實的推測**。
+
+這條反射**僅對 runtime 症狀**優先於 codebase-memory-mcp 的 code-first 順序；純 code 探索（找 function、理解架構）仍走 codebase-memory-mcp。
+
+怎麼查（per-backend recipe，含可直接貼的 query）：
+
+- 協定與邊界：`.claude/rules/evlog-investigate.md`
+- Cookbook：`~/offline/clade/vendor/snippets/evlog-investigate/`（Supabase drain SQL / Sentry·Axiom query / stream replay）
+
+**NEVER** 在沒撈過 evlog 前就向 user 宣稱 prod root cause，**NEVER** 把「查 prod log」當成等 user 開口才做的事 —— runtime 症狀進來時它就是你的第一步。
+<!-- CLADE:SNIPPET:evlog-prod-triage:END -->
+
+<!-- CLADE:SNIPPET:ui-invariants.template:START -->
+# UI Invariants — <consumer-name>
+
+> **這是 clade baseline template。** Consumer 複製到自家 `docs/UI-INVARIANTS.md` 後
+> 在「## Consumer-specific invariants」section 追加業務專屬條目。clade 維護
+> 「## Universal invariants」5 條最小基線（散播時保持對齊），consumer **不要**
+> 改 universal 條目，只 extend consumer-specific。
+>
+> 解析順序（Layer B/C/E 的 resolver）：consumer `docs/UI-INVARIANTS.md` →
+> consumer `.claude/ui-invariants.md` → 此 clade template（fallback）。
+
+## Universal invariants（clade baseline；5 條）
+
+| ID | Invariant | Detection method | Severity |
+| --- | --- | --- | --- |
+| UI-INV-1 | list/table 任一 data column 不可整欄塌縮成 fallback（`-` / `—` / 空 / `null` / `undefined` / `N/A`），rows ≥ 2 時 | `refactor-invariant-check.mjs` column-uniformity heuristic（Layer B），或 final-state screenshot 逐欄目視 | **Critical** |
+| UI-INV-2 | lookup-resolved column（如 `employeeNameMap` 類 id→name 對照）解析率 100% — 不可因 lookup map empty 而整欄 fallback | Layer B（整欄 fallback 即命中）+ Layer C data-sanity（lookup-map-empty-risk）+ D4 self-analysis（來源 query 是否 4xx） | **Critical** |
+| UI-INV-3 | page load 期間 0 個非預期 4xx/5xx network error（auth redirect 除外） | `refactor-invariant-check.mjs` network capture（`Network.enable` + drain；Layer B）+ D5 self-analysis | **Critical** |
+| UI-INV-4 | 渲染 row count 需匹配 seed 預期（空列表頁不可在有 seed 資料時顯示 0 列） | final-state screenshot row count vs `supabase/seed.sql`（或等價 seed）預期 | **High** |
+| UI-INV-5 | admin business-critical action（刪除 / 作廢 / 大量異動 / 不可逆）必有確認對話框 | `[review:ui]` 人工驗 + design review | **High** |
+
+## Consumer-specific invariants（consumer 自行 extend）
+
+> 在此追加業務專屬 invariant。每條 **MUST** 含 ID（建議 `<CONSUMER>-INV-N`）、Invariant 敘述、
+> Detection method、Severity（Critical / High / Medium）。
+
+| ID | Invariant | Detection method | Severity |
+| --- | --- | --- | --- |
+| _(例)_ PERNO-INV-1 | 出勤補登列表「員工」欄需顯示員工姓名（非編號、非空） | screenshot 目視 + Layer B | Critical |
+
+## Allow-empty columns（per-page fallback 例外）
+
+> 某些 column 業務上本來就可整欄空（如選填「備註」）。在此列出**全域**允許整欄空的
+> column header，避免 Layer B uniform-column heuristic false positive。Per-page 例外
+> 則用 `.vue` template 內 `<!-- @ui-invariant-allow-empty[<column-header>] -->` 註解。
+>
+> 格式（resolver 解析）：每行一條 `@ui-invariant-allow-empty[<column-header>]`，或逗號分隔。
+
+<!-- 範例（取消註解並改成實際 column）：
+@ui-invariant-allow-empty[備註]
+@ui-invariant-allow-empty[內部代號]
+-->
+
+## 與其他層的關係
+
+- **Layer B**（`refactor-invariant-check.mjs`）：UI-INV-1 / UI-INV-3 的 mechanical 偵測點；讀本檔的 allow-empty columns 合併進 per-page marker。
+- **Layer C**（`/impeccable data-sanity`）：UI-INV-2 的 lookup-map-empty-risk + query-param boundary 偵測。
+- **Layer E.1**（pre-handoff self-analysis）：D3 維度引用本檔逐條 cross-check。
+<!-- CLADE:SNIPPET:ui-invariants.template:END -->

@@ -60,4 +60,5 @@ openspec/.vector-search.db*
 .claude/.commit.lock
 
 # Clade local runtime state
-codex/
+
+.codex/
