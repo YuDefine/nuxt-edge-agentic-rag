@@ -70,8 +70,9 @@
           "notes": "status: active | resigned; resign/rehire endpoints"
         },
         "deploy-track": {
-          "variant": "wrangler-action",
-          "state": "drift"
+          "variant": "node-server",
+          "state": "compliant",
+          "notes": "Docker + self-hosted runner; not wrangler"
         }
       }
     },
@@ -266,7 +267,7 @@
         },
         "deploy-track": {
           "variant": "node-server",
-          "state": "drift"
+          "state": "compliant"
         }
       }
     },
@@ -441,7 +442,7 @@
         },
         "deploy-track": {
           "variant": "void-cloud",
-          "state": "drift"
+          "state": "compliant"
         }
       }
     },
