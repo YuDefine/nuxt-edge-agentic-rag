@@ -193,19 +193,12 @@ export async function retrieveVerifiedEvidence(
   }
 }
 
-// Vectorize metadata filter: implicit AND via multiple keys.
-// https://developers.cloudflare.com/vectorize/reference/metadata-filtering/
-function buildKnowledgeSearchFilters(input: {
+// AutoRAG/AI Search metadata filter is disabled: the index has no custom_metadata
+// schema configured, so filtering on status/version_state/access_level causes
+// "Invalid input". Post-search verification in resolveCurrentEvidence already
+// enforces d.status='active' + v.is_current=1 + access_level IN (...).
+function buildKnowledgeSearchFilters(_input: {
   allowedAccessLevels: string[]
-}): Record<string, string> {
-  const filters: Record<string, string> = {
-    status: 'active',
-    version_state: 'current',
-  }
-
-  if (input.allowedAccessLevels.length === 1) {
-    filters.access_level = input.allowedAccessLevels[0]!
-  }
-
-  return filters
+}): Record<string, never> {
+  return {}
 }

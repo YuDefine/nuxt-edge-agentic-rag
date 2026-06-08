@@ -185,11 +185,8 @@ describe('acceptance admin web vs mcp scope isolation (TC-14)', () => {
     expect(webAi.calls).toHaveLength(1)
     const webFilters = webAi.calls[0]?.request.filters as Record<string, string>
 
-    expect(webFilters).toMatchObject({
-      status: 'active',
-      version_state: 'current',
-    })
-    expect(webFilters).not.toHaveProperty('access_level')
+    // Filter 已移到 post-search resolveCurrentEvidence，pre-search 傳空 filter
+    expect(webFilters).toEqual({})
 
     // 契約 #3：Web 寫入 citation_records，包含 restricted documentVersionId + chunkText
     const webCitationInserts = webD1.calls.filter((call) =>
@@ -236,11 +233,11 @@ describe('acceptance admin web vs mcp scope isolation (TC-14)', () => {
     expect(mcpResult.data.citations).toEqual([])
     expect(mcpResult.data.answer).toBeUndefined()
 
-    // 契約 #6：MCP AI Search filter 明確帶 access_level='internal'
+    // 契約 #6：MCP AI Search filter 為空（access_level 由 post-search resolveCurrentEvidence 驗）
     expect(mcpAi.calls).toHaveLength(1)
     const mcpFilters = mcpAi.calls[0]?.request.filters as Record<string, string>
 
-    expect(mcpFilters).toMatchObject({ access_level: 'internal' })
+    expect(mcpFilters).toEqual({})
 
     // 契約 #7：MCP 不得寫任何 citation_records
     const mcpCitationInserts = mcpD1.calls.filter((call) =>
