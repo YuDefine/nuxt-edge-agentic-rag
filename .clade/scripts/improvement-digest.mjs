@@ -23,6 +23,7 @@ import { fileURLToPath } from 'node:url'
 
 import { validateRecord } from '../signals/redact.mjs'
 import { appendRecord } from '../signals/ledger-writer.mjs'
+import { aggregateConsumerSignals } from './aggregate-signals.mjs'
 import {
   computeLayeredMetrics,
   inferAllClosures,
@@ -826,6 +827,13 @@ function persistOutcomes(outcomes) {
 
 export async function runDigest({ dryRun = false } = {}) {
   forbidLLMScoring()
+  // TD-189: consumer signals are written to <consumer>/.clade/vendor/ledger/ and
+  // never reach clade home. Pull them into the home ledger (dedup by event_id)
+  // BEFORE reading signals, so detection sees fresh consumer data. Registry-driven.
+  const agg = aggregateConsumerSignals({ cladeRoot, dryRun })
+  if (agg.ok && agg.pulled > 0) {
+    console.log(`▸ signal aggregation: pulled ${agg.pulled} consumer record(s) into home ledger`)
+  }
   const registry = readRegistry()
   const td = readTechDebt()
   const archived = readArchivedChanges()
