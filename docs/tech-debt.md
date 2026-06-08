@@ -69,6 +69,7 @@
 | TD-066 | `retrieveVerifiedEvidence` 用 `=== 'success'` 比對 `RewriterStatus`，違反專案 `switch + assertNever` exhaustiveness rule；新增 enum 值時不會 compiler error                                                                                                   | low      | open        | 2026-04-26 `/commit` 0-A code-review                             | —     |
 | TD-067 | `test/tsconfig.json` baseline 191 errors（component module not found + fixture type drift + Nitro route key excessive depth + `allowImportingTsExtensions` 缺 + middleware signature 漂移）                                                                   | mid      | open        | 2026-05-04 clade v0.3.10 cutover pre-push test-typecheck 揭露    | —     |
 | TD-070 | `rag-query-rewriting` 人工檢查對齊新 manual-review 規範（補 `[discuss]` marker + verify channel + Pre-Review Data Readiness）                                                                                                                                 | mid      | open        | 2026-05-12 clade v1.3.6 manual-review.md 新規散播                | —     |
+| TD-071 | AutoRAG → AI Search API migration：`env.AI.autorag().search()` 舊 API 全掛（staging 每條 chat 500）                                                                                                                                                           | critical | open        | 2026-06-09 rag-query-rewriting acceptance blocked                | —     |
 
 ---
 
@@ -2630,3 +2631,45 @@ User 決定本次 session **登記不處理**（2026-05-12 對話中明示「age
 - 7 items 都有 `[discuss]` marker
 - `archive-gate.sh` Check 4 驗 `[discuss]` items 都有 evidence trail 或勾選
 - `spectra-archive` 可通過 manual-review hygiene gate
+
+
+## TD-071 — AutoRAG → AI Search API migration
+
+**Status**: open
+**Priority**: critical
+**Discovered**: 2026-06-09 — `rag-query-rewriting` staging acceptance run 全掛（evlog: `AutoRAGInternalError: vectorize_filter_not_serializable` → fix filter shape → `Invalid input`）
+**Location**: `server/utils/ai-search.ts`（binding + request shape）、`server/utils/knowledge-retrieval.ts`（filter construction）
+**Related markers**: search `@followup[TD-071]` in repo
+**Blocks**: `rag-query-rewriting` 6.3-6.6 staging acceptance（retrieval pipeline 全掛，撈不到 retrieval_score）
+
+### Problem
+
+Cloudflare 已將 AutoRAG 遷移至 AI Search。舊版 `env.AI.autorag(indexName).search({query, filters, max_num_results, ranking_options, rewrite_query})` 在 staging 從 2026-05-04 起 100% 500。
+
+兩階段 root cause（evlog ground truth）：
+1. **Filter shape**（已 fix v0.56.6）：`{type:'eq', key, value}` compound filter 被 Vectorize 拒絕 → `vectorize_filter_not_serializable`
+2. **Search request shape**（已 fix v0.56.7 移除 filter，但仍 500）：AutoRAG `.search()` 即使傳空 filter 也報 `Invalid input` — 整個 request payload shape（`max_num_results` / `ranking_options` / `rewrite_query`）不再被接受
+
+新 API 形式（per Cloudflare docs 2026-06）：
+- Binding: `env.AI_SEARCH.get(instanceId)` 而非 `env.AI.autorag(indexName)`
+- Request: `{query, ai_search_options: {retrieval: {max_num_results, match_threshold, filters}}}`
+- Filter: `{and: [{eq: {"metadata.category": "..."}}]}` 或 implicit key-value `{folder: "..."}`
+- Response: `chunks` array 而非 `data` array
+
+### Fix approach
+
+1. 查 Cloudflare AI Search Workers binding 完整 API reference（REST + Workers binding）確認 request/response shape
+2. 確認 staging 的 AI Search instance 配置（是否需要從 AutoRAG 遷移到新 AI Search instance + 重新 index）
+3. 改 `ai-search.ts`：binding 對象、request shape、response parsing
+4. 改 `knowledge-retrieval.ts`：filter construction（若 custom_metadata schema 可配置）
+5. 改 integration tests（mock AutoRAG binding → mock AI Search binding）
+6. staging redeploy + 驗證 chat 200 + retrieval_score 有值
+7. 解鎖 `rag-query-rewriting` 6.3-6.6 acceptance
+
+### Acceptance
+
+- Staging `/api/chat` 回 200（不再 500）
+- `query_logs.retrieval_score` 有非零值
+- `query_logs.rewriter_status` 正確寫入（disabled / success / fallback_*）
+- 218 unit/integration tests 全綠
+- `rag-query-rewriting` acceptance 6.4-6.5 可跑出 retrieval_score 分布
