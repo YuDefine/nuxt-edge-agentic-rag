@@ -63,13 +63,14 @@ _(目前無 parked change — 2026-04-26 兩個 parked change 全 unpark + 實�
 
 ## Active Changes
 
-_last synced: 2026-06-08T12:00:41.758Z_
+_last synced: 2026-06-08T20:35:10.577Z_
 
-2 active changes (0 ready · 2 in progress · 0 draft · 0 blocked)
+3 active changes (1 ready · 2 in progress · 0 draft · 0 blocked)
 
 ### Ready to apply
 
-_(none)_
+- **autorag-to-ai-search-migration** — 29/29 tasks (100%)
+  - Specs: `mcp-knowledge-tools`, `workers-ai-grounded-answering`
 
 ### In progress
 
@@ -109,11 +110,10 @@ _No active claims._
 ### Independent (can run in parallel)
 
 - `adopt-evlog-nuxthub-ai-t3`
-- `rag-query-rewriting`
 
 ### Mutex (same spec touched)
 
-_(none)_
+- **workers-ai-grounded-answering** — conflict between: `autorag-to-ai-search-migration`, `rag-query-rewriting`
 
 ### Blocked by dependency
 

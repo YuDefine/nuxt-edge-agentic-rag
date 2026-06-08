@@ -52,6 +52,29 @@ No linked worktrees.
 - [ ] **D1 transaction pitfall 待補** — 寫進 clade `docs/pitfalls/` 跨 consumer 共享
 - [ ] **Notion「Secret」頁同步** — staging wrangler section + Environment-scoped Secrets table 舊值待更新
 
+## Deferred discuss items
+
+<!-- deferred-begin:autorag-to-ai-search-migration:#1 -->
+- **autorag-to-ai-search-migration** #1 — Production deploy authorization
+  - Awaiting signal: production tag push deploy
+  - Resume: `/spectra-archive autorag-to-ai-search-migration`
+  - Deferred at: 2026-06-09T04:35:00Z
+<!-- deferred-end:autorag-to-ai-search-migration:#1 -->
+
+<!-- deferred-begin:autorag-to-ai-search-migration:#2 -->
+- **autorag-to-ai-search-migration** #2 — Production cutover observation
+  - Awaiting signal: production deploy 完成後 D1 query_logs evidence
+  - Resume: `/spectra-archive autorag-to-ai-search-migration`
+  - Deferred at: 2026-06-09T04:35:00Z
+<!-- deferred-end:autorag-to-ai-search-migration:#2 -->
+
+<!-- deferred-begin:autorag-to-ai-search-migration:#3 -->
+- **autorag-to-ai-search-migration** #3 — rag-query-rewriting blocker release
+  - Awaiting signal: production deploy + TD-071 close
+  - Resume: `/spectra-archive autorag-to-ai-search-migration`
+  - Deferred at: 2026-06-09T04:35:00Z
+<!-- deferred-end:autorag-to-ai-search-migration:#3 -->
+
 ## Notes
 
 - v0.56.7 已 deploy（CI 綠燈，run 27159609379）：移除 AutoRAG pre-search metadata filter
