@@ -191,7 +191,7 @@ describe('acceptance self-correction reformulation (TC-04)', () => {
         }
       }
 
-      const aiBinding = (tc04Mocks.bindings ?? {}).AI as ReturnType<
+      const aiBinding = (tc04Mocks.bindings ?? {}).AI_SEARCH as ReturnType<
         typeof createAiSearchBindingFake
       >
       const d1 = (tc04Mocks.bindings ?? {}).DB as ReturnType<typeof createD1BindingFake>
@@ -377,33 +377,27 @@ function createTc04Bindings(
   //   原始 prompt → 低分 candidate（觸發 judge）
   //   reformulated prompt → 高分 candidate（直接作答）
   const ai = {
-    calls: [] as Array<{ indexName: string; request: Record<string, unknown> }>,
-    autorag(indexName: string) {
+    calls: [] as Array<{ instanceId: string; request: Record<string, unknown> }>,
+    get(instanceId: string) {
       return {
         async search(request: Record<string, unknown>) {
-          ai.calls.push({ indexName, request })
+          ai.calls.push({ instanceId, request })
 
           const query = request.query as string
 
           if (query === originalPrompt) {
             return {
-              data: [
+              chunks: [
                 {
-                  attributes: {
-                    file: {
+                  item: {
+                    metadata: {
                       access_level: 'internal',
                       citation_locator: scenario.firstPassCitationLocator,
                       document_version_id: scenario.documentVersionId,
                       title: scenario.title,
                     },
                   },
-                  content: [
-                    {
-                      text: scenario.firstPassChunkText,
-                      type: 'text',
-                    },
-                  ],
-                  filename: 'tc-04-first.md',
+                  text: scenario.firstPassChunkText,
                   score: scenario.firstPassScore,
                 },
               ],
@@ -411,23 +405,17 @@ function createTc04Bindings(
           }
 
           return {
-            data: [
+            chunks: [
               {
-                attributes: {
-                  file: {
+                item: {
+                  metadata: {
                     access_level: 'internal',
                     citation_locator: scenario.secondPassCitationLocator,
                     document_version_id: scenario.documentVersionId,
                     title: scenario.title,
                   },
                 },
-                content: [
-                  {
-                    text: scenario.secondPassChunkText,
-                    type: 'text',
-                  },
-                ],
-                filename: 'tc-04-second.md',
+                text: scenario.secondPassChunkText,
                 score: scenario.secondPassScore,
               },
             ],

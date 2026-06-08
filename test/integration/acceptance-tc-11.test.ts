@@ -200,7 +200,7 @@ describe('acceptance conditional-procedure (TC-11)', () => {
         }
       }
 
-      const aiBinding = (tc11Mocks.bindings ?? {}).AI as ReturnType<
+      const aiBinding = (tc11Mocks.bindings ?? {}).AI_SEARCH as ReturnType<
         typeof createAiSearchBindingFake
       >
       const d1 = (tc11Mocks.bindings ?? {}).DB as ReturnType<typeof createD1BindingFake>
@@ -211,7 +211,7 @@ describe('acceptance conditional-procedure (TC-11)', () => {
       // AI Search 恰好呼叫一次（不進 self-correction 的第二輪）
       expect(aiBinding.calls).toHaveLength(1)
       expect(aiBinding.calls[0]).toMatchObject({
-        indexName: 'knowledge-index',
+        instanceId: 'knowledge-index',
         request: {
           query: fixture.prompt,
         },

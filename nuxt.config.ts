@@ -49,6 +49,9 @@ const knowledgeRuntimeConfig = createKnowledgeRuntimeConfig({
     apiToken: process.env.NUXT_KNOWLEDGE_AUTO_RAG_API_TOKEN,
   },
   bindings: {
+    // [D-CONFIG]: Kept as `NUXT_KNOWLEDGE_AI_SEARCH_INDEX` for backwards
+    // compatibility; semantically this is the AI Search instance id passed
+    // to `AI_SEARCH.get(instanceId)`.
     aiSearchIndex: process.env.NUXT_KNOWLEDGE_AI_SEARCH_INDEX,
     d1Database: process.env.NUXT_KNOWLEDGE_D1_DATABASE || 'DB',
     documentsBucket: process.env.NUXT_KNOWLEDGE_DOCUMENTS_BUCKET || 'BLOB',

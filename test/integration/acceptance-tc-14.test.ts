@@ -167,7 +167,9 @@ describe('acceptance admin web vs mcp scope isolation (TC-14)', () => {
       }
     }
 
-    const webAi = (tc14Mocks.bindings ?? {}).AI as ReturnType<typeof createAiSearchBindingFake>
+    const webAi = (tc14Mocks.bindings ?? {}).AI_SEARCH as ReturnType<
+      typeof createAiSearchBindingFake
+    >
     const webD1 = (tc14Mocks.bindings ?? {}).DB as ReturnType<typeof createD1BindingFake>
 
     // 契約 #1：Web 成功引用 restricted 文件
@@ -181,12 +183,15 @@ describe('acceptance admin web vs mcp scope isolation (TC-14)', () => {
       expect(webResult.data.answer).toContain(fragment)
     }
 
-    // 契約 #2：Web AI Search filter 允許 internal + restricted（不再帶單一 access_level=eq）
+    // 契約 #2：Web AI Search 不再送 legacy top-level filters；
+    // empty filters are omitted from ai_search_options.retrieval.
     expect(webAi.calls).toHaveLength(1)
-    const webFilters = webAi.calls[0]?.request.filters as Record<string, string>
-
-    // Filter 已移到 post-search resolveCurrentEvidence，pre-search 傳空 filter
-    expect(webFilters).toEqual({})
+    const webRequest = webAi.calls[0]?.request as {
+      ai_search_options?: { retrieval?: Record<string, unknown> }
+      filters?: unknown
+    }
+    expect(webRequest.filters).toBeUndefined()
+    expect(webRequest.ai_search_options?.retrieval).not.toHaveProperty('filters')
 
     // 契約 #3：Web 寫入 citation_records，包含 restricted documentVersionId + chunkText
     const webCitationInserts = webD1.calls.filter((call) =>
@@ -225,7 +230,9 @@ describe('acceptance admin web vs mcp scope isolation (TC-14)', () => {
       }
     }
 
-    const mcpAi = (tc14Mocks.bindings ?? {}).AI as ReturnType<typeof createAiSearchBindingFake>
+    const mcpAi = (tc14Mocks.bindings ?? {}).AI_SEARCH as ReturnType<
+      typeof createAiSearchBindingFake
+    >
     const mcpD1 = (tc14Mocks.bindings ?? {}).DB as ReturnType<typeof createD1BindingFake>
 
     // 契約 #5：MCP 拒答 + 不洩漏 restricted 文件存在
@@ -235,9 +242,12 @@ describe('acceptance admin web vs mcp scope isolation (TC-14)', () => {
 
     // 契約 #6：MCP AI Search filter 為空（access_level 由 post-search resolveCurrentEvidence 驗）
     expect(mcpAi.calls).toHaveLength(1)
-    const mcpFilters = mcpAi.calls[0]?.request.filters as Record<string, string>
-
-    expect(mcpFilters).toEqual({})
+    const mcpRequest = mcpAi.calls[0]?.request as {
+      ai_search_options?: { retrieval?: Record<string, unknown> }
+      filters?: unknown
+    }
+    expect(mcpRequest.filters).toBeUndefined()
+    expect(mcpRequest.ai_search_options?.retrieval).not.toHaveProperty('filters')
 
     // 契約 #7：MCP 不得寫任何 citation_records
     const mcpCitationInserts = mcpD1.calls.filter((call) =>
@@ -412,15 +422,18 @@ function createFilteredAiSearch(input: {
     score: number
   }
 }) {
-  const calls: Array<{ indexName: string; request: Record<string, unknown> }> = []
+  const calls: Array<{ instanceId: string; request: Record<string, unknown> }> = []
 
   return {
-    autorag(indexName: string) {
+    get(instanceId: string) {
       return {
         async search(request: Record<string, unknown>) {
-          calls.push({ indexName, request })
+          calls.push({ instanceId, request })
 
-          const filters = request.filters as
+          const aiSearchOptions = request.ai_search_options as
+            | { retrieval?: { filters?: unknown } }
+            | undefined
+          const filters = aiSearchOptions?.retrieval?.filters as
             | {
                 filters?: Array<{ key?: string; type?: string; value?: unknown }>
                 type?: string
@@ -433,10 +446,20 @@ function createFilteredAiSearch(input: {
             accessLevelFilter.type === 'eq' &&
             accessLevelFilter.value !== 'restricted'
           ) {
-            return { data: [] }
+            return { chunks: [] }
           }
 
-          return { data: [input.restrictedEntry] }
+          return {
+            chunks: [
+              {
+                item: {
+                  metadata: input.restrictedEntry.attributes.file,
+                },
+                score: input.restrictedEntry.score,
+                text: input.restrictedEntry.content.find((entry) => entry.type === 'text')?.text,
+              },
+            ],
+          }
         },
       }
     },

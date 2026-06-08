@@ -152,7 +152,9 @@ describe('acceptance high-risk redaction does not persist raw text (TC-15)', () 
     const workersAi = (tc15Mocks.bindings ?? {}).WORKERS_AI as ReturnType<
       typeof createWorkersAiBindingFake
     >
-    const aiBinding = (tc15Mocks.bindings ?? {}).AI as ReturnType<typeof createAiSearchBindingFake>
+    const aiBinding = (tc15Mocks.bindings ?? {}).AI_SEARCH as ReturnType<
+      typeof createAiSearchBindingFake
+    >
 
     const queryLogInsert = d1.calls.find((call) => call.query.includes('INSERT INTO query_logs'))
     const messageInsert = d1.calls.find((call) => call.query.includes('INSERT INTO messages'))

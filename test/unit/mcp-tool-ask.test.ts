@@ -59,8 +59,10 @@ describe('mcp ask tool definition', () => {
     vi.doMock('#server/utils/cloudflare-bindings', () => ({
       getCloudflareEnv: () => ({
         AI: {
-          autorag: vi.fn().mockReturnValue({ search: vi.fn() }),
           run: workersAiRunMock,
+        },
+        AI_SEARCH: {
+          get: vi.fn().mockReturnValue({ search: vi.fn() }),
         },
       }),
       getRequiredD1Binding: vi.fn().mockReturnValue({}),

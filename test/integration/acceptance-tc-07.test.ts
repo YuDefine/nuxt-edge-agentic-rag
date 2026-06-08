@@ -146,7 +146,7 @@ describe('acceptance out-of-knowledge-base refusal (TC-07)', () => {
               }
             })
 
-      const aiBinding = (tc07Mocks.bindings ?? {}).AI as ReturnType<
+      const aiBinding = (tc07Mocks.bindings ?? {}).AI_SEARCH as ReturnType<
         typeof createAiSearchBindingFake
       >
       const d1 = (tc07Mocks.bindings ?? {}).DB as ReturnType<typeof createD1BindingFake>

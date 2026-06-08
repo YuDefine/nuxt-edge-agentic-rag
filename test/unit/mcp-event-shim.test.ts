@@ -19,8 +19,10 @@ const auth: McpAuthContext = {
 function createDoEnv() {
   return {
     AI: {
-      autorag: vi.fn(),
       run: vi.fn(),
+    },
+    AI_SEARCH: {
+      get: vi.fn().mockReturnValue({ search: vi.fn() }),
     },
     DB: {
       batch: vi.fn(),
@@ -74,7 +76,6 @@ describe('mcp event shim', () => {
     expect(getRequiredD1Binding(event, 'DB')).toBe(doEnv.DB)
     expect(getRequiredKvBinding(event, 'KV')).toBe(doEnv.KV)
     expect(requireAiBinding(event, { method: 'run', message: 'missing' })).toBe(doEnv.AI)
-    expect(requireAiBinding(event, { method: 'autorag', message: 'missing' })).toBe(doEnv.AI)
     expect(() => useLogger(event as Parameters<typeof useLogger>[0])).not.toThrow()
   })
 

@@ -190,7 +190,7 @@ describe('acceptance cross-document comparison (TC-06)', () => {
         }
       }
 
-      const aiBinding = (tc06Mocks.bindings ?? {}).AI as ReturnType<
+      const aiBinding = (tc06Mocks.bindings ?? {}).AI_SEARCH as ReturnType<
         typeof createAiSearchBindingFake
       >
       const d1 = (tc06Mocks.bindings ?? {}).DB as ReturnType<typeof createD1BindingFake>

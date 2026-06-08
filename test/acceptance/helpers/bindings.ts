@@ -52,7 +52,15 @@ interface R2BucketBindingFakeOptions {
   objects?: R2SeedObject[]
 }
 
-interface AiSearchResponseEntry {
+interface AiSearchChunkEntry {
+  text?: string
+  score?: number
+  item?: {
+    metadata?: Record<string, unknown>
+  }
+}
+
+interface LegacyAiSearchEntry {
   attributes?: {
     file?: Record<string, unknown>
   }
@@ -65,7 +73,7 @@ interface AiSearchResponseEntry {
 }
 
 interface AiSearchBindingFakeOptions {
-  responses?: Record<string, AiSearchResponseEntry[]>
+  responses?: Record<string, Array<AiSearchChunkEntry | LegacyAiSearchEntry>>
 }
 
 interface WorkersAiBindingFakeOptions {
@@ -77,6 +85,7 @@ interface WorkersAiBindingFakeOptions {
 
 interface CloudflareBindingsFixtureOptions {
   ai?: unknown
+  aiSearch?: unknown
   d1?: unknown
   kv?: unknown
   names?: Partial<CloudflareBindingsFixtureNames>
@@ -86,6 +95,7 @@ interface CloudflareBindingsFixtureOptions {
 
 interface CloudflareBindingsFixtureNames {
   ai: string
+  aiSearch: string
   d1: string
   documents: string
   kv: string
@@ -241,23 +251,27 @@ export function createR2BucketBindingFake(options: R2BucketBindingFakeOptions = 
   }
 }
 
+/**
+ * [D-TEST]: Fake models the new AI Search namespace binding shape:
+ * `AI_SEARCH.get(instanceId).search(request)` returning `{ chunks }`.
+ */
 export function createAiSearchBindingFake(options: AiSearchBindingFakeOptions = {}) {
   const calls: Array<{
-    indexName: string
+    instanceId: string
     request: Record<string, unknown>
   }> = []
 
   return {
-    autorag(indexName: string) {
+    get(instanceId: string) {
       return {
         async search(request: Record<string, unknown>) {
           calls.push({
-            indexName,
+            instanceId,
             request,
           })
 
           return {
-            data: options.responses?.[indexName] ?? [],
+            chunks: normalizeAiSearchChunks(options.responses?.[instanceId] ?? []),
           }
         },
       }
@@ -300,6 +314,7 @@ export function createCloudflareBindingsFixture(
 ): Record<string, unknown> {
   const names: CloudflareBindingsFixtureNames = {
     ai: 'AI',
+    aiSearch: 'AI_SEARCH',
     d1: 'DB',
     documents: 'DOCUMENTS',
     kv: 'KV',
@@ -307,34 +322,58 @@ export function createCloudflareBindingsFixture(
     ...options.names,
   }
 
+  const workersAi = options.workersAi ?? createWorkersAiBindingFake()
+  const aiSearch = options.aiSearch ?? options.ai ?? createAiSearchBindingFake()
+
   return {
-    [names.ai]: createCompositeAiBinding(options.ai, options.workersAi),
+    [names.ai]: createWorkersAiOnlyBinding(options.ai, workersAi),
+    [names.aiSearch]: aiSearch,
     [names.d1]: options.d1 ?? createD1BindingFake(),
     [names.documents]: options.r2 ?? createR2BucketBindingFake(),
     [names.kv]: options.kv ?? createKvBindingFake(),
-    [names.workersAi]: options.workersAi ?? createWorkersAiBindingFake(),
+    [names.workersAi]: workersAi,
   }
 }
 
-function createCompositeAiBinding(ai: unknown, workersAi: unknown) {
-  const aiBinding =
-    ai && typeof ai === 'object'
-      ? (ai as { autorag?: unknown; run?: unknown })
-      : createAiSearchBindingFake()
+/**
+ * [D-BIND]: `AI` binding now only carries Workers AI `.run()`.
+ * AI Search goes through the separate `AI_SEARCH` namespace binding.
+ */
+function createWorkersAiOnlyBinding(ai: unknown, workersAi: unknown) {
+  const aiBinding = ai && typeof ai === 'object' ? (ai as { run?: unknown }) : null
   const workersBinding =
     workersAi && typeof workersAi === 'object'
       ? (workersAi as { run?: unknown })
       : createWorkersAiBindingFake()
 
   return {
-    ...aiBinding,
     run:
-      typeof aiBinding.run === 'function'
+      aiBinding && typeof aiBinding.run === 'function'
         ? aiBinding.run.bind(aiBinding)
         : typeof workersBinding.run === 'function'
           ? workersBinding.run.bind(workersBinding)
           : undefined,
   }
+}
+
+function normalizeAiSearchChunks(
+  entries: Array<AiSearchChunkEntry | LegacyAiSearchEntry>,
+): AiSearchChunkEntry[] {
+  return entries.map((entry) => {
+    if ('item' in entry || 'text' in entry) {
+      return entry as AiSearchChunkEntry
+    }
+
+    const legacy = entry as LegacyAiSearchEntry
+
+    return {
+      item: {
+        metadata: legacy.attributes?.file ?? {},
+      },
+      score: legacy.score,
+      text: legacy.content?.find((content) => content.type === 'text')?.text,
+    }
+  })
 }
 
 function createUploadedObjectMetadata(

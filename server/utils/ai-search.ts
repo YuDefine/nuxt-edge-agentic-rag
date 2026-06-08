@@ -1,38 +1,33 @@
 import type { KnowledgeSearchCandidate } from './knowledge-retrieval'
 
-export interface CloudflareAiGatewayOptions {
-  id: string
-  skipCache?: boolean
-}
-
-export interface CloudflareAiAutoragOptions {
-  gateway?: CloudflareAiGatewayOptions
-}
-
-export interface CloudflareAiBindingLike {
-  autorag(
-    indexName: string,
-    options?: CloudflareAiAutoragOptions,
-  ): {
-    search(input: {
-      filters: Record<string, unknown>
-      max_num_results: number
+/**
+ * AI Search namespace binding shape exposed by `ai_search_namespaces`
+ * wrangler config. The runtime provides `env.AI_SEARCH.get(instanceId)`
+ * which returns an instance handle with `.search()`.
+ *
+ * [D-BIND]: Uses `ai_search_namespaces` + `AI_SEARCH.get(instanceId)`.
+ */
+export interface CloudflareAiSearchBindingLike {
+  get(instanceId: string): {
+    search(request: {
       query: string
-      ranking_options: {
-        score_threshold: number
-      }
-      rewrite_query: boolean
-    }): Promise<{
-      data?: Array<{
-        attributes?: {
-          file?: Record<string, unknown>
+      ai_search_options?: {
+        retrieval?: {
+          max_num_results?: number
+          match_threshold?: number
+          filters?: Record<string, unknown>
         }
-        content?: Array<{
-          text?: string
-          type?: string
-        }>
-        filename?: string
+        query_rewrite?: {
+          enabled: boolean
+        }
+      }
+    }): Promise<{
+      chunks?: Array<{
+        text?: string
         score?: number
+        item?: {
+          metadata?: Record<string, unknown>
+        }
       }>
     }>
   }
@@ -43,9 +38,15 @@ export interface AiGatewayRuntimeConfig {
   cacheEnabled: boolean
 }
 
+/**
+ * [D-REQUEST] [D-RESPONSE]: The adapter accepts the legacy-shaped request
+ * from `retrieveVerifiedEvidence` (query, max_num_results, ranking_options,
+ * filters, rewrite_query) and internally translates it to the AI Search
+ * request shape, then maps `chunks[]` back to `KnowledgeSearchCandidate[]`.
+ */
 export function createCloudflareAiSearchClient(input: {
-  aiBinding: CloudflareAiBindingLike
-  indexName: string
+  aiSearchBinding: CloudflareAiSearchBindingLike
+  instanceId: string
   gatewayConfig?: AiGatewayRuntimeConfig
   skipCache?: boolean
 }) {
@@ -59,20 +60,37 @@ export function createCloudflareAiSearchClient(input: {
       }
       rewrite_query: false
     }): Promise<KnowledgeSearchCandidate[]> {
-      const autoragOptions = buildAutoragOptions(input.gatewayConfig, input.skipCache)
-      const response = await input.aiBinding
-        .autorag(input.indexName, autoragOptions)
-        .search(request)
+      const instance = input.aiSearchBinding.get(input.instanceId)
 
-      return (response.data ?? [])
-        .map((entry) => {
-          const fileAttributes = entry.attributes?.file ?? {}
-          const contentText = entry.content?.find((item) => item.type === 'text')?.text
-          const citationLocator = readString(fileAttributes.citation_locator)
-          const documentVersionId = readString(fileAttributes.document_version_id)
-          const accessLevel = readString(fileAttributes.access_level)
+      // [D-REQUEST]: Translate legacy request shape → AI Search shape.
+      // Empty filters are not sent to avoid Cloudflare validator edge cases.
+      const hasFilters = Object.keys(request.filters).length > 0
 
-          if (!contentText || !citationLocator || !documentVersionId || !accessLevel) {
+      const aiSearchRequest: Parameters<typeof instance.search>[0] = {
+        query: request.query,
+        ai_search_options: {
+          retrieval: {
+            max_num_results: request.max_num_results,
+            match_threshold: request.ranking_options.score_threshold,
+            ...(hasFilters ? { filters: request.filters } : {}),
+          },
+          query_rewrite: { enabled: false },
+        },
+      }
+
+      const response = await instance.search(aiSearchRequest)
+
+      // [D-RESPONSE]: Map `chunks[]` to `KnowledgeSearchCandidate[]`.
+      // Chunks missing required metadata are discarded (fail closed).
+      return (response.chunks ?? [])
+        .map((chunk) => {
+          const metadata = chunk.item?.metadata ?? {}
+          const text = chunk.text
+          const documentVersionId = readString(metadata.document_version_id)
+          const citationLocator = readString(metadata.citation_locator)
+          const accessLevel = readString(metadata.access_level)
+
+          if (!text || !documentVersionId || !citationLocator || !accessLevel) {
             return null
           }
 
@@ -80,8 +98,8 @@ export function createCloudflareAiSearchClient(input: {
             accessLevel,
             citationLocator,
             documentVersionId,
-            excerpt: contentText,
-            score: typeof entry.score === 'number' ? entry.score : 0,
+            excerpt: text,
+            score: typeof chunk.score === 'number' ? chunk.score : 0,
           } satisfies KnowledgeSearchCandidate
         })
         .filter((candidate): candidate is KnowledgeSearchCandidate => candidate !== null)
@@ -91,20 +109,4 @@ export function createCloudflareAiSearchClient(input: {
 
 function readString(value: unknown): string | null {
   return typeof value === 'string' && value.trim() ? value.trim() : null
-}
-
-function buildAutoragOptions(
-  gatewayConfig: AiGatewayRuntimeConfig | undefined,
-  skipCacheOverride: boolean | undefined,
-): CloudflareAiAutoragOptions | undefined {
-  if (!gatewayConfig?.id) {
-    return undefined
-  }
-
-  return {
-    gateway: {
-      id: gatewayConfig.id,
-      skipCache: skipCacheOverride ?? !gatewayConfig.cacheEnabled,
-    },
-  }
 }
