@@ -289,7 +289,17 @@ function detectFromSignals(signals, registry) {
 function thresholdFor(gate) {
   if (gate === 'validate-manifests' || gate === 'publish' || gate === 'propagate')
     return THRESHOLDS.publishGate
-  if (gate === 'vp-check' || gate === 'vp-lint' || gate === 'vp-fmt') return THRESHOLDS.vpCheck
+  // typecheck / lint / fmt check gates — consumers emit pnpm-* variants via the
+  // clade-gate wrapper (TD-152 adoption). Same grouping shape as vp-check.
+  if (
+    gate === 'vp-check' ||
+    gate === 'vp-lint' ||
+    gate === 'vp-fmt' ||
+    gate === 'pnpm-typecheck' ||
+    gate === 'pnpm-lint' ||
+    gate === 'pnpm-fmt'
+  )
+    return THRESHOLDS.vpCheck
   if (gate === 'pnpm-test') return THRESHOLDS.testFailure
   if (gate === 'pre-commit') return THRESHOLDS.preCommit
   if (gate === 'review-output') return THRESHOLDS.review
