@@ -40,6 +40,7 @@ async function main() {
     d1_databases: mergeD1Databases(buildConfig, stagingOverrides),
     kv_namespaces: stagingOverrides.kv_namespaces,
     ai: stagingOverrides.ai,
+    ai_search_namespaces: stagingOverrides.ai_search_namespaces,
     r2_buckets: stagingOverrides.r2_buckets,
     durable_objects: stagingOverrides.durable_objects,
     migrations: stagingOverrides.migrations,

@@ -382,15 +382,18 @@ function createFilteredAiSearch(input: {
     score: number
   }
 }) {
-  const calls: Array<{ indexName: string; request: Record<string, unknown> }> = []
+  const calls: Array<{ instanceId: string; request: Record<string, unknown> }> = []
 
   return {
-    autorag(indexName: string) {
+    get(instanceId: string) {
       return {
         async search(request: Record<string, unknown>) {
-          calls.push({ indexName, request })
+          calls.push({ instanceId, request })
 
-          const filters = request.filters as
+          const aiSearchOptions = request.ai_search_options as
+            | { retrieval?: { filters?: unknown } }
+            | undefined
+          const filters = aiSearchOptions?.retrieval?.filters as
             | {
                 filters?: Array<{ key?: string; type?: string; value?: unknown }>
                 type?: string
@@ -403,10 +406,20 @@ function createFilteredAiSearch(input: {
             accessLevelFilter.type === 'eq' &&
             accessLevelFilter.value !== 'restricted'
           ) {
-            return { data: [] }
+            return { chunks: [] }
           }
 
-          return { data: [input.restrictedEntry] }
+          return {
+            chunks: [
+              {
+                item: {
+                  metadata: input.restrictedEntry.attributes.file,
+                },
+                score: input.restrictedEntry.score,
+                text: input.restrictedEntry.content.find((entry) => entry.type === 'text')?.text,
+              },
+            ],
+          }
         },
       }
     },

@@ -84,8 +84,8 @@ describe('acceptance bindings fakes', () => {
       },
     })
     const aiSearchClient = createCloudflareAiSearchClient({
-      aiBinding: aiBinding as never,
-      indexName: 'knowledge-index',
+      aiSearchBinding: aiBinding as never,
+      instanceId: 'knowledge-index',
     })
 
     await expect(
@@ -105,6 +105,22 @@ describe('acceptance bindings fakes', () => {
         documentVersionId: 'ver-1',
         excerpt: 'Launch moved to Tuesday.',
         score: 0.88,
+      },
+    ])
+    expect(aiBinding?.calls).toEqual([
+      {
+        instanceId: 'knowledge-index',
+        request: {
+          query: 'What changed?',
+          ai_search_options: {
+            retrieval: {
+              filters: { access_level: { $in: ['internal'] } },
+              max_num_results: 5,
+              match_threshold: governance.retrieval.minScore,
+            },
+            query_rewrite: { enabled: false },
+          },
+        },
       },
     ])
 
@@ -130,7 +146,10 @@ describe('acceptance bindings fakes', () => {
         workersAi,
       }),
     ).toMatchObject({
-      AI: aiBinding,
+      AI: expect.objectContaining({
+        run: expect.any(Function),
+      }),
+      AI_SEARCH: aiBinding,
       DOCUMENTS: r2,
       KV: kv,
       WORKERS_AI: workersAi,

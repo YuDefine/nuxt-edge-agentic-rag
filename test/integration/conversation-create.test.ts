@@ -131,8 +131,10 @@ vi.mock('../../server/utils/database', () => createHubDbMock())
 vi.mock('../../server/utils/cloudflare-bindings', () => ({
   getCloudflareEnv: () => ({
     AI: {
-      autorag: vi.fn().mockReturnValue({ search: vi.fn() }),
       run: vi.fn().mockResolvedValue({ response: 'ok' }),
+    },
+    AI_SEARCH: {
+      get: vi.fn().mockReturnValue({ search: vi.fn() }),
     },
   }),
   getRequiredD1Binding: chatRouteMocks.getRequiredD1Binding,
