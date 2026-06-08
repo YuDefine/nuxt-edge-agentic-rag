@@ -193,26 +193,19 @@ export async function retrieveVerifiedEvidence(
   }
 }
 
-// Cloudflare AutoRAG (legacy `env.AI.autorag()`) filter schema:
-//   { type: 'eq'|'ne'|'gt'|'gte'|'lt'|'lte', key, value }
-//   { type: 'and', filters: [...] }
-// No 'or' / 'in' operators — multi-value filters are deferred to the
-// post-search verification step in `resolveCurrentEvidence`.
-type AutoRagFilter =
-  | { key: string; type: 'eq' | 'ne' | 'gt' | 'gte' | 'lt' | 'lte'; value: unknown }
-  | { filters: AutoRagFilter[]; type: 'and' }
-
+// Vectorize metadata filter: implicit AND via multiple keys.
+// https://developers.cloudflare.com/vectorize/reference/metadata-filtering/
 function buildKnowledgeSearchFilters(input: {
   allowedAccessLevels: string[]
-}): AutoRagFilter | Record<string, never> {
-  const filters: AutoRagFilter[] = [
-    { key: 'status', type: 'eq', value: 'active' },
-    { key: 'version_state', type: 'eq', value: 'current' },
-  ]
-
-  if (input.allowedAccessLevels.length === 1) {
-    filters.push({ key: 'access_level', type: 'eq', value: input.allowedAccessLevels[0] })
+}): Record<string, string> {
+  const filters: Record<string, string> = {
+    status: 'active',
+    version_state: 'current',
   }
 
-  return filters.length === 1 ? filters[0]! : { filters, type: 'and' }
+  if (input.allowedAccessLevels.length === 1) {
+    filters.access_level = input.allowedAccessLevels[0]!
+  }
+
+  return filters
 }

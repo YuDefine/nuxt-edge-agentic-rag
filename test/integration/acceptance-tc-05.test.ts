@@ -180,11 +180,8 @@ describe('acceptance multi-turn continuity and stale protection (TC-05)', () => 
       for (const call of aiBinding.calls) {
         expect(call.request).toMatchObject({
           filters: expect.objectContaining({
-            filters: expect.arrayContaining([
-              { key: 'status', type: 'eq', value: 'active' },
-              { key: 'version_state', type: 'eq', value: 'current' },
-            ]),
-            type: 'and',
+            status: 'active',
+            version_state: 'current',
           }),
         })
       }
