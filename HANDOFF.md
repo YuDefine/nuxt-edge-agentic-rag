@@ -2,39 +2,39 @@
 
 ## In Progress
 
-- [ ] **rag-query-rewriting** (16/34 tasks, 47%)
-  - Code 已隨 v0.53.0 ship 到 production；staging `features.queryRewriting=true` 已生效
-  - **6.1 partial pass**：flag wiring + audit 寫入 + fallback safety ✅；`rewriter_status='success'` path 受 local Workers AI binding 限制 → 待 6.4 staging 驗
-  - 剩餘：3.3 prompt validation / 6.3 staging deploy / 6.4-6.6 staging acceptance / 7.1-7.5 follow-ups
+- [ ] **rag-query-rewriting** (21/27 tasks, 78%) — **⏸ blocked on TD-071（AutoRAG → AI Search migration）**
+  - Code 已隨 v0.53.0 ship 到 production；staging v0.56.7
+  - **2026-06-09 diagnosis + partial fix**：
+    - v0.56.6：filter shape `{type:'eq',key,value}` → Vectorize 原生 key-value → 解了 `vectorize_filter_not_serializable`
+    - v0.56.7：AutoRAG index 無 custom_metadata schema → 移除 pre-search filter（post-search `resolveCurrentEvidence` 已覆蓋 status/version/access_level）
+    - **仍 500**：`AutoRAGInternalError: Invalid input` — 整個 `.autorag().search()` request shape 已過時（`max_num_results` / `ranking_options` / `rewrite_query` 不再被 Cloudflare 接受）。根因是 **Cloudflare 已將 AutoRAG 遷移至 AI Search**，binding + request + response + filter 全部改了
+  - **staging chat 時間軸**（evlog）：2026-05-04 最後一次 `direct_answer` 200 → 之後 100% pipeline_error → 2026-06-09 filter fix 後一次 200（20ms）但後續仍 500（`Invalid input`）
+  - **解法**：TD-071 — 完整 AutoRAG → AI Search API migration（改 binding / request / response / filter / tests）
+  - 剩餘 6 項（全卡 TD-071）：3.3 / 6.1 / 6.3 / 6.4 / 6.5 / 6.6
   - 無 active claim — 接手前 `pnpm spectra:claim -- rag-query-rewriting`
+  - **前置仍就緒**：admin session（BH Chrome 9333）、知識庫 11 active 文件、CF token `/tmp/cf-staging-token`
 
 - [ ] **adopt-evlog-nuxthub-ai-t3** (5/39 tasks, 13%)
   - 早期階段，尚未大量推進；獨立可平行
 
 ## Blocked / Waiting
 
-- **deploy-docs-staging fail — vitepress `dynamic-import-vars`**（2026-05-19 run [26090866330](https://github.com/YuDefine/nuxt-edge-agentic-rag/actions/runs/26090866330)）
-  - vitepress build 把 `docs/tech-debt.md` 當含 dynamic import 的 code parse → `Unexpected token`
-  - CI 主流程（Format/Lint/Typecheck/Unit tests）皆綠，僅 deploy-docs-staging 卡此
-  - 修法選項：(a) 排除 `docs/**` 從 dynamic-import-vars plugin scope；(b) 調整 vite.config.ts
-  - _(未驗證是否仍紅 — 最新 CI runs 未觸發此 workflow)_
+- **TD-071（critical）AutoRAG → AI Search migration** — blocks rag-query-rewriting acceptance
+  - 完整描述見 `docs/tech-debt.md` TD-071
+  - 建議另開 spectra change `autorag-to-ai-search-migration` 處理
 
 - **TD-056 / TD-061 / TD-057 behavior 驗收**（皆 open）
-  - TD-056（high）+ TD-061（high）同 root cause：judge `max_completion_tokens: 200` 截斷 → JSON parse fail → pipeline_error（production 重測批次 28.6%）
-  - TD-057（mid）：evlog wide event lifecycle 警告，`log.error()` 在 emit 後呼叫
-  - **Acceptance dependency**：TD-061 最終驗收依賴 `rag-query-rewriting` staging ramp（fixture 需進 judge gate，retrieval_score ≥0.45 才有 truncation 路徑可驗）
-  - v0.52.1 fix code 已 ship，但 production 低流量無法被動觸發 judge / SSE chat path → 需主動登入 `agentic.yudefine.com.tw` 發 1-2 條 chat 觸發
+  - TD-061 acceptance dependency 耦合 rag-query-rewriting staging（也被 TD-071 間接 block）
 
 ## Next Steps
 
-1. **主動驗 TD-056/061/057**：production 發 chat → wrangler tail 看 `pipeline_error` 比例 + SSE wide event lifecycle
-2. **rag-query-rewriting 6.3-6.6**：staging deploy → 35 筆 acceptance fixture（同時解 TD-061 acceptance dependency）
+1. **TD-071 AutoRAG → AI Search migration**（critical，解鎖 rag acceptance）：查 AI Search Workers binding 完整 API → 改 `ai-search.ts` binding/request/response + `knowledge-retrieval.ts` filter → staging redeploy 驗證 chat 200 → 解鎖 6.3-6.6
+2. **rag-query-rewriting 6.3-6.6**：TD-071 解後繼續 acceptance
 3. **adopt-evlog-nuxthub-ai-t3**：推進 impl（獨立，可平行）
-4. **deploy-docs-staging fix**：排除 `docs/` 從 dynamic-import-vars scope（註：2026-06-08 staging deploy run 27135494946 的 `deploy-docs-staging` job 這次 success，未復現此 blocker — 待確認是否已自然解決）
 
 ## Worktree & Stash Audit
 
-_Updated: 2026-06-08_
+_Updated: 2026-06-09_
 
 ### Worktrees (0)
 
@@ -42,27 +42,17 @@ No linked worktrees.
 
 ### Stashes (1)
 
-- `stash@{0}` — `rag-query-rewriting tasks.md marker-hygiene WIP`
-  - 內容：`openspec/changes/rag-query-rewriting/tasks.md` 把 7 條人工檢查項加上 `#N [discuss]` marker
-  - 為何 stash：該 change 仍 in-flight（6.3-6.5 staging acceptance 未跑），7 條 `[discuss]` 人工檢查綁 staging evidence 暫勾不了；marker-hygiene 編輯被 `/commit` 0-MR gate（main + impl[x] + 人工檢查[ ]）擋住，holdout 出本次 commit
-  - 收尾：該 change 跑完 staging acceptance、走 `/spectra-archive` Step 2.5 walkthrough 時 `git stash pop` 一起進；或 `git stash drop` 後在 archive 階段重 apply marker
+- `stash@{0}` — `rag-query-rewriting tasks.md marker-hygiene WIP` **← STALE，可 drop**
+  - 已被 2026-06-09 session 直接 edit 進 working tree 取代
+  - 收尾：`git stash drop`
 
-> 旁注：`refs/wt-baseline/*` 有 4 個 dangling rescue ref（`fix-deploy-docs-staging` / `fix-vite-doctor-findings` / `fix-vite-doctor` / `nuxt-bump`），來自已清掉的 worktree。非 worktree / 非 stash，可保留作救援保險絲，要清用 `git update-ref -d <ref>`（此 consumer 未投影 `wt-helper.mjs`，無法走 `wt-helper rescue --prune`）。
+## Follow-ups（2026-06-08 session）
 
-## Review-gui Readiness
-
-_Updated: 2026-06-08 /hub-core:handoff Mode B — clade scan_
-
-### ✅ Ready (0)
-
-_(none)_
-
-### ⚠ notReady (0)
-
-_(scan returned 0 changes for nuxt-edge-agentic-rag — 3 個 active change 皆早期階段，尚無 review-gui manual-review tracked state；以 In Progress 段的 tasks 進度為準)_
+- [ ] **sign-out API 回 500** — 獨立 bug，疑似 D1 相關
+- [ ] **D1 transaction pitfall 待補** — 寫進 clade `docs/pitfalls/` 跨 consumer 共享
+- [ ] **Notion「Secret」頁同步** — staging wrangler section + Environment-scoped Secrets table 舊值待更新
 
 ## Notes
 
-- Working tree 乾淨；main 與 origin/main 同步；最新版本 **v0.56.4**
-- CI 紅燈 `ERR_PNPM_OUTDATED_LOCKFILE` 已解決（`vite-doctor` 已在 lockfile，2026-06-05 CI + Deploy run 皆 success）
-- `tasks/todo.md` 是已完成的 demo seed audit（all `[x]`），違反 session-tasks per-session 分檔規約，可直接刪除
+- v0.56.7 已 deploy（CI 綠燈，run 27159609379）：移除 AutoRAG pre-search metadata filter
+- `refs/wt-baseline/*` 有 5 個 dangling rescue ref（含本 session `fix-autorag-filter`），可 `git update-ref -d` 清理
