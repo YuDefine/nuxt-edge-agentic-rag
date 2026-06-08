@@ -21,7 +21,9 @@ export const documents = sqliteTable('documents', {
   accessLevel: text('access_level').notNull().default('internal'),
   status: text('status').notNull().default('draft'),
   currentVersionId: text('current_version_id'),
-  createdByUserId: text('created_by_user_id').references(() => userProfiles.id),
+  createdByUserId: text('created_by_user_id').references(() => userProfiles.id, {
+    onDelete: 'set null',
+  }),
   createdAt: text('created_at').notNull().default(timestampNow),
   updatedAt: text('updated_at').notNull().default(timestampNow),
   archivedAt: text('archived_at'),
@@ -80,7 +82,9 @@ export const conversations = sqliteTable(
   'conversations',
   {
     id: text('id').primaryKey(),
-    userProfileId: text('user_profile_id').references(() => userProfiles.id),
+    userProfileId: text('user_profile_id').references(() => userProfiles.id, {
+      onDelete: 'cascade',
+    }),
     accessLevel: text('access_level').notNull().default('internal'),
     title: text('title').notNull().default('New conversation'),
     createdAt: text('created_at').notNull().default(timestampNow),
@@ -132,7 +136,9 @@ export const queryLogs = sqliteTable(
   {
     id: text('id').primaryKey(),
     channel: text('channel').notNull(),
-    userProfileId: text('user_profile_id').references(() => userProfiles.id),
+    userProfileId: text('user_profile_id').references(() => userProfiles.id, {
+      onDelete: 'set null',
+    }),
     mcpTokenId: text('mcp_token_id').references(() => mcpTokens.id, { onDelete: 'set null' }),
     environment: text('environment').notNull(),
     queryRedactedText: text('query_redacted_text').notNull(),
@@ -216,7 +222,9 @@ export const messages = sqliteTable(
       onDelete: 'cascade',
     }),
     queryLogId: text('query_log_id').references(() => queryLogs.id, { onDelete: 'set null' }),
-    userProfileId: text('user_profile_id').references(() => userProfiles.id),
+    userProfileId: text('user_profile_id').references(() => userProfiles.id, {
+      onDelete: 'set null',
+    }),
     channel: text('channel').notNull(),
     role: text('role').notNull(),
     /**
