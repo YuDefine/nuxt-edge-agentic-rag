@@ -96,7 +96,9 @@ Changes can be parked（暫存）— temporarily moved out of `openspec/changes/
 - `.claude/rules/migration.md`
 - `.claude/rules/nuxt-dev-watch.md`
 - `.claude/rules/nuxt-security.md`
+- `.claude/rules/nuxt-ui-conventions.md`
 - `.claude/rules/nuxt-ui-mcp.md`
+- `.claude/rules/nuxt-ui-native-picker-ban.md`
 - `.claude/rules/output-hygiene.md`
 - `.claude/rules/proactive-skills.design-checkpoint.md`
 - `.claude/rules/proactive-skills.ingest-triggers.md`
