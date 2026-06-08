@@ -158,7 +158,7 @@ describe('acceptance policy direct-answer (TC-10)', () => {
         }
       }
 
-      const aiBinding = (tc10Mocks.bindings ?? {}).AI as ReturnType<
+      const aiBinding = (tc10Mocks.bindings ?? {}).AI_SEARCH as ReturnType<
         typeof createAiSearchBindingFake
       >
       const d1 = (tc10Mocks.bindings ?? {}).DB as ReturnType<typeof createD1BindingFake>
@@ -166,7 +166,7 @@ describe('acceptance policy direct-answer (TC-10)', () => {
       // Direct 路徑：AI Search 恰好呼叫一次（不進 self-correction）
       expect(aiBinding.calls).toHaveLength(1)
       expect(aiBinding.calls[0]).toMatchObject({
-        indexName: 'knowledge-index',
+        instanceId: 'knowledge-index',
         request: {
           query: fixture.prompt,
         },

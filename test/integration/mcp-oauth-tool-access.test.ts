@@ -265,8 +265,10 @@ async function issueOauthAccessToken(input: { scopes: string[]; userId: string }
 function createOauthEnv(kv: ReturnType<typeof createOauthKv>) {
   return {
     AI: {
-      autorag: vi.fn(),
       run: vi.fn().mockResolvedValue({ response: 'ok' }),
+    },
+    AI_SEARCH: {
+      get: vi.fn().mockReturnValue({ search: vi.fn() }),
     },
     DB: {},
     KV: kv,

@@ -69,7 +69,7 @@
 | TD-066 | `retrieveVerifiedEvidence` 用 `=== 'success'` 比對 `RewriterStatus`，違反專案 `switch + assertNever` exhaustiveness rule；新增 enum 值時不會 compiler error                                                                                                   | low      | open        | 2026-04-26 `/commit` 0-A code-review                             | —     |
 | TD-067 | `test/tsconfig.json` baseline 191 errors（component module not found + fixture type drift + Nitro route key excessive depth + `allowImportingTsExtensions` 缺 + middleware signature 漂移）                                                                   | mid      | open        | 2026-05-04 clade v0.3.10 cutover pre-push test-typecheck 揭露    | —     |
 | TD-070 | `rag-query-rewriting` 人工檢查對齊新 manual-review 規範（補 `[discuss]` marker + verify channel + Pre-Review Data Readiness）                                                                                                                                 | mid      | open        | 2026-05-12 clade v1.3.6 manual-review.md 新規散播                | —     |
-| TD-071 | AutoRAG → AI Search API migration：`env.AI.autorag().search()` 舊 API 全掛（staging 每條 chat 500）                                                                                                                                                           | critical | open        | 2026-06-09 rag-query-rewriting acceptance blocked                | —     |
+| TD-071 | AutoRAG → AI Search API migration：staging verified（retrieval_score=0.51, AI Search binding 正常）；production pending authorization/deploy                                                                                                                      | critical | in-progress | 2026-06-09 rag-query-rewriting acceptance blocked                | —     |
 
 ---
 
@@ -1061,7 +1061,7 @@ TD-023 引入 provide/inject 後，`ConversationHistory.vue` 保留 owner-fallba
 
 ## TD-027 — MCP connector first-time authorization journey 實測待部署後驗證
 
-**Status**: open
+**Status**: in-progress — local backend migration verified; staging deploy/smoke/D1/MCP evidence pending authorization.
 **Priority**: mid
 **Discovered**: 2026-04-24 — `auth-redirect-refactor` 人工檢查 7.4
 **Location**: `app/pages/auth/mcp/authorize.vue`、`app/utils/mcp-connector-return-to.ts`、`app/pages/auth/callback.vue`
@@ -2635,7 +2635,7 @@ User 決定本次 session **登記不處理**（2026-05-12 對話中明示「age
 
 ## TD-071 — AutoRAG → AI Search API migration
 
-**Status**: open
+**Status**: in-progress
 **Priority**: critical
 **Discovered**: 2026-06-09 — `rag-query-rewriting` staging acceptance run 全掛（evlog: `AutoRAGInternalError: vectorize_filter_not_serializable` → fix filter shape → `Invalid input`）
 **Location**: `server/utils/ai-search.ts`（binding + request shape）、`server/utils/knowledge-retrieval.ts`（filter construction）
@@ -2658,18 +2658,30 @@ Cloudflare 已將 AutoRAG 遷移至 AI Search。舊版 `env.AI.autorag(indexName
 
 ### Fix approach
 
-1. 查 Cloudflare AI Search Workers binding 完整 API reference（REST + Workers binding）確認 request/response shape
-2. 確認 staging 的 AI Search instance 配置（是否需要從 AutoRAG 遷移到新 AI Search instance + 重新 index）
-3. 改 `ai-search.ts`：binding 對象、request shape、response parsing
-4. 改 `knowledge-retrieval.ts`：filter construction（若 custom_metadata schema 可配置）
-5. 改 integration tests（mock AutoRAG binding → mock AI Search binding）
-6. staging redeploy + 驗證 chat 200 + retrieval_score 有值
-7. 解鎖 `rag-query-rewriting` 6.3-6.6 acceptance
+1. [x] 改 `ai-search.ts`：binding 對象、request shape、response parsing，使用 `AI_SEARCH.get(instanceId).search()`
+2. [x] 改 `knowledge-retrieval.ts`：不再輸出 legacy AutoRAG filter shape；D1 post-search verification 仍是權限真相
+3. [x] 改 Web chat / MCP ask / MCP search callsite 與 accessor：`AI` 保留給 Workers AI `.run()`，search 改 `AI_SEARCH`
+4. [x] 改 wrangler/deploy/render config：production/staging 同時保留 `AI` 與 `AI_SEARCH`
+5. [x] 改 unit/integration/acceptance fakes（mock AutoRAG binding → mock AI Search namespace binding）
+6. [x] staging redeploy + 驗證 chat 200 + retrieval_score 有值（2026-06-09 deploy Version `8a518f2b`；D1 evidence: `retrieval_score=0.51`）
+7. [ ] 解鎖 `rag-query-rewriting` 6.3-6.6 acceptance（待 production deploy 授權）
+
+### Current evidence
+
+- Local unit gate: `3 passed / 21 tests` for `ai-search`, `knowledge-retrieval`, `require-ai-binding`
+- Integration subset: `5 passed / 27 tests` for chat route, MCP ask/search, MCP route/access mocks
+- Full local gate: `pnpm typecheck` no errors; `pnpm build` complete; `test:unit` `128 passed / 806 tests`; `test:integration` `90 passed / 485 passed / 1 skipped`
+- Static audit: no `.autorag(`, `method: 'autorag'`, or `response.data` hits in `server test wrangler*.jsonc .github/workflows/deploy.yml`; remaining legacy-shaped keys are internal adapter input and tests asserting translation
+- Wrangler rendered staging dry-run: `.output/server/wrangler.staging.json` includes `env.AI_SEARCH (default) AI Search Namespace`, `env.AI AI`, and `NUXT_KNOWLEDGE_AI_SEARCH_INDEX ("agentic-rag-staging")`
+- **Staging deploy (2026-06-09)**: Version `8a518f2b-3146-4e60-8756-b51b28819b81`；`env.AI_SEARCH (inherited) AI Search Namespace` confirmed
+- **Staging D1 evidence**: query_log `2508e06c` at `2026-06-08T20:25:38Z` → `decision_path=judge_pass_refuse`、`retrieval_score=0.51`（AI Search 成功回傳 score）
+- **MCP SSE acceptance**: 4/5 pass（initialize / notifications / tools/list / SSE channel ✅；askKnowledge fail 根因是 `rewriter_status=fallback_error`，屬 rag-query-rewriting scope）
+- Production runtime evidence: **staging verified; production pending authorization/deploy**
 
 ### Acceptance
 
 - Staging `/api/chat` 回 200（不再 500）
 - `query_logs.retrieval_score` 有非零值
 - `query_logs.rewriter_status` 正確寫入（disabled / success / fallback_*）
-- 218 unit/integration tests 全綠
+- Local unit/integration gates 全綠（`806` unit tests passed；`485` integration tests passed / `1` skipped）
 - `rag-query-rewriting` acceptance 6.4-6.5 可跑出 retrieval_score 分布

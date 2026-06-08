@@ -3,9 +3,9 @@ import { z } from 'zod/v4'
 import { getCurrentMcpEvent } from '#server/utils/current-mcp-event'
 import {
   createCloudflareAiSearchClient,
-  type CloudflareAiBindingLike,
+  type CloudflareAiSearchBindingLike,
 } from '#server/utils/ai-search'
-import { requireAiBinding } from '#server/utils/ai-binding'
+import { requireAiBinding, requireAiSearchBinding } from '#server/utils/ai-binding'
 import { createCitationStore } from '#server/utils/citation-store'
 import { getRequiredD1Binding, getRequiredKvBinding } from '#server/utils/cloudflare-bindings'
 import { createKnowledgeAuditStore } from '#server/utils/knowledge-audit'
@@ -63,8 +63,8 @@ export default defineMcpTool({
     const runtimeConfig = getKnowledgeRuntimeConfig()
     const database = getRequiredD1Binding(event, runtimeConfig.bindings.d1Database)
     const aiSearchClient = createCloudflareAiSearchClient({
-      aiBinding: getRequiredAiSearchBinding(event),
-      indexName: getRequiredAiSearchIndex(runtimeConfig.bindings.aiSearchIndex),
+      aiSearchBinding: getRequiredAiSearchBinding(event),
+      instanceId: getRequiredAiSearchInstanceId(runtimeConfig.bindings.aiSearchIndex),
       gatewayConfig: runtimeConfig.aiGateway,
     })
     const workersAiBinding = getRequiredWorkersAiBinding(event)
@@ -174,11 +174,8 @@ function requireMcpAuth(event: {
 
 function getRequiredAiSearchBinding(event: {
   context: Record<string, unknown> & { cloudflare?: { env?: Record<string, unknown> } }
-}): CloudflareAiBindingLike {
-  return requireAiBinding<CloudflareAiBindingLike>(event, {
-    method: 'autorag',
-    message: 'Cloudflare AI binding "AI" is not available',
-  })
+}): CloudflareAiSearchBindingLike {
+  return requireAiSearchBinding<CloudflareAiSearchBindingLike>(event)
 }
 
 function getRequiredWorkersAiBinding(event: {
@@ -190,14 +187,14 @@ function getRequiredWorkersAiBinding(event: {
   })
 }
 
-function getRequiredAiSearchIndex(indexName: string): string {
-  if (!indexName) {
+function getRequiredAiSearchInstanceId(instanceId: string): string {
+  if (!instanceId) {
     throw createError({
       statusCode: 503,
       statusMessage: 'Service Unavailable',
-      message: 'Knowledge AI Search index is not configured',
+      message: 'Knowledge AI Search instance id is not configured',
     })
   }
 
-  return indexName
+  return instanceId
 }

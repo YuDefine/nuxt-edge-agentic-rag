@@ -155,14 +155,14 @@ describe('acceptance MCP interoperability replay chain', () => {
         }
       }
 
-      const aiBinding = (tc12Mocks.bindings ?? {}).AI as ReturnType<
+      const aiBinding = (tc12Mocks.bindings ?? {}).AI_SEARCH as ReturnType<
         typeof createAiSearchBindingFake
       >
       const d1 = (tc12Mocks.bindings ?? {}).DB as ReturnType<typeof createD1BindingFake>
 
       expect(aiBinding.calls).toHaveLength(1)
       expect(aiBinding.calls[0]).toMatchObject({
-        indexName: 'knowledge-index',
+        instanceId: 'knowledge-index',
         request: {
           query: fixture.prompt,
         },

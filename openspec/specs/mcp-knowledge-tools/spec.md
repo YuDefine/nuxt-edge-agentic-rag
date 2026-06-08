@@ -47,7 +47,6 @@ code:
 -->
 
 ---
-
 ### Requirement: Stateless Ask And Replay
 
 `askKnowledge` SHALL reuse the same validated retrieval, confidence routing, refusal, and citation-mapping core as the Web answer path after MCP authorization succeeds. `getDocumentChunk` SHALL replay the cited snapshot using `citationId`, SHALL re-check access rules before returning chunk text, and SHALL return `404` only when the `citationId` is absent or no longer replayable.
@@ -65,7 +64,6 @@ code:
 - **AND** the replay result still passes current authorization checks for that caller
 
 ---
-
 ### Requirement: Filtered Search And Categories
 
 `searchKnowledge` SHALL apply `allowed_access_levels` before retrieval and SHALL return `200` with `results: []` when no visible evidence remains. `listCategories` SHALL count only visible `active` documents with a current version, deduplicate counts per document, and return categories in stable name order. Neither tool SHALL expose internal diagnostics such as retrieval scores, decision paths, or document version identifiers.
@@ -83,7 +81,6 @@ code:
 - **AND** historical versions do not increase the returned count
 
 ---
-
 ### Requirement: MCP handler middleware preserves request body for transport
 
 The `/mcp` JSON-RPC endpoint SHALL ensure that any intermediate read of the HTTP request body (for audit logging, tool-name extraction, rate-limit routing, or role gating) does NOT prevent the downstream MCP transport from parsing the same JSON-RPC payload. After middleware completes, the request body stream reachable from the MCP SDK transport handler MUST still be readable and contain the original client-sent bytes.
@@ -132,7 +129,6 @@ tests:
 -->
 
 ---
-
 ### Requirement: MCP handler rejects GET and DELETE with 405 per MCP spec stateless mode
 
 The MCP endpoint at `/mcp` SHALL respond to `GET` and `DELETE` HTTP methods with status `405 Method Not Allowed`, including the `Allow: POST` response header and a JSON-RPC error body `{ jsonrpc: "2.0", error: { code: -32000, message: ... }, id: null }`. This aligns with MCP Streamable HTTP spec 2025-11-25 which permits stateless servers to decline SSE stream establishment via `405`, instructing compliant clients to continue using `POST` for all MCP communication. The `405` response SHALL be returned immediately (no long-polling, no 30s CPU hang on Cloudflare Workers).
@@ -153,7 +149,6 @@ The MCP endpoint at `/mcp` SHALL respond to `GET` and `DELETE` HTTP methods with
 - **AND** the response body is a JSON-RPC error object explaining this server uses stateless POST-only transport
 
 ---
-
 ### Requirement: MCP handler POST path enforces JSON response over SSE
 
 The MCP endpoint SHALL instantiate `WebStandardStreamableHTTPServerTransport` with `enableJsonResponse: true` and `sessionIdGenerator: undefined`, ensuring every `POST /mcp` response uses `Content-Type: application/json` containing a complete JSON-RPC response (or `202 Accepted` for notifications), rather than opening an SSE stream. This prevents Cloudflare Worker 30-second CPU timeouts on tool calls and eliminates re-initialize loops triggered by dropped SSE connections.
@@ -177,7 +172,6 @@ The MCP endpoint SHALL instantiate `WebStandardStreamableHTTPServerTransport` wi
 - **THEN** the server returns `202 Accepted` with no body
 
 ---
-
 ### Requirement: Stateless MCP handler preserves existing auth and rate-limit semantics
 
 The `405`/`JSON response` changes SHALL NOT alter middleware auth, rate-limit, or role-gate semantics. Each `POST /mcp` request SHALL continue to be authenticated via `Authorization: Bearer <token>` per the existing `mcpAuth` middleware, with rate-limit windows keyed on the token. No `MCP-Session-Id` header is introduced or consumed.
@@ -195,7 +189,6 @@ The `405`/`JSON response` changes SHALL NOT alter middleware auth, rate-limit, o
 - **AND** exceeded limits return the existing `429` response
 
 ---
-
 ### Requirement: Tool Discovery Metadata
 
 The MCP tool surface SHALL expose LLM-consumable discovery metadata on every tool registered under `server/mcp/tools/` so that MCP clients can accurately select tools and construct well-formed arguments without additional prompting. Metadata SHALL include:
@@ -297,7 +290,6 @@ tests:
 -->
 
 ---
-
 ### Requirement: MCP Tool Dispatch Via Durable Object
 
 When the `NUXT_KNOWLEDGE_FEATURE_MCP_SESSION` feature flag is enabled and a signed-in MCP client has completed a session initialize handshake, subsequent JSON-RPC requests (`tools/list`, `tools/call`, and any other non-initialize method) SHALL be dispatched inside the `MCPSessionDurableObject` through the MCP SDK server connected over `DoJsonRpcTransport`. The dispatch SHALL produce the same response shape as the stateless fallback path for identical inputs, including success payloads, structured errors, and JSON-RPC envelope fields.
@@ -351,7 +343,6 @@ code:
 -->
 
 ---
-
 ### Requirement: MCP Session Initialization Issues Mcp-Session-Id
 
 When `features.mcpSession=true`, the MCP surface SHALL issue an `Mcp-Session-Id` header on the response to the first successful `POST /mcp` `initialize` request. The session id SHALL be a UUID generated by the server, SHALL be unique per `initialize` request, and SHALL be the lookup key used to address the per-session Durable Object instance for all subsequent requests. Clients that fail to include `Mcp-Session-Id` on follow-up requests SHALL be treated as initiating a new session.
@@ -383,7 +374,6 @@ code:
 -->
 
 ---
-
 ### Requirement: MCP Session Has Idle TTL With Request-Triggered Renewal
 
 When `features.mcpSession=true`, each session Durable Object instance SHALL persist session state with an idle TTL configurable via `NUXT_KNOWLEDGE_MCP_SESSION_TTL_MS` (default `1800000` milliseconds / 30 minutes). Every request reaching the Durable Object SHALL update `lastSeenAt`, and the DO alarm SHALL be scheduled at `lastSeenAt + TTL`. When the alarm fires without intervening activity, the DO SHALL clear its persisted session state; subsequent requests bearing that `Mcp-Session-Id` SHALL receive `404` per the session expiry scenario above.
@@ -412,7 +402,6 @@ code:
 -->
 
 ---
-
 ### Requirement: MCP Session Durable Object Binding
 
 When `features.mcpSession=true`, the deployment SHALL provide a Cloudflare Durable Object binding named `MCP_SESSION` referencing class `MCPSessionDurableObject` under migration tag `v1`. The MCP request handler SHALL address DO instances via `env.MCP_SESSION.idFromName(sessionId)`. Persisted session state in `this.state.storage` SHALL at minimum include `sessionId`, `protocolVersion`, `capabilities`, `createdAt`, `lastSeenAt`, and `initializedServer` (boolean).
@@ -440,7 +429,6 @@ code:
 -->
 
 ---
-
 ### Requirement: Feature Flag Controls MCP Session Path
 
 The MCP request handler SHALL branch on `features.mcpSession`: when `true`, requests SHALL flow through the Durable Object session path; when `false`, requests SHALL flow through the existing stateless shim path (GET/DELETE return `405` per MCP spec 2025-11-25, POST handled stateless with `sessionIdGenerator: undefined`). Flag evaluation SHALL occur per request so staged rollout via environment variable flip requires no code deploy.
@@ -479,4 +467,139 @@ code:
   - local/excalidraw-diagram-workbench
   - local/reports/archive/main-v0.0.54-draft.md
   - local/reports/latest.md
+-->
+
+---
+### Requirement: MCP knowledge tools SHALL use the same AI Search retrieval adapter
+
+MCP `askKnowledge` 與 `searchKnowledge` SHALL use the same Cloudflare AI Search retrieval adapter as Web chat. The tools SHALL preserve existing MCP authorization, scope checks, visibility filtering, and response shapes while replacing legacy AutoRAG binding usage with `AI_SEARCH.get(instanceId).search()`.
+
+#### Scenario: MCP ask uses AI Search namespace binding after authorization
+
+- **WHEN** an authorized MCP caller invokes `askKnowledge`
+- **THEN** the tool SHALL complete MCP auth and scope checks before retrieval
+- **AND** retrieval SHALL use `AI_SEARCH.get(<configured instance id>).search(...)`
+- **AND** retrieval SHALL NOT call `AI.autorag(<index name>).search(...)`
+- **AND** answer generation / judge logic SHALL continue using the Workers AI `AI` binding when required
+
+#### Scenario: MCP search uses AI Search namespace binding and keeps visibility contract
+
+- **WHEN** an authorized MCP caller invokes `searchKnowledge`
+- **THEN** the tool SHALL derive allowed access levels from the MCP principal and scopes
+- **AND** retrieval SHALL use the shared AI Search adapter
+- **AND** D1 post-verification SHALL still remove candidates outside the caller's visible set
+- **AND** the tool SHALL continue returning `200` with `results: []` when no visible evidence remains
+
+#### Scenario: MCP search response does not expose internal diagnostics
+
+- **WHEN** MCP `searchKnowledge` receives candidates from AI Search `chunks`
+- **THEN** the tool SHALL map only the existing public search result fields into the MCP response
+- **AND** the response SHALL NOT expose internal `documentVersionId`, raw AI Search chunk metadata, retrieval scores, or Cloudflare scoring details beyond the established MCP contract
+
+
+<!-- @trace
+source: autorag-to-ai-search-migration
+updated: 2026-06-09
+code:
+  - server/utils/ai-search.ts
+  - scripts/render-staging-wrangler.mjs
+  - wrangler.jsonc
+  - server/api/chat.post.ts
+  - server/mcp/tools/ask.ts
+  - server/utils/knowledge-retrieval.ts
+  - docs/tech-debt.md
+  - server/utils/ai-binding.ts
+  - server/mcp/tools/search.ts
+  - HANDOFF.md
+  - nuxt.config.ts
+  - wrangler.staging.jsonc
+  - test/acceptance/helpers/bindings.ts
+tests:
+  - test/integration/mcp-oauth-tool-access.test.ts
+  - test/integration/acceptance-tc-05.test.ts
+  - test/unit/mcp-tool-ask.test.ts
+  - test/unit/require-ai-binding.test.ts
+  - test/integration/mcp-session-tool-dispatch.spec.ts
+  - test/integration/acceptance-tc-16.test.ts
+  - test/integration/mcp-routes.test.ts
+  - test/integration/acceptance-tc-06.test.ts
+  - test/unit/acceptance-bindings.test.ts
+  - test/integration/acceptance-tc-07.test.ts
+  - test/unit/mcp-event-shim.test.ts
+  - test/integration/acceptance-tc-11.test.ts
+  - test/integration/acceptance-tc-14.test.ts
+  - test/integration/acceptance-tc-15.test.ts
+  - test/integration/chat-route.test.ts
+  - test/integration/conversation-create.test.ts
+  - test/integration/acceptance-tc-17.test.ts
+  - test/unit/ai-search.test.ts
+  - test/integration/acceptance-tc-12.test.ts
+  - test/unit/mcp-tool-search.test.ts
+  - test/integration/acceptance-tc-10.test.ts
+  - test/integration/acceptance-tc-18.test.ts
+  - test/integration/acceptance-tc-04.test.ts
+  - test/integration/acceptance-tc-01.test.ts
+-->
+
+---
+### Requirement: MCP AI Search binding failures SHALL fail before business-response mapping
+
+If the AI Search binding is unavailable or malformed, MCP retrieval tools SHALL surface a service-unavailable runtime error instead of returning an empty successful business result. This preserves the distinction between infrastructure failure and a valid no-evidence refusal.
+
+#### Scenario: Missing AI_SEARCH binding does not become `results: []`
+
+- **WHEN** `searchKnowledge` is called with valid MCP auth but Cloudflare env lacks `AI_SEARCH`
+- **THEN** the tool SHALL fail through the service-unavailable path
+- **AND** the tool SHALL NOT return `200` with `results: []`
+- **AND** the failure SHALL be observable in route logging / evlog
+
+#### Scenario: Cloudflare AI Search error does not become a business refusal
+
+- **WHEN** `AI_SEARCH.get(instanceId).search()` rejects during `askKnowledge`
+- **THEN** the tool SHALL NOT translate the infrastructure error into `refused = true`
+- **AND** the failure SHALL propagate to the existing MCP route error handling path
+- **AND** successful no-evidence refusals SHALL remain reserved for completed retrieval with insufficient verified evidence
+
+<!-- @trace
+source: autorag-to-ai-search-migration
+updated: 2026-06-09
+code:
+  - server/utils/ai-search.ts
+  - scripts/render-staging-wrangler.mjs
+  - wrangler.jsonc
+  - server/api/chat.post.ts
+  - server/mcp/tools/ask.ts
+  - server/utils/knowledge-retrieval.ts
+  - docs/tech-debt.md
+  - server/utils/ai-binding.ts
+  - server/mcp/tools/search.ts
+  - HANDOFF.md
+  - nuxt.config.ts
+  - wrangler.staging.jsonc
+  - test/acceptance/helpers/bindings.ts
+tests:
+  - test/integration/mcp-oauth-tool-access.test.ts
+  - test/integration/acceptance-tc-05.test.ts
+  - test/unit/mcp-tool-ask.test.ts
+  - test/unit/require-ai-binding.test.ts
+  - test/integration/mcp-session-tool-dispatch.spec.ts
+  - test/integration/acceptance-tc-16.test.ts
+  - test/integration/mcp-routes.test.ts
+  - test/integration/acceptance-tc-06.test.ts
+  - test/unit/acceptance-bindings.test.ts
+  - test/integration/acceptance-tc-07.test.ts
+  - test/unit/mcp-event-shim.test.ts
+  - test/integration/acceptance-tc-11.test.ts
+  - test/integration/acceptance-tc-14.test.ts
+  - test/integration/acceptance-tc-15.test.ts
+  - test/integration/chat-route.test.ts
+  - test/integration/conversation-create.test.ts
+  - test/integration/acceptance-tc-17.test.ts
+  - test/unit/ai-search.test.ts
+  - test/integration/acceptance-tc-12.test.ts
+  - test/unit/mcp-tool-search.test.ts
+  - test/integration/acceptance-tc-10.test.ts
+  - test/integration/acceptance-tc-18.test.ts
+  - test/integration/acceptance-tc-04.test.ts
+  - test/integration/acceptance-tc-01.test.ts
 -->

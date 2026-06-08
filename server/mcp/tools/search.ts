@@ -3,9 +3,9 @@ import { z } from 'zod/v4'
 import { getCurrentMcpEvent } from '#server/utils/current-mcp-event'
 import {
   createCloudflareAiSearchClient,
-  type CloudflareAiBindingLike,
+  type CloudflareAiSearchBindingLike,
 } from '#server/utils/ai-search'
-import { requireAiBinding } from '#server/utils/ai-binding'
+import { requireAiBinding, requireAiSearchBinding } from '#server/utils/ai-binding'
 import { getRequiredD1Binding, getRequiredKvBinding } from '#server/utils/cloudflare-bindings'
 import { createKnowledgeEvidenceStore } from '#server/utils/knowledge-evidence-store'
 import {
@@ -66,7 +66,7 @@ export default defineMcpTool({
       tokenScopes: auth.scopes,
     })
 
-    const aiBinding = getRequiredAiBinding(event)
+    const aiSearchBinding = getRequiredAiSearchBinding(event)
 
     return searchKnowledge(
       {
@@ -99,8 +99,8 @@ export default defineMcpTool({
               governance: runtimeConfig.governance,
               rewriter,
               search: createCloudflareAiSearchClient({
-                aiBinding,
-                indexName: runtimeConfig.bindings.aiSearchIndex,
+                aiSearchBinding,
+                instanceId: getRequiredAiSearchInstanceId(runtimeConfig.bindings.aiSearchIndex),
                 gatewayConfig: runtimeConfig.aiGateway,
               }).search,
               store: createKnowledgeEvidenceStore(database),
@@ -127,13 +127,10 @@ function requireMcpAuth(event: {
   return auth
 }
 
-function getRequiredAiBinding(event: {
+function getRequiredAiSearchBinding(event: {
   context: Record<string, unknown> & { cloudflare?: { env?: Record<string, unknown> } }
-}): CloudflareAiBindingLike {
-  return requireAiBinding<CloudflareAiBindingLike>(event, {
-    method: 'autorag',
-    message: 'Cloudflare AI binding "AI" is not available',
-  })
+}): CloudflareAiSearchBindingLike {
+  return requireAiSearchBinding<CloudflareAiSearchBindingLike>(event)
 }
 
 function getRequiredWorkersAiBinding(event: {
@@ -143,4 +140,16 @@ function getRequiredWorkersAiBinding(event: {
     method: 'run',
     message: 'Cloudflare Workers AI binding "AI" is not available',
   })
+}
+
+function getRequiredAiSearchInstanceId(instanceId: string): string {
+  if (!instanceId) {
+    throw createError({
+      statusCode: 503,
+      statusMessage: 'Service Unavailable',
+      message: 'Knowledge AI Search instance id is not configured',
+    })
+  }
+
+  return instanceId
 }

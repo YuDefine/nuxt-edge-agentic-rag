@@ -10,7 +10,7 @@ beforeAll(() => {
   )
 })
 
-import { requireAiBinding } from '#server/utils/ai-binding'
+import { requireAiBinding, requireAiSearchBinding } from '#server/utils/ai-binding'
 
 function makeEvent(env: Record<string, unknown>): H3Event {
   return { context: { cloudflare: { env } } } as unknown as H3Event
@@ -25,22 +25,22 @@ async function captureThrown(fn: () => unknown): Promise<unknown> {
   }
 }
 
-const autoragStub = () => Promise.resolve()
+const runStub = () => Promise.resolve()
 
-describe('requireAiBinding (TD-017)', () => {
+describe('requireAiBinding (Workers AI)', () => {
   it('returns the binding when env.AI exists and the requested method is a function', () => {
-    const event = makeEvent({ AI: { autorag: autoragStub } })
-    const binding = requireAiBinding<{ autorag: () => Promise<void> }>(event, {
-      method: 'autorag',
+    const event = makeEvent({ AI: { run: runStub } })
+    const binding = requireAiBinding<{ run: () => Promise<void> }>(event, {
+      method: 'run',
       message: 'AI missing',
     })
-    expect(binding.autorag).toBe(autoragStub)
+    expect(binding.run).toBe(runStub)
   })
 
   it('throws 503 with the provided message when env.AI is missing', async () => {
     const event = makeEvent({})
     const err = await captureThrown(() =>
-      requireAiBinding(event, { method: 'autorag', message: 'AI missing' }),
+      requireAiBinding(event, { method: 'run', message: 'AI missing' }),
     )
     expect(err).toMatchObject({ statusCode: 503, message: 'AI missing' })
   })
@@ -48,7 +48,7 @@ describe('requireAiBinding (TD-017)', () => {
   it('throws 503 when env has no cloudflare context at all', async () => {
     const err = await captureThrown(() =>
       requireAiBinding({ context: {} } as unknown as H3Event, {
-        method: 'autorag',
+        method: 'run',
         message: 'AI missing',
       }),
     )
@@ -56,31 +56,69 @@ describe('requireAiBinding (TD-017)', () => {
   })
 
   it('throws 503 when env.AI is present but the method value is not a function', async () => {
-    const event = makeEvent({ AI: { autorag: 'not-a-function' } })
+    const event = makeEvent({ AI: { run: 'not-a-function' } })
     const err = await captureThrown(() =>
-      requireAiBinding(event, { method: 'autorag', message: 'autorag not fn' }),
+      requireAiBinding(event, { method: 'run', message: 'run not fn' }),
     )
-    expect(err).toMatchObject({ statusCode: 503, message: 'autorag not fn' })
+    expect(err).toMatchObject({ statusCode: 503, message: 'run not fn' })
   })
 
   it('throws 503 when env.AI is present but the requested method key is absent', async () => {
-    const event = makeEvent({ AI: { run: () => undefined } })
+    const event = makeEvent({ AI: { somethingElse: () => undefined } })
     const err = await captureThrown(() =>
-      requireAiBinding(event, { method: 'autorag', message: 'autorag missing' }),
+      requireAiBinding(event, { method: 'run', message: 'run missing' }),
     )
-    expect(err).toMatchObject({ statusCode: 503, message: 'autorag missing' })
+    expect(err).toMatchObject({ statusCode: 503, message: 'run missing' })
+  })
+})
+
+describe('requireAiSearchBinding (AI Search namespace)', () => {
+  it('returns the binding when env.AI_SEARCH exists and has .get function', () => {
+    const getStub = () => ({ search: async () => ({}) })
+    const event = makeEvent({ AI_SEARCH: { get: getStub } })
+    const binding = requireAiSearchBinding<{ get: typeof getStub }>(event)
+    expect(binding.get).toBe(getStub)
   })
 
-  it('validates independently for different methods on the same binding', async () => {
-    const binding = { run: () => 'run-ok' }
-    const event = makeEvent({ AI: binding })
+  it('throws 503 when env.AI_SEARCH is missing', async () => {
+    const event = makeEvent({})
+    const err = await captureThrown(() => requireAiSearchBinding(event))
+    expect(err).toMatchObject({
+      statusCode: 503,
+      message: 'Cloudflare AI Search binding "AI_SEARCH" is not available',
+    })
+  })
 
-    const got = requireAiBinding<typeof binding>(event, { method: 'run', message: 'run missing' })
-    expect(got).toBe(binding)
+  it('throws 503 when env.AI_SEARCH has no .get method', async () => {
+    const event = makeEvent({ AI_SEARCH: { noGet: true } })
+    const err = await captureThrown(() => requireAiSearchBinding(event))
+    expect(err).toMatchObject({
+      statusCode: 503,
+      message: 'Cloudflare AI Search binding "AI_SEARCH" is not available',
+    })
+  })
 
-    const err = await captureThrown(() =>
-      requireAiBinding(event, { method: 'autorag', message: 'autorag missing' }),
-    )
-    expect(err).toMatchObject({ statusCode: 503, message: 'autorag missing' })
+  it('throws 503 when env.AI_SEARCH.get is not a function', async () => {
+    const event = makeEvent({ AI_SEARCH: { get: 'not-a-function' } })
+    const err = await captureThrown(() => requireAiSearchBinding(event))
+    expect(err).toMatchObject({
+      statusCode: 503,
+      message: 'Cloudflare AI Search binding "AI_SEARCH" is not available',
+    })
+  })
+
+  it('does not interfere with Workers AI binding on env.AI', () => {
+    const event = makeEvent({
+      AI: { run: runStub },
+      AI_SEARCH: { get: () => ({ search: async () => ({}) }) },
+    })
+    const aiBinding = requireAiBinding<{ run: typeof runStub }>(event, {
+      method: 'run',
+      message: 'AI missing',
+    })
+    expect(aiBinding.run).toBe(runStub)
+
+    const searchBinding = requireAiSearchBinding<{ get: () => unknown }>(event)
+    expect(typeof searchBinding.get).toBe('function')
   })
 })

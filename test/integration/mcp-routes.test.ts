@@ -117,8 +117,10 @@ vi.mock('../../server/utils/citation-store', () => ({
 vi.mock('../../server/utils/cloudflare-bindings', () => ({
   getCloudflareEnv: () => ({
     AI: {
-      autorag: vi.fn().mockReturnValue({ search: vi.fn() }),
       run: vi.fn().mockResolvedValue({ response: 'ok' }),
+    },
+    AI_SEARCH: {
+      get: vi.fn().mockReturnValue({ search: vi.fn() }),
     },
   }),
   getRequiredD1Binding: mcpRouteMocks.getRequiredD1Binding,

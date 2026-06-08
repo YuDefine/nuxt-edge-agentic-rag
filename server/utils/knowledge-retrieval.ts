@@ -193,10 +193,11 @@ export async function retrieveVerifiedEvidence(
   }
 }
 
-// AutoRAG/AI Search metadata filter is disabled: the index has no custom_metadata
-// schema configured, so filtering on status/version_state/access_level causes
-// "Invalid input". Post-search verification in resolveCurrentEvidence already
-// enforces d.status='active' + v.is_current=1 + access_level IN (...).
+// [D-FILTER]: AI Search metadata filter is disabled — the index has no
+// custom_metadata schema configured, so filtering on status/version_state/
+// access_level causes "Invalid input". Post-search verification in
+// resolveCurrentEvidence already enforces d.status='active' + v.is_current=1
+// + access_level IN (...). D1 remains the authorization truth.
 function buildKnowledgeSearchFilters(_input: {
   allowedAccessLevels: string[]
 }): Record<string, never> {

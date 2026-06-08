@@ -157,21 +157,29 @@ describe('acceptance current-version-only enforcement', () => {
         }
       }
 
-      const aiBinding = (tc18Mocks.bindings ?? {}).AI as ReturnType<
+      const aiBinding = (tc18Mocks.bindings ?? {}).AI_SEARCH as ReturnType<
         typeof createAiSearchBindingFake
       >
       const d1 = (tc18Mocks.bindings ?? {}).DB as ReturnType<typeof createD1BindingFake>
 
-      // AI Search 被呼叫一次，且 filters 明確帶上 version_state='current' 與 status='active'（
-      // 以防 AI Search 放寬限制，D1 仍會做二次過濾，下方會再驗證）。
+      // AI Search 被呼叫一次，且不再送 legacy top-level filters；
+      // current-version enforcement remains in D1 post-verification below.
       expect(aiBinding.calls).toHaveLength(1)
       expect(aiBinding.calls[0]).toMatchObject({
-        indexName: 'knowledge-index',
+        instanceId: 'knowledge-index',
         request: {
-          filters: {},
           query: fixture.prompt,
         },
       })
+      const searchRequest = aiBinding.calls[0]?.request as
+        | {
+            ai_search_options?: { retrieval?: Record<string, unknown> }
+            filters?: unknown
+          }
+        | undefined
+      expect(searchRequest).toBeDefined()
+      expect(searchRequest!.filters).toBeUndefined()
+      expect(searchRequest!.ai_search_options?.retrieval).not.toHaveProperty('filters')
 
       // 最終回答只引用當前版本的 source_chunk，拒答/舊版引用都不能發生
       expect(result.data.refused).toBe(false)

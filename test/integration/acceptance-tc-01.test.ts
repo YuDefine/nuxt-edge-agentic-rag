@@ -127,7 +127,9 @@ describe('acceptance direct-answer automation', () => {
     const result = fixture.channel === 'web' ? await runWebCase() : await runMcpCase(fixture.prompt)
 
     const d1 = (tc01Mocks.bindings ?? {}).DB as ReturnType<typeof createD1BindingFake>
-    const aiBinding = (tc01Mocks.bindings ?? {}).AI as ReturnType<typeof createAiSearchBindingFake>
+    const aiBinding = (tc01Mocks.bindings ?? {}).AI_SEARCH as ReturnType<
+      typeof createAiSearchBindingFake
+    >
 
     expect(registryEntry).toMatchObject({
       expectedHttpStatus: '200',
@@ -137,7 +139,7 @@ describe('acceptance direct-answer automation', () => {
     expect(fixture.expectedOutcome).toBe('direct')
     expect(aiBinding.calls).toHaveLength(1)
     expect(aiBinding.calls[0]).toMatchObject({
-      indexName: 'knowledge-index',
+      instanceId: 'knowledge-index',
       request: {
         query: fixture.prompt,
       },
