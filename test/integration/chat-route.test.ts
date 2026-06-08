@@ -92,8 +92,10 @@ vi.mock('../../server/utils/database', () => createHubDbMock())
 vi.mock('../../server/utils/cloudflare-bindings', () => ({
   getCloudflareEnv: () => ({
     AI: {
-      autorag: vi.fn().mockReturnValue({ search: vi.fn() }),
       run: chatRouteMocks.workersAiRun,
+    },
+    AI_SEARCH: {
+      get: vi.fn().mockReturnValue({ search: vi.fn() }),
     },
   }),
   getRequiredD1Binding: chatRouteMocks.getRequiredD1Binding,
@@ -524,7 +526,7 @@ describe('/api/chat route', () => {
           id: 'agentic-rag-production',
           cacheEnabled: true,
         },
-        indexName: 'knowledge-index',
+        instanceId: 'knowledge-index',
       }),
     )
   })

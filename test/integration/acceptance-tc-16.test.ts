@@ -153,7 +153,9 @@ describe('acceptance searchKnowledge no-hit contract (TC-16)', () => {
     // covered by `createStubMcpTokenStoreFromActor` in the runner —
     // reaching the response assertions above already proves the token
     // resolved successfully.
-    const aiBinding = (tc16Mocks.bindings ?? {}).AI as ReturnType<typeof createAiSearchBindingFake>
+    const aiBinding = (tc16Mocks.bindings ?? {}).AI_SEARCH as ReturnType<
+      typeof createAiSearchBindingFake
+    >
 
     expect(aiBinding.calls).toHaveLength(1)
   })

@@ -104,30 +104,8 @@ class FakeD1Database {
   }
 }
 
-function createFakeAiBinding() {
+function createFakeWorkersAiBinding() {
   return {
-    autorag: () => ({
-      search: async () => ({
-        data: [
-          {
-            attributes: {
-              file: {
-                access_level: 'internal',
-                citation_locator: 'doc://dispatch#chunk-1',
-                document_version_id: 'version-dispatch',
-              },
-            },
-            content: [
-              {
-                text: 'Task 5.1 dispatches askKnowledge through the session Durable Object path.',
-                type: 'text',
-              },
-            ],
-            score: 0.95,
-          },
-        ],
-      }),
-    }),
     run: async () => ({
       response: 'askKnowledge answered from the fake retrieval backend with Durable Object parity.',
       usage: {
@@ -135,6 +113,28 @@ function createFakeAiBinding() {
         prompt_tokens: 24,
         total_tokens: 36,
       },
+    }),
+  }
+}
+
+function createFakeAiSearchBinding() {
+  return {
+    get: () => ({
+      search: async () => ({
+        chunks: [
+          {
+            text: 'Task 5.1 dispatches askKnowledge through the session Durable Object path.',
+            score: 0.95,
+            item: {
+              metadata: {
+                access_level: 'internal',
+                citation_locator: 'doc://dispatch#chunk-1',
+                document_version_id: 'version-dispatch',
+              },
+            },
+          },
+        ],
+      }),
     }),
   }
 }
@@ -177,7 +177,8 @@ function createTestEnv(
   overrides: Partial<McpSessionDurableObjectEnv> = {},
 ): McpSessionDurableObjectEnv {
   return {
-    AI: createFakeAiBinding(),
+    AI: createFakeWorkersAiBinding(),
+    AI_SEARCH: createFakeAiSearchBinding(),
     DB: new FakeD1Database(),
     KV: createFakeKvBinding(),
     NUXT_KNOWLEDGE_AI_SEARCH_INDEX: 'fake-index',

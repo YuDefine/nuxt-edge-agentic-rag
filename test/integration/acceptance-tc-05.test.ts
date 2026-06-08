@@ -169,7 +169,7 @@ describe('acceptance multi-turn continuity and stale protection (TC-05)', () => 
         scenario.staleSourceChunkId,
       )
 
-      const aiBinding = (tc05Mocks.bindings ?? {}).AI as ReturnType<
+      const aiBinding = (tc05Mocks.bindings ?? {}).AI_SEARCH as ReturnType<
         typeof createAiSearchBindingFake
       >
       const kv = (tc05Mocks.bindings ?? {}).KV as ReturnType<typeof createKvBindingFake>
@@ -178,9 +178,14 @@ describe('acceptance multi-turn continuity and stale protection (TC-05)', () => 
       // 兩輪各打一次 AI Search（filter 已移到 post-search resolveCurrentEvidence）
       expect(aiBinding.calls).toHaveLength(2)
       for (const call of aiBinding.calls) {
+        // [D-REQUEST]: adapter translates to ai_search_options shape;
+        // empty filters are omitted from the retrieval options.
         expect(call.request).toMatchObject({
-          filters: {},
+          ai_search_options: {
+            query_rewrite: { enabled: false },
+          },
         })
+        expect((call.request as { filters?: unknown }).filters).toBeUndefined()
       }
 
       // 兩輪共用同一 user-scoped rate-limit key（代表 conversation 作用域真的存在於 KV）
@@ -334,33 +339,27 @@ function createTc05Bindings(scenario: Tc05Scenario) {
   //   - 第一輪 prompt → current 第一段
   //   - 第二輪 prompt → 同時回 stale 與 current 第二段 candidate，交由 D1 過濾
   const ai = {
-    calls: [] as Array<{ indexName: string; request: Record<string, unknown> }>,
-    autorag(indexName: string) {
+    calls: [] as Array<{ instanceId: string; request: Record<string, unknown> }>,
+    get(instanceId: string) {
       return {
         async search(request: Record<string, unknown>) {
-          ai.calls.push({ indexName, request })
+          ai.calls.push({ instanceId, request })
 
           const query = request.query as string
 
           if (query === scenario.firstTurn.prompt) {
             return {
-              data: [
+              chunks: [
                 {
-                  attributes: {
-                    file: {
+                  item: {
+                    metadata: {
                       access_level: 'internal',
                       citation_locator: scenario.firstTurn.citationLocator,
                       document_version_id: scenario.currentDocumentVersionId,
                       title: scenario.currentDocumentTitle,
                     },
                   },
-                  content: [
-                    {
-                      text: scenario.firstTurn.chunkText,
-                      type: 'text',
-                    },
-                  ],
-                  filename: 'tc-05-turn-1.md',
+                  text: scenario.firstTurn.chunkText,
                   score: 0.88,
                 },
               ],
@@ -369,41 +368,29 @@ function createTc05Bindings(scenario: Tc05Scenario) {
 
           // 第二輪：同時放 stale + current candidate，測試 stale 保護
           return {
-            data: [
+            chunks: [
               {
-                attributes: {
-                  file: {
+                item: {
+                  metadata: {
                     access_level: 'internal',
                     citation_locator: scenario.staleCitationLocator,
                     document_version_id: scenario.staleDocumentVersionId,
                     title: scenario.currentDocumentTitle,
                   },
                 },
-                content: [
-                  {
-                    text: scenario.staleChunkText,
-                    type: 'text',
-                  },
-                ],
-                filename: 'tc-05-turn-2-stale.md',
+                text: scenario.staleChunkText,
                 score: 0.83,
               },
               {
-                attributes: {
-                  file: {
+                item: {
+                  metadata: {
                     access_level: 'internal',
                     citation_locator: scenario.secondTurn.citationLocator,
                     document_version_id: scenario.currentDocumentVersionId,
                     title: scenario.currentDocumentTitle,
                   },
                 },
-                content: [
-                  {
-                    text: scenario.secondTurn.chunkText,
-                    type: 'text',
-                  },
-                ],
-                filename: 'tc-05-turn-2-current.md',
+                text: scenario.secondTurn.chunkText,
                 score: 0.9,
               },
             ],
