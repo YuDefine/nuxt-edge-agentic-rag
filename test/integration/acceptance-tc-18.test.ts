@@ -168,10 +168,7 @@ describe('acceptance current-version-only enforcement', () => {
       expect(aiBinding.calls[0]).toMatchObject({
         indexName: 'knowledge-index',
         request: {
-          filters: expect.objectContaining({
-            status: 'active',
-            version_state: 'current',
-          }),
+          filters: {},
           query: fixture.prompt,
         },
       })

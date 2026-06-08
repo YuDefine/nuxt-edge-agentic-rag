@@ -175,14 +175,11 @@ describe('acceptance multi-turn continuity and stale protection (TC-05)', () => 
       const kv = (tc05Mocks.bindings ?? {}).KV as ReturnType<typeof createKvBindingFake>
       const d1 = (tc05Mocks.bindings ?? {}).DB as ReturnType<typeof createD1BindingFake>
 
-      // 兩輪各打一次 AI Search，兩輪都帶上 current-only filter（status=active、version_state=current）
+      // 兩輪各打一次 AI Search（filter 已移到 post-search resolveCurrentEvidence）
       expect(aiBinding.calls).toHaveLength(2)
       for (const call of aiBinding.calls) {
         expect(call.request).toMatchObject({
-          filters: expect.objectContaining({
-            status: 'active',
-            version_state: 'current',
-          }),
+          filters: {},
         })
       }
 
