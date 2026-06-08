@@ -89,28 +89,28 @@ export async function syncUserProfile(
     }
 
     const staleId = existingRow.id
-    await db.transaction(async (tx) => {
-      await tx
+    await db.batch([
+      db
         .update(schema.conversations)
         .set({ userProfileId: userId })
-        .where(eq(schema.conversations.userProfileId, staleId))
-      await tx
+        .where(eq(schema.conversations.userProfileId, staleId)),
+      db
         .update(schema.queryLogs)
         .set({ userProfileId: userId })
-        .where(eq(schema.queryLogs.userProfileId, staleId))
-      await tx
+        .where(eq(schema.queryLogs.userProfileId, staleId)),
+      db
         .update(schema.messages)
         .set({ userProfileId: userId })
-        .where(eq(schema.messages.userProfileId, staleId))
-      await tx
+        .where(eq(schema.messages.userProfileId, staleId)),
+      db
         .update(schema.documents)
         .set({ createdByUserId: userId })
-        .where(eq(schema.documents.createdByUserId, staleId))
-      await tx
+        .where(eq(schema.documents.createdByUserId, staleId)),
+      db
         .update(schema.userProfiles)
         .set({ id: userId, roleSnapshot, adminSource })
-        .where(eq(schema.userProfiles.id, staleId))
-    })
+        .where(eq(schema.userProfiles.id, staleId)),
+    ])
   } catch (error) {
     log.error('user_profiles sync failed', {
       userId,

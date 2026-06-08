@@ -11,10 +11,9 @@ interface MockDb {
   select: ReturnType<typeof vi.fn>
   insert: ReturnType<typeof vi.fn>
   update: ReturnType<typeof vi.fn>
-  transaction: ReturnType<typeof vi.fn>
+  batch: ReturnType<typeof vi.fn>
   insertCalls: Array<{ table: symbol; values: Record<string, unknown> }>
-  topUpdateCalls: CapturedUpdate[]
-  txUpdateCalls: CapturedUpdate[]
+  updateCalls: CapturedUpdate[]
 }
 
 interface MockSchema {
@@ -65,8 +64,7 @@ function chainable(result: unknown): PromiseLike<unknown> {
 function makeDb(selectResults: Array<Array<{ id: string }>>): MockDb {
   let selectIdx = 0
   const insertCalls: MockDb['insertCalls'] = []
-  const topUpdateCalls: CapturedUpdate[] = []
-  const txUpdateCalls: CapturedUpdate[] = []
+  const updateCalls: CapturedUpdate[] = []
 
   const select = vi.fn(() => {
     const result = selectResults[selectIdx++] ?? []
@@ -80,32 +78,30 @@ function makeDb(selectResults: Array<Array<{ id: string }>>): MockDb {
     }),
   }))
 
-  const makeUpdateCaller = (captureBucket: CapturedUpdate[]) =>
-    vi.fn((table: unknown) => ({
-      set: vi.fn((set: Record<string, unknown>) => ({
-        where: vi.fn(() => {
-          captureBucket.push({ table: tableTag(table), set })
-          return Promise.resolve()
-        }),
-      })),
-    }))
+  // D1 has no interactive transaction; the TD-044 migration issues its updates
+  // via `db.batch([...])`. Each update is built eagerly through
+  // `db.update(...).set(...).where(...)` (which records the captured table/set
+  // and resolves to a query thenable), then `db.batch([...])` runs them
+  // atomically. The same-id branch issues a single standalone
+  // `db.update(...)`. Both flow through this one spy, recorded in order.
+  const update = vi.fn((table: unknown) => ({
+    set: vi.fn((set: Record<string, unknown>) => ({
+      where: vi.fn(() => {
+        updateCalls.push({ table: tableTag(table), set })
+        return Promise.resolve()
+      }),
+    })),
+  }))
 
-  const topUpdate = makeUpdateCaller(topUpdateCalls)
-  const txUpdate = makeUpdateCaller(txUpdateCalls)
-
-  const transaction = vi.fn(async (cb: (tx: unknown) => Promise<unknown>) => {
-    const tx = { update: txUpdate }
-    await cb(tx)
-  })
+  const batch = vi.fn((queries: PromiseLike<unknown>[]) => Promise.all(queries))
 
   return {
     select,
     insert,
-    update: topUpdate,
-    transaction,
+    update,
+    batch,
     insertCalls,
-    topUpdateCalls,
-    txUpdateCalls,
+    updateCalls,
   }
 }
 
@@ -149,9 +145,8 @@ describe('syncUserProfile (TD-044 hook synchronizer)', () => {
           },
         },
       ])
-      expect(db.topUpdateCalls).toHaveLength(0)
-      expect(db.txUpdateCalls).toHaveLength(0)
-      expect(db.transaction).not.toHaveBeenCalled()
+      expect(db.updateCalls).toHaveLength(0)
+      expect(db.batch).not.toHaveBeenCalled()
     })
 
     it('Scenario: Existing profile row already matches current user id updates non-id columns only', async () => {
@@ -167,13 +162,13 @@ describe('syncUserProfile (TD-044 hook synchronizer)', () => {
       })
 
       expect(db.insertCalls).toHaveLength(0)
-      expect(db.topUpdateCalls).toEqual([
+      expect(db.updateCalls).toEqual([
         {
           table: schema.userProfiles.id,
           set: { roleSnapshot: 'admin', adminSource: 'allowlist' },
         },
       ])
-      expect(db.transaction).not.toHaveBeenCalled()
+      expect(db.batch).not.toHaveBeenCalled()
     })
 
     it('Scenario: Stale profile row with different id triggers application-level migration', async () => {
@@ -188,12 +183,11 @@ describe('syncUserProfile (TD-044 hook synchronizer)', () => {
         adminSource: 'none',
       })
 
-      expect(db.transaction).toHaveBeenCalledTimes(1)
+      expect(db.batch).toHaveBeenCalledTimes(1)
       expect(db.insertCalls).toHaveLength(0)
-      expect(db.topUpdateCalls).toHaveLength(0)
 
       // children updated before parent; parent's `id` flipped.
-      expect(db.txUpdateCalls).toEqual([
+      expect(db.updateCalls).toEqual([
         {
           table: schema.conversations.userProfileId,
           set: { userProfileId: 'user_new' },
@@ -234,7 +228,7 @@ describe('syncUserProfile (TD-044 hook synchronizer)', () => {
         adminSource: 'none',
       })
 
-      const targetedTables = db.txUpdateCalls.map((call) => call.table)
+      const targetedTables = db.updateCalls.map((call) => call.table)
       expect(targetedTables).toEqual([
         schema.conversations.userProfileId,
         schema.queryLogs.userProfileId,
@@ -242,10 +236,10 @@ describe('syncUserProfile (TD-044 hook synchronizer)', () => {
         schema.documents.createdByUserId,
         schema.userProfiles.id,
       ])
-      for (const call of db.txUpdateCalls.slice(0, 4)) {
+      for (const call of db.updateCalls.slice(0, 4)) {
         expect(Object.values(call.set)).toContain('new')
       }
-      const parentUpdate = db.txUpdateCalls.at(-1)
+      const parentUpdate = db.updateCalls.at(-1)
       expect(parentUpdate?.set.id).toBe('new')
     })
   })

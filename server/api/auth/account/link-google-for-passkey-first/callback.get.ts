@@ -188,17 +188,16 @@ export default defineEventHandler(async function linkGoogleForPasskeyFirstCallba
     const userTable = schema.user as typeof authSchema.user
     const accountTable = schema.account as typeof authSchema.account
 
-    await db.transaction(async (tx) => {
-      await tx
+    await db.batch([
+      db
         .update(userTable)
         .set({
           email: idTokenPayload.email,
           image: idTokenPayload.picture ?? null,
           updatedAt: now,
         })
-        .where(eq(userTable.id, userId))
-
-      await tx.insert(accountTable).values({
+        .where(eq(userTable.id, userId)),
+      db.insert(accountTable).values({
         id: crypto.randomUUID(),
         accountId: googleSubject,
         providerId: 'google',
@@ -209,8 +208,8 @@ export default defineEventHandler(async function linkGoogleForPasskeyFirstCallba
         scope: null,
         createdAt: now,
         updatedAt: now,
-      })
-    })
+      }),
+    ])
   } catch (error) {
     log.error(error as Error, { step: 'persist-google-link' })
     return redirectToLinkGoogleForPasskeyFirstError(event, 'DB_WRITE_FAILED')
