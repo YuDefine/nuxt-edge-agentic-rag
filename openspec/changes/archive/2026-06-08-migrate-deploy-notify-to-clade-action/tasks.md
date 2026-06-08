@@ -17,5 +17,5 @@
 
 ## 4. Live verification
 
-- [ ] 4.1 Trigger a deploy via `workflow_dispatch` with `target=staging` (or wait for the next planned tag/main push); confirm the Discord embed renders with `[Stg]` segment, 5 fields, color matching outcome, zh title strings
-- [ ] 4.2 Mark this change archived once 4.1 succeeds
+- [x] 4.1 Trigger a deploy via `workflow_dispatch` with `target=staging` (or wait for the next planned tag/main push); confirm the Discord embed renders with `[Stg]` segment, 5 fields, color matching outcome, zh title strings — 2026-06-08 run 27135494946 全綠（notify job success via new `discord-deploy-notify` action），user 確認 Discord embed 渲染 OK
+- [x] 4.2 Mark this change archived once 4.1 succeeds

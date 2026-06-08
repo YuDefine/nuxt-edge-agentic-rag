@@ -9,65 +9,60 @@
   - 無 active claim — 接手前 `pnpm spectra:claim -- rag-query-rewriting`
 
 - [ ] **adopt-evlog-nuxthub-ai-t3** (5/39 tasks, 13%)
-  - 早期階段，尚未大量推進
-
-- [ ] **migrate-deploy-notify-to-clade-action** (8/10 tasks, 80%)
-  - 接近完成，剩 2 tasks
+  - 早期階段，尚未大量推進；獨立可平行
 
 ## Blocked / Waiting
-
-- **CI 紅燈 — `ERR_PNPM_OUTDATED_LOCKFILE`**（2026-06-04 run [26934103646](https://github.com/YuDefine/nuxt-edge-agentic-rag/actions/runs/26934103646)）
-  - `pnpm install --frozen-lockfile` fail — `vite-doctor@0.0.1` 在 `package.json` 但 lockfile 未同步
-  - 根因：clade v1.4.135 propagation 在 working tree 加了 `vite-doctor` devDep + `vendor/doctor-shared/`，尚未 commit + push
-  - **修法**：`pnpm install` 更新 lockfile → `/commit` → push → CI 應綠
 
 - **deploy-docs-staging fail — vitepress `dynamic-import-vars`**（2026-05-19 run [26090866330](https://github.com/YuDefine/nuxt-edge-agentic-rag/actions/runs/26090866330)）
   - vitepress build 把 `docs/tech-debt.md` 當含 dynamic import 的 code parse → `Unexpected token`
   - CI 主流程（Format/Lint/Typecheck/Unit tests）皆綠，僅 deploy-docs-staging 卡此
   - 修法選項：(a) 排除 `docs/**` 從 dynamic-import-vars plugin scope；(b) 調整 vite.config.ts
+  - _(未驗證是否仍紅 — 最新 CI runs 未觸發此 workflow)_
 
-- **TD-056 / TD-061 / TD-057 behavior 驗收**
-  - v0.52.1 fix code 已 ship，但 production 低流量無法被動觸發 judge / SSE chat path
-  - 需主動登入 `agentic.yudefine.com.tw` 發 1-2 條 chat 觸發
+- **TD-056 / TD-061 / TD-057 behavior 驗收**（皆 open）
+  - TD-056（high）+ TD-061（high）同 root cause：judge `max_completion_tokens: 200` 截斷 → JSON parse fail → pipeline_error（production 重測批次 28.6%）
+  - TD-057（mid）：evlog wide event lifecycle 警告，`log.error()` 在 emit 後呼叫
+  - **Acceptance dependency**：TD-061 最終驗收依賴 `rag-query-rewriting` staging ramp（fixture 需進 judge gate，retrieval_score ≥0.45 才有 truncation 路徑可驗）
+  - v0.52.1 fix code 已 ship，但 production 低流量無法被動觸發 judge / SSE chat path → 需主動登入 `agentic.yudefine.com.tw` 發 1-2 條 chat 觸發
 
 ## Next Steps
 
-1. **修 CI 紅燈**（最高優先）：`pnpm install` sync lockfile + commit clade v1.4.135 propagation artifacts → push
-2. **主動驗 TD-056/061/057**：production 發 chat → wrangler tail 看 `pipeline_error` 比例 + SSE wide event lifecycle
-3. **rag-query-rewriting 6.3-6.6**：staging deploy → 35 筆 acceptance fixture
-4. **migrate-deploy-notify-to-clade-action**：完成剩餘 2 tasks
-5. **adopt-evlog-nuxthub-ai-t3**：推進 impl（獨立，可平行）
-6. **deploy-docs-staging fix**：排除 `docs/` 從 dynamic-import-vars scope
+1. **主動驗 TD-056/061/057**：production 發 chat → wrangler tail 看 `pipeline_error` 比例 + SSE wide event lifecycle
+2. **rag-query-rewriting 6.3-6.6**：staging deploy → 35 筆 acceptance fixture（同時解 TD-061 acceptance dependency）
+3. **adopt-evlog-nuxthub-ai-t3**：推進 impl（獨立，可平行）
+4. **deploy-docs-staging fix**：排除 `docs/` 從 dynamic-import-vars scope（註：2026-06-08 staging deploy run 27135494946 的 `deploy-docs-staging` job 這次 success，未復現此 blocker — 待確認是否已自然解決）
 
 ## Worktree & Stash Audit
 
-_Updated: 2026-06-05_
+_Updated: 2026-06-08_
 
-### Worktrees (2)
+### Worktrees (0)
 
-- `/private/tmp/ci-fix-wt2` (detached HEAD `e91cf92`) — **unmanaged / prunable** — `git worktree remove /private/tmp/ci-fix-wt2`
-- `/private/tmp/nuxt-edge-agentic-rag-ci-fix` (detached HEAD `04aba38`) — **unmanaged / prunable** — `git worktree remove /private/tmp/nuxt-edge-agentic-rag-ci-fix`
+No linked worktrees.
 
-### Stashes (0)
+### Stashes (1)
 
-No stashes.
+- `stash@{0}` — `rag-query-rewriting tasks.md marker-hygiene WIP`
+  - 內容：`openspec/changes/rag-query-rewriting/tasks.md` 把 7 條人工檢查項加上 `#N [discuss]` marker
+  - 為何 stash：該 change 仍 in-flight（6.3-6.5 staging acceptance 未跑），7 條 `[discuss]` 人工檢查綁 staging evidence 暫勾不了；marker-hygiene 編輯被 `/commit` 0-MR gate（main + impl[x] + 人工檢查[ ]）擋住，holdout 出本次 commit
+  - 收尾：該 change 跑完 staging acceptance、走 `/spectra-archive` Step 2.5 walkthrough 時 `git stash pop` 一起進；或 `git stash drop` 後在 archive 階段重 apply marker
+
+> 旁注：`refs/wt-baseline/*` 有 4 個 dangling rescue ref（`fix-deploy-docs-staging` / `fix-vite-doctor-findings` / `fix-vite-doctor` / `nuxt-bump`），來自已清掉的 worktree。非 worktree / 非 stash，可保留作救援保險絲，要清用 `git update-ref -d <ref>`（此 consumer 未投影 `wt-helper.mjs`，無法走 `wt-helper rescue --prune`）。
 
 ## Review-gui Readiness
 
-_Updated: 2026-06-05 /hub-core:handoff Mode B — scan_
+_Updated: 2026-06-08 /hub-core:handoff Mode B — clade scan_
 
 ### ✅ Ready (0)
 
-_(none — nuxt-edge-agentic-rag 無 review-gui tracked changes in ready state)_
+_(none)_
 
-### ⚠ notReady (3)
+### ⚠ notReady (0)
 
-- `adopt-evlog-nuxthub-ai-t3` | bucket=`applyInProgress` | 5/39 (13%)
-- `migrate-deploy-notify-to-clade-action` | bucket=`applyInProgress` | 8/10 (80%)
-- `rag-query-rewriting` | bucket=`applyInProgress` | 16/34 (47%)
+_(scan returned 0 changes for nuxt-edge-agentic-rag — 3 個 active change 皆早期階段，尚無 review-gui manual-review tracked state；以 In Progress 段的 tasks 進度為準)_
 
 ## Notes
 
-- Working tree 有 clade v1.4.135 propagation 未 commit 改動（`.agents/skills/*`、`.clade/`、`.codex/`、`vendor/doctor-shared/`、`package.json`、`pnpm-lock.yaml` 等）
+- Working tree 乾淨；main 與 origin/main 同步；最新版本 **v0.56.4**
+- CI 紅燈 `ERR_PNPM_OUTDATED_LOCKFILE` 已解決（`vite-doctor` 已在 lockfile，2026-06-05 CI + Deploy run 皆 success）
 - `tasks/todo.md` 是已完成的 demo seed audit（all `[x]`），違反 session-tasks per-session 分檔規約，可直接刪除
-- 最新版本 v0.56.1，main 已與 origin/main 同步

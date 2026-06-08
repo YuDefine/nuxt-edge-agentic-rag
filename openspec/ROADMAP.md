@@ -63,9 +63,9 @@ _(目前無 parked change — 2026-04-26 兩個 parked change 全 unpark + 實�
 
 ## Active Changes
 
-_last synced: 2026-06-05T05:45:21.793Z_
+_last synced: 2026-06-08T12:00:41.758Z_
 
-3 active changes (0 ready · 3 in progress · 0 draft · 0 blocked)
+2 active changes (0 ready · 2 in progress · 0 draft · 0 blocked)
 
 ### Ready to apply
 
@@ -74,7 +74,6 @@ _(none)_
 ### In progress
 
 - **adopt-evlog-nuxthub-ai-t3** — 5/39 tasks (13%)
-- **migrate-deploy-notify-to-clade-action** — 8/10 tasks (80%)
 - **rag-query-rewriting** — 16/34 tasks (47%)
   - Specs: `workers-ai-grounded-answering`
 
@@ -110,7 +109,6 @@ _No active claims._
 ### Independent (can run in parallel)
 
 - `adopt-evlog-nuxthub-ai-t3`
-- `migrate-deploy-notify-to-clade-action`
 - `rag-query-rewriting`
 
 ### Mutex (same spec touched)
