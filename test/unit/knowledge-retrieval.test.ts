@@ -68,12 +68,9 @@ describe('knowledge retrieval', () => {
 
     expect(search).toHaveBeenCalledWith({
       filters: {
-        filters: [
-          { key: 'status', type: 'eq', value: 'active' },
-          { key: 'version_state', type: 'eq', value: 'current' },
-          { key: 'access_level', type: 'eq', value: 'internal' },
-        ],
-        type: 'and',
+        status: 'active',
+        version_state: 'current',
+        access_level: 'internal',
       },
       max_num_results: 8,
       query: 'frequently asked questions for 2026-04-16',

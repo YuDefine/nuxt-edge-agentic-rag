@@ -183,19 +183,13 @@ describe('acceptance admin web vs mcp scope isolation (TC-14)', () => {
 
     // 契約 #2：Web AI Search filter 允許 internal + restricted（不再帶單一 access_level=eq）
     expect(webAi.calls).toHaveLength(1)
-    const webFilters = webAi.calls[0]?.request.filters as {
-      filters: Array<{ key: string; type: string; value: unknown }>
-      type: string
-    }
+    const webFilters = webAi.calls[0]?.request.filters as Record<string, string>
 
     expect(webFilters).toMatchObject({
-      filters: expect.arrayContaining([
-        { key: 'status', type: 'eq', value: 'active' },
-        { key: 'version_state', type: 'eq', value: 'current' },
-      ]),
-      type: 'and',
+      status: 'active',
+      version_state: 'current',
     })
-    expect(webFilters.filters.some((filter) => filter.key === 'access_level')).toBe(false)
+    expect(webFilters).not.toHaveProperty('access_level')
 
     // 契約 #3：Web 寫入 citation_records，包含 restricted documentVersionId + chunkText
     const webCitationInserts = webD1.calls.filter((call) =>
@@ -244,14 +238,9 @@ describe('acceptance admin web vs mcp scope isolation (TC-14)', () => {
 
     // 契約 #6：MCP AI Search filter 明確帶 access_level='internal'
     expect(mcpAi.calls).toHaveLength(1)
-    const mcpFilters = mcpAi.calls[0]?.request.filters as {
-      filters: Array<{ key: string; type: string; value: unknown }>
-      type: string
-    }
+    const mcpFilters = mcpAi.calls[0]?.request.filters as Record<string, string>
 
-    expect(mcpFilters.filters).toEqual(
-      expect.arrayContaining([{ key: 'access_level', type: 'eq', value: 'internal' }]),
-    )
+    expect(mcpFilters).toMatchObject({ access_level: 'internal' })
 
     // 契約 #7：MCP 不得寫任何 citation_records
     const mcpCitationInserts = mcpD1.calls.filter((call) =>

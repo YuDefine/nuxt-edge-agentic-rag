@@ -169,11 +169,8 @@ describe('acceptance current-version-only enforcement', () => {
         indexName: 'knowledge-index',
         request: {
           filters: expect.objectContaining({
-            filters: expect.arrayContaining([
-              { key: 'status', type: 'eq', value: 'active' },
-              { key: 'version_state', type: 'eq', value: 'current' },
-            ]),
-            type: 'and',
+            status: 'active',
+            version_state: 'current',
           }),
           query: fixture.prompt,
         },
