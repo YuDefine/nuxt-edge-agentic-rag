@@ -40,7 +40,7 @@ const schemaFake = {
   },
   memberRoleChanges: { __tbl: 'member_role_changes' },
   // fix-user-profile-id-drift (TD-044) `syncUserProfile` migrate path 走到時，
-  // `tx.update(schema.X).set(...).where(eq(schema.X.userProfileId, staleId))`
+  // `db.batch([db.update(schema.X).set(...).where(eq(schema.X.userProfileId, staleId)), ...])`
   // 會 access 這四張 child table 上的 column descriptor。本 spec 的 fixture 不
   // 主動觸發 migrate path（id 相同），但保險起見補完整 stub 避免日後 fixture
   // 漂移時撞 `Cannot read properties of undefined (reading 'userProfileId')`。
@@ -135,9 +135,11 @@ function buildHubDb() {
           }),
         }),
       }),
-      transaction: async (callback: (tx: unknown) => Promise<unknown>) => {
-        await callback(buildHubDb().db)
-      },
+      // D1 has no interactive transaction; the link flow runs its
+      // update+insert via `db.batch([...])`. Each query is built eagerly
+      // (firing the hubDbUpdate / hubDbInsertProfile mocks at build time and
+      // resolving to a thenable), then `db.batch([...])` awaits them.
+      batch: async (queries: PromiseLike<unknown>[]) => Promise.all(queries),
       update: (table: { __tbl?: string }) => ({
         set: (patch: Record<string, unknown>) => ({
           where: async (condition?: { left?: { __col?: string }; right?: unknown }) => {
