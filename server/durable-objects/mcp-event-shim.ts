@@ -38,6 +38,7 @@ const SAFE_GLOBAL_ENV_KEYS = [
   'DB',
   'KV',
   'AI',
+  'AI_SEARCH',
   'BLOB',
   'CLOUDFLARE_ACCOUNT_ID',
   'NUXT_MCP_AUTH_SIGNING_KEY',
