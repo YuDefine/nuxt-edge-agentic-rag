@@ -69,7 +69,7 @@
 | TD-066 | `retrieveVerifiedEvidence` 用 `=== 'success'` 比對 `RewriterStatus`，違反專案 `switch + assertNever` exhaustiveness rule；新增 enum 值時不會 compiler error                                                                                                   | low      | open        | 2026-04-26 `/commit` 0-A code-review                             | —     |
 | TD-067 | `test/tsconfig.json` baseline 191 errors（component module not found + fixture type drift + Nitro route key excessive depth + `allowImportingTsExtensions` 缺 + middleware signature 漂移）                                                                   | mid      | open        | 2026-05-04 clade v0.3.10 cutover pre-push test-typecheck 揭露    | —     |
 | TD-070 | `rag-query-rewriting` 人工檢查對齊新 manual-review 規範（補 `[discuss]` marker + verify channel + Pre-Review Data Readiness）                                                                                                                                 | mid      | open        | 2026-05-12 clade v1.3.6 manual-review.md 新規散播                | —     |
-| TD-071 | AutoRAG → AI Search API migration：staging verified（retrieval_score=0.51, AI Search binding 正常）；production pending authorization/deploy                                                                                                                      | critical | in-progress | 2026-06-09 rag-query-rewriting acceptance blocked                | —     |
+| TD-071 | AutoRAG → AI Search API migration：production deployed v0.57.1（2026-06-09）                                                                                                                                                                                        | critical | done        | 2026-06-09 rag-query-rewriting acceptance blocked                | —     |
 
 ---
 
@@ -2635,8 +2635,9 @@ User 決定本次 session **登記不處理**（2026-05-12 對話中明示「age
 
 ## TD-071 — AutoRAG → AI Search API migration
 
-**Status**: in-progress
+**Status**: done
 **Priority**: critical
+**Resolved**: 2026-06-09 — v0.57.1 production deploy 成功（CI run 27185472621 全綠；staging gate + production deploy + smoke test 通過）
 **Discovered**: 2026-06-09 — `rag-query-rewriting` staging acceptance run 全掛（evlog: `AutoRAGInternalError: vectorize_filter_not_serializable` → fix filter shape → `Invalid input`）
 **Location**: `server/utils/ai-search.ts`（binding + request shape）、`server/utils/knowledge-retrieval.ts`（filter construction）
 **Related markers**: search `@followup[TD-071]` in repo
@@ -2664,7 +2665,7 @@ Cloudflare 已將 AutoRAG 遷移至 AI Search。舊版 `env.AI.autorag(indexName
 4. [x] 改 wrangler/deploy/render config：production/staging 同時保留 `AI` 與 `AI_SEARCH`
 5. [x] 改 unit/integration/acceptance fakes（mock AutoRAG binding → mock AI Search namespace binding）
 6. [x] staging redeploy + 驗證 chat 200 + retrieval_score 有值（2026-06-09 deploy Version `8a518f2b`；D1 evidence: `retrieval_score=0.51`）
-7. [ ] 解鎖 `rag-query-rewriting` 6.3-6.6 acceptance（待 production deploy 授權）
+7. [x] production deploy v0.57.1（2026-06-09 CI run 27185472621；staging gate + deploy-production + smoke-test 全綠）
 
 ### Current evidence
 
@@ -2676,7 +2677,7 @@ Cloudflare 已將 AutoRAG 遷移至 AI Search。舊版 `env.AI.autorag(indexName
 - **Staging deploy (2026-06-09)**: Version `8a518f2b-3146-4e60-8756-b51b28819b81`；`env.AI_SEARCH (inherited) AI Search Namespace` confirmed
 - **Staging D1 evidence**: query_log `2508e06c` at `2026-06-08T20:25:38Z` → `decision_path=judge_pass_refuse`、`retrieval_score=0.51`（AI Search 成功回傳 score）
 - **MCP SSE acceptance**: 4/5 pass（initialize / notifications / tools/list / SSE channel ✅；askKnowledge fail 根因是 `rewriter_status=fallback_error`，屬 rag-query-rewriting scope）
-- Production runtime evidence: **staging verified; production pending authorization/deploy**
+- **Production deploy (2026-06-09)**: v0.57.1 tag push 觸發 deploy workflow run 27185472621；verify-ci-gate ✅ → verify-staging-gate ✅ → deploy-production ✅ → smoke-test ✅ → notify ✅。`curl https://agentic.yudefine.com.tw` HTTP 200
 
 ### Acceptance
 
