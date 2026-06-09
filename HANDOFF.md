@@ -117,6 +117,13 @@ No linked worktrees.
   - Deferred at: 2026-06-09T04:35:00Z
 <!-- deferred-end:autorag-to-ai-search-migration:#3 -->
 
+<!-- deferred-begin:rag-query-rewriting:#2 -->
+- **rag-query-rewriting** #2 — Latency p95 增量 < 800ms
+  - Awaiting signal: staging app endpoint p95 實測（REST search total 不適用，rewriter call ~749ms 為 proxy）
+  - Resume: `/spectra-archive rag-query-rewriting`
+  - Deferred at: 2026-06-09T11:05:33Z
+<!-- deferred-end:rag-query-rewriting:#2 -->
+
 ## Notes
 
 - v0.56.7 已 deploy（CI 綠燈，run 27159609379）：移除 AutoRAG pre-search metadata filter

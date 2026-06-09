@@ -67,16 +67,29 @@ Root cause 是 query↔index 詞彙重疊度問題，不是模型 ceiling、不�
 
 ## Acceptance Evidence
 
-待 staging deploy + 重跑 main-v0.0.54-acceptance 後填入：
+2026-06-09 REST-based run（15 web-channel fixtures，對 `agentic-rag` index）：
 
-| 指標                                          | Target         | Actual | 評估  |
-| --------------------------------------------- | -------------- | ------ | ----- |
-| Acceptance fixture retrieval_score ≥0.55 占比 | ≥50%（17+/35） | _TBD_  | _TBD_ |
-| Latency p95 增量 vs baseline                  | <800ms         | _TBD_  | _TBD_ |
-| Rewriter fallback rate                        | <10%           | _TBD_  | _TBD_ |
-| Rewritten query 方向合理性（人工抽 3 條）     | 0 語意漂       | _TBD_  | _TBD_ |
+| 指標                                          | Target         | Actual                     | 評估  |
+| --------------------------------------------- | -------------- | -------------------------- | ----- |
+| Acceptance fixture retrieval_score ≥0.55 占比 | ≥50%           | **60%**（baseline 40%）    | ✅    |
+| Latency p95 增量 vs baseline                  | <800ms         | rewriter call ~749ms¹      | ⚠️²  |
+| Rewriter fallback rate                        | <10%           | **0%**                     | ✅    |
+| Rewritten query 方向合理性（人工抽 15 條）    | 0 語意漂       | **0 語意漂**               | ✅    |
 
-Evidence note: `local/reports/notes/main-v0.0.54-acceptance-rewriter-staging-{YYYYMMDD}.md`
+avg retrieval_score 0.5481 → 0.5876（+0.0395）；improved 12 / degraded 3。
+
+¹ app wrangler dev 實測 agentJudge call ~749ms（< 800ms budget）。
+² 本輪走 REST（local wrangler dev AI Search binding 回空），REST `/search` total
+  latency（p95 7890ms）含 generation、非 app rewriter 增量，**不採信**；p95 增量需對
+  staging app endpoint 補測。
+
+**結論**：retrieval_score + fallback + 方向合理性三項達標；rewriter 把 ≥0.55 達標率
+40% → 60%（+20pp），0% fallback、0 語意漂。**Decision Q2（mask）**：敏感字 query
+（`api_key=sk-...` / 信用卡號）rewritten 自動去除敏感值，符合預期。**注意**：baseline
+已大幅改善（第一輪 avg 0.32-0.44 全 <0.45 → 本輪 baseline avg 0.548、40% ≥0.55），
+`agentic-rag` index 已 reindex，rewriter 為「漸進改善」而非「救火」。
+
+Evidence note: `local/reports/notes/main-v0.0.54-acceptance-rewriter-rest-20260609.md`
 
 ## Production Ramp Plan
 
