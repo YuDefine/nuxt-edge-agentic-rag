@@ -28,6 +28,10 @@ export const documentIdParamSchema = z.object({
   id: z.string().uuid(),
 })
 
+export const documentIdOrSlugParamSchema = z.object({
+  id: z.string().min(1),
+})
+
 const versionScopedParamSchema = z.object({
   id: z.string().uuid(),
   versionId: z.string().uuid(),
