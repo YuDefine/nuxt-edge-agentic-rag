@@ -14,6 +14,8 @@
     auth: true,
   })
 
+  useSeoMeta({ title: '帳號審核中' })
+
   const { signOut, user } = useUserSession()
 
   // TODO: surface a configurable support email via runtime config; for

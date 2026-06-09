@@ -10,6 +10,8 @@
     middleware: ['admin'],
   })
 
+  useSeoMeta({ title: '延遲分析' })
+
   import type { OutcomeBreakdown } from '~~/shared/types/observability'
 
   interface LatencyBucket {

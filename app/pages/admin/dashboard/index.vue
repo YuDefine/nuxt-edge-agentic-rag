@@ -15,6 +15,8 @@
     middleware: ['admin'],
   })
 
+  useSeoMeta({ title: '儀表板' })
+
   interface SummaryCards {
     documentsTotal: number
     queriesLast30Days: number

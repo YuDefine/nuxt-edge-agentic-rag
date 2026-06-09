@@ -3,6 +3,8 @@
 
   definePageMeta({ layout: 'auth', auth: false })
 
+  useSeoMeta({ title: '登入中...' })
+
   const route = useRoute()
   const { fetchSession } = useUserSession()
   const error = shallowRef<string | null>(null)

@@ -10,6 +10,8 @@
     layout: 'auth',
   })
 
+  useSeoMeta({ title: '登入' })
+
   const route = useRoute()
   const { fetchSession, signIn } = useUserSession()
   const { parseAuthError } = useAuthError()

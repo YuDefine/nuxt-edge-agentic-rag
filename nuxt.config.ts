@@ -180,6 +180,7 @@ export default defineNuxtConfig({
     head: {
       htmlAttrs: { lang: 'zh-TW' },
       title: '知識問答系統',
+      titleTemplate: '%s — 知識問答系統',
     },
   },
 

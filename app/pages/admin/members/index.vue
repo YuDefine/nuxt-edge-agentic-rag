@@ -19,6 +19,8 @@
     middleware: ['admin'],
   })
 
+  useSeoMeta({ title: '成員管理' })
+
   interface ListResponse {
     data: AdminMemberRow[]
     pagination: { page: number; pageSize: number; total: number }

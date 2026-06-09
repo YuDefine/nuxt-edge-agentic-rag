@@ -19,6 +19,8 @@
     middleware: ['admin'],
   })
 
+  useSeoMeta({ title: '查詢紀錄' })
+
   interface QueryLogRow {
     channel: string
     configSnapshotVersion: string

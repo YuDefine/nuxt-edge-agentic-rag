@@ -12,6 +12,8 @@
     middleware: ['admin'],
   })
 
+  useSeoMeta({ title: '上傳文件' })
+
   const router = useRouter()
   const route = useRoute()
 

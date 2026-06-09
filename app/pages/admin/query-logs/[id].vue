@@ -14,6 +14,8 @@
     middleware: ['admin'],
   })
 
+  useSeoMeta({ title: '查詢紀錄詳情' })
+
   interface QueryLogDetail {
     allowedAccessLevels: string[]
     channel: string

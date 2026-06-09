@@ -16,6 +16,8 @@
     layout: 'chat',
   })
 
+  useSeoMeta({ title: '聊天' })
+
   const { user } = useUserSession()
   const { $csrfFetch } = useNuxtApp() as unknown as {
     $csrfFetch: typeof $fetch

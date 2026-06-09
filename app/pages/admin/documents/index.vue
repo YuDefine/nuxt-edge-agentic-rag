@@ -9,6 +9,8 @@
     middleware: ['admin'],
   })
 
+  useSeoMeta({ title: '文件管理' })
+
   const router = useRouter()
 
   const { data, status, error, refresh } = await useFetch<{ data: DocumentWithCurrentVersion[] }>(
