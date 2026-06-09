@@ -1,6 +1,6 @@
 {
   "cladeRoot": "/Users/charles/offline/clade",
-  "syncedAt": "2026-06-09T15:48:53.848Z",
+  "syncedAt": "2026-06-09T19:35:37.013Z",
   "checksums": {
     "rules/agent-routing.codex-watch-protocol.md": "9bebc58423ced374",
     "rules/agent-routing.md": "fb6fbcc53c6b9492",
@@ -30,7 +30,7 @@
     "rules/manual-review.discuss.md": "c61929a91c87a353",
     "rules/manual-review.evidence.md": "906c21f51573b14d",
     "rules/manual-review.md": "25e62b23eac59850",
-    "rules/nuxt-dev-watch.md": "c1ec2a62160964fa",
+    "rules/nuxt-dev-watch.md": "7598991e63af768a",
     "rules/output-hygiene.md": "ccba6f377e8a2a0c",
     "rules/proactive-skills.design-checkpoint.md": "6d6f239fb7cb5e0e",
     "rules/proactive-skills.ingest-triggers.md": "41ae386c446531a5",
@@ -71,6 +71,7 @@
     "rules/nuxt-ui-conventions.md": "379a560a2ff1735a",
     "rules/nuxt-ui-mcp.md": "e722f603e8db3c18",
     "rules/nuxt-ui-native-picker-ban.md": "ad6849da93998a4c",
+    "rules/page-loading-golden-path.md": "8767167c0467c839",
     "scripts/codex-review-safe.sh": "02b730f9dbd504a3",
     "scripts/commit-lock.mjs": "f81c79df484ce5db",
     "skills/commit/SKILL.md": "f307c86ddfe85e01",
@@ -96,7 +97,7 @@
     "agents/screenshot-review.md": "886090feb87d93f1"
   },
   "bootstrap": {
-    "at": "2026-06-09T15:48:54.596Z",
+    "at": "2026-06-09T19:35:37.414Z",
     "version": "1.4.156",
     "modules": {
       "auth": "better-auth",

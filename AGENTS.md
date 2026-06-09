@@ -100,6 +100,7 @@ Changes can be parked（暫存）— temporarily moved out of `openspec/changes/
 - `.claude/rules/nuxt-ui-mcp.md`
 - `.claude/rules/nuxt-ui-native-picker-ban.md`
 - `.claude/rules/output-hygiene.md`
+- `.claude/rules/page-loading-golden-path.md`
 - `.claude/rules/proactive-skills.design-checkpoint.md`
 - `.claude/rules/proactive-skills.ingest-triggers.md`
 - `.claude/rules/proactive-skills.md`
