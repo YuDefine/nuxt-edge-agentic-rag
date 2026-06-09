@@ -64,7 +64,7 @@ _(目前無 parked change — 2026-04-26 兩個 parked change 全 unpark + 實�
 
 ## Active Changes
 
-_last synced: 2026-06-09T11:13:31.792Z_
+_last synced: 2026-06-09T22:40:05.499Z_
 
 1 active change (0 ready · 1 in progress · 0 draft · 0 blocked)
 
