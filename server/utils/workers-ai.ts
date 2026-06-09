@@ -102,6 +102,19 @@ export function createWorkersAiAnswerAdapter(input: {
       temperature: 0.1,
     })
 
+    // eslint-disable-next-line no-console -- debug: trace empty answer root cause
+    console.log(
+      '[answer-debug]',
+      'model:',
+      model,
+      'stream:',
+      !!inputShape.onTextDelta,
+      'responseType:',
+      typeof response,
+      'isReadable:',
+      typeof response === 'object' && response !== null && 'getReader' in response,
+    )
+
     const { text, usage } = inputShape.onTextDelta
       ? await readStreamedTextResponse(response, {
           onTextDelta: inputShape.onTextDelta,
@@ -111,6 +124,20 @@ export function createWorkersAiAnswerAdapter(input: {
           text: readTextResponse(response),
           usage: readUsageSnapshot(response),
         }
+
+    // eslint-disable-next-line no-console -- debug: trace empty answer
+    if (!text)
+      console.error(
+        '[answer-empty]',
+        'model:',
+        model,
+        'text:',
+        JSON.stringify(text),
+        'response keys:',
+        typeof response === 'object' && response !== null
+          ? Object.keys(response as object).join(',')
+          : 'N/A',
+      )
 
     input.onUsage?.({
       latencyMs: Date.now() - startedAt,
