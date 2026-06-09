@@ -121,14 +121,20 @@ export function createDocumentListStore() {
       }))
     },
 
-    async findDocumentIdBySlug(slug: string): Promise<string | null> {
+    async findDocumentIdBySlugOrId(slugOrId: string): Promise<string | null> {
       const { db, schema } = await import('hub:db')
-      const [row] = await db
+      const [bySlug] = await db
         .select({ id: schema.documents.id })
         .from(schema.documents)
-        .where(eq(schema.documents.slug, slug))
+        .where(eq(schema.documents.slug, slugOrId))
         .limit(1)
-      return row?.id ?? null
+      if (bySlug) return bySlug.id
+      const [byId] = await db
+        .select({ id: schema.documents.id })
+        .from(schema.documents)
+        .where(eq(schema.documents.id, slugOrId))
+        .limit(1)
+      return byId?.id ?? null
     },
 
     async getDocumentWithVersions(documentId: string): Promise<DocumentWithAllVersions | null> {

@@ -14,7 +14,7 @@ export default defineEventHandler(async function getAdminDocumentHandler(event) 
 
   let documentId = params.id
   if (!UUID_PREFIX_RE.test(documentId)) {
-    const resolved = await store.findDocumentIdBySlug(documentId)
+    const resolved = await store.findDocumentIdBySlugOrId(documentId)
     if (!resolved) {
       throw createError({
         statusCode: 404,
