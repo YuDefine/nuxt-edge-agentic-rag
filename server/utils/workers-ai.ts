@@ -104,7 +104,7 @@ export function createWorkersAiAnswerAdapter(input: {
     // the complete answer to SSE consumers via a single `onTextDelta` emit
     // (no token-by-token typing effect, but a correct answer).
     const response = await input.binding.run(model, {
-      max_completion_tokens: 400,
+      max_completion_tokens: 2048,
       messages: [
         {
           content:
