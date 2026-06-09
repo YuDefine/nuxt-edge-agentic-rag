@@ -133,6 +133,8 @@ jobs:
         env:
           ADMIN_EMAIL_ALLOWLIST: ${{ secrets.PROD_ADMIN_EMAIL_ALLOWLIST }}
           BETTER_AUTH_SECRET: ${{ secrets.PROD_BETTER_AUTH_SECRET || 'build-only-prod-better-auth-secret-32chars' }}
+          NUXT_OAUTH_GOOGLE_CLIENT_ID: ${{ secrets.PROD_OAUTH_GOOGLE_CLIENT_ID }}
+          NUXT_OAUTH_GOOGLE_CLIENT_SECRET: ${{ secrets.PROD_OAUTH_GOOGLE_CLIENT_SECRET }}
           NODE_OPTIONS: --max-old-space-size=4096
           # `nuxt.config.ts` reads these at build time for both the public
           # passkey UI gate and the server auth plugin registration. If they
@@ -230,6 +232,8 @@ jobs:
         env:
           ADMIN_EMAIL_ALLOWLIST: ${{ secrets.STAGING_ADMIN_EMAIL_ALLOWLIST }}
           BETTER_AUTH_SECRET: ${{ secrets.STAGING_BETTER_AUTH_SECRET || 'build-only-staging-better-auth-secret-32chars' }}
+          NUXT_OAUTH_GOOGLE_CLIENT_ID: ${{ secrets.STAGING_OAUTH_GOOGLE_CLIENT_ID }}
+          NUXT_OAUTH_GOOGLE_CLIENT_SECRET: ${{ secrets.STAGING_OAUTH_GOOGLE_CLIENT_SECRET }}
           NODE_OPTIONS: --max-old-space-size=4096
           # Keep staging's compiled config aligned with `wrangler.staging.jsonc`
           # so passkey routes and UI flags do not drift from runtime intent.
