@@ -1,12 +1,12 @@
 {
   "cladeRoot": "/Users/charles/offline/clade",
-  "syncedAt": "2026-06-08T20:13:39.011Z",
+  "syncedAt": "2026-06-09T05:50:43.424Z",
   "checksums": {
     "rules/agent-routing.codex-watch-protocol.md": "9bebc58423ced374",
     "rules/agent-routing.md": "fb6fbcc53c6b9492",
     "rules/agent-self-verification.md": "f690b6b0d1f1df4d",
     "rules/audit-pattern.md": "706d3ba1ac21f49f",
-    "rules/cloudflare-workers.md": "307318850b41f6a1",
+    "rules/cloudflare-workers.md": "13947aa460173e17",
     "rules/code-style.md": "cbd2b44c0098870f",
     "rules/commit.md": "0759521a2022c700",
     "rules/consumer-meta.md": "a22f6b93ba6c5ed3",
