@@ -263,6 +263,7 @@ describe('web chat persistence — refusal message rows', () => {
     expect(JSON.parse(assistantRows[0]!.citationsJson!)).toEqual([
       {
         citationId: expect.any(String),
+        documentTitle: 'ERP Fields',
         documentVersionId: 'ver-z',
         sourceChunkId: expect.any(String),
       },
