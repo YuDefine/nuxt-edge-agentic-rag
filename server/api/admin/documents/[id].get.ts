@@ -1,16 +1,12 @@
 import { useLogger } from 'evlog'
-import { z } from 'zod'
+import { documentIdParamSchema } from '#shared/schemas/admin-documents'
 import { createDocumentListStore } from '#server/utils/document-list-store'
-
-const paramsSchema = z.object({
-  id: z.string().uuid(),
-})
 
 export default defineEventHandler(async function getAdminDocumentHandler(event) {
   const log = useLogger(event)
   await requireRuntimeAdminSession(event)
 
-  const params = await getValidatedRouterParams(event, paramsSchema.parse)
+  const params = await getValidatedRouterParams(event, documentIdParamSchema.parse)
 
   const store = createDocumentListStore()
 

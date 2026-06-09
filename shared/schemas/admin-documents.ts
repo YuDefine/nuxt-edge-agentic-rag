@@ -24,7 +24,7 @@ export const RETRY_SYNC_REJECT_REASON_VALUES = [
 
 export type RetrySyncRejectReason = (typeof RETRY_SYNC_REJECT_REASON_VALUES)[number]
 
-const documentIdParamSchema = z.object({
+export const documentIdParamSchema = z.object({
   id: z.string().uuid(),
 })
 
