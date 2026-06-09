@@ -16,7 +16,11 @@
   }>()
 
   // 示例問題，讓使用者快速開始
-  const suggestionQueries = ['公司請假流程是什麼？', '如何申請報帳？', '專案管理的最佳實踐有哪些？']
+  const suggestionQueries = [
+    'PO 和 PR 有什麼差別？',
+    '公司請假流程是什麼？',
+    '新人入職第一天要做什麼？',
+  ]
 
   function getMessageRoleConfig(role: MessageRole): {
     alignment: 'left' | 'right'
