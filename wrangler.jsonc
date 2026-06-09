@@ -14,7 +14,7 @@
     "NUXT_PASSKEY_RP_NAME": "知識問答系統",
     "NUXT_KNOWLEDGE_THRESHOLD_DIRECT_ANSWER_MIN": "0.5",
     "NUXT_KNOWLEDGE_AI_GATEWAY_ID": "agentic-rag-production",
-    "NUXT_KNOWLEDGE_AI_GATEWAY_CACHE_ENABLED": "true",
+    "NUXT_KNOWLEDGE_AI_GATEWAY_CACHE_ENABLED": "false",
     // workers-ai-grounded-answering §S-FF (change rag-query-rewriting)
     // Production keeps the rewriter disabled until acceptance evidence
     // demonstrates ≥50% fixture retrieval_score ≥0.55 + p95 latency
