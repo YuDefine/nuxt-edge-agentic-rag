@@ -260,6 +260,12 @@ describe('web chat persistence — refusal message rows', () => {
       refusalReason: null,
     })
     expect(assistantRows[0]?.citationsJson).toBeDefined()
-    expect(JSON.parse(assistantRows[0]!.citationsJson!)).toEqual([{ documentVersionId: 'ver-z' }])
+    expect(JSON.parse(assistantRows[0]!.citationsJson!)).toEqual([
+      {
+        citationId: expect.any(String),
+        documentVersionId: 'ver-z',
+        sourceChunkId: expect.any(String),
+      },
+    ])
   })
 })
