@@ -101,8 +101,8 @@ describe('AdminUsageTimelineChart', () => {
 
     expect(chartProps.data).toEqual(expectedChartData.data)
     expect(chartProps.categories).toEqual(USAGE_TIMELINE_CATEGORIES)
-    expect(chartProps.xFormatter(0)).toBe('08:00')
-    expect(chartProps.xFormatter(1)).toBe('09:00')
+    expect(chartProps.xFormatter(0)).toBe('4/24 16:00')
+    expect(chartProps.xFormatter(1)).toBe('4/24 17:00')
   })
 
   it('keeps the existing empty copy when there are no timeline buckets', async () => {

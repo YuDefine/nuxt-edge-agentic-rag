@@ -43,18 +43,26 @@ export const OUTCOME_CHART_CATEGORIES = {
   },
 } as const satisfies Record<OutcomeCategoryKey, { color: string; name: string }>
 
+// Asia/Taipei UTC+8（台灣無 DST，硬編安全）；與 server/utils/usage-analytics.ts 同義
+const TAIPEI_UTC_OFFSET_MS = 8 * 60 * 60 * 1000
+
 export function formatUsageTimelineLabel(iso: string, range: UsageRange): string {
   const date = new Date(iso)
   if (Number.isNaN(date.getTime())) {
     return '—'
   }
 
+  const taipei = new Date(date.getTime() + TAIPEI_UTC_OFFSET_MS)
+  const M = taipei.getUTCMonth() + 1
+  const d = taipei.getUTCDate()
+  const HH = taipei.getUTCHours().toString().padStart(2, '0')
+
   switch (range) {
     case 'today':
-      return `${date.getUTCHours().toString().padStart(2, '0')}:00`
+      return `${M}/${d} ${HH}:00`
     case '7d':
     case '30d':
-      return `${date.getUTCMonth() + 1}/${date.getUTCDate()}`
+      return `${M}/${d}`
     default:
       return assertNever(range, 'formatUsageTimelineLabel')
   }

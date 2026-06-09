@@ -10,7 +10,7 @@ import {
 
 describe('formatUsageTimelineLabel', () => {
   it.each<[UsageRange, string, string]>([
-    ['today', '2026-04-24T08:00:00.000Z', '08:00'],
+    ['today', '2026-04-24T08:00:00.000Z', '4/24 16:00'],
     ['7d', '2026-04-24T00:00:00.000Z', '4/24'],
     ['30d', '2026-04-24T00:00:00.000Z', '4/24'],
   ])('formats %s buckets using the spec example label style', (range, iso, expectedLabel) => {
@@ -61,14 +61,14 @@ describe('buildUsageTimelineChartData', () => {
       data: [
         {
           cacheHits: 4,
-          label: '08:00',
+          label: '4/24 16:00',
           requests: 12,
           timestamp: '2026-04-24T08:00:00.000Z',
           tokens: 1200,
         },
         {
           cacheHits: 3,
-          label: '09:00',
+          label: '4/24 17:00',
           requests: 9,
           timestamp: '2026-04-24T09:00:00.000Z',
           tokens: 840,
