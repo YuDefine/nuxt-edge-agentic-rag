@@ -2,8 +2,7 @@
   import { zh_tw } from '@nuxt/ui/locale'
 
   useSeoMeta({
-    title: 'nuxt-edge-agentic-rag',
-    description: 'nuxt-edge-agentic-rag',
+    description: '知識問答系統 — AI 驅動的文件檢索與問答平台',
   })
 </script>
 

@@ -6,6 +6,8 @@
     layout: 'auth',
   })
 
+  useSeoMeta({ title: 'MCP 授權' })
+
   const route = useRoute()
   const runtimeConfig = useRuntimeConfig()
   const { loggedIn, signIn, fetchSession, user } = useUserSession()

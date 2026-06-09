@@ -14,6 +14,8 @@
     middleware: ['admin'],
   })
 
+  useSeoMeta({ title: '文件詳情' })
+
   const route = useRoute()
   const router = useRouter()
   const documentId = computed(() => route.params.id as string)

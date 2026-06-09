@@ -15,6 +15,8 @@
     middleware: ['admin'],
   })
 
+  useSeoMeta({ title: 'Debug 查詢紀錄' })
+
   interface DebugQueryLogDetail {
     id: string
     channel: string

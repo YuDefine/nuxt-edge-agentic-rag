@@ -16,6 +16,8 @@
     middleware: ['admin'],
   })
 
+  useSeoMeta({ title: 'MCP Token 管理' })
+
   interface TokenRow {
     createdAt: string
     expiresAt: string | null

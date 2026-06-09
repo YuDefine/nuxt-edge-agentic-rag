@@ -28,6 +28,8 @@
     auth: true,
   })
 
+  useSeoMeta({ title: '帳號設定' })
+
   interface CredentialsResponse {
     data: {
       email: string | null

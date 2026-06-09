@@ -17,6 +17,8 @@
     middleware: ['admin'],
   })
 
+  useSeoMeta({ title: '用量統計' })
+
   const range = ref<UsageRange>('today')
 
   const { data, state, asyncStatus, error, refetch } = useQuery({

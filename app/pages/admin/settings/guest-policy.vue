@@ -15,6 +15,8 @@
     middleware: ['admin'],
   })
 
+  useSeoMeta({ title: '訪客政策' })
+
   interface PolicyResponse {
     data: { value: GuestPolicy }
   }
