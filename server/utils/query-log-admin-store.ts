@@ -25,6 +25,7 @@ export interface AdminQueryLogRow {
   createdAt: string
   environment: string
   id: string
+  memberDisplayName: string | null
   queryRedactedText: string
   redactionApplied: boolean
   riskFlagsJson: string
@@ -71,7 +72,7 @@ export function createQueryLogAdminStore() {
   return {
     async listQueryLogs(filter: AdminQueryLogListFilter): Promise<AdminQueryLogRow[]> {
       const { db, schema } = await import('hub:db')
-      const { and, desc } = await import('drizzle-orm')
+      const { and, desc, eq } = await import('drizzle-orm')
 
       const conditions = await buildQueryLogConditions(filter)
       const query = db
@@ -85,8 +86,10 @@ export function createQueryLogAdminStore() {
           redactionApplied: schema.queryLogs.redactionApplied,
           configSnapshotVersion: schema.queryLogs.configSnapshotVersion,
           createdAt: schema.queryLogs.createdAt,
+          memberDisplayName: schema.userProfiles.displayName,
         })
         .from(schema.queryLogs)
+        .leftJoin(schema.userProfiles, eq(schema.queryLogs.userProfileId, schema.userProfiles.id))
 
       const rows = await (conditions.length > 0 ? query.where(and(...conditions)) : query)
         .orderBy(desc(schema.queryLogs.createdAt))
@@ -99,6 +102,7 @@ export function createQueryLogAdminStore() {
         createdAt: row.createdAt,
         environment: row.environment,
         id: row.id,
+        memberDisplayName: row.memberDisplayName,
         queryRedactedText: row.queryRedactedText,
         redactionApplied: Boolean(row.redactionApplied),
         riskFlagsJson: row.riskFlagsJson,
@@ -135,8 +139,10 @@ export function createQueryLogAdminStore() {
           redactionApplied: schema.queryLogs.redactionApplied,
           configSnapshotVersion: schema.queryLogs.configSnapshotVersion,
           createdAt: schema.queryLogs.createdAt,
+          memberDisplayName: schema.userProfiles.displayName,
         })
         .from(schema.queryLogs)
+        .leftJoin(schema.userProfiles, eq(schema.queryLogs.userProfileId, schema.userProfiles.id))
         .where(eq(schema.queryLogs.id, id))
         .limit(1)
 
@@ -150,6 +156,7 @@ export function createQueryLogAdminStore() {
         createdAt: row.createdAt,
         environment: row.environment,
         id: row.id,
+        memberDisplayName: row.memberDisplayName,
         queryRedactedText: row.queryRedactedText,
         redactionApplied: Boolean(row.redactionApplied),
         riskFlagsJson: row.riskFlagsJson,

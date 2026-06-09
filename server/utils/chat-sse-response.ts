@@ -29,7 +29,7 @@ const CHAT_STREAM_CONTENT_TYPE = 'text/event-stream; charset=utf-8'
 
 export interface SseChatRunResult {
   answer: string | null
-  citations: ReadonlyArray<{ citationId: string; sourceChunkId: string }>
+  citations: ReadonlyArray<{ citationId: string; documentTitle?: string; sourceChunkId: string }>
   refused: boolean
   /**
    * persist-refusal-and-label-new-chat: specific reason populated when

@@ -84,7 +84,12 @@ export async function answerKnowledgeQuery(
   },
 ): Promise<{
   answer: string | null
-  citations: Array<{ citationId: string; documentVersionId: string; sourceChunkId: string }>
+  citations: Array<{
+    citationId: string
+    documentTitle: string
+    documentVersionId: string
+    sourceChunkId: string
+  }>
   refused: boolean
   retrievalScore: number
 }> {
@@ -233,7 +238,12 @@ async function answerWithCitations(
   stream?: AnswerStreamCallbacks,
 ): Promise<{
   answer: string
-  citations: Array<{ citationId: string; documentVersionId: string; sourceChunkId: string }>
+  citations: Array<{
+    citationId: string
+    documentTitle: string
+    documentVersionId: string
+    sourceChunkId: string
+  }>
   refused: false
   retrievalScore: number
 }> {
@@ -245,7 +255,7 @@ async function answerWithCitations(
     retrievalScore,
     signal: stream?.signal,
   })
-  const citations = await persistCitations(
+  const persistedCitations = await persistCitations(
     evidence.map((item) => ({
       chunkTextSnapshot: item.chunkText,
       citationLocator: item.citationLocator,
@@ -253,6 +263,11 @@ async function answerWithCitations(
       sourceChunkId: item.sourceChunkId,
     })),
   )
+
+  const citations = persistedCitations.map((citation, index) => ({
+    ...citation,
+    documentTitle: evidence[index]?.documentTitle ?? '',
+  }))
 
   return {
     answer: responseText,

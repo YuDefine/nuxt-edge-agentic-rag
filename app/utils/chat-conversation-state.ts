@@ -90,10 +90,11 @@ function getConversationMessageContent(message: ChatConversationMessage): string
 
 function parseConversationCitations(
   citationsJson: string,
-): Array<{ citationId: string; sourceChunkId: string }> {
+): Array<{ citationId: string; documentTitle?: string; sourceChunkId: string }> {
   try {
     const parsed = JSON.parse(citationsJson) as Array<{
       citationId?: unknown
+      documentTitle?: unknown
       sourceChunkId?: unknown
     }>
 
@@ -105,6 +106,7 @@ function parseConversationCitations(
       return [
         {
           citationId: item.citationId,
+          ...(typeof item.documentTitle === 'string' ? { documentTitle: item.documentTitle } : {}),
           sourceChunkId: item.sourceChunkId,
         },
       ]

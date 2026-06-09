@@ -122,6 +122,7 @@
             v-for="(citation, index) in message.citations"
             :key="citation.citationId"
             :citation-id="citation.citationId"
+            :document-title="citation.documentTitle"
             :index="index"
             @click="handleCitationClick"
           />
