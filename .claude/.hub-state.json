@@ -1,6 +1,6 @@
 {
   "cladeRoot": "/Users/charles/offline/clade",
-  "syncedAt": "2026-06-09T10:38:16.922Z",
+  "syncedAt": "2026-06-09T15:48:53.848Z",
   "checksums": {
     "rules/agent-routing.codex-watch-protocol.md": "9bebc58423ced374",
     "rules/agent-routing.md": "fb6fbcc53c6b9492",
@@ -30,7 +30,7 @@
     "rules/manual-review.discuss.md": "c61929a91c87a353",
     "rules/manual-review.evidence.md": "906c21f51573b14d",
     "rules/manual-review.md": "25e62b23eac59850",
-    "rules/nuxt-dev-watch.md": "7598991e63af768a",
+    "rules/nuxt-dev-watch.md": "c1ec2a62160964fa",
     "rules/output-hygiene.md": "ccba6f377e8a2a0c",
     "rules/proactive-skills.design-checkpoint.md": "6d6f239fb7cb5e0e",
     "rules/proactive-skills.ingest-triggers.md": "41ae386c446531a5",
@@ -94,5 +94,22 @@
     "agents/db-backup.md": "fd21fd01389c5d29",
     "agents/references/clade-review-rules.md": "b04efd02c6997261",
     "agents/screenshot-review.md": "886090feb87d93f1"
+  },
+  "bootstrap": {
+    "at": "2026-06-09T15:48:54.596Z",
+    "version": "1.4.156",
+    "modules": {
+      "auth": "better-auth",
+      "db-schema": "supabase",
+      "db-runtime": "cf-workers",
+      "runtime": "cf-workers",
+      "framework": "nuxt",
+      "domain": [],
+      "maintenance": "full"
+    },
+    "runtime": {
+      "claudeCode": true,
+      "codex": true
+    }
   }
 }

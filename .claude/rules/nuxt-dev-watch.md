@@ -1,9 +1,14 @@
+---
+description: Nuxt dev watch fd 治理——nuxt.config 必設頂層 ignore + vite.server.watch.ignored 排除 clade 投影層，避免 chokidar fd 爆衝 EBADF；改 nuxt.config 時 path-scoped 載入
+paths: ['**/nuxt.config.ts', '**/nuxt.config.js', '**/nuxt.config.mjs']
+---
 <!--
 🔒 LOCKED — managed by clade
 Source: rules/core/nuxt-dev-watch.md
 Edit at: /Users/charles/offline/clade
 Local edits will be reverted by the next sync.
 -->
+
 
 # Nuxt Dev Watch
 
