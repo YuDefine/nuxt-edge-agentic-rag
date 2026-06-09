@@ -16,7 +16,7 @@
 
 ### 進行中（active，見 AUTO Active Changes 區塊）
 
-- **rag-query-rewriting** — 16/34 tasks (47%)。code 已隨 v0.53.0 ship 到 production（feature flag `NUXT_KNOWLEDGE_FEATURE_QUERY_REWRITING=false` ramp gate）；staging `features.queryRewriting=true` 已生效。**6.1 partial pass**（2026-05-02）：flag wiring + audit 寫入機制 + fallback safety 三層 ✅，`rewriter_status='success'` path 與 `rewritten_query` 內容受 local Workers AI binding 限制，待 6.4 staging 驗。剩餘 task：3.3 prompt validation / 6.3 staging deploy / 6.4-6.6 staging acceptance / 7.1-7.5 follow-ups。Acceptance evidence 待填 `docs/decisions/2026-04-26-rag-query-rewriting.md`
+- **rag-query-rewriting** — code 已隨 v0.53.0 ship 到 production（feature flag `NUXT_KNOWLEDGE_FEATURE_QUERY_REWRITING=false` ramp gate）；staging `features.queryRewriting=true` 已生效。**Acceptance 達標（2026-06-09 REST run，15 web fixtures）**：retrieval_score ≥0.55 占比 baseline 40% → rewritten **60%**（✅ ≥50%）、rewriter fallback **0%**（✅）、改寫方向 **0 語意漂**（✅）；avg 0.548 → 0.588。Latency p95 增量待 staging app endpoint 補測（REST search total 不適用，rewriter call ~749ms < 800ms budget）。**注意**：`agentic-rag` index 已 reindex（baseline 從第一輪全 <0.45 升到 avg 0.548），rewriter 為「漸進改善」而非「救火」。Evidence: `docs/decisions/2026-04-26-rag-query-rewriting.md` + `local/reports/notes/main-v0.0.54-acceptance-rewriter-rest-20260609.md`。剩餘：6.3 staging migration/flag 確認、人工檢查（7 項 [discuss]）、7.1-7.5 follow-ups（archive 不等）、archive
 
 ### 已 parked
 
@@ -25,10 +25,11 @@ _(目前無 parked change — 2026-04-26 兩個 parked change 全 unpark + 實�
 ### 近期（尚未 propose，可獨立進）
 
 - ~~[high] **TD-059** E2E Tests CI workflow 連續 50+ run 全紅~~ — **2026-04-26 done**（採方案 A：wrangler dev 取代 nuxt preview 當 webServer），register Status `done`
-- [high] **TD-060** Production `agentic-rag` AutoRAG retrieval_score 對 acceptance fixture 全低於 directAnswer 門檻 — root cause 不是 thresholds、不是 chunking、不是 embedding 模型，而是 acceptance fixture「子知識問答 form」vs 索引「題目複述 form」的 query gap（production 自然 query「採購流程」可達 0.72，fixture「PO 和 PR 差別」只能 0.38）。建議方向：query rewriting / HyDE > reranker > chunk 重切。**完全不建議**單做降 thresholds（symptom 不治根）。診斷 evidence: `local/reports/notes/td-060-retrieval-score-diagnosis-20260426.md`。第二輪 acceptance 依賴此條解。Acceptance：≥50% fixture 拿到 retrieval_score ≥0.55 進 judge gate；驗收決策寫進 `docs/decisions/YYYY-MM-DD-rag-query-rewriting.md`
+- [high] **TD-060 — 2026-06-09 達標（rewriter 路徑）** Production `agentic-rag` AutoRAG retrieval_score query gap，採 query rewriting 修法。**驗收結果**：rewriter 把 retrieval_score ≥0.55 占比從 baseline 40% 拉到 **60%**（達 ≥50% target），0% fallback、0 語意漂（REST run，15 web fixtures，見 `rag-query-rewriting` change）。**但 root-cause 已部分自癒**：`agentic-rag` index 在 2026-04-26 後 reindex，baseline 從第一輪全 <0.45（avg 0.32-0.44）升到 avg 0.548，原「全部卡 0.38」前提不成立。rewriter 仍正向（+0.04 avg、+20pp 達標率），改列「漸進改善」。register Status 待 change archive 後標 done。診斷 evidence: `local/reports/notes/td-060-retrieval-score-diagnosis-20260426.md`
 - [high] **TD-061 / TD-056（同源）** judge `max_completion_tokens` 截斷 — fix code 已隨 v0.52.1 ship（`5a477e7`：`workers-ai.ts:135` `200 → 1024` + 2 條 vitest unit test lock）。**驗收時機已到**：(a) wrangler tail 觀察 1-2 條 SSE chat，`decision_path=pipeline_error` 比例 ≈ 0；(b) 24-48 hr 後撈 D1 `query_logs` 24h 內 pipeline_error 比例 < 5%（baseline 28.6%）。Production 35 筆 incident 證據保留：`created_at >= '2026-04-26T00:49:30'`
 - [mid] **TD-057** evlog wide event lifecycle 警告 — fix code 已隨 v0.52.1 ship（`5a477e7`：`server/api/chat.post.ts` + `server/utils/chat-sse-response.ts` 改用 `createRequestLogger` + `_deferDrain` 開 child request logger，stream settled 後手動觸發 `evlog:enrich` / `evlog:drain` hook 並把 drain promise 註冊到 `cloudflare.context.waitUntil`）。**驗收時機已到**：wrangler tail 觀察 1-2 條真實 SSE chat，warning 應消失，wide event 觀察到 `operation: 'web-chat-sse-stream'` 子事件帶 `_parentRequestId` + `result` / `error` 欄位
-- [high] **第二輪 main-v0.0.54-acceptance** — 依賴 TD-060 解。33-50 筆 fixture 對 production，補入 Judge 觸發率、引用正確率、回答正確率、policy classifier precision。結果寫進 `local/reports/notes/main-v0.0.54-acceptance-latency-run-{date}.md` 第二輪 evidence note，更新表 47-A 第二輪欄位，**不覆蓋第一輪**
+- ~~[high] **第二輪 main-v0.0.54-acceptance（retrieval_score 維度）**~~ — **2026-06-09 done**（REST run，15 web fixtures，retrieval_score ≥0.55 baseline 40% → rewritten 60%）。Evidence: `local/reports/notes/main-v0.0.54-acceptance-rewriter-rest-20260609.md`。**仍待補的維度**（非 retrieval_score）：Judge 觸發率、引用正確率、回答正確率、policy classifier precision — 需對 staging/production app endpoint 跑完整 chat（非 REST retrieve），可待 rag-query-rewriting archive 後另開 ops 驗收
+- [high] **rag-query-rewriting production ramp（下一條 ops change）** — 依賴 rag-query-rewriting archive。acceptance 達標後把 production `NUXT_KNOWLEDGE_FEATURE_QUERY_REWRITING` 從 false → true 的 ramp，需人工授權 + production soak 觀察（retrieval_score 分布、latency p95 實測、fallback rate）。latency p95 增量的 staging app-endpoint 實測也併入此 ramp 前置
 - [low] **TD-058** Production `user_profiles` 6 條 orphaned rows（profile.id 不在 user.id）— TD-053 立即驗收附帶發現；schema 中 `user_profiles.id` 非 `user.id` 的 FK，需評估清理 / FK 加掛策略，可能與 TD-009 user_profiles rebuild 合併處理
 - [low] **v0.50.0 simplify / code-review 留下的 cosmetic 觀察**（不登記 TD，留作 backlog）
   - `conversation-store.ts` / `knowledge-audit.ts` / `web-chat.ts` / `mcp-ask.ts` 的 `refusalReason?: string | null` 可收緊為 `RefusalReason | null`（DB 層沒 enum 約束，靠 application layer enforce）
@@ -63,9 +64,9 @@ _(目前無 parked change — 2026-04-26 兩個 parked change 全 unpark + 實�
 
 ## Active Changes
 
-_last synced: 2026-06-09T05:13:46.391Z_
+_last synced: 2026-06-09T11:13:31.792Z_
 
-2 active changes (0 ready · 2 in progress · 0 draft · 0 blocked)
+1 active change (0 ready · 1 in progress · 0 draft · 0 blocked)
 
 ### Ready to apply
 
@@ -74,8 +75,6 @@ _(none)_
 ### In progress
 
 - **adopt-evlog-nuxthub-ai-t3** — 5/39 tasks (13%)
-- **rag-query-rewriting** — 16/34 tasks (47%)
-  - Specs: `workers-ai-grounded-answering`
 
 ### Draft
 
@@ -109,7 +108,6 @@ _No active claims._
 ### Independent (can run in parallel)
 
 - `adopt-evlog-nuxthub-ai-t3`
-- `rag-query-rewriting`
 
 ### Mutex (same spec touched)
 
