@@ -53,7 +53,7 @@ export function serializeWorkersAiRunTelemetry(runs: WorkersAiRunTelemetry[]): s
 
 const DEFAULT_MODEL_BY_ROLE = Object.freeze({
   agentJudge: '@cf/moonshotai/kimi-k2.5',
-  defaultAnswer: '@cf/meta/llama-4-scout-17b-16e-instruct',
+  defaultAnswer: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
 })
 
 const JUDGE_RESPONSE_SCHEMA = {

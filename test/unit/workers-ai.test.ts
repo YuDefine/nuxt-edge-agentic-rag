@@ -51,7 +51,7 @@ describe('workers ai adapters', () => {
     ).resolves.toBe('請先建立請購單，再建立採購單。')
 
     expect(binding.run).toHaveBeenCalledWith(
-      '@cf/meta/llama-4-scout-17b-16e-instruct',
+      '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
       expect.objectContaining({
         messages: expect.any(Array),
       }),
@@ -164,7 +164,7 @@ describe('workers ai adapters', () => {
     expect(onUsage).toHaveBeenCalledWith(
       expect.objectContaining({
         latencyMs: expect.any(Number),
-        model: '@cf/meta/llama-4-scout-17b-16e-instruct',
+        model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
         modelRole: 'defaultAnswer',
         usage: {
           cachedPromptTokens: 64,
@@ -211,7 +211,7 @@ describe('workers ai adapters', () => {
     ).resolves.toBe('請先建立請購單，再建立採購單。')
 
     expect(binding.run).toHaveBeenCalledWith(
-      '@cf/meta/llama-4-scout-17b-16e-instruct',
+      '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
       expect.objectContaining({
         stream: true,
       }),
@@ -266,7 +266,7 @@ describe('workers ai adapters', () => {
 
     recorder.record({
       latencyMs: 187,
-      model: '@cf/meta/llama-4-scout-17b-16e-instruct',
+      model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
       modelRole: 'defaultAnswer',
       usage: {
         cachedPromptTokens: 32,
@@ -280,7 +280,7 @@ describe('workers ai adapters', () => {
       JSON.stringify([
         {
           latencyMs: 187,
-          model: '@cf/meta/llama-4-scout-17b-16e-instruct',
+          model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
           modelRole: 'defaultAnswer',
           usage: {
             cachedPromptTokens: 32,
