@@ -259,7 +259,7 @@ export const DEFAULT_KNOWLEDGE_RETRIEVAL_CONFIG: Readonly<KnowledgeRetrievalConf
 export const DEFAULT_KNOWLEDGE_DECISION_THRESHOLDS: Readonly<KnowledgeDecisionThresholds> =
   Object.freeze({
     answerMin: 0.55,
-    directAnswerMin: 0.7,
+    directAnswerMin: 0.5,
     judgeMin: 0.45,
   })
 

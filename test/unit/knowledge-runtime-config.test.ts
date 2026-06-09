@@ -68,7 +68,7 @@ describe('knowledge runtime bootstrap', () => {
         },
         thresholds: {
           answerMin: 0.55,
-          directAnswerMin: 0.7,
+          directAnswerMin: 0.5,
           judgeMin: 0.45,
         },
       },

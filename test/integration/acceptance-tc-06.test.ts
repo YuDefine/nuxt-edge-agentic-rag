@@ -283,7 +283,7 @@ async function runMcpCase(query: string) {
 
 function getTc06Scenario(): Tc06Scenario {
   // 兩份不同 current 文件，同屬 policy 分類，但 documentVersionId 與 documentId 不同
-  // 分數皆落在 [judgeMin=0.45, directAnswerMin=0.7) 區間，強制走 judge 路徑
+  // 分數皆落在 [judgeMin=0.45, directAnswerMin=0.5) 區間，強制走 judge 路徑
   return {
     categorySlug: 'process',
     purchasing: {
@@ -293,7 +293,7 @@ function getTc06Scenario(): Tc06Scenario {
       documentTitle: 'TC-06 採購流程 current',
       documentVersionId: 'ver-tc06-purchasing-current',
       keyword: '採購流程',
-      score: 0.6,
+      score: 0.49,
       sourceChunkId: 'chunk-tc06-purchasing',
     },
     returning: {
@@ -303,7 +303,7 @@ function getTc06Scenario(): Tc06Scenario {
       documentTitle: 'TC-06 退貨流程 current',
       documentVersionId: 'ver-tc06-returning-current',
       keyword: '退貨流程',
-      score: 0.55,
+      score: 0.48,
       sourceChunkId: 'chunk-tc06-returning',
     },
   }

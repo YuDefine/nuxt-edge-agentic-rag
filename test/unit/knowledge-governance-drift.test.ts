@@ -35,6 +35,12 @@ const ALLOWED_FILES = new Set([
   // [judgeMin, directAnswerMin). Allow-listed for the same reason as the
   // acceptance TCs above.
   'test/unit/web-chat-observability.test.ts',
+  // directAnswerMin=0.5 is a common numeric literal in non-threshold contexts
+  // (AI Search score_threshold, cacheHitRate, Tailwind spacing). Allow-listed
+  // to prevent false-positives from the 0.5 drift pattern.
+  'test/unit/ai-search.test.ts',
+  'test/integration/admin-usage-route.test.ts',
+  'test/acceptance/evidence/a02-ai-search-orchestration.ts',
 ])
 const DRIFT_PATTERNS: DriftPattern[] = [
   {
@@ -51,7 +57,9 @@ const DRIFT_PATTERNS: DriftPattern[] = [
   },
   {
     label: 'thresholds.directAnswerMin',
-    pattern: /\b0\.7(?:0)?\b/g,
+    // Negative lookbehind excludes Tailwind spacing classes (e.g. mt-0.5);
+    // negative lookahead excludes CSS units (0.5rem, 0.5em, 0.5px, 0.5s)
+    pattern: /(?<!-)(?<!\w)0\.5(?:0)?(?!\d|rem|em|px|s\b)/g,
   },
 ]
 

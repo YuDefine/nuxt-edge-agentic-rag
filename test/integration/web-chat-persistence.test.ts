@@ -195,7 +195,7 @@ describe('web chat persistence — refusal message rows', () => {
                 documentTitle: 'ERP Fields',
                 documentVersionId: 'ver-y',
                 excerpt: 'field defs',
-                score: 0.6,
+                score: 0.48,
                 sourceChunkId: 'chunk-y',
                 title: 'ERP Fields',
               },
