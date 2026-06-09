@@ -151,6 +151,10 @@ export function createSseChatResponse<TResult extends SseChatRunResult>(
         if (!isAbortError(error)) {
           streamError = error as Error
           input.log.error(error as Error, { operation: 'web-chat-stream' })
+          // evlog child drain 在 SSE stream 結束後可能因 waitUntil timing 遺失；
+          // console.error 直接進 worker stdout，wrangler tail / CF dashboard 可抓
+          // eslint-disable-next-line no-console -- evlog-exempt: SSE drain fallback
+          console.error('[pipeline-error]', error instanceof Error ? error.message : error)
           enqueue('error', { message: '發生錯誤，請稍後再試' })
         }
       } finally {
