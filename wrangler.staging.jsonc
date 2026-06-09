@@ -21,6 +21,7 @@
     "NUXT_KNOWLEDGE_AI_GATEWAY_ID": "agentic-rag-staging",
     "NUXT_KNOWLEDGE_AI_GATEWAY_CACHE_ENABLED": "false",
     "CLOUDFLARE_ACCOUNT_ID": "0eac599c12df10586d97a78179b9f11f",
+    "ADMIN_EMAIL_ALLOWLIST": "charles@yudefine.com.tw,charles.yudefine@gmail.com",
   },
   "routes": [
     {
