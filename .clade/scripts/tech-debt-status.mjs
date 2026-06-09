@@ -16,8 +16,13 @@ export const CLOSED_TD_STATUSES = new Set(['done', 'resolved', 'closed', 'wontfi
 // lowercased status word (e.g. 'done', 'resolved', 'open', 'wontfix') or null.
 // The `[\w-]*` capture stops at the trailing CJK parenthetical annotation
 // (`done（2026-05-10）`) because `（` is non-word.
+//
+// The optional `[-*+]\s+` prefix accepts the bullet-list metadata style some
+// TD entries use (`- **Status**: done`) — without it the `^` anchor only
+// matched bare `**Status**:` lines, so bullet-style closed TDs parsed as null
+// → treated as open → falsely re-emitted as digest candidates every run.
 export function parseTechDebtStatus(body) {
-  const m = body.match(/^\*\*Status\*\*:\s*([A-Za-z][\w-]*)/m)
+  const m = body.match(/^(?:[-*+]\s+)?\*\*Status\*\*:\s*([A-Za-z][\w-]*)/m)
   return m ? m[1].toLowerCase() : null
 }
 
