@@ -25,7 +25,10 @@ vi.mock('nitropack/runtime', () => ({
 //   2. answer 包含兩份文件各自的關鍵詞（至少一個 distinguishing fragment）
 //   3. 第一輪 retrievalScore 落在 judge window（>= judgeMin 且 < directAnswerMin），
 //      因此會進入 judge；judge 回 shouldAnswer=true → 走 judge_pass 路徑
-//   4. selectAnswerModelRole 因 distinctDocuments.size > 1，走 agentJudge 模型角色
+//   4. answer 一律走 defaultAnswer 的 instruct model — selectAnswerModelRole 不再因
+//      distinctDocuments.size > 1 切到 reasoning agentJudge model（見 workers-ai.ts
+//      DEFAULT_MODEL_BY_ROLE 註解：reasoning model 的 reasoning_content 會吃光 token
+//      budget 導致 answer 空字串）
 //   5. citation_records 寫入兩筆，每筆對應各自 documentVersionId / sourceChunkId
 
 interface Tc06TestState {

@@ -1,5 +1,56 @@
 # Handoff
 
+## ✅ RESOLVED — Production chat 空回答（root cause 三重驗證 + 修法已驗，待 deploy）
+
+**症狀**（已解）：production 問「PO 和 PR 差別」→ `event: complete` 帶 `answer:""`（decision_path=direct_answer + accepted + citations 正常 + refused:false，但 `messages.content_redacted` 空）。retrieval 正常、answer 生成壞掉。
+
+### Root cause（三重驗證：binding probe 實測 + production D1 query_logs + codex docs）
+
+**answer 生成誤用 reasoning model `@cf/moonshotai/kimi-k2.5`，其 `reasoning_content`（思考）吃光 `max_completion_tokens` budget → `message.content` 變空字串。**
+
+因果鏈：
+
+1. 「PO/PR」evidence 來自多個 document → `selectAnswerModelRole`（`knowledge-answering.ts`）對多-doc 切到 `agentJudge` role
+2. `agentJudge` role → `DEFAULT_MODEL_BY_ROLE.agentJudge` = kimi-k2.5（reasoning model）
+3. kimi 回 OpenAI-style `{choices:[{message:{content, reasoning_content}}]}`，**先**輸出 reasoning_content 再輸出 content
+4. answer 的 400 token budget 被 reasoning_content 吃光 → content 空 → 空 answer
+5. judge 同源：kimi judge json_schema 在 1024 token 下 reasoning 吃光 → content=null → JSON parse throw → `pipeline_error`（影響 retrieval 0.45–0.5 邊緣 query）
+
+**實測證據**（部署 minimal standalone worker 跑真實 `env.AI.run()`，已清理）：
+
+- probe kimi short prompt（completion 295<400）content 完整；probe kimi judge 1024 token → finish_reason=length / content=null
+- production query_logs：answer run = kimi、completion_tokens=400 達上限、`messages.content_redacted` len=0 完全吻合
+- probe llama control：`{response}` shape 完美答案；llama judge json_schema 5s / `{response:object}` 正常解析
+
+### 修法（已 commit，待 deploy 驗證）
+
+**核心：`DEFAULT_MODEL_BY_ROLE.agentJudge` kimi-k2.5 → llama-3.3-70b（instruct model）** — 三害（answer 多-doc / judge / rewriter）同源於 agentJudge role 指向 reasoning model，一改同時解。
+
+- `selectAnswerModelRole` 簡化為一律 `defaultAnswer`（answer 不借用 judge role）
+- 4 處測試 model 斷言 kimi→llama + 2 個 regression 測試（文件化 `{choices}` reasoning shape + 空 content 坑）
+- 驗證：test 30 passed + typecheck EXIT=0；probe 三重驗證 llama answer + judge(json_schema) 都正常
+
+### 為何之前 9 版沒解（避免重踩）
+
+- v0.57.5 降門檻 0.7→0.5：只解鎖 direct_answer **path**，沒碰 answer **model**
+- v0.57.6 換 llama-4-scout→llama-3.3-70b：**改錯 role**（改 `defaultAnswer`，但多-doc 走 `agentJudge`=kimi）
+- v0.57.7 關 cache / v0.57.9 non-stream：與 root cause 無關（binding shape 對了，但 reasoning 仍吃光 token）
+- 一直假設「llama binding shape 不匹配」，真兇是被 role 切換選中的 kimi reasoning model
+
+### Deploy / 驗證 pending
+
+- [ ] tag v0.57.10 → CI deploy（git push --tags 觸發 release workflow）
+- [ ] production 驗證：問「PO/PR 差別」→ 查 query_logs answer model=llama + `messages.content_redacted` 非空
+- demo 其他項目 ready：報告 `local/reports/archive/main-v0.0.55.{md,docx}`、`local/reports/notes/demo-cheatsheet-2026-06-10.md`、引導問題已對應知識庫
+
+### 待清理（非 blocker）
+
+- AI Gateway cache 仍關著（v0.57.7，`wrangler.jsonc` `NUXT_KNOWLEDGE_AI_GATEWAY_CACHE_ENABLED=false`）— 修好後評估重開
+- judge 已換 llama instruct；未來若要回 reasoning model 需提高 token budget（probe 證明 2048 夠，但 llama 最穩、最快 5s）
+- `refs/wt-baseline/fix-chat-empty-answer/*` rescue ref（本次 worktree）+ 既有 dangling，可 `wt-helper rescue --prune` / `git update-ref -d` 清理
+
+---
+
 ## In Progress
 
 - [ ] **rag-query-rewriting** (21/27 tasks, 78%) — **TD-071 已解（v0.57.1 production deployed 2026-06-09）**，blocker 移除

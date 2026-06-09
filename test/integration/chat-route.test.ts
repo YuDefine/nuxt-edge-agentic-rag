@@ -563,7 +563,7 @@ describe('/api/chat route', () => {
     )
     expect(chatRouteMocks.workersAiRun).toHaveBeenNthCalledWith(
       2,
-      '@cf/moonshotai/kimi-k2.5',
+      '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
       expect.objectContaining({
         response_format: expect.objectContaining({
           type: 'json_schema',

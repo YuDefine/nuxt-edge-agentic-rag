@@ -239,7 +239,7 @@ async function answerWithCitations(
 }> {
   const responseText = await answer({
     evidence,
-    modelRole: selectAnswerModelRole(evidence, governance.models),
+    modelRole: selectAnswerModelRole(governance.models),
     onTextDelta: stream?.onTextDelta,
     query,
     retrievalScore,
@@ -276,11 +276,11 @@ function refuse(retrievalScore: number): {
   }
 }
 
-function selectAnswerModelRole(
-  evidence: VerifiedKnowledgeEvidence[],
-  modelRoles: KnowledgeGovernanceConfig['models'],
-): string {
-  const distinctDocuments = new Set(evidence.map((item) => item.documentId))
-
-  return distinctDocuments.size <= 1 ? modelRoles.defaultAnswer : modelRoles.agentJudge
+function selectAnswerModelRole(modelRoles: KnowledgeGovernanceConfig['models']): string {
+  // Answer generation 一律使用 defaultAnswer 的 instruct model。原本多-document
+  // （distinctDocuments.size > 1）時切到 agentJudge role，但 agentJudge 對應 reasoning
+  // model，其 reasoning_content 會吃光 answer 的 token budget 導致 message.content 變空
+  // 字串（production 空回答的 root cause）。answer 不該借用 judge 的 agentJudge role —
+  // 詳見 workers-ai.ts 的 DEFAULT_MODEL_BY_ROLE 註解。
+  return modelRoles.defaultAnswer
 }

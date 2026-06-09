@@ -58,6 +58,93 @@ describe('workers ai adapters', () => {
     )
   })
 
+  it('parses OpenAI-style reasoning-model shape ({ choices: [{ message: { content } }] })', async () => {
+    // Regression: reasoning models (e.g. the old kimi-k2.5) return the OpenAI
+    // chat-completion shape with the answer nested under
+    // choices[0].message.content, NOT the native `{ response }` shape that
+    // instruct models return. readResponseValue's choices branch must extract
+    // message.content. This documents the shape so a future switch back to a
+    // reasoning model is caught by tests, not by an empty production answer.
+    const binding = {
+      run: vi.fn().mockResolvedValue({
+        choices: [
+          {
+            finish_reason: 'stop',
+            index: 0,
+            message: {
+              content: 'PR 是採購申請，PO 是採購訂單。',
+              reasoning_content: '用戶問 PO 和 PR 差別，根據證據逐點比較。',
+              role: 'assistant',
+              tool_calls: null,
+            },
+          },
+        ],
+        created: 1780995752,
+        id: 'test-completion-id',
+        model: 'default',
+        object: 'chat.completion',
+        usage: {
+          prompt_tokens: 219,
+          completion_tokens: 295,
+          total_tokens: 514,
+        },
+      }),
+    }
+
+    const answer = createWorkersAiAnswerAdapter({ binding })
+
+    await expect(
+      answer({
+        evidence: evidenceAt(0.9),
+        modelRole: 'defaultAnswer',
+        query: 'PO 和 PR 有什麼差別？',
+        retrievalScore: 0.9,
+      }),
+    ).resolves.toBe('PR 是採購申請，PO 是採購訂單。')
+  })
+
+  it('returns empty string when a reasoning model exhausts the token budget (content empty)', async () => {
+    // Root cause of the production blank-answer incident: a reasoning model
+    // emits reasoning_content first; under a tight max_completion_tokens budget
+    // it consumes the whole budget (finish_reason: 'length') and message.content
+    // comes back empty. readResponseValue extracts '' and "".trim() does NOT
+    // throw, so the assistant message persists blank despite valid citations.
+    // This is exactly why DEFAULT_MODEL_BY_ROLE.agentJudge was moved off the
+    // reasoning model onto an instruct model — see workers-ai.ts comment.
+    const binding = {
+      run: vi.fn().mockResolvedValue({
+        choices: [
+          {
+            finish_reason: 'length',
+            index: 0,
+            message: {
+              content: '',
+              reasoning_content: '思考過程把 token budget 用光了……',
+              role: 'assistant',
+              tool_calls: null,
+            },
+          },
+        ],
+        usage: {
+          prompt_tokens: 219,
+          completion_tokens: 400,
+          total_tokens: 619,
+        },
+      }),
+    }
+
+    const answer = createWorkersAiAnswerAdapter({ binding })
+
+    await expect(
+      answer({
+        evidence: evidenceAt(0.9),
+        modelRole: 'defaultAnswer',
+        query: 'PO 和 PR 有什麼差別？',
+        retrievalScore: 0.9,
+      }),
+    ).resolves.toBe('')
+  })
+
   it('uses the judge role mapping and parses structured json output', async () => {
     const binding = {
       run: vi.fn().mockResolvedValue({
@@ -82,7 +169,7 @@ describe('workers ai adapters', () => {
     })
 
     expect(binding.run).toHaveBeenCalledWith(
-      '@cf/moonshotai/kimi-k2.5',
+      '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
       expect.objectContaining({
         messages: expect.any(Array),
         response_format: expect.objectContaining({
