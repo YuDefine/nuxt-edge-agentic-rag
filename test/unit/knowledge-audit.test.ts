@@ -287,7 +287,7 @@ describe('knowledge audit', () => {
     }
     const auditStore = createKnowledgeAuditStore(database)
     const workersAiRunsJson =
-      '[{"modelRole":"defaultAnswer","model":"@cf/meta/llama-4-scout-17b-16e-instruct","latencyMs":210,"usage":{"promptTokens":120,"completionTokens":18,"totalTokens":138,"cachedPromptTokens":32}}]'
+      '[{"modelRole":"defaultAnswer","model":"@cf/meta/llama-3.3-70b-instruct-fp8-fast","latencyMs":210,"usage":{"promptTokens":120,"completionTokens":18,"totalTokens":138,"cachedPromptTokens":32}}]'
 
     await auditStore.updateQueryLog({
       queryLogId: 'query-log-1',

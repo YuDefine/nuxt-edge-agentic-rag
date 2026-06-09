@@ -223,7 +223,7 @@ describe('mcp ask tool definition', () => {
     })
     expect(workersAiRunMock).toHaveBeenNthCalledWith(
       1,
-      '@cf/meta/llama-4-scout-17b-16e-instruct',
+      '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
       expect.objectContaining({
         messages: expect.any(Array),
       }),
@@ -320,7 +320,7 @@ describe('mcp ask tool definition', () => {
     expect(JSON.parse(workersAiRunsJson)).toEqual([
       {
         latencyMs: expect.any(Number),
-        model: '@cf/meta/llama-4-scout-17b-16e-instruct',
+        model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
         modelRole: 'defaultAnswer',
         usage: {
           cachedPromptTokens: 24,
