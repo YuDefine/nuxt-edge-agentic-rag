@@ -46,7 +46,7 @@ export interface R2BucketLike {
 export function getCloudflareEnv(event: CloudflareBoundEvent) {
   return (
     event.context.cloudflare?.env ??
-    ((event.context as Record<string, unknown>)._mcpCloudflareEnv as
+    ((event.context as Record<string, unknown>).mcpCloudflareEnv as
       | Record<string, unknown>
       | undefined) ??
     (globalThis as { __env__?: Record<string, unknown> }).__env__ ??

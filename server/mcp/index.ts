@@ -35,12 +35,12 @@ export default defineMcpHandler({
     // dispatch. Inside MCP tool handlers `useEvent()` may return a context
     // where `context.cloudflare.env` is absent (the MCP SDK dispatches
     // handlers in a microtask that can escape the AsyncLocalStorage chain).
-    // Tool handlers fall back to `event.context._mcpCloudflareEnv` when the
+    // Tool handlers fall back to `event.context.mcpCloudflareEnv` when the
     // standard `context.cloudflare.env` path is empty.
     const h3 = event as unknown as H3Event
     const cfEnv = h3.context?.cloudflare?.env
     if (cfEnv) {
-      h3.context._mcpCloudflareEnv = cfEnv
+      h3.context.mcpCloudflareEnv = cfEnv
     }
 
     await runMcpMiddleware(event, {
