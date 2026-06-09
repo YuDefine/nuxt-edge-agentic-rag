@@ -50,8 +50,19 @@ export function serializeWorkersAiRunTelemetry(runs: WorkersAiRunTelemetry[]): s
   )
 }
 
+// answer / judge / rewriter 都透過這張表的 role 取 model id。`agentJudge` 原本指向
+// reasoning model `@cf/moonshotai/kimi-k2.5`，但 reasoning model 回 OpenAI-style
+// `{ choices: [{ message: { content, reasoning_content } }] }` 且**先**輸出
+// `reasoning_content`（思考）再輸出 `content`（答案）。在受限的 `max_completion_tokens`
+// budget 下，reasoning_content 吃光額度 → `message.content` 變空字串或 null：
+//   - answer（多-document 時經 selectAnswerModelRole 取 agentJudge role）→ 空回答
+//   - judge（json_schema 結構化輸出）→ content 被截成 null → JSON parse 失敗 → pipeline_error
+// binding probe 實測：改用 instruct model `@cf/meta/llama-3.3-70b-instruct-fp8-fast`
+// 後，answer 回 `{ response }`、judge(json_schema) 回 `{ response: <object> }`，兩者都能
+// 正常解析；llama judge 無 reasoning 浪費，1024 token 綽綽有餘。reasoning model 不適合
+// 此 RAG pipeline（streaming answer + 受限 token budget），故兩個 role 統一用 instruct model。
 const DEFAULT_MODEL_BY_ROLE = Object.freeze({
-  agentJudge: '@cf/moonshotai/kimi-k2.5',
+  agentJudge: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
   defaultAnswer: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
 })
 
