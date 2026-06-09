@@ -58,6 +58,13 @@ const knowledgeRuntimeConfig = createKnowledgeRuntimeConfig({
     rateLimitKv: process.env.NUXT_KNOWLEDGE_RATE_LIMIT_KV || 'KV',
   },
   environment: process.env.NUXT_KNOWLEDGE_ENVIRONMENT,
+  governance: {
+    thresholds: {
+      directAnswerMin: process.env.NUXT_KNOWLEDGE_THRESHOLD_DIRECT_ANSWER_MIN
+        ? Number(process.env.NUXT_KNOWLEDGE_THRESHOLD_DIRECT_ANSWER_MIN)
+        : undefined,
+    },
+  },
   features: {
     adminDashboard: process.env.NUXT_KNOWLEDGE_FEATURE_ADMIN_DASHBOARD,
     cloudFallback: process.env.NUXT_KNOWLEDGE_FEATURE_CLOUD_FALLBACK,
