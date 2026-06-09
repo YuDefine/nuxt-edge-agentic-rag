@@ -165,9 +165,14 @@ export async function chatWithKnowledge(
       reformulatedQuery?: string
       shouldAnswer: boolean
     }>
-    persistCitations?: (
-      input: WebCitationPersistenceInput,
-    ) => Promise<Array<{ citationId: string; documentVersionId: string; sourceChunkId: string }>>
+    persistCitations?: (input: WebCitationPersistenceInput) => Promise<
+      Array<{
+        citationId: string
+        documentTitle?: string
+        documentVersionId: string
+        sourceChunkId: string
+      }>
+    >
     /**
      * Resolves whether `input.conversationId` is stale (governance §1.1).
      *
@@ -206,7 +211,12 @@ export async function chatWithKnowledge(
   },
 ): Promise<{
   answer: string | null
-  citations: Array<{ citationId: string; documentVersionId: string; sourceChunkId: string }>
+  citations: Array<{
+    citationId: string
+    documentTitle?: string
+    documentVersionId: string
+    sourceChunkId: string
+  }>
   /**
    * Populated only when `input.conversationId` + `options.resolveStaleness`
    * were both provided. `forcedFreshRetrieval` is `true` when the previous

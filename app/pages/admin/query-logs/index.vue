@@ -25,6 +25,7 @@
     createdAt: string
     environment: string
     id: string
+    memberDisplayName: string | null
     queryRedactedText: string
     redactionApplied: boolean
     riskFlagsJson: string
@@ -138,6 +139,7 @@
 
   const columns: TableColumn<QueryLogRow>[] = [
     { accessorKey: 'createdAt', header: '時間' },
+    { accessorKey: 'memberDisplayName', header: '成員' },
     { accessorKey: 'channel', header: '來源' },
     { accessorKey: 'status', header: '狀態' },
     { accessorKey: 'queryRedactedText', header: '查詢內容（已遮罩）' },
@@ -319,6 +321,12 @@
         <UTable :columns="columns" :data="logs">
           <template #createdAt-cell="{ row }">
             <span class="text-sm text-muted">{{ formatDate(row.original.createdAt) }}</span>
+          </template>
+
+          <template #memberDisplayName-cell="{ row }">
+            <span class="text-sm text-default">
+              {{ row.original.memberDisplayName || '—' }}
+            </span>
           </template>
 
           <template #channel-cell="{ row }">

@@ -8,6 +8,7 @@ export type MessageRole = 'user' | 'assistant'
 
 export interface ChatCitation {
   citationId: string
+  documentTitle?: string
   sourceChunkId: string
 }
 

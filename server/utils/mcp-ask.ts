@@ -25,7 +25,12 @@ export type McpAskResult =
     }
   | {
       answer: string
-      citations: Array<{ citationId: string; documentVersionId: string; sourceChunkId: string }>
+      citations: Array<{
+        citationId: string
+        documentTitle?: string
+        documentVersionId: string
+        sourceChunkId: string
+      }>
       refused: false
     }
 
