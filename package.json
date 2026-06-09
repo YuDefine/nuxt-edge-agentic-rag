@@ -1,6 +1,6 @@
 {
   "name": "nuxt-edge-agentic-rag",
-  "version": "0.57.8",
+  "version": "0.57.9",
   "private": true,
   "type": "module",
   "scripts": {
