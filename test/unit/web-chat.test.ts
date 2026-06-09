@@ -64,6 +64,7 @@ describe('web chat', () => {
       citations: [
         {
           citationId: '',
+          documentTitle: 'Launch Plan',
           documentVersionId: 'ver-9',
           sourceChunkId: 'chunk-1',
         },
@@ -327,6 +328,7 @@ describe('web chat', () => {
       citations: [
         {
           citationId: 'citation-10',
+          documentTitle: '採購流程',
           documentVersionId: 'ver-10',
           sourceChunkId: 'chunk-10',
         },

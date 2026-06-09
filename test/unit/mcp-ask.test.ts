@@ -117,6 +117,7 @@ describe('mcp ask', () => {
       persistCitations: vi.fn().mockResolvedValue([
         {
           citationId: 'citation-1',
+          documentVersionId: 'ver-9',
           sourceChunkId: 'chunk-1',
         },
       ]),
@@ -181,6 +182,8 @@ describe('mcp ask', () => {
       citations: [
         {
           citationId: 'citation-1',
+          documentTitle: 'Launch Plan',
+          documentVersionId: 'ver-9',
           sourceChunkId: 'chunk-1',
         },
       ],

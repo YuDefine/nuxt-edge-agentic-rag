@@ -156,6 +156,7 @@ describe('acceptance direct-answer automation', () => {
           citations: [
             {
               citationId: expect.any(String),
+              documentTitle: scenario.documentTitle,
               documentVersionId: scenario.documentVersionId,
               sourceChunkId: scenario.sourceChunkId,
             },
@@ -177,6 +178,7 @@ describe('acceptance direct-answer automation', () => {
           citations: [
             {
               citationId: expect.any(String),
+              documentTitle: scenario.documentTitle,
               documentVersionId: scenario.documentVersionId,
               sourceChunkId: scenario.sourceChunkId,
             },

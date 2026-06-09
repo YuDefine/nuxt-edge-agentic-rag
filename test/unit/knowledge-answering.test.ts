@@ -42,8 +42,8 @@ describe('knowledge answering', () => {
     const judge = vi.fn()
     const answer = vi.fn().mockResolvedValue('Revenue grew 20% and margins improved.')
     const persistCitations = vi.fn().mockResolvedValue([
-      { citationId: 'cit-1', sourceChunkId: 'chunk-1' },
-      { citationId: 'cit-2', sourceChunkId: 'chunk-2' },
+      { citationId: 'cit-1', documentVersionId: 'ver-2', sourceChunkId: 'chunk-1' },
+      { citationId: 'cit-2', documentVersionId: 'ver-2', sourceChunkId: 'chunk-2' },
     ])
 
     const result = await answerKnowledgeQuery(
@@ -79,8 +79,18 @@ describe('knowledge answering', () => {
     expect(result).toEqual({
       answer: 'Revenue grew 20% and margins improved.',
       citations: [
-        { citationId: 'cit-1', sourceChunkId: 'chunk-1' },
-        { citationId: 'cit-2', sourceChunkId: 'chunk-2' },
+        {
+          citationId: 'cit-1',
+          documentTitle: 'Quarterly Report',
+          documentVersionId: 'ver-2',
+          sourceChunkId: 'chunk-1',
+        },
+        {
+          citationId: 'cit-2',
+          documentTitle: 'Quarterly Report',
+          documentVersionId: 'ver-2',
+          sourceChunkId: 'chunk-2',
+        },
       ],
       refused: false,
       retrievalScore: 0.85,

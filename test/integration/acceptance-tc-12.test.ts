@@ -150,7 +150,7 @@ describe('acceptance MCP interoperability replay chain', () => {
       const askResult = (await runAskKnowledge(fixture.prompt)) as {
         data: {
           answer: string
-          citations: Array<{ citationId: string; sourceChunkId: string }>
+          citations: Array<{ citationId: string; documentTitle?: string; sourceChunkId: string }>
           refused: boolean
         }
       }
@@ -174,6 +174,7 @@ describe('acceptance MCP interoperability replay chain', () => {
           citations: [
             {
               citationId: expect.any(String),
+              documentTitle: scenario.documentTitle,
               documentVersionId: scenario.documentVersionId,
               sourceChunkId: scenario.sourceChunkId,
             },
