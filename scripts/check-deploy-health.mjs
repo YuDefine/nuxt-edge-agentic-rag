@@ -89,6 +89,39 @@ async function probeTarget(target, options) {
   }
 }
 
+async function probeAuthBinding(baseUrl, options = {}) {
+  const url = `${baseUrl}/api/auth/sign-in/social`
+  const controller = new AbortController()
+  const maxTimeMs = options.maxTimeMs ?? DEFAULT_MAX_TIME_MS
+  const timeoutId = setTimeout(() => controller.abort(), maxTimeMs)
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ provider: 'google', callbackURL: '/' }),
+      redirect: 'manual',
+      signal: controller.signal,
+    })
+    // 302 = redirect to Google OAuth (healthy)
+    // 200 = returned URL in body (healthy)
+    // 500 = binding crash (KV/D1 missing)
+    if (response.status === 500) {
+      return { ok: false, statusCode: response.status, url }
+    }
+    return { ok: true, statusCode: response.status, url }
+  } catch (error) {
+    return {
+      ok: false,
+      statusCode: 0,
+      url,
+      error: error instanceof Error ? error.message : String(error),
+    }
+  } finally {
+    clearTimeout(timeoutId)
+  }
+}
+
 export async function runHealthChecks(options) {
   const rawTargets = [
     { label: 'Custom domain', url: normalizeUrl(options.customDomainUrl) },
@@ -115,6 +148,15 @@ export async function runHealthChecks(options) {
     attempts.push(result)
 
     if (result.statusCode === '200') {
+      const authProbe = await probeAuthBinding(result.url, options)
+      if (!authProbe.ok) {
+        return {
+          ok: false,
+          reason: 'auth_binding_broken',
+          error: `Auth binding probe failed: POST ${authProbe.url} returned HTTP ${authProbe.statusCode} (expected non-500). KV or D1 binding may be missing from deployed Worker.`,
+          attempts,
+        }
+      }
       return {
         ok: true,
         reason: 'healthy',
