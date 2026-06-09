@@ -37,10 +37,10 @@
 - v0.57.7 關 cache / v0.57.9 non-stream：與 root cause 無關（binding shape 對了，但 reasoning 仍吃光 token）
 - 一直假設「llama binding shape 不匹配」，真兇是被 role 切換選中的 kimi reasoning model
 
-### Deploy / 驗證 pending
+### Deploy / 驗證 ✅ DONE（2026-06-09）
 
-- [ ] tag v0.57.10 → CI deploy（git push --tags 觸發 release workflow）
-- [ ] production 驗證：問「PO/PR 差別」→ 查 query_logs answer model=llama + `messages.content_redacted` 非空
+- [x] tag v0.57.10 → CI deploy **success**（run 27199909260）
+- [x] production 驗證 **passed**：問「PO/PR 差別」→ `event: delta`（有內容）+ 完整 answer + 4 citations + refused:false。D1 確認：decision_path=direct_answer、answer model=`@cf/meta/llama-3.3-70b-instruct-fp8-fast`、modelRole=`defaultAnswer`、`messages.content_redacted` len=107（非空）、latency 7.8s（vs kimi 16-31s，快 2-4 倍）、completionTokens=87
 - demo 其他項目 ready：報告 `local/reports/archive/main-v0.0.55.{md,docx}`、`local/reports/notes/demo-cheatsheet-2026-06-10.md`、引導問題已對應知識庫
 
 ### 待清理（非 blocker）
