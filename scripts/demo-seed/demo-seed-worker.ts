@@ -74,14 +74,25 @@ export default {
       return jsonResponse({ dryRun: true, summary: seed.summary })
     }
 
-    const d1 = await applyD1Seed(env.DB, seed)
-    const r2 = await applyR2Seed(env.BLOB, seed)
-    return jsonResponse({
-      dryRun: false,
-      d1,
-      r2,
-      summary: seed.summary,
-    })
+    try {
+      const d1 = await applyD1Seed(env.DB, seed)
+      const r2 = await applyR2Seed(env.BLOB, seed)
+      return jsonResponse({
+        dryRun: false,
+        d1,
+        r2,
+        summary: seed.summary,
+      })
+    } catch (error) {
+      return jsonResponse(
+        {
+          error: 'apply failed',
+          message: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack?.split('\n').slice(0, 5) : undefined,
+        },
+        500,
+      )
+    }
   },
 }
 
@@ -155,530 +166,551 @@ async function applyD1Seed(db: D1Database, seed: DemoSeed): Promise<{ statements
   const statements: D1PreparedStatement[] = []
   const environment = seed.summary.environment
 
-  statements.push(
-    db.prepare('DELETE FROM citation_records WHERE id LIKE ?').bind(`${prefix(environment)}%`),
-    db.prepare('DELETE FROM messages WHERE id LIKE ?').bind(`${prefix(environment)}%`),
-    db.prepare('DELETE FROM query_logs WHERE id LIKE ?').bind(`${prefix(environment)}%`),
-    db.prepare('DELETE FROM conversations WHERE id LIKE ?').bind(`${prefix(environment)}%`),
-    db.prepare('DELETE FROM source_chunks WHERE id LIKE ?').bind(`${prefix(environment)}%`),
-    db.prepare('DELETE FROM document_versions WHERE id LIKE ?').bind(`${prefix(environment)}%`),
-    db.prepare('DELETE FROM documents WHERE id LIKE ?').bind(`${prefix(environment)}%`),
-    db.prepare('DELETE FROM mcp_tokens WHERE id LIKE ?').bind(`${prefix(environment)}%`),
-    db.prepare('DELETE FROM member_role_changes WHERE id LIKE ?').bind(`${prefix(environment)}%`),
-    db
-      .prepare('DELETE FROM passkey WHERE id LIKE ? OR userId LIKE ?')
-      .bind(`${prefix(environment)}%`, `${prefix(environment)}user-%`),
-    db
-      .prepare('DELETE FROM session WHERE id LIKE ? OR userId LIKE ?')
-      .bind(`${prefix(environment)}%`, `${prefix(environment)}user-%`),
-    db
-      .prepare('DELETE FROM account WHERE id LIKE ? OR userId LIKE ?')
-      .bind(`${prefix(environment)}%`, `${prefix(environment)}user-%`),
-    db.prepare('DELETE FROM user_profiles WHERE id LIKE ?').bind(`${prefix(environment)}user-%`),
-    db.prepare('DELETE FROM "user" WHERE id LIKE ?').bind(`${prefix(environment)}user-%`),
-    db.prepare('DELETE FROM system_settings WHERE key LIKE ?').bind(`demo.${environment}.%`),
-  )
+  // Disable FK enforcement in a separate batch before main operations
+  await db.batch([db.prepare('PRAGMA foreign_keys = OFF')])
 
-  for (const user of seed.users) {
+  try {
     statements.push(
-      insert(
-        db,
-        '"user"',
-        [
-          'id',
-          'name',
-          'email',
-          'emailVerified',
-          'image',
-          'createdAt',
-          'updatedAt',
-          'role',
-          'banned',
-          'banReason',
-          'banExpires',
-          'display_name',
-        ],
-        [
-          user.id,
-          user.name,
-          user.email,
-          user.emailVerified,
-          user.image,
-          user.createdAt,
-          user.updatedAt,
-          user.role,
-          user.banned,
-          user.banReason,
-          user.banExpires,
-          user.displayName,
-        ],
-      ),
+      db.prepare('DELETE FROM citation_records WHERE id LIKE ?').bind(`${prefix(environment)}%`),
+      // Also delete non-demo citation_records that reference demo source_chunks
+      // (created by real chat queries that cited demo documents)
+      db
+        .prepare('DELETE FROM citation_records WHERE source_chunk_id LIKE ?')
+        .bind(`${prefix(environment)}%`),
+      db.prepare('DELETE FROM messages WHERE id LIKE ?').bind(`${prefix(environment)}%`),
+      db.prepare('DELETE FROM query_logs WHERE id LIKE ?').bind(`${prefix(environment)}%`),
+      db.prepare('DELETE FROM conversations WHERE id LIKE ?').bind(`${prefix(environment)}%`),
+      db.prepare('DELETE FROM source_chunks WHERE id LIKE ?').bind(`${prefix(environment)}%`),
+      db.prepare('DELETE FROM document_versions WHERE id LIKE ?').bind(`${prefix(environment)}%`),
+      db.prepare('DELETE FROM documents WHERE id LIKE ?').bind(`${prefix(environment)}%`),
+      db.prepare('DELETE FROM mcp_tokens WHERE id LIKE ?').bind(`${prefix(environment)}%`),
+      db.prepare('DELETE FROM member_role_changes WHERE id LIKE ?').bind(`${prefix(environment)}%`),
+      db
+        .prepare('DELETE FROM passkey WHERE id LIKE ? OR userId LIKE ?')
+        .bind(`${prefix(environment)}%`, `${prefix(environment)}user-%`),
+      db
+        .prepare('DELETE FROM session WHERE id LIKE ? OR userId LIKE ?')
+        .bind(`${prefix(environment)}%`, `${prefix(environment)}user-%`),
+      db
+        .prepare('DELETE FROM account WHERE id LIKE ? OR userId LIKE ?')
+        .bind(`${prefix(environment)}%`, `${prefix(environment)}user-%`),
+      db.prepare('DELETE FROM user_profiles WHERE id LIKE ?').bind(`${prefix(environment)}user-%`),
+      db.prepare('DELETE FROM "user" WHERE id LIKE ?').bind(`${prefix(environment)}user-%`),
+      db.prepare('DELETE FROM system_settings WHERE key LIKE ?').bind(`demo.${environment}.%`),
     )
-  }
 
-  for (const profile of seed.userProfiles) {
-    statements.push(
-      insert(
-        db,
-        'user_profiles',
-        [
-          'id',
-          'email_normalized',
-          'display_name',
-          'role_snapshot',
-          'admin_source',
-          'created_at',
-          'updated_at',
-        ],
-        [
-          profile.id,
-          profile.emailNormalized,
-          profile.displayName,
-          profile.roleSnapshot,
-          profile.adminSource,
-          profile.createdAt,
-          profile.updatedAt,
-        ],
-      ),
-    )
-  }
-
-  for (const row of seed.accounts) {
-    statements.push(
-      insert(
-        db,
-        'account',
-        [
-          'id',
-          'userId',
-          'accountId',
-          'providerId',
-          'accessToken',
-          'refreshToken',
-          'accessTokenExpiresAt',
-          'refreshTokenExpiresAt',
-          'scope',
-          'password',
-          'idToken',
-          'createdAt',
-          'updatedAt',
-        ],
-        values(row, [
-          'id',
-          'userId',
-          'accountId',
-          'providerId',
-          'accessToken',
-          'refreshToken',
-          'accessTokenExpiresAt',
-          'refreshTokenExpiresAt',
-          'scope',
-          'password',
-          'idToken',
-          'createdAt',
-          'updatedAt',
-        ]),
-      ),
-    )
-  }
-
-  for (const row of seed.sessions) {
-    statements.push(
-      insert(
-        db,
-        'session',
-        ['id', 'userId', 'token', 'expiresAt', 'ipAddress', 'userAgent', 'createdAt', 'updatedAt'],
-        values(row, [
-          'id',
-          'userId',
-          'token',
-          'expiresAt',
-          'ipAddress',
-          'userAgent',
-          'createdAt',
-          'updatedAt',
-        ]),
-      ),
-    )
-  }
-
-  for (const row of seed.passkeys) {
-    statements.push(
-      insert(
-        db,
-        'passkey',
-        [
-          'id',
-          'name',
-          'publicKey',
-          'userId',
-          'credentialID',
-          'counter',
-          'deviceType',
-          'backedUp',
-          'transports',
-          'createdAt',
-          'aaguid',
-        ],
-        values(row, [
-          'id',
-          'name',
-          'publicKey',
-          'userId',
-          'credentialID',
-          'counter',
-          'deviceType',
-          'backedUp',
-          'transports',
-          'createdAt',
-          'aaguid',
-        ]),
-      ),
-    )
-  }
-
-  for (const row of seed.systemSettings) {
-    if (row.key === 'guest_policy') {
+    for (const user of seed.users) {
       statements.push(
-        db
-          .prepare(
-            'INSERT OR IGNORE INTO system_settings (key, value, updated_at, updated_by) VALUES (?, ?, ?, ?)',
-          )
-          .bind(row.key, row.value, row.updated_at, row.updated_by),
-      )
-    } else {
-      statements.push(
-        db
-          .prepare(
-            [
-              'INSERT INTO system_settings (key, value, updated_at, updated_by)',
-              'VALUES (?, ?, ?, ?)',
-              'ON CONFLICT(key) DO UPDATE SET',
-              'value = excluded.value,',
-              'updated_at = excluded.updated_at,',
-              'updated_by = excluded.updated_by',
-            ].join(' '),
-          )
-          .bind(row.key, row.value, row.updated_at, row.updated_by),
+        insert(
+          db,
+          '"user"',
+          [
+            'id',
+            'name',
+            'email',
+            'emailVerified',
+            'image',
+            'createdAt',
+            'updatedAt',
+            'role',
+            'banned',
+            'banReason',
+            'banExpires',
+            'display_name',
+          ],
+          [
+            user.id,
+            user.name,
+            user.email,
+            user.emailVerified,
+            user.image,
+            user.createdAt,
+            user.updatedAt,
+            user.role,
+            user.banned,
+            user.banReason,
+            user.banExpires,
+            user.displayName,
+          ],
+        ),
       )
     }
-  }
 
-  for (const row of seed.memberRoleChanges) {
-    statements.push(
-      insert(
-        db,
-        'member_role_changes',
-        ['id', 'user_id', 'from_role', 'to_role', 'changed_by', 'reason', 'created_at'],
-        values(row, [
-          'id',
-          'user_id',
-          'from_role',
-          'to_role',
-          'changed_by',
-          'reason',
-          'created_at',
-        ]),
-      ),
-    )
-  }
+    for (const profile of seed.userProfiles) {
+      statements.push(
+        insert(
+          db,
+          'user_profiles',
+          [
+            'id',
+            'email_normalized',
+            'display_name',
+            'role_snapshot',
+            'admin_source',
+            'created_at',
+            'updated_at',
+          ],
+          [
+            profile.id,
+            profile.emailNormalized,
+            profile.displayName,
+            profile.roleSnapshot,
+            profile.adminSource,
+            profile.createdAt,
+            profile.updatedAt,
+          ],
+        ),
+      )
+    }
 
-  for (const token of seed.mcpTokens) {
-    statements.push(
-      insert(
-        db,
-        'mcp_tokens',
-        [
-          'id',
-          'token_hash',
-          'name',
-          'scopes_json',
-          'environment',
-          'status',
-          'expires_at',
-          'last_used_at',
-          'revoked_at',
-          'revoked_reason',
-          'created_at',
-          'created_by_user_id',
-        ],
-        [
-          token.id,
-          token.tokenHash,
-          token.name,
-          token.scopesJson,
-          token.environment,
-          token.status,
-          token.expiresAt,
-          token.lastUsedAt,
-          token.revokedAt,
-          token.revokedReason,
-          token.createdAt,
-          token.createdByUserId,
-        ],
-      ),
-    )
-  }
+    for (const row of seed.accounts) {
+      statements.push(
+        insert(
+          db,
+          'account',
+          [
+            'id',
+            'userId',
+            'accountId',
+            'providerId',
+            'accessToken',
+            'refreshToken',
+            'accessTokenExpiresAt',
+            'refreshTokenExpiresAt',
+            'scope',
+            'password',
+            'idToken',
+            'createdAt',
+            'updatedAt',
+          ],
+          values(row, [
+            'id',
+            'userId',
+            'accountId',
+            'providerId',
+            'accessToken',
+            'refreshToken',
+            'accessTokenExpiresAt',
+            'refreshTokenExpiresAt',
+            'scope',
+            'password',
+            'idToken',
+            'createdAt',
+            'updatedAt',
+          ]),
+        ),
+      )
+    }
 
-  for (const document of seed.documents) {
-    statements.push(
-      insert(
-        db,
-        'documents',
-        [
-          'id',
-          'slug',
-          'title',
-          'category_slug',
-          'access_level',
-          'status',
-          'current_version_id',
-          'created_by_user_id',
-          'created_at',
-          'updated_at',
-          'archived_at',
-        ],
-        [
-          document.id,
-          document.slug,
-          document.title,
-          document.categorySlug,
-          document.accessLevel,
-          document.status,
-          document.currentVersionId,
-          document.createdByUserId,
-          document.createdAt,
-          document.updatedAt,
-          document.archivedAt,
-        ],
-      ),
-    )
-  }
+    for (const row of seed.sessions) {
+      statements.push(
+        insert(
+          db,
+          'session',
+          [
+            'id',
+            'userId',
+            'token',
+            'expiresAt',
+            'ipAddress',
+            'userAgent',
+            'createdAt',
+            'updatedAt',
+          ],
+          values(row, [
+            'id',
+            'userId',
+            'token',
+            'expiresAt',
+            'ipAddress',
+            'userAgent',
+            'createdAt',
+            'updatedAt',
+          ]),
+        ),
+      )
+    }
 
-  for (const version of seed.documentVersions) {
-    statements.push(
-      insert(
-        db,
-        'document_versions',
-        [
-          'id',
-          'document_id',
-          'version_number',
-          'source_r2_key',
-          'normalized_text_r2_key',
-          'metadata_json',
-          'smoke_test_queries_json',
-          'index_status',
-          'sync_status',
-          'is_current',
-          'published_at',
-          'created_at',
-          'updated_at',
-        ],
-        [
-          version.id,
-          version.documentId,
-          version.versionNumber,
-          version.sourceR2Key,
-          version.normalizedTextR2Key,
-          version.metadataJson,
-          version.smokeTestQueriesJson,
-          version.indexStatus,
-          version.syncStatus,
-          version.isCurrent ? 1 : 0,
-          version.publishedAt,
-          version.createdAt,
-          version.updatedAt,
-        ],
-      ),
-    )
-  }
+    for (const row of seed.passkeys) {
+      statements.push(
+        insert(
+          db,
+          'passkey',
+          [
+            'id',
+            'name',
+            'publicKey',
+            'userId',
+            'credentialID',
+            'counter',
+            'deviceType',
+            'backedUp',
+            'transports',
+            'createdAt',
+            'aaguid',
+          ],
+          values(row, [
+            'id',
+            'name',
+            'publicKey',
+            'userId',
+            'credentialID',
+            'counter',
+            'deviceType',
+            'backedUp',
+            'transports',
+            'createdAt',
+            'aaguid',
+          ]),
+        ),
+      )
+    }
 
-  for (const chunk of seed.sourceChunks) {
-    statements.push(
-      insert(
-        db,
-        'source_chunks',
-        [
-          'id',
-          'document_version_id',
-          'chunk_index',
-          'chunk_hash',
-          'chunk_text',
-          'citation_locator',
-          'access_level',
-          'metadata_json',
-          'created_at',
-        ],
-        [
-          chunk.id,
-          chunk.documentVersionId,
-          chunk.chunkIndex,
-          chunk.chunkHash,
-          chunk.chunkText,
-          chunk.citationLocator,
-          chunk.accessLevel,
-          chunk.metadataJson,
-          chunk.createdAt,
-        ],
-      ),
-    )
-  }
+    for (const row of seed.systemSettings) {
+      if (row.key === 'guest_policy') {
+        statements.push(
+          db
+            .prepare(
+              'INSERT OR IGNORE INTO system_settings (key, value, updated_at, updated_by) VALUES (?, ?, ?, ?)',
+            )
+            .bind(row.key, row.value, row.updated_at, row.updated_by),
+        )
+      } else {
+        statements.push(
+          db
+            .prepare(
+              [
+                'INSERT INTO system_settings (key, value, updated_at, updated_by)',
+                'VALUES (?, ?, ?, ?)',
+                'ON CONFLICT(key) DO UPDATE SET',
+                'value = excluded.value,',
+                'updated_at = excluded.updated_at,',
+                'updated_by = excluded.updated_by',
+              ].join(' '),
+            )
+            .bind(row.key, row.value, row.updated_at, row.updated_by),
+        )
+      }
+    }
 
-  for (const conversation of seed.conversations) {
-    statements.push(
-      insert(
-        db,
-        'conversations',
-        [
-          'id',
-          'user_profile_id',
-          'access_level',
-          'title',
-          'created_at',
-          'updated_at',
-          'deleted_at',
-        ],
-        [
-          conversation.id,
-          conversation.userProfileId,
-          conversation.accessLevel,
-          conversation.title,
-          conversation.createdAt,
-          conversation.updatedAt,
-          conversation.deletedAt,
-        ],
-      ),
-    )
-  }
+    for (const row of seed.memberRoleChanges) {
+      statements.push(
+        insert(
+          db,
+          'member_role_changes',
+          ['id', 'user_id', 'from_role', 'to_role', 'changed_by', 'reason', 'created_at'],
+          values(row, [
+            'id',
+            'user_id',
+            'from_role',
+            'to_role',
+            'changed_by',
+            'reason',
+            'created_at',
+          ]),
+        ),
+      )
+    }
 
-  for (const log of seed.queryLogs) {
-    statements.push(
-      insert(
-        db,
-        'query_logs',
-        [
-          'id',
-          'channel',
-          'user_profile_id',
-          'mcp_token_id',
-          'environment',
-          'query_redacted_text',
-          'risk_flags_json',
-          'allowed_access_levels_json',
-          'redaction_applied',
-          'config_snapshot_version',
-          'status',
-          'created_at',
-          'first_token_latency_ms',
-          'completion_latency_ms',
-          'retrieval_score',
-          'judge_score',
-          'decision_path',
-          'refusal_reason',
-          'workers_ai_runs_json',
-          'rewriter_status',
-          'rewritten_query',
-        ],
-        [
-          log.id,
-          log.channel,
-          log.userProfileId,
-          log.mcpTokenId,
-          log.environment,
-          log.queryRedactedText,
-          log.riskFlagsJson,
-          log.allowedAccessLevelsJson,
-          log.redactionApplied ? 1 : 0,
-          log.configSnapshotVersion,
-          log.status,
-          log.createdAt,
-          log.firstTokenLatencyMs,
-          log.completionLatencyMs,
-          log.retrievalScore,
-          log.judgeScore,
-          log.decisionPath,
-          log.refusalReason,
-          log.workersAiRunsJson,
-          log.rewriterStatus,
-          log.rewrittenQuery,
-        ],
-      ),
-    )
-  }
+    for (const token of seed.mcpTokens) {
+      statements.push(
+        insert(
+          db,
+          'mcp_tokens',
+          [
+            'id',
+            'token_hash',
+            'name',
+            'scopes_json',
+            'environment',
+            'status',
+            'expires_at',
+            'last_used_at',
+            'revoked_at',
+            'revoked_reason',
+            'created_at',
+            'created_by_user_id',
+          ],
+          [
+            token.id,
+            token.tokenHash,
+            token.name,
+            token.scopesJson,
+            token.environment,
+            token.status,
+            token.expiresAt,
+            token.lastUsedAt,
+            token.revokedAt,
+            token.revokedReason,
+            token.createdAt,
+            token.createdByUserId,
+          ],
+        ),
+      )
+    }
 
-  for (const message of seed.messages) {
-    statements.push(
-      insert(
-        db,
-        'messages',
-        [
-          'id',
-          'conversation_id',
-          'query_log_id',
-          'user_profile_id',
-          'channel',
-          'role',
-          'content_redacted',
-          'content_text',
-          'citations_json',
-          'risk_flags_json',
-          'redaction_applied',
-          'refused',
-          'refusal_reason',
-          'created_at',
-        ],
-        [
-          message.id,
-          message.conversationId,
-          message.queryLogId,
-          message.userProfileId,
-          message.channel,
-          message.role,
-          message.contentRedacted,
-          message.contentText,
-          message.citationsJson,
-          message.riskFlagsJson,
-          message.redactionApplied ? 1 : 0,
-          message.refused ? 1 : 0,
-          message.refusalReason,
-          message.createdAt,
-        ],
-      ),
-    )
-  }
+    for (const document of seed.documents) {
+      statements.push(
+        insert(
+          db,
+          'documents',
+          [
+            'id',
+            'slug',
+            'title',
+            'category_slug',
+            'access_level',
+            'status',
+            'current_version_id',
+            'created_by_user_id',
+            'created_at',
+            'updated_at',
+            'archived_at',
+          ],
+          [
+            document.id,
+            document.slug,
+            document.title,
+            document.categorySlug,
+            document.accessLevel,
+            document.status,
+            document.currentVersionId,
+            document.createdByUserId,
+            document.createdAt,
+            document.updatedAt,
+            document.archivedAt,
+          ],
+        ),
+      )
+    }
 
-  for (const citation of seed.citationRecords) {
-    statements.push(
-      insert(
-        db,
-        'citation_records',
-        [
-          'id',
-          'query_log_id',
-          'document_version_id',
-          'source_chunk_id',
-          'citation_locator',
-          'chunk_text_snapshot',
-          'created_at',
-          'expires_at',
-        ],
-        [
-          citation.id,
-          citation.queryLogId,
-          citation.documentVersionId,
-          citation.sourceChunkId,
-          citation.citationLocator,
-          citation.chunkTextSnapshot,
-          citation.createdAt,
-          citation.expiresAt,
-        ],
-      ),
-    )
-  }
+    for (const version of seed.documentVersions) {
+      statements.push(
+        insert(
+          db,
+          'document_versions',
+          [
+            'id',
+            'document_id',
+            'version_number',
+            'source_r2_key',
+            'normalized_text_r2_key',
+            'metadata_json',
+            'smoke_test_queries_json',
+            'index_status',
+            'sync_status',
+            'is_current',
+            'published_at',
+            'created_at',
+            'updated_at',
+          ],
+          [
+            version.id,
+            version.documentId,
+            version.versionNumber,
+            version.sourceR2Key,
+            version.normalizedTextR2Key,
+            version.metadataJson,
+            version.smokeTestQueriesJson,
+            version.indexStatus,
+            version.syncStatus,
+            version.isCurrent ? 1 : 0,
+            version.publishedAt,
+            version.createdAt,
+            version.updatedAt,
+          ],
+        ),
+      )
+    }
 
-  await runBatches(db, statements)
-  return { statements: statements.length }
+    for (const chunk of seed.sourceChunks) {
+      statements.push(
+        insert(
+          db,
+          'source_chunks',
+          [
+            'id',
+            'document_version_id',
+            'chunk_index',
+            'chunk_hash',
+            'chunk_text',
+            'citation_locator',
+            'access_level',
+            'metadata_json',
+            'created_at',
+          ],
+          [
+            chunk.id,
+            chunk.documentVersionId,
+            chunk.chunkIndex,
+            chunk.chunkHash,
+            chunk.chunkText,
+            chunk.citationLocator,
+            chunk.accessLevel,
+            chunk.metadataJson,
+            chunk.createdAt,
+          ],
+        ),
+      )
+    }
+
+    for (const conversation of seed.conversations) {
+      statements.push(
+        insert(
+          db,
+          'conversations',
+          [
+            'id',
+            'user_profile_id',
+            'access_level',
+            'title',
+            'created_at',
+            'updated_at',
+            'deleted_at',
+          ],
+          [
+            conversation.id,
+            conversation.userProfileId,
+            conversation.accessLevel,
+            conversation.title,
+            conversation.createdAt,
+            conversation.updatedAt,
+            conversation.deletedAt,
+          ],
+        ),
+      )
+    }
+
+    for (const log of seed.queryLogs) {
+      statements.push(
+        insert(
+          db,
+          'query_logs',
+          [
+            'id',
+            'channel',
+            'user_profile_id',
+            'mcp_token_id',
+            'environment',
+            'query_redacted_text',
+            'risk_flags_json',
+            'allowed_access_levels_json',
+            'redaction_applied',
+            'config_snapshot_version',
+            'status',
+            'created_at',
+            'first_token_latency_ms',
+            'completion_latency_ms',
+            'retrieval_score',
+            'judge_score',
+            'decision_path',
+            'refusal_reason',
+            'workers_ai_runs_json',
+            'rewriter_status',
+            'rewritten_query',
+          ],
+          [
+            log.id,
+            log.channel,
+            log.userProfileId,
+            log.mcpTokenId,
+            log.environment,
+            log.queryRedactedText,
+            log.riskFlagsJson,
+            log.allowedAccessLevelsJson,
+            log.redactionApplied ? 1 : 0,
+            log.configSnapshotVersion,
+            log.status,
+            log.createdAt,
+            log.firstTokenLatencyMs,
+            log.completionLatencyMs,
+            log.retrievalScore,
+            log.judgeScore,
+            log.decisionPath,
+            log.refusalReason,
+            log.workersAiRunsJson,
+            log.rewriterStatus,
+            log.rewrittenQuery,
+          ],
+        ),
+      )
+    }
+
+    for (const message of seed.messages) {
+      statements.push(
+        insert(
+          db,
+          'messages',
+          [
+            'id',
+            'conversation_id',
+            'query_log_id',
+            'user_profile_id',
+            'channel',
+            'role',
+            'content_redacted',
+            'content_text',
+            'citations_json',
+            'risk_flags_json',
+            'redaction_applied',
+            'refused',
+            'refusal_reason',
+            'created_at',
+          ],
+          [
+            message.id,
+            message.conversationId,
+            message.queryLogId,
+            message.userProfileId,
+            message.channel,
+            message.role,
+            message.contentRedacted,
+            message.contentText,
+            message.citationsJson,
+            message.riskFlagsJson,
+            message.redactionApplied ? 1 : 0,
+            message.refused ? 1 : 0,
+            message.refusalReason,
+            message.createdAt,
+          ],
+        ),
+      )
+    }
+
+    for (const citation of seed.citationRecords) {
+      statements.push(
+        insert(
+          db,
+          'citation_records',
+          [
+            'id',
+            'query_log_id',
+            'document_version_id',
+            'source_chunk_id',
+            'citation_locator',
+            'chunk_text_snapshot',
+            'created_at',
+            'expires_at',
+          ],
+          [
+            citation.id,
+            citation.queryLogId,
+            citation.documentVersionId,
+            citation.sourceChunkId,
+            citation.citationLocator,
+            citation.chunkTextSnapshot,
+            citation.createdAt,
+            citation.expiresAt,
+          ],
+        ),
+      )
+    }
+
+    await runBatches(db, statements)
+    return { statements: statements.length }
+  } finally {
+    await db.batch([db.prepare('PRAGMA foreign_keys = ON')])
+  }
 }
 
 async function applyR2Seed(
@@ -722,7 +754,16 @@ function values(row: Record<string, string | number | null>, columns: string[]):
 async function runBatches(db: D1Database, statements: D1PreparedStatement[]): Promise<void> {
   const batchSize = 80
   for (let index = 0; index < statements.length; index += batchSize) {
-    await db.batch(statements.slice(index, index + batchSize))
+    const batch = statements.slice(index, index + batchSize)
+    try {
+      await db.batch(batch)
+    } catch (error) {
+      // Re-throw with batch index context
+      const msg = error instanceof Error ? error.message : String(error)
+      throw new Error(
+        `Batch ${index / batchSize} (stmts ${index}-${index + batch.length - 1} of ${statements.length}) failed: ${msg}`,
+      )
+    }
   }
 }
 
