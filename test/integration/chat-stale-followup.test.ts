@@ -259,9 +259,17 @@ describe('chatWithKnowledge — conversation follow-up', () => {
     }
     expect(assistantArg.conversationId).toBe('conv-1')
     const parsed = JSON.parse(assistantArg.citationsJson) as Array<{
+      citationId: string
       documentVersionId: string
+      sourceChunkId: string
     }>
-    expect(parsed).toEqual([{ documentVersionId: 'ver-current' }])
+    expect(parsed).toEqual([
+      {
+        citationId: expect.any(String),
+        documentVersionId: 'ver-current',
+        sourceChunkId: expect.any(String),
+      },
+    ])
   })
 
   it('still returns followUp on the credential-block early-return branch', async () => {

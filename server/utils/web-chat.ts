@@ -553,17 +553,17 @@ export async function chatWithKnowledge(
         userProfileId: input.auth.userId,
       })
     } else {
-      // Governance §1.1: persist a de-duplicated list of cited
-      // `document_version_id` values so the stale resolver can re-validate
-      // them on the next follow-up turn.
-      const citedDocumentVersionIds = [
-        ...new Set(result.citations.map((citation) => citation.documentVersionId)),
-      ]
-
+      // Governance §1.1: persist citation identifiers so the client can
+      // render clickable CitationMarker buttons, AND the stale resolver
+      // can re-validate `document_version_id` on follow-up turns.
       await options.auditStore.createMessage({
         channel: 'web',
         citationsJson: JSON.stringify(
-          citedDocumentVersionIds.map((documentVersionId) => ({ documentVersionId })),
+          result.citations.map((citation) => ({
+            citationId: citation.citationId,
+            documentVersionId: citation.documentVersionId,
+            sourceChunkId: citation.sourceChunkId,
+          })),
         ),
         content: result.answer,
         conversationId: input.conversationId ?? null,
