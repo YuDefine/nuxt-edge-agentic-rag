@@ -31,14 +31,26 @@ export default defineMcpHandler({
   middleware: async (event) => {
     const runtimeConfig = getKnowledgeRuntimeConfig()
 
+    // Stash Cloudflare env bindings on the event context before MCP tool
+    // dispatch. Inside MCP tool handlers `useEvent()` may return a context
+    // where `context.cloudflare.env` is absent (the MCP SDK dispatches
+    // handlers in a microtask that can escape the AsyncLocalStorage chain).
+    // Tool handlers fall back to `event.context._mcpCloudflareEnv` when the
+    // standard `context.cloudflare.env` path is empty.
+    const h3 = event as unknown as H3Event
+    const cfEnv = h3.context?.cloudflare?.env
+    if (cfEnv) {
+      h3.context._mcpCloudflareEnv = cfEnv
+    }
+
     await runMcpMiddleware(event, {
-      authSigningKey: getMcpAuthSigningKey(event as unknown as H3Event),
+      authSigningKey: getMcpAuthSigningKey(h3),
       environment: runtimeConfig.environment,
       extractToolNames,
       kvBindingName: runtimeConfig.bindings.rateLimitKv,
       tokenStore: createMcpTokenStore(),
     })
 
-    await rehydrateMcpRequestBody(event as unknown as H3Event)
+    await rehydrateMcpRequestBody(h3)
   },
 })
