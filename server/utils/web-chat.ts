@@ -561,6 +561,7 @@ export async function chatWithKnowledge(
         citationsJson: JSON.stringify(
           result.citations.map((citation) => ({
             citationId: citation.citationId,
+            documentTitle: citation.documentTitle,
             documentVersionId: citation.documentVersionId,
             sourceChunkId: citation.sourceChunkId,
           })),

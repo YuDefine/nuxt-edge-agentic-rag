@@ -266,6 +266,7 @@ describe('chatWithKnowledge — conversation follow-up', () => {
     expect(parsed).toEqual([
       {
         citationId: expect.any(String),
+        documentTitle: 'Launch Plan',
         documentVersionId: 'ver-current',
         sourceChunkId: expect.any(String),
       },

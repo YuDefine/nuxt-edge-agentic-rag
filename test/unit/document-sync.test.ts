@@ -204,9 +204,10 @@ describe('document sync', () => {
     )
   })
 
-  it('creates replay assets for each supported rich format after loading bytes', async () => {
+  it('creates replay assets for each supported rich format after loading bytes with deterministic assertions', async () => {
     const cases = [
       {
+        expectedCanonicalText: ['[Page 1]', 'Quarterly Report', 'Revenue grew 20%.'].join('\n'),
         filename: 'quarterly-report.pdf',
         fixture: createPdfFixture({
           pages: [['Quarterly Report', 'Revenue grew 20%.']],
@@ -214,6 +215,7 @@ describe('document sync', () => {
         mimeType: 'application/pdf',
       },
       {
+        expectedCanonicalText: ['Quarterly Report', 'Revenue grew 20%.'].join('\n'),
         filename: 'quarterly-report.docx',
         fixture: createDocxFixture({
           paragraphs: ['Quarterly Report', 'Revenue grew 20%.'],
@@ -221,6 +223,7 @@ describe('document sync', () => {
         mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       },
       {
+        expectedCanonicalText: ['[Sheet: Revenue]', 'Quarter | Amount', 'Q1 | 120'].join('\n'),
         filename: 'quarterly-report.xlsx',
         fixture: createXlsxFixture({
           rows: [
@@ -232,6 +235,7 @@ describe('document sync', () => {
         mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       },
       {
+        expectedCanonicalText: ['[Slide 1]', 'Quarterly Plan', 'Launch migration'].join('\n'),
         filename: 'quarterly-report.pptx',
         fixture: createPptxFixture({
           slideTexts: [['Quarterly Plan', 'Launch migration']],
@@ -300,16 +304,47 @@ describe('document sync', () => {
         },
       )
 
+      // Verify bytes path: loadSourceBytes called, loadSourceText NOT called
       expect(loadSourceBytes).toHaveBeenCalledWith(
         `staged/local/admin-1/upload-1/${testCase.filename}`,
       )
       expect(loadSourceText).not.toHaveBeenCalled()
-      expect(writeChunkObjects).toHaveBeenCalled()
+
+      // Verify writeChunkObjects received canonical text content
+      expect(writeChunkObjects).toHaveBeenCalledTimes(1)
+      const writtenChunks = writeChunkObjects.mock.calls[0]?.[0]
+      expect(writtenChunks).toBeDefined()
+      expect(writtenChunks.length).toBeGreaterThan(0)
+      const allChunkText = writtenChunks.map((c: { text: string }) => c.text).join('\n')
+      expect(allChunkText).toBe(testCase.expectedCanonicalText)
+
+      // Verify createVersion receives normalized key, metadata, smoke queries
+      expect(store.createVersion).toHaveBeenCalledWith(
+        expect.objectContaining({
+          normalizedTextR2Key: 'normalized-text/ver-1/',
+        }),
+      )
+      const versionInput = store.createVersion.mock.calls[0]?.[0]
+      expect(versionInput?.metadataJson).toBeDefined()
+      const metadata = JSON.parse(versionInput.metadataJson)
+      expect(metadata.sourceMimeType).toBe(testCase.mimeType)
+      expect(metadata.title).toBe('Quarterly Report')
+      const smokeQueries = JSON.parse(versionInput.smokeTestQueriesJson)
+      expect(smokeQueries.length).toBeGreaterThan(0)
+
+      // Verify createSourceChunks receives line-based citationLocator
+      expect(store.createSourceChunks).toHaveBeenCalledWith(
+        'ver-1',
+        expect.arrayContaining([
+          expect.objectContaining({
+            chunkIndex: 0,
+            citationLocator: expect.stringMatching(/^lines \d+-\d+$/),
+          }),
+        ]),
+      )
+
       expect(result.version.normalizedTextR2Key).toBe('normalized-text/ver-1/')
       expect(result.sourceChunkCount).toBeGreaterThan(0)
-      expect(
-        JSON.parse(store.createVersion.mock.calls[0]?.[0]?.smokeTestQueriesJson ?? '[]').length,
-      ).toBeGreaterThan(0)
     }
   })
 
@@ -364,6 +399,91 @@ describe('document sync', () => {
       expect(store.createVersion).not.toHaveBeenCalled()
       expect(store.createSourceChunks).not.toHaveBeenCalled()
     }
+  })
+
+  it('does not create document, version, chunks, or chunk objects when rich extraction fails (corrupted zip)', async () => {
+    const { strToU8 } = await import('fflate')
+    const corruptedBytes = strToU8('not a valid zip file')
+
+    const store = {
+      createDocument: vi.fn(),
+      createSourceChunks: vi.fn(),
+      createVersion: vi.fn(),
+      findDocumentBySlug: vi.fn().mockResolvedValue(null),
+      getNextVersionNumber: vi.fn(),
+    }
+    const writeChunkObjects = vi.fn()
+
+    await expect(
+      syncDocumentVersionSnapshot(
+        {
+          accessLevel: 'restricted',
+          adminUserId: 'admin-1',
+          categorySlug: 'finance',
+          checksumSha256: 'abc123',
+          environment: 'local',
+          mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          objectKey: 'staged/local/admin-1/upload-1/corrupted.docx',
+          size: 128,
+          slug: 'quarterly-report',
+          title: 'Quarterly Report',
+          uploadId: 'upload-1',
+        },
+        {
+          loadSourceBytes: vi.fn().mockResolvedValue(corruptedBytes.buffer.slice(0)),
+          loadSourceText: vi.fn(),
+          store,
+          writeChunkObjects,
+        },
+      ),
+    ).rejects.toThrow()
+
+    expect(store.createDocument).not.toHaveBeenCalled()
+    expect(store.createVersion).not.toHaveBeenCalled()
+    expect(store.createSourceChunks).not.toHaveBeenCalled()
+    expect(writeChunkObjects).not.toHaveBeenCalled()
+  })
+
+  it('does not create document, version, chunks, or chunk objects when rich extraction yields empty text', async () => {
+    const store = {
+      createDocument: vi.fn(),
+      createSourceChunks: vi.fn(),
+      createVersion: vi.fn(),
+      findDocumentBySlug: vi.fn().mockResolvedValue(null),
+      getNextVersionNumber: vi.fn(),
+    }
+    const writeChunkObjects = vi.fn()
+
+    await expect(
+      syncDocumentVersionSnapshot(
+        {
+          accessLevel: 'restricted',
+          adminUserId: 'admin-1',
+          categorySlug: 'finance',
+          checksumSha256: 'abc123',
+          environment: 'local',
+          mimeType: 'application/pdf',
+          objectKey: 'staged/local/admin-1/upload-1/scanned-empty.pdf',
+          size: 128,
+          slug: 'quarterly-report',
+          title: 'Quarterly Report',
+          uploadId: 'upload-1',
+        },
+        {
+          loadSourceBytes: vi
+            .fn()
+            .mockResolvedValue(createPdfFixture({ pages: [[]] }).buffer.slice(0)),
+          loadSourceText: vi.fn(),
+          store,
+          writeChunkObjects,
+        },
+      ),
+    ).rejects.toThrow()
+
+    expect(store.createDocument).not.toHaveBeenCalled()
+    expect(store.createVersion).not.toHaveBeenCalled()
+    expect(store.createSourceChunks).not.toHaveBeenCalled()
+    expect(writeChunkObjects).not.toHaveBeenCalled()
   })
 
   it('rejects textless rich sources before document or version creation', async () => {
