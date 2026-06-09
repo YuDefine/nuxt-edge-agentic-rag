@@ -24,8 +24,8 @@ vi.mock('nitropack/runtime', () => ({
 // primaryOutcome='direct'，但允收條件也接受 judge_pass（spec：「可接受 judge_pass；不得 self_corrected 或 refused」）。
 //
 // 本測試同時覆蓋兩條路徑：
-//   path='direct'     → retrievalScore >= directAnswerMin（0.7）→ 不進 judge
-//   path='judge_pass' → retrievalScore ∈ [judgeMin=0.45, directAnswerMin=0.7) → judge 被呼叫一次且 shouldAnswer=true
+//   path='direct'     → retrievalScore >= directAnswerMin（0.5）→ 不進 judge
+//   path='judge_pass' → retrievalScore ∈ [judgeMin=0.45, directAnswerMin=0.5) → judge 被呼叫一次且 shouldAnswer=true
 // 兩種路徑都視為通過；self_corrected 與 refused 必定不通過。
 //
 // 關鍵驗證：
@@ -321,9 +321,9 @@ function createTc11Bindings(
   scenario: Tc11Scenario,
   path: Tc11Path,
 ) {
-  // direct  → 0.85 ≥ 0.7（directAnswerMin）
-  // judge_pass → 0.55 ∈ [0.45, 0.7)
-  const score = path === 'direct' ? 0.85 : 0.55
+  // direct  → 0.85 ≥ 0.5（directAnswerMin）
+  // judge_pass → 0.48 ∈ [0.45, 0.5)
+  const score = path === 'direct' ? 0.85 : 0.48
 
   const d1 = createD1BindingFake({
     responders: [

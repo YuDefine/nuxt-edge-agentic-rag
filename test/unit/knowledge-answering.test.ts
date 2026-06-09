@@ -161,7 +161,7 @@ describe('knowledge answering', () => {
             documentTitle: 'Quarterly Report',
             documentVersionId: 'ver-2',
             excerpt: 'Revenue guidance was updated.',
-            score: 0.5,
+            score: 0.48,
             sourceChunkId: 'chunk-1',
             title: 'Quarterly Report',
           },

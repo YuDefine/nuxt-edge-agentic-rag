@@ -248,7 +248,7 @@ async function runMcpCase(query: string) {
 }
 
 function getTc10Scenario(): Tc10Scenario {
-  // 制度文件（category_slug = 'policy'），分數高於 directAnswerMin=0.7
+  // 制度文件（category_slug = 'policy'），分數高於 directAnswerMin=0.5
   return {
     answerFragments: ['新進人員', '事假', '病假'],
     categorySlug: 'policy',

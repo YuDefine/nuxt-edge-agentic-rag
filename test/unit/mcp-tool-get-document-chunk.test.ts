@@ -87,7 +87,7 @@ describe('mcp get-document-chunk tool definition', () => {
           models: {},
           thresholds: {
             answerMin: 0.51,
-            directAnswerMin: 0.71,
+            directAnswerMin: 0.51,
             judgeMin: 0.46,
           },
         },

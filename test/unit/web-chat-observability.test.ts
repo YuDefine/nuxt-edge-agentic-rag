@@ -210,7 +210,7 @@ describe('chatWithKnowledge — §1.2 debug-safe derived fields', () => {
       createQueryLog: vi.fn().mockResolvedValue('query-log-judge'),
       updateQueryLog: vi.fn().mockResolvedValue(undefined),
     }
-    // Score above judgeMin (0.45) but below directAnswerMin (0.7) — forces
+    // Score above judgeMin (0.45) but below directAnswerMin (0.5) — forces
     // judge invocation. Judge returns shouldAnswer=false without reformulation
     // → judge_pass_refuse with refusal_reason=low_confidence.
     const judge = vi.fn().mockResolvedValue({ shouldAnswer: false })
@@ -228,7 +228,7 @@ describe('chatWithKnowledge — §1.2 debug-safe derived fields', () => {
         judge,
         rateLimitStore: kvStore(),
         retrieve: vi.fn().mockResolvedValue({
-          evidence: evidenceAt(0.5),
+          evidence: evidenceAt(0.48),
           normalizedQuery: 'mid-confidence query',
         }),
       },
@@ -240,7 +240,7 @@ describe('chatWithKnowledge — §1.2 debug-safe derived fields', () => {
       expect.objectContaining({
         decisionPath: 'judge_pass_refuse',
         refusalReason: 'low_confidence',
-        retrievalScore: 0.5,
+        retrievalScore: 0.48,
       }),
     )
   })

@@ -282,7 +282,7 @@ function getTc04Scenario(): Tc04Scenario {
     documentVersionId: 'ver-tc04-current',
     firstPassChunkText: '報表模組提供多張表單，實際欄位依表單種類而定。',
     firstPassCitationLocator: 'lines 1-2',
-    firstPassScore: 0.5,
+    firstPassScore: 0.48,
     firstPassSourceChunkId: 'chunk-tc04-generic',
     secondPassChunkText: '銷售月結報表位於報表模組 > 月結 > 銷售，需先選擇結帳月份再檢視損益欄位。',
     secondPassCitationLocator: 'lines 8-12',
