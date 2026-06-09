@@ -124,6 +124,34 @@ No linked worktrees.
   - Deferred at: 2026-06-09T11:05:33Z
 <!-- deferred-end:rag-query-rewriting:#2 -->
 
+<!-- deferred-begin:rich-document-extraction-tests:#1 -->
+- **rich-document-extraction-tests** #1 — staging PDF 上傳到 chat citation evidence walkthrough
+  - Awaiting signal: staging deploy + PDF upload + sync/publish
+  - Resume: `/spectra-archive rich-document-extraction-tests`
+  - Deferred at: 2026-06-10T06:15:00Z
+<!-- deferred-end:rich-document-extraction-tests:#1 -->
+
+<!-- deferred-begin:rich-document-extraction-tests:#2 -->
+- **rich-document-extraction-tests** #2 — production PDF round-trip 授權與觀察結果
+  - Awaiting signal: production deploy 授權 + staging 先完成
+  - Resume: `/spectra-archive rich-document-extraction-tests`
+  - Deferred at: 2026-06-10T06:15:00Z
+<!-- deferred-end:rich-document-extraction-tests:#2 -->
+
+<!-- deferred-begin:rich-document-extraction-tests:#3 -->
+- **rich-document-extraction-tests** #3 — staging/production POST /api/chat HTTP round-trip
+  - Awaiting signal: staging deploy + published PDF available
+  - Resume: `/spectra-archive rich-document-extraction-tests`
+  - Deferred at: 2026-06-10T06:15:00Z
+<!-- deferred-end:rich-document-extraction-tests:#3 -->
+
+<!-- deferred-begin:rich-document-extraction-tests:#4 -->
+- **rich-document-extraction-tests** #4 — staging/production GET /api/citations citation replay
+  - Awaiting signal: #3 completion to capture citationId
+  - Resume: `/spectra-archive rich-document-extraction-tests`
+  - Deferred at: 2026-06-10T06:15:00Z
+<!-- deferred-end:rich-document-extraction-tests:#4 -->
+
 ## Notes
 
 - v0.56.7 已 deploy（CI 綠燈，run 27159609379）：移除 AutoRAG pre-search metadata filter
