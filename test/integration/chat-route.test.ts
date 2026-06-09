@@ -295,21 +295,9 @@ describe('/api/chat route', () => {
   })
 
   it('returns SSE events for streaming clients on the existing /api/chat path', async () => {
-    const encoder = new TextEncoder()
-    chatRouteMocks.workersAiRun.mockResolvedValueOnce(
-      new ReadableStream<Uint8Array>({
-        start(controller) {
-          controller.enqueue(
-            encoder.encode('data: {"choices":[{"delta":{"content":"Launch moved "}}]}\n\n'),
-          )
-          controller.enqueue(
-            encoder.encode('data: {"choices":[{"delta":{"content":"to Tuesday."}}]}\n\n'),
-          )
-          controller.enqueue(encoder.encode('data: [DONE]\n\n'))
-          controller.close()
-        },
-      }),
-    )
+    chatRouteMocks.workersAiRun.mockResolvedValueOnce({
+      response: 'Launch moved to Tuesday.',
+    })
     chatRouteMocks.chatWithKnowledge.mockImplementationOnce(async (_input, options) => {
       const answer = await options.answer({
         evidence: [
@@ -368,13 +356,7 @@ describe('/api/chat route', () => {
       {
         event: 'delta',
         data: {
-          content: 'Launch moved ',
-        },
-      },
-      {
-        event: 'delta',
-        data: {
-          content: 'to Tuesday.',
+          content: 'Launch moved to Tuesday.',
         },
       },
       {

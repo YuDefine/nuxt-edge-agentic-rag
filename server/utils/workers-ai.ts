@@ -1,5 +1,4 @@
 import type { VerifiedKnowledgeEvidence } from '#server/utils/knowledge-retrieval'
-import { readSseStream } from '#shared/utils/sse-parser'
 
 export interface WorkersAiBindingLike {
   run(model: string, payload: Record<string, unknown>): Promise<unknown>
@@ -85,6 +84,14 @@ export function createWorkersAiAnswerAdapter(input: {
   }): Promise<string> {
     const model = resolveModelId(inputShape.modelRole, input.modelByRole)
     const startedAt = Date.now()
+    // Answer generation uses non-streaming Workers AI binding calls. The
+    // streamed path (`stream: true` + SSE block parsing) produced empty
+    // answers in production because the binding's streamed chunk shape did
+    // not match the SSE parser's delta extraction, so the assistant message
+    // persisted blank despite valid citations. Non-streaming returns the full
+    // `{ response }` shape that `readTextResponse` reliably reads; we surface
+    // the complete answer to SSE consumers via a single `onTextDelta` emit
+    // (no token-by-token typing effect, but a correct answer).
     const response = await input.binding.run(model, {
       max_completion_tokens: 400,
       messages: [
@@ -98,46 +105,15 @@ export function createWorkersAiAnswerAdapter(input: {
           role: 'user',
         },
       ],
-      ...(inputShape.onTextDelta ? { stream: true } : {}),
       temperature: 0.1,
     })
 
-    // eslint-disable-next-line no-console -- debug: trace empty answer root cause
-    console.log(
-      '[answer-debug]',
-      'model:',
-      model,
-      'stream:',
-      !!inputShape.onTextDelta,
-      'responseType:',
-      typeof response,
-      'isReadable:',
-      typeof response === 'object' && response !== null && 'getReader' in response,
-    )
+    const text = readTextResponse(response)
+    const usage = readUsageSnapshot(response)
 
-    const { text, usage } = inputShape.onTextDelta
-      ? await readStreamedTextResponse(response, {
-          onTextDelta: inputShape.onTextDelta,
-          signal: inputShape.signal,
-        })
-      : {
-          text: readTextResponse(response),
-          usage: readUsageSnapshot(response),
-        }
-
-    // eslint-disable-next-line no-console -- debug: trace empty answer
-    if (!text)
-      console.error(
-        '[answer-empty]',
-        'model:',
-        model,
-        'text:',
-        JSON.stringify(text),
-        'response keys:',
-        typeof response === 'object' && response !== null
-          ? Object.keys(response as object).join(',')
-          : 'N/A',
-      )
+    if (inputShape.onTextDelta && text) {
+      await inputShape.onTextDelta(text)
+    }
 
     input.onUsage?.({
       latencyMs: Date.now() - startedAt,
@@ -286,54 +262,6 @@ function readTextResponse(response: unknown): string {
   throw new Error('Workers AI answer response did not contain text')
 }
 
-async function readStreamedTextResponse(
-  response: unknown,
-  options: {
-    onTextDelta: (delta: string) => Promise<void> | void
-    signal?: AbortSignal
-  },
-): Promise<{ text: string; usage: WorkersAiUsageSnapshot | null }> {
-  const stream = resolveReadableStream(response)
-  if (!stream) {
-    const text = readTextResponse(response)
-    await options.onTextDelta(text)
-    return {
-      text,
-      usage: readUsageSnapshot(response),
-    }
-  }
-
-  let text = ''
-  let usage: WorkersAiUsageSnapshot | null = null
-
-  await readSseStream(new Response(stream), {
-    signal: options.signal,
-    onBlock: async (block) => {
-      const parsed = parseSseBlock(block.raw)
-      if (parsed === '[DONE]') {
-        return 'terminate'
-      }
-      if (parsed === null) {
-        return 'continue'
-      }
-
-      const delta = readStreamDelta(parsed)
-      if (delta) {
-        text += delta
-        await options.onTextDelta(delta)
-      }
-
-      usage = readUsageSnapshot(parsed) ?? usage
-      return 'continue'
-    },
-  })
-
-  return {
-    text: text.trim(),
-    usage,
-  }
-}
-
 function readJudgeResponse(response: unknown): {
   reformulatedQuery?: string
   shouldAnswer: boolean
@@ -378,76 +306,6 @@ function readResponseValue(response: unknown): unknown {
   }
 
   return response
-}
-
-function resolveReadableStream(response: unknown): ReadableStream<Uint8Array> | null {
-  if (isReadableStream(response)) {
-    return response
-  }
-
-  if (typeof response !== 'object' || response === null) {
-    return null
-  }
-
-  if ('response' in response && isReadableStream((response as { response?: unknown }).response)) {
-    return (response as { response: ReadableStream<Uint8Array> }).response
-  }
-
-  if ('body' in response && isReadableStream((response as { body?: unknown }).body)) {
-    return (response as { body: ReadableStream<Uint8Array> }).body
-  }
-
-  return null
-}
-
-function isReadableStream(value: unknown): value is ReadableStream<Uint8Array> {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    'getReader' in value &&
-    typeof (value as { getReader?: unknown }).getReader === 'function'
-  )
-}
-
-function parseSseBlock(block: string): unknown | '[DONE]' | null {
-  const payload = block
-    .split('\n')
-    .filter((line) => line.startsWith('data: '))
-    .map((line) => line.slice(6))
-    .join('\n')
-    .trim()
-
-  if (!payload) {
-    return null
-  }
-
-  if (payload === '[DONE]') {
-    return '[DONE]'
-  }
-
-  try {
-    return JSON.parse(payload) as unknown
-  } catch {
-    return null
-  }
-}
-
-function readStreamDelta(payload: unknown): string {
-  if (typeof payload !== 'object' || payload === null) {
-    return ''
-  }
-
-  const directResponse = (payload as { response?: unknown }).response
-  if (typeof directResponse === 'string') {
-    return directResponse
-  }
-
-  const firstChoice = Array.isArray((payload as { choices?: unknown[] }).choices)
-    ? (payload as { choices: Array<{ delta?: { content?: unknown } }> }).choices[0]
-    : null
-  const deltaContent = firstChoice?.delta?.content
-
-  return typeof deltaContent === 'string' ? deltaContent : ''
 }
 
 function normalizeStructuredResponse(candidate: unknown): Record<string, unknown> {

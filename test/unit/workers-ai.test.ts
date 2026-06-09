@@ -176,23 +176,16 @@ describe('workers ai adapters', () => {
     )
   })
 
-  it('streams answer deltas when onTextDelta is provided', async () => {
-    const encoder = new TextEncoder()
+  it('emits the full answer once via onTextDelta (non-streaming)', async () => {
     const binding = {
-      run: vi.fn().mockResolvedValue(
-        new ReadableStream<Uint8Array>({
-          start(controller) {
-            controller.enqueue(
-              encoder.encode('data: {"choices":[{"delta":{"content":"請先建立請購單，"}}]}\n\n'),
-            )
-            controller.enqueue(
-              encoder.encode('data: {"choices":[{"delta":{"content":"再建立採購單。"}}]}\n\n'),
-            )
-            controller.enqueue(encoder.encode('data: [DONE]\n\n'))
-            controller.close()
-          },
-        }),
-      ),
+      run: vi.fn().mockResolvedValue({
+        response: '請先建立請購單，再建立採購單。',
+        usage: {
+          prompt_tokens: 10,
+          completion_tokens: 20,
+          total_tokens: 30,
+        },
+      }),
     }
     const onTextDelta = vi.fn()
 
@@ -212,53 +205,12 @@ describe('workers ai adapters', () => {
 
     expect(binding.run).toHaveBeenCalledWith(
       '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
-      expect.objectContaining({
+      expect.not.objectContaining({
         stream: true,
       }),
     )
-    expect(onTextDelta).toHaveBeenNthCalledWith(1, '請先建立請購單，')
-    expect(onTextDelta).toHaveBeenNthCalledWith(2, '再建立採購單。')
-  })
-
-  it('stops reading streamed answer deltas when the active signal is aborted', async () => {
-    const encoder = new TextEncoder()
-    const binding = {
-      run: vi.fn().mockResolvedValue(
-        new ReadableStream<Uint8Array>({
-          start(controller) {
-            controller.enqueue(
-              encoder.encode('data: {"choices":[{"delta":{"content":"請先建立請購單，"}}]}\n\n'),
-            )
-            controller.enqueue(
-              encoder.encode('data: {"choices":[{"delta":{"content":"不應繼續輸出"}}]}\n\n'),
-            )
-          },
-        }),
-      ),
-    }
-    const abortController = new AbortController()
-    const onTextDelta = vi.fn(() => {
-      abortController.abort()
-    })
-    const answer = createWorkersAiAnswerAdapter({
-      binding,
-    })
-
-    await expect(
-      answer({
-        evidence: evidenceAt(0.9),
-        modelRole: 'defaultAnswer',
-        onTextDelta,
-        query: '採購流程是什麼？',
-        retrievalScore: 0.9,
-        signal: abortController.signal,
-      }),
-    ).rejects.toMatchObject({
-      name: 'AbortError',
-    })
-
     expect(onTextDelta).toHaveBeenCalledTimes(1)
-    expect(onTextDelta).toHaveBeenCalledWith('請先建立請購單，')
+    expect(onTextDelta).toHaveBeenCalledWith('請先建立請購單，再建立採購單。')
   })
 
   it('serializes recorded runs for query-log persistence', () => {
