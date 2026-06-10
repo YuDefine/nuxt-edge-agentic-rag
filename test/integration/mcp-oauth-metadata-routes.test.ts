@@ -115,17 +115,48 @@ describe('MCP OAuth discovery metadata', () => {
     expect(result.client_id_issued_at).toEqual(expect.any(Number))
   })
 
-  it('rejects dynamic registration redirect URIs outside ChatGPT', async () => {
+  it('rejects dynamic registration with plain HTTP non-localhost redirect URI', async () => {
     mocks.getRequestURL.mockReturnValue(new URL('https://agentic.example/api/auth/mcp/register'))
     mocks.readBody.mockResolvedValue({
       client_name: 'Evil',
-      redirect_uris: ['https://evil.example/callback'],
+      redirect_uris: ['http://evil.example/callback'],
     })
     const { default: handler } = await import('../../server/api/auth/mcp/register.post')
 
     await expect(handler(createMcpRouteEvent())).rejects.toMatchObject({
       statusCode: 400,
-      message: 'ChatGPT connector redirect URI is not allowed',
+      message: 'Redirect URI is not allowed',
+    })
+  })
+
+  it('accepts dynamic registration with generic HTTPS redirect URI', async () => {
+    mocks.getRequestURL.mockReturnValue(new URL('https://agentic.example/api/auth/mcp/register'))
+    mocks.readBody.mockResolvedValue({
+      client_name: 'Codex',
+      redirect_uris: ['https://codex.example/callback'],
+    })
+    const { default: handler } = await import('../../server/api/auth/mcp/register.post')
+
+    const result = await handler(createMcpRouteEvent())
+    expect(result).toMatchObject({
+      client_name: 'Codex',
+      redirect_uris: ['https://codex.example/callback'],
+      scope: expect.stringContaining('knowledge.ask'),
+    })
+  })
+
+  it('accepts dynamic registration with localhost redirect URI', async () => {
+    mocks.getRequestURL.mockReturnValue(new URL('https://agentic.example/api/auth/mcp/register'))
+    mocks.readBody.mockResolvedValue({
+      client_name: 'Local Client',
+      redirect_uris: ['http://localhost:3000/callback'],
+    })
+    const { default: handler } = await import('../../server/api/auth/mcp/register.post')
+
+    const result = await handler(createMcpRouteEvent())
+    expect(result).toMatchObject({
+      client_name: 'Local Client',
+      redirect_uris: ['http://localhost:3000/callback'],
     })
   })
 
