@@ -47,6 +47,21 @@ export function normalizeChatGptRedirectUris(redirectUris: string[]): string[] {
   return [...new Set(redirectUris.map((redirectUri) => redirectUri.trim()).filter(Boolean))]
 }
 
+const CHATGPT_CIMD_PATTERN = /^https:\/\/chatgpt\.com\/oauth\/([A-Za-z0-9_-]{1,64})\/client\.json/
+
+export function parseChatGptCimdUrl(
+  clientId: string,
+): { appId: string; redirectUri: string; clientName: string } | null {
+  const match = CHATGPT_CIMD_PATTERN.exec(clientId)
+  if (!match?.[1]) return null
+  const appId = match[1]
+  return {
+    appId,
+    redirectUri: `https://chatgpt.com/connector/oauth/${appId}`,
+    clientName: 'ChatGPT',
+  }
+}
+
 export function buildChatGptClientMetadataUrl(
   event: H3Event,
   input: ChatGptClientMetadataInput,

@@ -2,6 +2,7 @@ import type {
   KnowledgeRuntimeConfig,
   McpConnectorClientConfig,
 } from '#shared/schemas/knowledge-runtime'
+import { parseChatGptCimdUrl } from '#server/utils/mcp-chatgpt-registration'
 import { MCP_OAUTH_SCOPES } from '#server/utils/mcp-oauth-metadata'
 
 export class McpConnectorClientConfigError extends Error {
@@ -86,11 +87,42 @@ export async function resolveMcpConnectorClientAsync(
   input: ResolveMcpConnectorClientInput,
   config: KnowledgeRuntimeConfig,
 ): Promise<ResolvedMcpConnectorClient> {
+  const chatGptCimd = parseChatGptCimdUrl(input.clientId)
+  if (chatGptCimd) {
+    return resolveKnownChatGptCimd(input, chatGptCimd)
+  }
+
   if (isHttpsUrl(input.clientId)) {
     return resolveClientIdMetadataDocument(input)
   }
 
   return resolveMcpConnectorClient(input, config)
+}
+
+function resolveKnownChatGptCimd(
+  input: ResolveMcpConnectorClientInput,
+  cimd: { appId: string; redirectUri: string; clientName: string },
+): ResolvedMcpConnectorClient {
+  if (input.redirectUri !== cimd.redirectUri) {
+    throw new McpConnectorClientConfigError(
+      `Redirect URI mismatch for ChatGPT CIMD client: expected ${cimd.redirectUri}`,
+      400,
+    )
+  }
+
+  const allowedScopes: string[] = [...MCP_OAUTH_SCOPES]
+  const grantedScopes = input.requestedScopes.filter((s) => allowedScopes.includes(s))
+
+  return {
+    allowedScopes,
+    clientId: input.clientId,
+    enabled: true,
+    environments: ['local', 'staging', 'production'],
+    grantedScopes,
+    name: cimd.clientName,
+    redirectUri: input.redirectUri,
+    redirectUris: [cimd.redirectUri],
+  }
 }
 
 async function resolveClientIdMetadataDocument(
