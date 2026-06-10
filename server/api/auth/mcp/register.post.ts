@@ -5,6 +5,7 @@ import { getKnowledgeRuntimeConfig } from '#server/utils/knowledge-runtime'
 import {
   buildChatGptClientMetadataUrl,
   isAllowedChatGptConnectorRedirectUri,
+  isAllowedGenericRedirectUri,
   normalizeChatGptRedirectUris,
 } from '#server/utils/mcp-chatgpt-registration'
 import { MCP_OAUTH_SCOPES } from '#server/utils/mcp-oauth-metadata'
@@ -99,25 +100,38 @@ export default defineEventHandler(async function mcpRegisterHandler(event) {
   }
 
   const redirectUris = normalizeChatGptRedirectUris(parsedBody.data.redirect_uris)
+  const isChatGptClient = redirectUris.every(isAllowedChatGptConnectorRedirectUri)
 
-  if (!redirectUris.every(isAllowedChatGptConnectorRedirectUri)) {
+  if (!isChatGptClient && !redirectUris.every(isAllowedGenericRedirectUri)) {
     throw createError({
       statusCode: 400,
       statusMessage: 'Bad Request',
-      message: 'ChatGPT connector redirect URI is not allowed',
+      message: 'Redirect URI is not allowed',
     })
   }
 
   const clientName = parsedBody.data.client_name
-  const clientId = buildChatGptClientMetadataUrl(event, {
-    clientName,
-    redirectUris,
-  })
 
+  if (isChatGptClient) {
+    const clientId = buildChatGptClientMetadataUrl(event, { clientName, redirectUris })
+    return {
+      client_id: clientId,
+      client_id_issued_at: Math.floor(Date.now() / 1000),
+      client_name: clientName,
+      grant_types: ['authorization_code'],
+      redirect_uris: redirectUris,
+      response_types: ['code'],
+      scope: MCP_OAUTH_SCOPES.join(' '),
+      token_endpoint_auth_method: 'none',
+    }
+  }
+
+  const origin = getRequestURL(event).origin
+  const clientId = `${origin}/api/auth/mcp/register#${encodeURIComponent(redirectUris[0] ?? '')}`
   return {
     client_id: clientId,
     client_id_issued_at: Math.floor(Date.now() / 1000),
-    client_name: clientName,
+    client_name: clientName ?? 'MCP Client',
     grant_types: ['authorization_code'],
     redirect_uris: redirectUris,
     response_types: ['code'],

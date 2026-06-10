@@ -26,6 +26,23 @@ export function isAllowedChatGptConnectorRedirectUri(redirectUri: string): boole
   }
 }
 
+const LOCALHOST_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]'])
+
+export function isAllowedGenericRedirectUri(redirectUri: string): boolean {
+  try {
+    const url = new URL(redirectUri)
+    if (
+      LOCALHOST_HOSTS.has(url.hostname) &&
+      (url.protocol === 'http:' || url.protocol === 'https:')
+    ) {
+      return true
+    }
+    return url.protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
 export function normalizeChatGptRedirectUris(redirectUris: string[]): string[] {
   return [...new Set(redirectUris.map((redirectUri) => redirectUri.trim()).filter(Boolean))]
 }
