@@ -125,14 +125,25 @@ export function buildErrorFingerprint(stderrText, exitCode, fullText = '') {
       .join(',')
     return `ts:${sig}`
   }
-  if (!stderrText) return `exit:${exitCode}`
-  const clean = stripAnsi(stderrText)
-  const lines = clean
-    .split('\n')
-    .map((l) => l.trim())
-    .filter(Boolean)
-  if (lines.length === 0) return `exit:${exitCode}`
-  const errorLine = lines.find((l) => /^(error|fail|✖|×|FAIL|ERROR)/i.test(l)) ?? lines[0]
+  // 通用萃取：找以 error/fail 開頭的行。vitest 等把實際 FAIL 印在 stdout，卻把
+  // coverage 版本不符 banner（`Loaded vitest@x and @vitest/coverage-v8@y`）印在
+  // stderr → 舊邏輯只看 stderr、找不到 error 行就 fallback 到 stderr 第一行＝banner，
+  // 把不相干 test 紅燈全聚成同一假 fingerprint（pnpm-test::Loaded… 根因，SWEEP-001）。
+  // 修法：(1) stderr 找不到 error 行時改從 fullText（含 stdout）撈；(2) 過濾已知非
+  // error 雜訊 banner，避免 fallback 落到資訊行。stderr 已有 error 行的 gate 行為不變。
+  const ERROR_PREFIX = /^(error|fail|✖|×|FAIL|ERROR)/i
+  const isNoise = (l) => /^Loaded\s+vitest@/i.test(l)
+  const toLines = (s) =>
+    stripAnsi(s ?? '')
+      .split('\n')
+      .map((l) => l.trim())
+      .filter(Boolean)
+      .filter((l) => !isNoise(l))
+  const stderrLines = toLines(stderrText)
+  let errorLine = stderrLines.find((l) => ERROR_PREFIX.test(l))
+  if (!errorLine && fullText) errorLine = toLines(fullText).find((l) => ERROR_PREFIX.test(l))
+  errorLine = errorLine ?? stderrLines[0] ?? toLines(fullText)[0]
+  if (!errorLine) return `exit:${exitCode}`
   return redactString(errorLine).slice(0, 200)
 }
 
