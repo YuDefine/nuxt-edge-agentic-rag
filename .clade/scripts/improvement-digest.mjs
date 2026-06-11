@@ -364,23 +364,38 @@ function groupSignalsByFingerprint(signals) {
   return groups
 }
 
-function detectFromSignals(signals, registry) {
+export function detectFromSignals(signals, registry, nowMs = Date.now()) {
   if (signals.length === 0) return []
   forbidLLMScoring()
   const consumerWeights = registry ? computeConsumerWeights(registry) : new Map()
   const groups = groupSignalsByFingerprint(signals)
   const candidates = []
-  for (const [key, events] of groups) {
-    const consumers = new Set(events.map((e) => e.consumer_id))
+  for (const [key, allEvents] of groups) {
     const [gate, errFp] = key.split('::')
     const tCfg = thresholdFor(gate)
     if (!tCfg) continue
+    // SWEEP-002: windowDays 過去是 dead config（定義於 THRESHOLDS 卻從未消費）→ stale
+    // 訊號永久滿足 threshold + occurrences 灌水（sync-rules-drift 報 18 occ，其中 17 筆
+    // 是 2 週前的死事件）。修法：有設 windowDays 的 gate 只計窗內事件做 threshold/計數；
+    // 沒設 windowDays 的 gate（testFailure / review / handoff）維持 lifetime 行為不變。
+    const events = tCfg.windowDays
+      ? allEvents.filter((e) => {
+          const ms = Date.parse(e.ts_utc)
+          return Number.isFinite(ms) && nowMs - ms <= tCfg.windowDays * 86_400_000
+        })
+      : allEvents
+    if (events.length === 0) continue
+    const consumers = new Set(events.map((e) => e.consumer_id))
     const hit = matchesThreshold(events, consumers, tCfg, consumerWeights)
     if (!hit) continue
     // TD-112: split active vs non-active for display + cookbook generalization
     const consumersList = [...consumers]
     const activeConsumers = consumersList.filter((c) => (consumerWeights.get(c) ?? 1.0) === 1.0)
     const nonActiveConsumers = consumersList.filter((c) => (consumerWeights.get(c) ?? 1.0) < 1.0)
+    const lastSeen = allEvents
+      .map((e) => e.ts_utc)
+      .toSorted()
+      .at(-1)
     candidates.push({
       id: digHash([gate, errFp, 'signals']),
       kind: 'signal-pattern',
@@ -391,6 +406,9 @@ function detectFromSignals(signals, registry) {
       active_consumers: activeConsumers,
       non_active_consumers: nonActiveConsumers,
       occurrences: events.length,
+      occurrences_lifetime: allEvents.length,
+      window_days: tCfg.windowDays ?? null,
+      last_seen: lastSeen,
       sample_event_ids: events.slice(0, 3).map((e) => e.event_id),
       evidence_predicate: buildSignalEvidence(gate, errFp),
     })
@@ -869,7 +887,15 @@ export function formatCandidate(c, { date = new Date().toISOString().slice(0, 10
   } else if (c.consumers) {
     lines.push(`- **consumers**: ${c.consumers.join(', ')}`)
   }
-  if (c.occurrences) lines.push(`- **occurrences**: ${c.occurrences}`)
+  if (c.occurrences) {
+    let occLine = `- **occurrences**: ${c.occurrences}`
+    // SWEEP-002: signal-pattern 候選標明窗 + lifetime + last seen，讓 stale 訊號一眼可辨
+    if (c.window_days) occLine += ` (last ${c.window_days}d)`
+    if (c.occurrences_lifetime && c.occurrences_lifetime !== c.occurrences)
+      occLine += ` / ${c.occurrences_lifetime} lifetime`
+    lines.push(occLine)
+    if (c.last_seen) lines.push(`- **last seen**: ${c.last_seen}`)
+  }
   if (c.unresolved_across && c.unresolved_across.count >= 2)
     lines.push(
       `- **unresolved across digests**: appeared in ${c.unresolved_across.count} of last ${c.unresolved_across.lookback}`,
