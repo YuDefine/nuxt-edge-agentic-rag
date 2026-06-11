@@ -97,6 +97,118 @@ function forbidLLMScoring() {
   }
 }
 
+// ---------------------------------------------------------------------------
+// § 建議行動 classification（純 rule-based，no LLM — forbidLLMScoring 同樣適用）
+//
+// 每條 candidate 依「來源 detector kind + target_paths + keywords」分類成一個
+// actionType + 具體 suggestion，讓 digest 讀者只做批准、不用從零發想行動 —
+// 修補 explicit closure 0% 的最後一哩斷鏈（candidate 看得到、行動接不上）。
+// 規則表由上而下 first-match-wins；新增 detector kind 時在 ACTION_RULES 補一條。
+
+// clade 自家工具鏈 gate — 這些 gate fail 多半是 shim/script 本體問題，非 consumer 行為
+const TOOLING_GATES = new Set(['validate-manifests', 'publish', 'propagate'])
+// target_paths 指向 clade shim/script 的 pattern（bin/vp、bin/clade-gate、scripts/*、hooks/*、*.sh）
+const TOOLING_PATH_RE =
+  /^(?:bin|scripts|vendor\/scripts|plugins\/hub-core\/hooks)\/|\.sh$|(?:^|\/)(?:vp|clade-gate)$/
+// fingerprint keywords 指向工具層的詞（extractKeywords 產出為小寫比對）
+const TOOLING_KEYWORDS = new Set(['shim', 'wrapper', 'hook', 'propagate', 'publish', 'sync'])
+
+// TD hygiene gate Invariant 3（rules/local/clade-role-and-todo-discipline.md）：
+// Location 禁 consumer 業務路徑 — 命中時 draft 降為 Class B 一行記實
+const CONSUMER_BUSINESS_PATH_RE =
+  /^(?:server\/(?:api|utils|db|routes)|test\/(?:integration|e2e|unit)|app\/(?:components|pages|layouts)|pages|composables|stores)\//
+// clade SoT 路徑（Invariant 3 例外清單）→ Class A
+const CLADE_SOT_PATH_RE = /^(?:scripts|vendor|rules|plugins\/hub-core|claude-md|registry|docs)\//
+
+// first-match-wins 規則表。match 只看 candidate 的 kind / gate_name /
+// evidence_predicate（target_paths + related_keywords）— 全部明文規則，不上 LLM。
+const ACTION_RULES = [
+  {
+    actionType: 'advance-td',
+    match: (c) => c.kind === 'tech-debt',
+    rationale: (c) =>
+      `tech-debt 來源（${c.source_id ?? '既有 TD'}）— TD 已在 docs/tech-debt.md 登記，行動是推進既有 status，不開新 TD`,
+    suggestion: (c) =>
+      `推進 ${c.source_id ?? '該 TD'} status：要做就排進 plan/tasks，落地後補 \`### Resolution\` + Status: done；不做改 Status: wontfix + 一行理由；狀況不變補 \`**Last reviewed**\` 重置 60d 稽核計時`,
+  },
+  {
+    actionType: 'cleanup',
+    match: (c) => c.kind === 'wt-stale-merged',
+    rationale: () => 'stale worktree 類（已 merge）— 一次性清理即可關閉，無標準層缺口',
+    suggestion: () =>
+      '跑 `node scripts/wt-helper.mjs cleanup <slug>` 移除已 merge 的 worktree，再跑 validation_commands 確認列表乾淨',
+  },
+  {
+    actionType: 'cleanup',
+    match: (c) => c.kind === 'wt-stale-idle',
+    rationale: () => 'stale worktree 類（idle 超過門檻）— 一次性處置即可關閉，無標準層缺口',
+    suggestion: () =>
+      '確認該 session branch 要續做還是放棄：續做就 resume worktree，放棄就 `node scripts/wt-helper.mjs cleanup --force <slug>`',
+  },
+  {
+    actionType: 'cleanup',
+    match: (c) => c.kind === 'audit-screenshot-staleness',
+    rationale: () => 'stale screenshot 類 — 重拍即可關閉，無標準層缺口',
+    suggestion: () =>
+      '對受影響 consumer 重拍 stale/legacy 截圖（verify-ui 流程），跑 validation_commands 確認 summary 歸零',
+  },
+  {
+    actionType: 'add-gate',
+    match: (c) => c.kind.startsWith('audit-'),
+    rationale: () => 'audit script 已有偵測 signal 但無強制執行點 — 候選持續出現代表純 warn 不收斂',
+    suggestion: () =>
+      '為該 audit signal 加強制點（publish.mjs smoke gate / pre-commit hook / propagate 結尾 fail-loud），warn 升級成 block 後用 digest 觀察歸零',
+  },
+  {
+    actionType: 'fix-tooling',
+    match: (c) => c.kind === 'signal-pattern' && hasToolingSignature(c),
+    rationale: (c) =>
+      `signal-pattern 指向 clade shim/script（gate=${c.gate_name}）— 重複 fail 多半是工具自身失效，非 consumer 行為問題`,
+    suggestion: (c) =>
+      `修 ${toolingTargetsOf(c).join(', ') || `\`${c.gate_name}\` gate 對應 script`} 的 root cause，修完跑 validation_commands 驗 7 天不再出現`,
+  },
+  {
+    actionType: 'add-rule-section',
+    match: (c) => c.kind === 'signal-pattern' && (c.consumers?.length ?? 0) >= 2,
+    rationale: (c) =>
+      `跨 consumer（${c.consumers.join(', ')}）重複的行為類問題 — 無單一 script 可修，需標準層規約防再犯`,
+    suggestion: () =>
+      '在 rules/core/ 對應 topic 補規約 §（必要時配 cookbook），措辭明寫「每一個 consumer / 每一次」範圍，propagate 後用 digest 觀察 fingerprint 消失',
+  },
+  // catch-all：單 consumer 行為類 signal-pattern 或未知 kind — 保守走標準層規約評估
+  {
+    actionType: 'add-rule-section',
+    match: () => true,
+    rationale: (c) => `kind=${c.kind} 無更特定規則命中 — 保守 default 走標準層規約補強評估`,
+    suggestion: () =>
+      '評估是否值得補規約 §：先確認有無 cross-consumer 訊號；單 consumer 重複問題可先在該 consumer `.claude/rules/local/` 收斂',
+  },
+]
+
+function hasToolingSignature(c) {
+  if (TOOLING_GATES.has(c.gate_name)) return true
+  const paths = c.evidence_predicate?.target_paths ?? []
+  if (paths.some((p) => TOOLING_PATH_RE.test(p))) return true
+  const kws = c.evidence_predicate?.related_keywords ?? []
+  return kws.some((k) => TOOLING_KEYWORDS.has(String(k).toLowerCase()))
+}
+
+function toolingTargetsOf(c) {
+  return (c.evidence_predicate?.target_paths ?? [])
+    .filter((p) => TOOLING_PATH_RE.test(p))
+    .map((p) => `\`${p}\``)
+}
+
+export function classifyAction(candidate) {
+  forbidLLMScoring()
+  const rule = ACTION_RULES.find((r) => r.match(candidate))
+  return {
+    actionType: rule.actionType,
+    rationale: rule.rationale(candidate),
+    suggestion: rule.suggestion(candidate),
+  }
+}
+
 // Source-of-truth write invariants (rules/core/improvement-loop.md §SoT write invariants).
 // Digest output is restricted to docs/digests/ and vendor/ledger/. Any attempt to
 // write to rules/core/, plugins/hub-core/skills/, plugins/hub-core/hooks/, or
@@ -632,10 +744,117 @@ function deduplicateCandidates(candidates) {
   return [...seen.values()]
 }
 
-function formatCandidate(c) {
+function candidateTitle(c) {
+  return c.title ?? `${c.gate_name}::${c.error_fingerprint}`
+}
+
+function formatEvidencePredicate(ep) {
+  const lines = ['**Evidence predicate**:']
+  if (ep.target_paths?.length)
+    lines.push(`- target_paths: ${ep.target_paths.map((p) => `\`${p}\``).join(', ')}`)
+  if (ep.target_symbols?.length) lines.push(`- target_symbols: ${ep.target_symbols.join(', ')}`)
+  lines.push('- expected_state:')
+  for (const s of ep.expected_state ?? []) lines.push(`  - \`${s.kind}\`: ${s.description}`)
+  if (ep.validation_commands?.length) {
+    lines.push('- validation_commands:')
+    for (const cmd of ep.validation_commands) lines.push(`  - \`${cmd}\``)
+  }
+  if (ep.related_keywords?.length)
+    lines.push(`- related_keywords: ${ep.related_keywords.join(', ')}`)
+  return lines
+}
+
+// TD draft 的 Class 推斷（TD hygiene gate：clade-role-and-todo-discipline.md § TD entry hygiene gate）。
+// 優先序：consumer 業務路徑（Invariant 3 → B 一行記實）> cleanup（clade home housekeeping → A）
+// > add-gate（preventive tooling → D）> clade SoT 路徑 → A > 其餘（consumer 完善度）→ B
+export function inferTdClass(candidate, action = classifyAction(candidate)) {
+  const paths = candidate.evidence_predicate?.target_paths ?? []
+  const consumerBusinessPaths = paths.filter((p) => CONSUMER_BUSINESS_PATH_RE.test(p))
+  if (consumerBusinessPaths.length > 0) {
+    return {
+      tdClass: 'B',
+      classNote:
+        'consumer 完善度長期未收斂（target_paths 含 consumer 業務路徑，per TD hygiene gate Invariant 3 改一行記實）',
+      consumerBusinessPaths,
+    }
+  }
+  if (action.actionType === 'cleanup') {
+    return {
+      tdClass: 'A',
+      classNote: 'clade 標準層 housekeeping（stale worktree / screenshot 清理）',
+      consumerBusinessPaths: [],
+    }
+  }
+  if (action.actionType === 'add-gate') {
+    return {
+      tdClass: 'D',
+      classNote: 'preventive tooling（audit signal 已存在，缺強制執行點）',
+      consumerBusinessPaths: [],
+    }
+  }
+  if (paths.some((p) => CLADE_SOT_PATH_RE.test(p))) {
+    return {
+      tdClass: 'A',
+      classNote: 'clade 標準層 issue（target_paths 指向 clade SoT）',
+      consumerBusinessPaths: [],
+    }
+  }
+  return { tdClass: 'B', classNote: 'consumer 完善度長期未收斂', consumerBusinessPaths: [] }
+}
+
+// 非 tech-debt 來源 candidate 產出 TD draft 段（fenced code block，人工 copy-paste
+// 批准制 — 本 script 永不自動寫入 docs/tech-debt.md，per SoT write invariants）。
+// tech-debt 來源回傳 null：行動是推進既有 TD（advance-td），不開新 TD。
+export function buildTdDraft(
+  candidate,
+  { date = new Date().toISOString().slice(0, 10), action } = {},
+) {
+  if (candidate.kind === 'tech-debt') return null
+  const act = action ?? classifyAction(candidate)
+  const { tdClass, classNote, consumerBusinessPaths } = inferTdClass(candidate, act)
+  const title = candidateTitle(candidate)
+  const paths = candidate.evidence_predicate?.target_paths ?? []
+  const draft = []
+  draft.push(`## TD-XXX — ${title}`)
+  draft.push('')
+  if (consumerBusinessPaths.length > 0) {
+    // Invariant 3：Location 禁 consumer 業務路徑 → 降為 Class B 一行記實格式
+    const cladeSafe = paths.filter((p) => !CONSUMER_BUSINESS_PATH_RE.test(p))
+    draft.push(`**Class**: B — ${classNote}`)
+    draft.push(
+      `**Location**: ${cladeSafe.length ? cladeSafe.map((p) => `\`${p}\``).join(', ') : 'clade 稽核層'}（consumer 業務路徑已剔除：${consumerBusinessPaths.map((p) => `\`${p}\``).join(', ')} — consumer 自治區）`,
+    )
+    draft.push(`**Discovered**: ${date}`)
+    draft.push('')
+    draft.push(
+      `${title} — consumer 自治區實作，clade 一行記實、不拆步驟、不追蹤內部檔。Refs: ${candidate.id}`,
+    )
+  } else {
+    draft.push(`**Class**: ${tdClass} — ${classNote}`)
+    draft.push(
+      `**Location**: ${paths.length ? paths.map((p) => `\`${p}\``).join(', ') : '（無明確 target_paths — 批准時補）'}`,
+    )
+    draft.push(`**Discovered**: ${date}`)
+    draft.push('')
+    draft.push(`**建議行動**: ${act.actionType} — ${act.suggestion}`)
+    draft.push('')
+    draft.push(...formatEvidencePredicate(candidate.evidence_predicate ?? {}))
+    draft.push('')
+    draft.push(`Refs: ${candidate.id}`)
+  }
+  return [
+    '**TD draft**（人工批准制，copy-paste 進 docs/tech-debt.md — 填號前先 grep `^## TD-` 主檔 docs/tech-debt.md + docs/archives/ 查重，確認編號未被使用）:',
+    '',
+    '```md',
+    ...draft,
+    '```',
+  ].join('\n')
+}
+
+export function formatCandidate(c, { date = new Date().toISOString().slice(0, 10) } = {}) {
   const ep = c.evidence_predicate
   const lines = []
-  lines.push(`### ${c.id} — ${c.title ?? `${c.gate_name}::${c.error_fingerprint}`}`)
+  lines.push(`### ${c.id} — ${candidateTitle(c)}`)
   lines.push('')
   lines.push(`- **kind**: ${c.kind}`)
   lines.push(`- **severity**: ${c.severity}`)
@@ -659,18 +878,16 @@ function formatCandidate(c) {
     lines.push(`- **sample event ids**: ${c.sample_event_ids.join(', ')}`)
   if (c.prior_art?.length) lines.push(`- **prior art**: ${c.prior_art.join(', ')}`)
   lines.push('')
-  lines.push('**Evidence predicate**:')
-  if (ep.target_paths?.length)
-    lines.push(`- target_paths: ${ep.target_paths.map((p) => `\`${p}\``).join(', ')}`)
-  if (ep.target_symbols?.length) lines.push(`- target_symbols: ${ep.target_symbols.join(', ')}`)
-  lines.push('- expected_state:')
-  for (const s of ep.expected_state) lines.push(`  - \`${s.kind}\`: ${s.description}`)
-  if (ep.validation_commands?.length) {
-    lines.push('- validation_commands:')
-    for (const cmd of ep.validation_commands) lines.push(`  - \`${cmd}\``)
+  lines.push(...formatEvidencePredicate(ep))
+  const action = classifyAction(c)
+  lines.push('')
+  lines.push(`**建議行動**: ${action.actionType} — ${action.suggestion}`)
+  lines.push(`- rationale: ${action.rationale}`)
+  const tdDraft = buildTdDraft(c, { date, action })
+  if (tdDraft) {
+    lines.push('')
+    lines.push(tdDraft)
   }
-  if (ep.related_keywords?.length)
-    lines.push(`- related_keywords: ${ep.related_keywords.join(', ')}`)
   lines.push('')
   return lines.join('\n')
 }
@@ -826,6 +1043,18 @@ function persistCandidates(candidates) {
   }
 }
 
+// dry-run 等價模擬：回傳「persistCandidates 寫完後 readJsonlScanner(SOURCES.ledger)
+// 會看到的內容」（既有 history + 本輪未見過的 candidate，附 persist 時會加的
+// emitted_at / ledger_kind）— 零寫入，讓 dry-run metrics 跟真跑一致。
+function simulatePersistedCandidates(candidates, ts = new Date().toISOString()) {
+  const existing = readJsonlScanner(SOURCES.ledger)
+  const seen = new Set(existing.map((c) => c.id))
+  const fresh = candidates
+    .filter((c) => !seen.has(c.id))
+    .map((c) => ({ ...c, emitted_at: ts, ledger_kind: 'candidate' }))
+  return [...existing, ...fresh]
+}
+
 function persistOutcomes(outcomes) {
   for (const o of outcomes) {
     appendRecord(
@@ -864,11 +1093,26 @@ export async function runDigest({ dryRun = false } = {}) {
   })
 
   // Persist candidates (immutable history) and run closure inference + outcome ledger.
-  persistCandidates(deduped)
-  const candidateHistory = readJsonlScanner(SOURCES.ledger)
+  // dry-run MUST NOT append to vendor/ledger/*.jsonl — simulate the post-write ledger
+  // state in memory instead, so metrics still match what a real run would report.
+  if (dryRun) {
+    console.log(
+      '▸ dry-run: skipped ledger writes (vendor/ledger/candidates.jsonl, vendor/ledger/outcomes.jsonl)',
+    )
+  } else {
+    persistCandidates(deduped)
+  }
+  const candidateHistory = dryRun
+    ? simulatePersistedCandidates(deduped)
+    : readJsonlScanner(SOURCES.ledger)
   const outcomes = inferAllClosures(deduped, { repoRoot: cladeRoot, since: '90 days ago' })
-  persistOutcomes(outcomes)
-  const allOutcomes = readJsonlScanner(SOURCES.outcomes)
+  if (!dryRun) persistOutcomes(outcomes)
+  const allOutcomes = dryRun
+    ? [
+        ...readJsonlScanner(SOURCES.outcomes),
+        ...outcomes.map((o) => ({ ...o, ledger_kind: 'outcome' })),
+      ]
+    : readJsonlScanner(SOURCES.outcomes)
 
   const metrics = computeLayeredMetrics({ candidates: candidateHistory, outcomes: allOutcomes })
   const today = new Date().toISOString().slice(0, 10)
@@ -922,7 +1166,7 @@ export async function runDigest({ dryRun = false } = {}) {
 
   const body =
     deduped.length > 0
-      ? deduped.map(formatCandidate).join('\n')
+      ? deduped.map((c) => formatCandidate(c, { date: today })).join('\n')
       : '_no candidates — bootstrap sources produced no qualifying patterns._\n\n'
 
   const sweepSection = formatSweepEffectiveness()
