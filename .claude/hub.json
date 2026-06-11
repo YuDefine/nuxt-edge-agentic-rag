@@ -1,5 +1,7 @@
 {
   "version": "1.4.160",
+  "rules_projection": "symlink",
+  "consumer_id": "nuxt-edge-agentic-rag",
   "modules": {
     "auth": "better-auth",
     "db-schema": "supabase",

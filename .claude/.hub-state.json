@@ -1,7 +1,8 @@
 {
   "cladeRoot": "/Users/charles/offline/clade",
-  "syncedAt": "2026-06-11T05:36:01.322Z",
-  "rulesProjection": "copy",
+  "syncedAt": "2026-06-11T05:39:17.335Z",
+  "rulesProjection": "symlink",
+  "distDir": "/Users/charles/offline/clade/dist/nuxt-edge-agentic-rag/rules",
   "checksums": {
     "rules/agent-routing.codex-watch-protocol.md": "9bebc58423ced374",
     "rules/agent-routing.md": "fb6fbcc53c6b9492",
