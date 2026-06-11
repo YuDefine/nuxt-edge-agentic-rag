@@ -1,6 +1,6 @@
 {
   "cladeRoot": "/Users/charles/offline/clade",
-  "syncedAt": "2026-06-11T07:24:02.280Z",
+  "syncedAt": "2026-06-11T08:33:01.345Z",
   "rulesProjection": "symlink",
   "distDir": "/Users/charles/offline/clade/dist/nuxt-edge-agentic-rag/rules",
   "checksums": {
@@ -80,7 +80,7 @@
     "skills/spectra/SKILL.md": "2ed77598eba98de6",
     "skills/spectra-analyze/SKILL.md": "531951f39aff871d",
     "skills/spectra-apply/SKILL.md": "d2bcfaf21bd31339",
-    "skills/spectra-archive/SKILL.md": "f81620ccf09f69c3",
+    "skills/spectra-archive/SKILL.md": "127f2520c62dd32e",
     "skills/spectra-ask/SKILL.md": "65108ef630053267",
     "skills/spectra-audit/SKILL.md": "8f5778710f1bc3e3",
     "skills/spectra-commit/SKILL.md": "a2b1794b2c1afcbc",
