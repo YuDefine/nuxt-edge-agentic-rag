@@ -106,7 +106,25 @@ function stripAnsi(s) {
   return s.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '')
 }
 
-function buildErrorFingerprint(stderrText, exitCode) {
+export function buildErrorFingerprint(stderrText, exitCode, fullText = '') {
+  // TS 診斷優先：vue-tsc / nuxt typecheck 把錯誤印在 stdout 且行首是檔案路徑
+  // （不以 error 開頭），舊邏輯永遠 fallback 到 pnpm 的通用 exit 行 → 跨 consumer
+  // 各種不相干紅燈聚成同一 pattern（DIG-4f7343a79acf 根因）。只取 error code
+  // 統計（純 TS\d+ 無路徑無識別字）— redaction-safe by construction。
+  const tsCodes = stripAnsi(fullText || stderrText || '').match(/error (TS\d+)/g)
+  if (tsCodes && tsCodes.length > 0) {
+    const counts = new Map()
+    for (const m of tsCodes) {
+      const code = m.slice('error '.length)
+      counts.set(code, (counts.get(code) ?? 0) + 1)
+    }
+    const sig = [...counts.entries()]
+      .toSorted((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([code, n]) => `${code}x${n}`)
+      .join(',')
+    return `ts:${sig}`
+  }
   if (!stderrText) return `exit:${exitCode}`
   const clean = stripAnsi(stderrText)
   const lines = clean
@@ -170,8 +188,21 @@ export async function runShim({ binName, shimAbsPath, source = 'shim' }) {
   const cwd = process.cwd()
   const stderrChunks = []
   let stderrLen = 0
+  // stdout 也 bounded capture（passthrough 不影響可見輸出）— 只餵
+  // buildErrorFingerprint 萃取 TS error code，原始行永不入 ledger。
+  // 代價：child 的 process.stdout.isTTY 變 false（gate 命令輸出格式差異可接受）。
+  const stdoutChunks = []
+  let stdoutLen = 0
 
-  const child = spawn(realBin, args, { stdio: ['inherit', 'inherit', 'pipe'] })
+  const child = spawn(realBin, args, { stdio: ['inherit', 'pipe', 'pipe'] })
+  child.stdout.on('data', (chunk) => {
+    process.stdout.write(chunk)
+    if (stdoutLen < STDERR_CAPTURE_BYTES) {
+      const room = STDERR_CAPTURE_BYTES - stdoutLen
+      stdoutChunks.push(chunk.slice(0, room))
+      stdoutLen += Math.min(room, chunk.length)
+    }
+  })
   child.stderr.on('data', (chunk) => {
     process.stderr.write(chunk)
     if (stderrLen < STDERR_CAPTURE_BYTES) {
@@ -190,6 +221,7 @@ export async function runShim({ binName, shimAbsPath, source = 'shim' }) {
     try {
       const gateName = classifyGate(binName, args)
       const stderrText = Buffer.concat(stderrChunks).toString('utf8')
+      const stdoutText = Buffer.concat(stdoutChunks).toString('utf8')
       const consumer = detectConsumer(cwd)
       const record = {
         schema_version: '1',
@@ -200,7 +232,11 @@ export async function runShim({ binName, shimAbsPath, source = 'shim' }) {
         session_id: `${source}-${process.pid}`,
         gate_name: gateName,
         command_fingerprint: buildCommandFingerprint(binName, args),
-        error_fingerprint: buildErrorFingerprint(stderrText, exitCode),
+        error_fingerprint: buildErrorFingerprint(
+          stderrText,
+          exitCode,
+          stdoutText + '\n' + stderrText,
+        ),
         severity: exitCode !== 0 ? severityFor(gateName) : 'P2',
         redaction_applied: true,
         source,
