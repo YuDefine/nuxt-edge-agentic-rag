@@ -1,6 +1,7 @@
 {
   "cladeRoot": "/Users/charles/offline/clade",
-  "syncedAt": "2026-06-09T19:35:37.013Z",
+  "syncedAt": "2026-06-11T05:23:26.208Z",
+  "rulesProjection": "copy",
   "checksums": {
     "rules/agent-routing.codex-watch-protocol.md": "9bebc58423ced374",
     "rules/agent-routing.md": "fb6fbcc53c6b9492",
@@ -95,22 +96,5 @@
     "agents/db-backup.md": "fd21fd01389c5d29",
     "agents/references/clade-review-rules.md": "b04efd02c6997261",
     "agents/screenshot-review.md": "886090feb87d93f1"
-  },
-  "bootstrap": {
-    "at": "2026-06-09T19:35:37.414Z",
-    "version": "1.4.156",
-    "modules": {
-      "auth": "better-auth",
-      "db-schema": "supabase",
-      "db-runtime": "cf-workers",
-      "runtime": "cf-workers",
-      "framework": "nuxt",
-      "domain": [],
-      "maintenance": "full"
-    },
-    "runtime": {
-      "claudeCode": true,
-      "codex": true
-    }
   }
 }
