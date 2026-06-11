@@ -54,10 +54,18 @@ const THRESHOLDS = {
     severity: 'P2',
   },
   testFailure: {
+    // SWEEP-003: crossConsumerCountMin / singleConsumerCountMin 過去是 dead config —
+    // 欄位名不符 matchesThreshold 實際讀的 totalMin / singleConsumerTotalMin（同
+    // SWEEP-002 class）。後果：(1) cross-consumer 沒有事件數下限（任 2 consumer 各 1 筆
+    // 就達標）；(2) single-consumer 分支從不觸發（singleConsumerTotalMin 未定義 → TDMS
+    // 等單一 consumer 的持續 test 失敗永遠 surface 不出來）。接上欄位名、維持原數值語意。
+    // windowDays:14（對齊 vpCheck）必須配 single-consumer 偵測一起上：否則啟用後 pre-SWEEP-001
+    // 的歷史殘渣 fingerprint（vitest banner 等）因 testFailure 原本無窗而永久佔位 digest。
+    windowDays: 14,
     crossConsumerMin: 2,
-    crossConsumerCountMin: 2,
+    totalMin: 2,
     singleConsumerSessionsMin: 3,
-    singleConsumerCountMin: 3,
+    singleConsumerTotalMin: 3,
     severity: 'P2',
   },
   preCommit: { windowDays: 7, crossConsumerMin: 2, totalMin: 3, severity: 'P2' },
