@@ -540,7 +540,7 @@ Mode D 是**分析 + 候選清單**，不是執行；user 看完 `tasks/<date>-c
 對每個收集到的 candidate 訊號，問三個問題：
 
 1. **這個 pattern 在幾個 consumer 出現？**（單一 consumer 不是 Mode D 該管的；那是該 consumer 自家 session 的事）
-2. **clade 既有標準是否覆蓋？**（搜 `rules/core/*.md` + `vendor/snippets/*/` + `vendor/scripts/*-audit.mjs` 有沒有相關 §）
+2. **clade 既有標準是否覆蓋？**（搜 `rules/core/*.md` + `vendor/snippets/*/` + `scripts/*-audit.mjs` + `vendor/scripts/*-audit.mjs`，**且 MUST grep `scripts/propagate.mjs` 的 inline audit 函式**（如 `auditCladeGateAdoption` / `auditSharedTreeSafety` 等以 `audit*` 命名、wired 進 post_audit phase 的函式）有沒有相關 §。**踩過的坑**：稽核常 inline 在 propagate.mjs 而非獨立 `audit-*.mjs`，只搜獨立檔會漏判「標準層缺稽核」→ 誤列已存在的東西為候選）
 3. **建議的標準層行動類型**（五選一，並非全部都有）：
    - `rule-section`：在現有 `rules/core/<topic>.md` 加新 §
    - `cookbook`：在 `vendor/snippets/<topic>/` 加 template / README
@@ -549,6 +549,22 @@ Mode D 是**分析 + 候選清單**，不是執行；user 看完 `tasks/<date>-c
    - `rule-promotion`：consumer local rule / lessons 在多 consumer 重複，建議 promote 進 `rules/core/`
 
 **單 consumer pattern 處置**：在分析中**忽略**或 **MAY** 用一句話標註「僅 <consumer> 觀察到，建議由該 consumer 自家 session 處理」（**NEVER** 拆 phase / 列步驟）。
+
+### Step 2.5 — emit candidate 前必驗 current state（MUST，防 pre-fix snapshot 誤判）
+
+Mode D 的輸入（signal frequency / git log / digest）**都是歷史快照**。直接據此列「標準層缺 X」候選，常常 X 早已落地——歷史訊號只是 fix 之前累積的。每條候選**寫進 tasks 檔之前 MUST** 跑以下兩驗，任一驗證出「已落地」就**降級為 observation 或直接刪**，**NEVER** 當作待辦候選：
+
+1. **覆蓋驗證（所有候選）**：對「建議落地位置」的目標機制，照 Step 2 question 2 的完整清單 grep（**含 propagate.mjs inline audit**）。已存在 → 候選作廢，最多標 observation「已由 <path> 涵蓋」。
+   - 反例（本 skill 2026-06-12 sweep 實際誤判）：候選「新建 clade-gate wrap-coverage audit」，實際 `auditCladeGateAdoption` 早已 inline 在 `propagate.mjs` 且 wired。
+2. **時序驗證（signal / digest-based 候選）**：對「某 error/signal 反覆出現」型候選，**MUST** 比對該訊號的時戳範圍 vs 對應 fix commit 時戳：
+   ```bash
+   git log -1 --format="%h %ci %s" -S "<fix 關鍵字>" -- <suspect file>   # fix 落地時間
+   # 對照 ledger 該 fingerprint 的最後一筆 ts_utc（注意 UTC vs +0800 時區換算）
+   ```
+   若**所有**命中訊號都早於 fix commit → 純 pre-fix 歷史 noise，**NEVER** 列候選。
+   - 反例（同次 sweep 誤判）：候選「fingerprint 抓 banner noise」，實際 commit `5380e383`（fix）晚於 ledger 內全部 46 筆 noise → 早已修。
+
+對應 memory [[feedback_mode_d_verify_actual_state_not_frontmatter_status]] / [[feedback_mode_d_verify_ledger_semantics_and_digest_timing]]：把這兩條自律 built-in 成強制步驟，避免「memory 有記但 skill 沒擋 → 同類誤判反覆」。
 
 ### Step 3 — 寫 tasks/<date>-clade-improve-sweep.md
 

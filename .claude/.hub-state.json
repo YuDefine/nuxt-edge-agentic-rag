@@ -1,6 +1,6 @@
 {
   "cladeRoot": "/Users/charles/offline/clade",
-  "syncedAt": "2026-06-11T13:33:29.547Z",
+  "syncedAt": "2026-06-12T07:55:02.838Z",
   "rulesProjection": "symlink",
   "distDir": "/Users/charles/offline/clade/dist/nuxt-edge-agentic-rag/rules",
   "checksums": {
@@ -44,6 +44,7 @@
     "rules/screenshot-strategy.md": "b7ff50ae6b367b45",
     "rules/session-claims.md": "d25c4033386785a5",
     "rules/session-tasks.md": "68fdf68141e449ac",
+    "rules/spectra-notion-coupling.md": "139f331ffcb26943",
     "rules/spectra-workflow.md": "b51b1c26f2b5c0f2",
     "rules/tech-debt-routing.md": "decf448af8f116a8",
     "rules/test-scripts.md": "39208f43bea330a3",
