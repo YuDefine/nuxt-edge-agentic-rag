@@ -1,11 +1,11 @@
 {
   "cladeRoot": "/Users/charles/offline/clade",
-  "syncedAt": "2026-06-12T13:06:17.253Z",
+  "syncedAt": "2026-06-12T15:11:26.434Z",
   "rulesProjection": "symlink",
   "distDir": "/Users/charles/offline/clade/dist/nuxt-edge-agentic-rag/rules",
   "checksums": {
-    "rules/agent-routing.codex-watch-protocol.md": "08774e208947f250",
-    "rules/agent-routing.md": "7054200811337b0f",
+    "rules/agent-routing.codex-watch-protocol.md": "e33fec54558a7ac0",
+    "rules/agent-routing.md": "77638eda3c9c5352",
     "rules/agent-self-verification.md": "fe4288154104e41f",
     "rules/audit-pattern.md": "9a5aaca598ac8586",
     "rules/cloudflare-workers.md": "13947aa460173e17",
@@ -90,7 +90,7 @@
     "skills/spectra-discuss/SKILL.md": "dae6d42a2eb215b2",
     "skills/spectra-drift/SKILL.md": "5ff79f5b1b8ee9fb",
     "skills/spectra-ingest/SKILL.md": "c4a4f1eec3030c88",
-    "skills/spectra-propose/SKILL.md": "fe2c6a9d0bcff8dd",
+    "skills/spectra-propose/SKILL.md": "f95a230b2a59cf32",
     "skills/spectra-verify/SKILL.md": "9d58b9904aef768f",
     "commands/db-migration.md": "e5c82dd3565bce47",
     "commands/doc-sync.md": "cdad8d95f0d048bf",
