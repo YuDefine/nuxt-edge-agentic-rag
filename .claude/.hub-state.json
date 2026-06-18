@@ -1,6 +1,6 @@
 {
   "cladeRoot": "/Users/charles/offline/clade",
-  "syncedAt": "2026-06-18T19:18:58.106Z",
+  "syncedAt": "2026-06-18T20:37:52.854Z",
   "rulesProjection": "symlink",
   "distDir": "/Users/charles/offline/clade/dist/nuxt-edge-agentic-rag/rules",
   "checksums": {
@@ -71,6 +71,9 @@
     "rules/api-patterns.md": "6380c78bbb80940e",
     "rules/secrets.md": "109e090a25f62e76",
     "rules/development.md": "a983553b14ce6fbe",
+    "rules/nuxt-error-localization.md": "b4942163a425b2fd",
+    "rules/nuxt-form-validation.md": "794610e1df98cfc0",
+    "rules/nuxt-overlay-slot.md": "8c463f59dec3d38f",
     "rules/nuxt-security.md": "2ba3039251d5fb3c",
     "rules/nuxt-ui-conventions.md": "379a560a2ff1735a",
     "rules/nuxt-ui-mcp.md": "e722f603e8db3c18",
@@ -97,7 +100,7 @@
     "agents/check-runner.md": "e6fb8dac01cc591c",
     "agents/code-review.md": "003aa82da5558892",
     "agents/db-backup.md": "fd21fd01389c5d29",
-    "agents/references/clade-review-rules.md": "5a901befd16b0c22",
+    "agents/references/clade-review-rules.md": "fea511aedd29746d",
     "agents/screenshot-review.md": "886090feb87d93f1"
   }
 }

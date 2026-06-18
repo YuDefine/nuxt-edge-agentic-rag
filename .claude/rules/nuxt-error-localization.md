@@ -1,0 +1,1 @@
+/Users/charles/offline/clade/dist/nuxt-edge-agentic-rag/rules/nuxt-error-localization.md
