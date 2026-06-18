@@ -1,12 +1,12 @@
 {
   "cladeRoot": "/Users/charles/offline/clade",
-  "syncedAt": "2026-06-18T20:37:52.854Z",
+  "syncedAt": "2026-06-18T20:52:25.846Z",
   "rulesProjection": "symlink",
   "distDir": "/Users/charles/offline/clade/dist/nuxt-edge-agentic-rag/rules",
   "checksums": {
     "rules/agent-routing.codex-watch-protocol.md": "ea163af730835fb4",
     "rules/agent-routing.md": "c093ccae9a57066f",
-    "rules/agent-self-verification.md": "fe4288154104e41f",
+    "rules/agent-self-verification.md": "e6c359c9cd1c2c93",
     "rules/audit-pattern.md": "9a5aaca598ac8586",
     "rules/cloudflare-workers.md": "13947aa460173e17",
     "rules/code-style.md": "cbd2b44c0098870f",
@@ -27,7 +27,7 @@
     "rules/knowledge-and-decisions.md": "35f87be0b73f1716",
     "rules/local-rule-override.md": "41130b6275d285af",
     "rules/logging.md": "b25b6c6d4c3bcd0c",
-    "rules/manual-review.backend.md": "bae9c4077483cec1",
+    "rules/manual-review.backend.md": "a520e188b398e3f8",
     "rules/manual-review.data-readiness.md": "dbeea7d1391dc5a9",
     "rules/manual-review.discuss.md": "8e6e425f1cd46e29",
     "rules/manual-review.evidence.md": "f49a23ba8264d5a2",
