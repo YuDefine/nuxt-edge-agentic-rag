@@ -1,0 +1,1 @@
+<clade-central-repo>/dist/nuxt-edge-agentic-rag/rules/nuxt-error-localization.md
