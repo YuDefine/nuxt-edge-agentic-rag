@@ -43,6 +43,54 @@ Code review 時，除了標準檢查項目外，**MUST** 額外檢查以下專�
 
 > **同規約的 impl-time 雙生**：本段是 **review 層**（review 時抓）。同一條規約另有 path-scoped **implementation-time rule**（`rules/modules/framework/nuxt/nuxt-ui-native-picker-ban.md`，寫 `.vue` 當下生效）+ **pre-commit gate**（`vendor/scripts/pre-commit/checks/native-picker-ban.sh`，掃 staged `.vue` 自動擋）。三層讓 enforcement 從「寫的時候」到「commit」到「review」逐層守住，reviewer 仍 MUST 跑上述 grep 作最後一道網。
 
+## Overlay 元件（Slideover / Modal / Drawer）body 內容必用 `#body` slot
+
+| 禁止使用 | 應替換為 | 說明 |
+| --- | --- | --- |
+| `<USlideover>` / `<UModal>` / `<UDrawer>` 的 **default slot** 放 body 內容 | 內容放 `#body` slot；搭配 `title` prop + 內建 close button 取代手寫 `#header` close | Nuxt UI v3 的 overlay 元件 default slot 語意是 **trigger**（開啟 overlay 的按鈕），`#body` slot 才有內建 `overflow-y-auto`。body 內容放 default slot → 超出 viewport 高度時**無法捲動**（scroll-y 壞掉）。此問題在 TDMS 專案反映超過 5 次、跨多頁面重複犯，是最高頻的 Nuxt UI 誤用。 |
+
+**正確 pattern**（controlled mode，無 trigger）：
+
+```vue
+<USlideover :open="open" title="校正資料" @update:open="emit('update:open', $event)">
+  <template #body>
+    <!-- body 內容自動有 overflow-y-auto -->
+    <div class="space-y-4">...</div>
+  </template>
+  <template #footer>
+    <div class="flex justify-end gap-3">...</div>
+  </template>
+</USlideover>
+```
+
+**反模式**（default slot 放內容 → scroll-y 壞掉）：
+
+```vue
+<USlideover :open="open" @update:open="...">
+  <template #header>
+    <div class="flex items-center justify-between">
+      <h2>標題</h2>
+      <UButton icon="i-lucide-x" @click="close" />  <!-- 多餘，內建有 close -->
+    </div>
+  </template>
+  <div class="p-4">   <!-- ❌ 這是 default slot（trigger），不是 body -->
+    ...內容...
+  </div>
+  <template #footer>...</template>
+</USlideover>
+```
+
+**Reviewer 檢查方式**：
+
+1. `grep -rEn '<USlideover|<UModal|<UDrawer' app/ packages/*/app/ components/ layouts/ pages/ 2>/dev/null` — 找所有 overlay 使用處
+2. 對每個命中，確認 body 內容位於 `#body` 或 `#content` slot 內，**不在** default slot（即非 `<template #body>` / `<template #content>` 包裹的直接子元素 = 落入 default slot）
+3. 若 overlay 使用 controlled `:open` prop 且無 trigger 按鈕在 default slot → default slot 理應為空；非空 = 內容放錯 slot
+
+**同時檢查**：
+
+- `#header` 內手寫 close button（`<UButton icon="i-lucide-x"`）→ 優先改用 `title` prop + 內建 `close` prop，減少冗餘 code
+- `#footer` 內多餘 `p-4`（slot 自帶 padding）
+
 ## UI 元件尺寸下限
 
 | 禁止使用 | 應替換為 | 說明 |
@@ -57,6 +105,24 @@ Code review 時，除了標準檢查項目外，**MUST** 額外檢查以下專�
 
 - 跨行寫法（`<UBadge` 開頭與 `size="xs"` 不在同一行）grep 抓不到，由 reviewer 人讀補；發現一律比照改 `md`
 - 無業務例外：`<UBadge>` 只允許 `md` / `lg` / `xl`，密集 UI 需更小視覺密度時改用其他呈現（如純文字 + `text-muted`），不得降 badge size
+
+## Overlay 元件寬度必須用 `:ui` prop 覆寫，禁止 `class="max-w-*"`
+
+| 禁止使用 | 應替換為 | 說明 |
+| --- | --- | --- |
+| `<UModal class="max-w-2xl">` / `<UModal class="sm:max-w-3xl">` 等把 `max-w-*` 寫在元件 root `class` | `:ui="{ content: 'sm:max-w-2xl' }"` — 透過 `ui` prop 覆寫 `content` slot | Nuxt UI v3 的 `UModal` / `USlideover` / `UDrawer` 的 `max-w-*` 定義在 theme `variants.fullscreen.false.content` slot，寫在元件 root 的 `class` **不會**覆蓋 content slot 的寬度約束。效果：以為改寬了但實際寬度不變，表格欄位被擠成一字一行。正確做法是用 `:ui="{ content: '...' }"` 直接覆寫 content slot，或在 `app.config.ts` 全域設 `ui.modal.variants.fullscreen.false.content` baseline。 |
+
+**全域 baseline 建議**：管理系統（含表格/表單的 CRUD 應用）`app.config.ts` 全域預設 **SHOULD** 從 `max-w-lg`（512px）提升到至少 `max-w-2xl`（672px）或 `max-w-3xl`（768px），避免每個 Modal 都要個別覆寫。
+
+**Reviewer 檢查方式**：
+
+1. `grep -rEn '<(UModal|USlideover|UDrawer)[^>]*class="[^"]*max-w-' app/ packages/*/app/ components/ layouts/ pages/ 2>/dev/null` — 找把 `max-w-*` 寫在 root `class` 的 overlay 元件
+2. 命中 → 改成 `:ui="{ content: 'max-w-...' }"`
+
+**例外條件**：
+
+- `class` 上的其他樣式（如 `class="my-custom-class"`）不在此條範圍，只針對 `max-w-*` 寬度覆寫
+- 若 consumer 已在 `app.config.ts` 設全域 modal 寬度 baseline，個別 Modal 不需要再覆寫（除非需要更寬或更窄）
 
 ## 資料庫存取模式
 
