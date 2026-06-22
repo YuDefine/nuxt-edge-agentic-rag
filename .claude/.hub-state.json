@@ -1,6 +1,6 @@
 {
   "cladeRoot": "/Users/charles/offline/clade",
-  "syncedAt": "2026-06-18T20:52:25.846Z",
+  "syncedAt": "2026-06-22T19:39:38.464Z",
   "rulesProjection": "symlink",
   "distDir": "/Users/charles/offline/clade/dist/nuxt-edge-agentic-rag/rules",
   "checksums": {
@@ -78,7 +78,7 @@
     "rules/nuxt-ui-conventions.md": "379a560a2ff1735a",
     "rules/nuxt-ui-mcp.md": "e722f603e8db3c18",
     "rules/nuxt-ui-native-picker-ban.md": "ad6849da93998a4c",
-    "rules/page-loading-golden-path.md": "8767167c0467c839",
+    "rules/page-loading-golden-path.md": "41988bf492591c44",
     "scripts/codex-review-safe.sh": "02b730f9dbd504a3",
     "scripts/commit-lock.mjs": "f81c79df484ce5db",
     "skills/commit/SKILL.md": "75e223a55cb608ca",
@@ -100,7 +100,7 @@
     "agents/check-runner.md": "e6fb8dac01cc591c",
     "agents/code-review.md": "003aa82da5558892",
     "agents/db-backup.md": "fd21fd01389c5d29",
-    "agents/references/clade-review-rules.md": "fea511aedd29746d",
+    "agents/references/clade-review-rules.md": "ffceebc464db8672",
     "agents/screenshot-review.md": "886090feb87d93f1"
   }
 }
