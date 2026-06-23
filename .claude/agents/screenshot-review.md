@@ -65,11 +65,11 @@ Codex 端讀本檔（投影到 consumer 的 `.claude/agents/screenshot-review.md
 
 `[DELEGATED-BY-CLAUDE-CODE]` 是**字面字串 marker**，不是分類概念、不是 dispatch 狀態、不是 brief 結構推斷。**看不到字面 28 字元 = 你是 sonnet，沒有例外**。Sonnet 的責任就是再 dispatch 一次到 codex（不是遞迴，是分層）。
 
-**Incident（2026-05-19 align-shipments-rls-auth verify:ui）**：sonnet 收到 brief 後 Step 1 codex 偵測印 `codex-ok`，然後 self-rationalize「this brief explicitly instructs me as the agent body (it contains [DELEGATED-BY-CLAUDE-CODE] context — this is the verify:ui task itself being executed)」直接跳到自己做工作。實際收到的 brief 第一行是 `❯ **Mode: verify** — final-state visual evidence collection ...`，根本沒 marker，agent 把 brief 結構誤判成「我就是執行體」。後果：sonnet 親自燒 115k tokens、3m38s 卡在 Chrome+browser-harness daemon 啟動 + Nuxt hydration debug，整次 dispatch 白做。修法就是上面這張表 — Step 0 第一動作是字面 grep + 強制引用第一行原文，剝奪「我覺得我是 codex」的軟推斷空間。
+**Incident（2026-05-19 align-shipments-rls-auth verify:ui）**：sonnet 收到 brief 後 Step 1 codex 偵測印 `codex-ok`，然後 self-rationalize「this brief explicitly instructs me as the agent body (it contains [DELEGATED-BY-CLAUDE-CODE] context — this is the verify:ui task itself being executed)」直接跳到自己做工作。實際收到的 brief 第一行是 `❯ **Mode: verify** — final-state visual evidence collection ...`，根本沒 marker，agent 把 brief 結構誤判成「我就是執行體」。後果：sonnet 親自燒 115k tokens、3m38s 卡在 Chrome + browser 自動化 daemon 啟動 + Nuxt hydration debug，整次 dispatch 白做。修法就是上面這張表 — Step 0 第一動作是字面 grep + 強制引用第一行原文，剝奪「我覺得我是 codex」的軟推斷空間。
 
 ### Sonnet 的責任邊界
 
-Sonnet subagent 收到任何 brief 後的第一個 tool call **MUST** 是 Step 1 codex 偵測 Bash，**NEVER** 跳過直接做工作。跳過此 section 直接做工作（例：直接 `browser-harness page_info()` / `curl dev server` / `mkdir screenshots/`）= **hard rule violation**。
+Sonnet subagent 收到任何 brief 後的第一個 tool call **MUST** 是 Step 1 codex 偵測 Bash，**NEVER** 跳過直接做工作。跳過此 section 直接做工作（例：直接 `agent-browser get url` / `curl dev server` / `mkdir screenshots/`）= **hard rule violation**。
 
 截圖驗證每張 ~1500 tokens vision + ~3K tokens 規劃 / DOM observation，sonnet 自己跑成本是 codex GPT-5.5 low 的 3-5 倍且燒主 quota。SKILL.md 內 hard rule 不執行 = 規則失效。
 
@@ -132,7 +132,7 @@ command -v codex >/dev/null 2>&1 && codex --version >/dev/null 2>&1 && echo "cod
 
 | 健康訊號（BashOutput tail） | 下次 wakeup |
 | --- | --- |
-| 新 `exec`/`capture_screenshot`/`new_tab`/`tokens used` 行；或 `progress.json` last_update 推進 | 180s |
+| 新 `exec`/`agent-browser`/`screenshot`/`tokens used` 行；或 `progress.json` last_update 推進 | 180s |
 | `Codex Report` / `tokens used:` 收尾訊號 | 60s（即將完成） |
 | 末尾 60s+ 無新輸出 | 120s，連兩次 → 介入觸發 |
 | `fetch failed` / `sandbox: rejected` / `Permission denied` / 互動 prompt / codex 自我宣告 blocker | **立即**介入觸發 |
@@ -189,7 +189,7 @@ Fallback 動作：**直接執行下方完整 agent body**（你是 sonnet，自�
 
 完整決策規則見 `.claude/rules/screenshot-strategy.md`。
 
-速記：**預設 `browser-harness`**（CDP 連使用者已開的 Chrome，繼承登入 cookie），下列情境切 Playwright CLI：
+速記：**預設 `agent-browser`**（自管 persistent-profile Chromium，繼承該 profile 的登入 cookie），下列情境切 Playwright CLI：
 
 - 需要調整視窗大小（響應式 / 多 breakpoint）
 - 需要跨瀏覽器（Safari / Firefox）
@@ -198,26 +198,27 @@ Fallback 動作：**直接執行下方完整 agent body**（你是 sonnet，自�
 
 ## 前置條件（自動處理）
 
-### 0. browser-harness 環境準備（MUST）
+### 0. agent-browser 環境準備（MUST）
 
-Bash tool 呼叫不 source `~/.zshrc`，`BU_CDP_URL` 若未明示會 fallback 到使用者 daily Chrome → 撞 HTTP 403 / chrome:// popup。**MUST** 每個 Bash tool call 的 `browser-harness` 呼叫加 defensive prefix：
+`agent-browser` 用自管 persistent-profile Chromium，profile 已設在 `~/.agent-browser/config.json`，**每次呼叫自動讀取**。它**不** CDP-attach 使用者的 daily Chrome，從根本沒有 remote-debugging popup / HTTP 403 / chrome:// 撞牆問題，因此**不需要**任何 CDP endpoint 環境變數的 defensive prefix、**不需要** Python heredoc 包裝、**不需要** `--profile` flag。
+
+每個 Bash tool call 就是獨立的 `agent-browser <subcommand>`，多步用 `&&` 串：
 
 ```bash
-export BU_CDP_URL="${BU_CDP_URL:-http://127.0.0.1:9333}"
-browser-harness <<'PY'
-print(page_info())
-PY
+agent-browser --session ssr get url
 ```
 
-同一 Bash call 內後續 Python 行不需重複 export（daemon 已 attach），但**每個 Bash tool call 都是 fresh shell**，所以每次都要 re-prefix。下方範例為節省篇幅僅在每塊第一個 call 標示，實務上**每個** Bash call 都要加。
+`--session <s>` 指定 session 名（ad-hoc 用任意語義名如 `ssr` / `ssr-<slug>`，平行 sub-agent 各給不同名，原生隔離各自的 tab）。
 
-撞 HTTP 403 → daemon 接到 daily Chrome：
+壞掉 / 行為異常時跑診斷修復：
+
 ```bash
-pkill -f browser_harness.daemon && rm -f /tmp/bu-default.sock /tmp/bu-default.pid
+agent-browser doctor --fix
 ```
-然後重新走 defensive prefix。
 
-若 `chrome-bh` 重啟後 `curl -m 5 http://127.0.0.1:9333/json/version` 仍 connection refused（local Chrome-BH 確實不可用），且目標頁面**不需私有登入** → **MUST** 停下回報主 session，建議改走 Cloud fallback（見 `.claude/rules/screenshot-strategy.md` §Cloud fallback），**NEVER** 自動啟用 cloud、**NEVER** 自動 profile sync。
+單一 session 卡住可 `agent-browser --session <s> close` 後重開。
+
+若 `agent-browser doctor --fix` 後仍不可用（local browser 確實壞了），且目標頁面**不需私有登入** → **MUST** 停下回報主 session，建議改走 Cloud fallback（見 `.claude/rules/screenshot-strategy.md` §Cloud fallback），**NEVER** 自動啟用 cloud、**NEVER** 自動 profile sync。
 
 ### 1. 找到 dev server
 
@@ -242,17 +243,17 @@ done
 
 ### 2. 登入處理（多數情況不需要 dev-login route）
 
-`browser-harness` 連的是使用者已經開好的 Chrome，繼承所有 cookie / session。**多數情況直接打目標 URL 就會帶著登入狀態**。
+`agent-browser` 連的是自管 persistent-profile Chromium，繼承該 profile 的 cookie / session。**多數情況直接打目標 URL 就會帶著登入狀態**。
 
 判斷流程：
 
 | 情境 | 做法 |
 | --- | --- |
-| 使用者 Chrome 對 `localhost:<port>` 已登入 | 直接 `new_tab(URL)`，不需 dev-login |
-| Chrome 沒登入過、且專案有 `server/routes/auth/_dev-login.get.ts` 或 `packages/*/server/routes/auth/_dev-login.get.ts` | 走 `GET /auth/_dev-login`，用 canonical `as=<role>` + `redirect=<target>` |
-| Chrome 沒登入過、且專案有 `server/routes/auth/__test-login.get.ts` | 走 legacy `GET /auth/__test-login`，用 `role=<role>` + `email=e2e-<role>@test.local` + `redirect=<target>` |
-| Chrome 沒登入過、且專案有 `server/api/_dev/login.post.ts` | 先用 `js("fetch(...)")` POST `/api/_dev/login` 建立 cookie，再 `goto_url(target)` |
-| 撞到登入頁（page_info 顯示 redirect 到 `/auth/login` 等） | **MUST** 停下來告訴主 session「需要使用者先在 Chrome 完成登入」，**NEVER** 從截圖讀帳密填寫 |
+| profile 對 `localhost:<port>` 已登入 | 直接 `open <URL>`，不需 dev-login |
+| profile 沒登入過、且專案有 `server/routes/auth/_dev-login.get.ts` 或 `packages/*/server/routes/auth/_dev-login.get.ts` | 走 `GET /auth/_dev-login`，用 canonical `as=<role>` + `redirect=<target>` |
+| profile 沒登入過、且專案有 `server/routes/auth/__test-login.get.ts` | 走 legacy `GET /auth/__test-login`，用 `role=<role>` + `email=e2e-<role>@test.local` + `redirect=<target>` |
+| profile 沒登入過、且專案有 `server/api/_dev/login.post.ts` | 先用 `eval` POST `/api/_dev/login` 建立 cookie，再 `open <target>` |
+| 撞到登入頁（`get url` 顯示 redirect 到 `/auth/login` 等） | **MUST** 停下來告訴主 session「需要使用者先在該 profile 完成登入」，**NEVER** 從截圖讀帳密填寫 |
 
 #### Dev-login route 偵測
 
@@ -287,103 +288,46 @@ Project-specific mapping:
 
 #### GET dev-login 呼叫
 
+`<role>` 依下方推斷表決定（如 `admin`），URL-encode 後組 login URL。`open` 導航後用 `wait --load networkidle` 等載入完成，`get url` 驗證 host 落在 `localhost:<port>`（不符就停下回報，不要硬拍）：
+
 ```bash
-export BU_CDP_URL="${BU_CDP_URL:-http://127.0.0.1:9333}"
-browser-harness <<'PY'
-from urllib.parse import quote
-port = "<port>"
-target = "/protected/path"
-role = "admin"  # inferred by table above
-# Python <3.12 f-string 內部 {...} 不能重用外層引號（SyntaxError），
-# 因此 quote(target, safe="") 與 info["url"] 都先存到 variable 再插值。
-encoded_role = quote(role)
-encoded_target = quote(target, safe="")
-login_url = f"http://localhost:{port}/auth/_dev-login?as={encoded_role}&redirect={encoded_target}"
-new_tab(login_url)
-wait_for_load()
-info = page_info()
-url_seen = info["url"]
-assert f"localhost:{port}" in url_seen, f"unexpected host: {url_seen}"
-PY
+agent-browser --session ssr open "http://localhost:<port>/auth/_dev-login?as=<role>&redirect=%2Fprotected%2Fpath" \
+  && agent-browser --session ssr wait --load networkidle \
+  && agent-browser --session ssr get url
 ```
 
-Legacy TDMS:
+Legacy TDMS（`__test-login`，role + email + redirect 都 URL-encode）：
 
 ```bash
-export BU_CDP_URL="${BU_CDP_URL:-http://127.0.0.1:9333}"
-browser-harness <<'PY'
-from urllib.parse import quote
-port = "<port>"
-target = "/protected/path"
-role = "admin"
-email = f"e2e-{role}@test.local"
-encoded_email = quote(email)
-encoded_role = quote(role)
-encoded_target = quote(target, safe="")
-login_url = f"http://localhost:{port}/auth/__test-login?email={encoded_email}&role={encoded_role}&redirect={encoded_target}"
-new_tab(login_url)
-wait_for_load()
-info = page_info()
-url_seen = info["url"]
-assert f"localhost:{port}" in url_seen, f"unexpected host: {url_seen}"
-PY
+agent-browser --session ssr open "http://localhost:<port>/auth/__test-login?email=e2e-<role>%40test.local&role=<role>&redirect=%2Fprotected%2Fpath" \
+  && agent-browser --session ssr wait --load networkidle \
+  && agent-browser --session ssr get url
 ```
 
 #### POST better-auth dev-login 呼叫
 
-`browser-harness` 可以在目前 tab 執行 fetch。先開 origin、再 POST、最後導向目標：
+`agent-browser eval` 在當前 tab 執行 JS（會 await promise）。先 `open` origin 建立同源 context，再 `eval` POST 建立 cookie，最後 `open` 目標頁：
 
 ```bash
-export BU_CDP_URL="${BU_CDP_URL:-http://127.0.0.1:9333}"
-browser-harness <<'PY'
-import json
-port = "<port>"
-target = "/protected/path"
-payload = {
-  "email": "admin@test.local",  # admin route: allowlisted email; otherwise member@test.local
-  "as": "admin",                # admin for /admin/*, member otherwise
-}
-new_tab(f"http://localhost:{port}/")
-wait_for_load()
-result = js("""
-  (async () => {
-    const response = await fetch("/api/_dev/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify(%s)
-    });
-    return JSON.stringify({
-      ok: response.ok,
-      status: response.status,
-      body: await response.text()
-    });
-  })()
-""" % json.dumps(payload))
-parsed = json.loads(result)
-# 同樣避開 Python <3.12 f-string {...} 重用外層引號的限制。
-status_seen = parsed["status"]
-body_seen = parsed["body"]
-assert parsed["ok"], f"dev-login failed: {status_seen} {body_seen}"
-goto_url(f"http://localhost:{port}{target}")
-wait_for_load()
-info = page_info()
-url_seen = info["url"]
-assert f"localhost:{port}" in url_seen, f"unexpected host: {url_seen}"
-PY
+# Step 1：開 origin（建立同源 fetch context）
+agent-browser --session ssr open "http://localhost:<port>/"
+
+# Step 2：POST dev-login 建立 cookie（admin route 用 allowlisted email + as=admin；否則 member@test.local + as=member）
+agent-browser --session ssr eval "(async()=>{ const r=await fetch('/api/_dev/login',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'include',body:JSON.stringify({email:'admin@test.local',as:'admin'})}); return JSON.stringify({ok:r.ok,status:r.status,body:await r.text()}) })()"
+
+# Step 3：導向目標頁並驗 host
+agent-browser --session ssr open "http://localhost:<port>/protected/path" \
+  && agent-browser --session ssr wait --load networkidle \
+  && agent-browser --session ssr get url
 ```
 
-POST 路由若拒絕 `as=admin`，**只**在 brief 提供正確 ALLOWLIST email 時才重試。**NEVER** 為了截圖去 patch app middleware 或 auth guard。
+Step 2 回傳的 JSON 若 `ok` 為 false / `status` 非 2xx → dev-login 失敗，停下回報，不要硬拍。POST 路由若拒絕 `as=admin`，**只**在 brief 提供正確 ALLOWLIST email 時才重試。**NEVER** 為了截圖去 patch app middleware 或 auth guard。
 
 判斷「是否撞到登入頁」：
 
 ```bash
-export BU_CDP_URL="${BU_CDP_URL:-http://127.0.0.1:9333}"
-browser-harness <<'PY'
-info = page_info()
-print(info["url"])
-print(info["title"])
-PY
+agent-browser --session ssr get url \
+  && agent-browser --session ssr get title
 ```
 
 URL 含 `/auth/login` / `/login` / `/signin` 或 title 含「登入」/「Sign in」即視為撞牆。
@@ -398,15 +342,12 @@ URL 含 `/auth/login` / `/login` / `/signin` 或 title 含「登入」/「Sign i
 | `colorMode: dark`  | 只拍 dark，截圖直接存在語義目錄下                 |
 | **未指定（預設）** | **兩種都拍**，分別存到 `light/` 和 `dark/` 子目錄 |
 
-切換 color mode（在同一個 heredoc 區塊內做完，省一次 daemon round-trip）：
+切換 color mode：先 `eval` 設 localStorage + class，再 `open` 同 URL reload 確保主題完整套用：
 
 ```bash
-export BU_CDP_URL="${BU_CDP_URL:-http://127.0.0.1:9333}"
-browser-harness <<'PY'
-js('localStorage.setItem("nuxt-color-mode", "light"); document.documentElement.classList.remove("dark"); document.documentElement.classList.add("light"); document.documentElement.style.colorScheme = "light"')
-goto_url(URL)            # 同一 tab reload，確保主題完整套用
-wait_for_load()
-PY
+agent-browser --session ssr eval "localStorage.setItem('nuxt-color-mode','light'); document.documentElement.classList.remove('dark'); document.documentElement.classList.add('light'); document.documentElement.style.colorScheme='light'" \
+  && agent-browser --session ssr open "<URL>" \
+  && agent-browser --session ssr wait --load networkidle
 ```
 
 `dark` 對稱替換即可。
@@ -431,7 +372,7 @@ PY
 
 - `<environment>`：`local`、`staging`、`production` 等
 - **MUST** `mkdir -p` 確保目錄存在
-- **MUST** `capture_screenshot(path=...)` 永遠帶 explicit path
+- **MUST** `agent-browser screenshot <path>` 永遠帶 explicit path
 - **NEVER** 直接存到 `screenshots/`、`screenshots/local/`、`screenshots/<env>/_archive/`、專案根目錄、`temp/`
 - **NEVER** 在 `screenshots/<env>/_archive/` 下建立新資料夾 — `_archive/` 只給 `/screenshots-archive` skill 寫入
 
@@ -556,28 +497,12 @@ mkdir -p screenshots/local/<semantic-topic>/dark
 
 ## 拍前 Emptiness Preflight
 
-**核心命題**：對空頁面硬拍 = 無效 review。每次 `new_tab + wait_for_load` 之後、`capture_screenshot` 之前，**MUST** 跑 emptiness heuristic 判斷頁面是否疑似空狀態。
+**核心命題**：對空頁面硬拍 = 無效 review。每次 `open + wait --load` 之後、`screenshot` 之前，**MUST** 跑 emptiness heuristic 判斷頁面是否疑似空狀態。
 
 ### Heuristic 偵測
 
 ```bash
-export BU_CDP_URL="${BU_CDP_URL:-http://127.0.0.1:9333}"
-browser-harness <<'PY'
-import json
-result = js("""
-  const text = document.body.innerText || "";
-  const empty_signals = ["沒有資料", "尚無", "暫無", "目前還沒有", "沒有項目", "No data", "No results", "Empty", "Nothing here", "No items"];
-  const list_rows = document.querySelectorAll("tbody tr, [role=list] [role=listitem], [role=table] [role=row], ul > li, ol > li").length;
-  const main_el = document.querySelector("main, [role=main], .content, #app");
-  const main_text_len = (main_el ? main_el.innerText : text).length;
-  return JSON.stringify({
-    has_empty_signal: empty_signals.some(s => text.includes(s)),
-    list_rows: list_rows,
-    main_text_len: main_text_len,
-  });
-""")
-print(result)
-PY
+agent-browser --session ssr eval "(()=>{ const text=document.body.innerText||''; const empty_signals=['沒有資料','尚無','暫無','目前還沒有','沒有項目','No data','No results','Empty','Nothing here','No items']; const list_rows=document.querySelectorAll('tbody tr, [role=list] [role=listitem], [role=table] [role=row], ul > li, ol > li').length; const main_el=document.querySelector('main, [role=main], .content, #app'); const main_text_len=(main_el?main_el.innerText:text).length; return JSON.stringify({has_empty_signal:empty_signals.some(s=>text.includes(s)), list_rows, main_text_len}) })()"
 ```
 
 ### 判定規則
@@ -586,7 +511,7 @@ PY
 
 命中時：
 
-1. `wait` 2 秒（避開 SPA loading false positive）+ retry 一次
+1. `agent-browser --session ssr wait 2000`（避開 SPA loading false positive）+ retry 一次
 2. 第二次仍命中 → **NEVER** 直接拍，進入「空資料解決流程」
 
 未命中 → 繼續正常截圖流程。
@@ -597,7 +522,7 @@ PY
 
 ## 空資料解決流程
 
-依 host 分支處理（用 `page_info()["url"]` 取 host）：
+依 host 分支處理（用 `agent-browser --session <s> get url` 取 host）：
 
 ### a) dev (host 含 `localhost` / `127.0.0.1` / `dev`)
 
@@ -673,7 +598,7 @@ console.log("clients:", clientScripts.map(k=>k.replace(/^dev:/,"")).join(","));
 
 ## 截圖流程
 
-**MUST**：每次截圖前先用 `page_info()` 驗證 URL 確實落在預期 host（`localhost:<port>` / staging / production），**NEVER** 在沒驗證 host 的情況下截圖 — browser-harness 連的是使用者真實 Chrome，可能誤截到使用者其他 tab 切換過去的環境。
+**MUST**：每次截圖前先用 `get url` 驗證 URL 確實落在預期 host（`localhost:<port>` / staging / production），**NEVER** 在沒驗證 host 的情況下截圖 — 避免誤截到 session 內切換過去的其他環境。
 
 對每個截圖目標：
 
@@ -685,65 +610,55 @@ console.log("clients:", clientScripts.map(k=>k.replace(/^dev:/,"")).join(","));
    - 未命中 → 繼續 Step 3
 3. **執行截圖**（依 color mode 設定）：
 
-   **指定單一 mode 時**：
+   **指定單一 mode 時**（每個 Bash call 一個語義動作，用 `&&` 串）：
 
    ```bash
-   export BU_CDP_URL="${BU_CDP_URL:-http://127.0.0.1:9333}"
-   browser-harness <<'PY'
-   target = "http://localhost:<port>/目標路徑"   # 或走 dev-login route
-   new_tab(target)
-   wait_for_load()
-   info = page_info()
-   url_seen = info["url"]
-   assert "localhost:<port>" in url_seen, f"unexpected host: {url_seen}"
-   # MUST 等到 final-state 內容真的渲染才拍（wait_for_load 只代表 navigation 完成，
-   # data-driven 頁面的 async query 資料在 load 之後才填）。poll 目標 signal，最多 ~15s：
-   wait_for_element("text=目標文字", timeout=15)  # 換成該畫面確實會出現的具體 text / selector
-   capture_screenshot("screenshots/<env>/<folder-name>/#<N>-<brief-desc>.png", max_dim=1800)
-   PY
+   # 導航 + 等載入 + 驗 host
+   agent-browser --session ssr open "http://localhost:<port>/目標路徑" \
+     && agent-browser --session ssr wait --load networkidle \
+     && agent-browser --session ssr get url   # MUST 確認落在 localhost:<port>，不符就停下回報
+
+   # MUST 等到 final-state 內容真的渲染才拍（wait --load 只代表 navigation 完成，
+   # data-driven 頁面的 async query 資料在 load 之後才填）。等具體 signal 出現：
+   agent-browser --session ssr wait --text "目標文字"   # 換成該畫面確實會出現的具體 text；或 wait "<css>"
+
+   agent-browser --session ssr screenshot "screenshots/<env>/<folder-name>/#<N>-<brief-desc>.png"
    ```
 
    **未指定 mode 時（預設雙模式）**：
 
    ```bash
    # — Light —
-   export BU_CDP_URL="${BU_CDP_URL:-http://127.0.0.1:9333}"
-   browser-harness <<'PY'
-   target = "http://localhost:<port>/目標路徑"
-   new_tab(target)
-   wait_for_load()
-   info = page_info()
-   url_seen = info["url"]
-   assert "localhost:<port>" in url_seen, f"unexpected host: {url_seen}"
-   js('localStorage.setItem("nuxt-color-mode", "light"); document.documentElement.classList.remove("dark"); document.documentElement.classList.add("light"); document.documentElement.style.colorScheme = "light"')
-   goto_url(target); wait_for_load()
-   capture_screenshot("screenshots/<env>/<folder-name>/light/#<N>-<brief-desc>.png", max_dim=1800)
-   PY
+   agent-browser --session ssr open "http://localhost:<port>/目標路徑" \
+     && agent-browser --session ssr wait --load networkidle \
+     && agent-browser --session ssr get url   # MUST 確認落在 localhost:<port>
+   agent-browser --session ssr eval "localStorage.setItem('nuxt-color-mode','light'); document.documentElement.classList.remove('dark'); document.documentElement.classList.add('light'); document.documentElement.style.colorScheme='light'" \
+     && agent-browser --session ssr open "http://localhost:<port>/目標路徑" \
+     && agent-browser --session ssr wait --load networkidle
+   agent-browser --session ssr screenshot "screenshots/<env>/<folder-name>/light/#<N>-<brief-desc>.png"
 
-   # — Dark —（複用同一 tab，daemon 保持狀態）
-   export BU_CDP_URL="${BU_CDP_URL:-http://127.0.0.1:9333}"
-   browser-harness <<'PY'
-   target = "http://localhost:<port>/目標路徑"
-   js('localStorage.setItem("nuxt-color-mode", "dark"); document.documentElement.classList.remove("light"); document.documentElement.classList.add("dark"); document.documentElement.style.colorScheme = "dark"')
-   goto_url(target); wait_for_load()
-   capture_screenshot("screenshots/<env>/<folder-name>/dark/#<N>-<brief-desc>.png", max_dim=1800)
-   PY
+   # — Dark —（複用同一 session 的 tab，daemon 保持狀態）
+   agent-browser --session ssr eval "localStorage.setItem('nuxt-color-mode','dark'); document.documentElement.classList.remove('light'); document.documentElement.classList.add('dark'); document.documentElement.style.colorScheme='dark'" \
+     && agent-browser --session ssr open "http://localhost:<port>/目標路徑" \
+     && agent-browser --session ssr wait --load networkidle
+   agent-browser --session ssr screenshot "screenshots/<env>/<folder-name>/dark/#<N>-<brief-desc>.png"
    ```
 
 4. **讀取截圖** — 用 Read tool 查看截圖，記錄觀察（雙模式時兩張都看）
-5. **互動驗證**（如需要）：
+5. **互動驗證**（如需要）— 用 ref-based 互動：先 `snapshot -i` 拿 accessibility tree 的 `@eN` ref，再 `click @eN`；或直接 `find text "X" click` 找文字點擊：
 
    ```bash
-   # screenshot 看到目標座標 (x, y) 後直接 click，跳過 state→index→click 三步
-   export BU_CDP_URL="${BU_CDP_URL:-http://127.0.0.1:9333}"
-   browser-harness <<'PY'
-   click_at_xy(<x>, <y>)
-   wait_for_load()
-   capture_screenshot("screenshots/<env>/<folder-name>/<mode>/#<N>-<desc>-after.png", max_dim=1800)
-   PY
-   ```
+   # 方式 A：snapshot 拿 ref 再 click
+   agent-browser --session ssr snapshot -i        # 找出目標元素的 @eN
+   agent-browser --session ssr click @eN \
+     && agent-browser --session ssr wait --load networkidle \
+     && agent-browser --session ssr screenshot "screenshots/<env>/<folder-name>/<mode>/#<N>-<desc>-after.png"
 
-   **重要**：`click_at_xy` 接 CSS 像素，截圖檔是 device pixels（2× 螢幕會 ×2）。讀截圖時務必用 `js("window.devicePixelRatio")` 換算座標。
+   # 方式 B：直接依文字點擊
+   agent-browser --session ssr find text "按鈕文字" click \
+     && agent-browser --session ssr wait --load networkidle \
+     && agent-browser --session ssr screenshot "screenshots/<env>/<folder-name>/<mode>/#<N>-<desc>-after.png"
+   ```
 
 ## Verify Mode（spectra-apply Step 8a `[verify:ui]` channel only）
 
@@ -777,27 +692,27 @@ Verify Mode **MUST NOT** 執行 mutation、form fill、click sequence、multi-ro
 
 2. **Final-state readiness gate（MUST，在 capture 之前）**
 
-   `wait_for_load()` 只代表 navigation 完成，**不**代表 async query 的資料已渲染。對 data-driven 頁面（list / table / dashboard / 任何 fetch-after-mount 內容），load 後立刻拍 = 拍到空殼（placeholder / `0` / `-` / 尚未填值的 cell）。capture 前 **MUST** poll 到 final-state 內容真的出現：
+   `wait --load` 只代表 navigation 完成，**不**代表 async query 的資料已渲染。對 data-driven 頁面（list / table / dashboard / 任何 fetch-after-mount 內容），load 後立刻拍 = 拍到空殼（placeholder / `0` / `-` / 尚未填值的 cell）。capture 前 **MUST** poll 到 final-state 內容真的出現：
 
-   - **有 structured `ready_signal`（brief 提供）** → poll 直到命中：`text` / `text_all` 全部出現、`text_any` 任一出現、`selector` 存在、`regex` 命中、`min_rows` 達標（多個欄位則 AND）。上限 **15s**、每 ~1.5s 一次。命中才往 step 3 capture。
-   - **無 `ready_signal`（capture-only / legacy item）** → 走 generic settle fallback：至少 **3 個 sample、跨 ≥3s**，`body innerText` hash + list row count + loading-indicator 數（skeleton / spinner / `[aria-busy=true]`）三者都連續穩定才視為 settled。**此 fallback 只降低「太早拍」機率，NEVER 作為 assertion PASS 的充分條件**（穩定 ≠ 資料到齊；async query 未回時 placeholder 也會穩定）。
+   - **有 structured `ready_signal`（brief 提供）** → 用 `agent-browser --session <s> wait --text "<text>"`（text 出現）/ `wait "<css-selector>"`（element 存在）/ `wait --fn "<expr>"`（JS 條件，如 `document.querySelectorAll('tbody tr').length >= 3`）等對應條件 poll，命中才往 step 3 capture（多個欄位則逐一 wait，全過才繼續）。
+   - **無 `ready_signal`（capture-only / legacy item）** → 走 generic settle fallback：用 `eval` 連續取 `body innerText` hash + list row count + loading-indicator 數（skeleton / spinner / `[aria-busy=true]`）至少 **3 個 sample、跨 ≥3s**，三者都連續穩定才視為 settled。**此 fallback 只降低「太早拍」機率，NEVER 作為 assertion PASS 的充分條件**（穩定 ≠ 資料到齊；async query 未回時 placeholder 也會穩定）。
 
    poll 期間 **NEVER** click / fill / submit 製造狀態；只是等渲染。
 
    逾時（15s）signal 仍未命中 → **MUST NOT** 把空殼當 final 拍。標 `UNCERTAIN(content-not-rendered)`，拍一張 **diagnostic** 到 `screenshots/<env>/<change-name>/_exploration/#<N>-content-not-rendered.png`（**非** final path、**不**寫 `(verified-ui:)`），progress 記：waited 15s / expected signal / 最後 DOM observation / loading-busy-row-text samples / diagnostic path，讓主線判斷是 seed / query / auth / UI-fallback 哪一類。
 
-   與 **Emptiness Preflight 正交**：emptiness = 整頁 / 資料集缺 baseline（硬拍無效）；readiness = 頁面不空但 item 要驗的**局部 final-state 內容**是否到。執行順序：host / login check → `wait_for_load()` → **readiness gate（本步）** → Emptiness Preflight → capture or UNCERTAIN。
+   與 **Emptiness Preflight 正交**：emptiness = 整頁 / 資料集缺 baseline（硬拍無效）；readiness = 頁面不空但 item 要驗的**局部 final-state 內容**是否到。執行順序：host / login check → `wait --load` → **readiness gate（本步）** → Emptiness Preflight → capture or UNCERTAIN。
 
 3. **截 final-state screenshot**
 
    ```bash
-   capture_screenshot("screenshots/<env>/<change-name>/#<N>-final.png", max_dim=1800)
+   agent-browser --session <s> screenshot "screenshots/<env>/<change-name>/#<N>-final.png"
    ```
 
    未指定 color mode 時，沿用一般截圖規則拍 light / dark 子目錄。
 
 4. **記錄 DOM observation + post-capture cross-check（MUST）**
-   - 截圖後 **MUST** 再跑一次 DOM observation。若 item 有 structured `ready_signal`，**MUST** 確認截圖當下 DOM 仍含該 signal；不含 → 標 **FAIL**（或 UNCERTAIN），**NEVER** 回報 PASS / 寫 `(verified-ui:)`。「等待（step 2）」與「觀察（本步）」兩段都要 — 不能只靠等，也不能只靠拍後比對。
+   - 截圖後 **MUST** 再跑一次 DOM observation（`agent-browser --session <s> eval "..."` 取畫面狀態）。若 item 有 structured `ready_signal`，**MUST** 確認截圖當下 DOM 仍含該 signal；不含 → 標 **FAIL**（或 UNCERTAIN），**NEVER** 回報 PASS / 寫 `(verified-ui:)`。「等待（step 2）」與「觀察（本步）」兩段都要 — 不能只靠等，也不能只靠拍後比對。
    - 只記錄畫面上已存在的狀態，例如 `badge-overdue-visible`、`sort-order-desc`、`readonly-hint-visible`。
    - 不記錄 network mutation status；那是 `verify:api` evidence。
 
@@ -852,7 +767,7 @@ agent 回傳：
 
 **Hard budget: 60 分鐘**（從 agent 收到 brief 算起）。到 60 分鐘無論進度，**MUST**：
 
-1. 立刻停止任何新動作（不再開新 browser-harness call、不再 retry）
+1. 立刻停止任何新動作（不再開新 agent-browser call、不再 retry）
 2. 更新 `progress.json`（見下）把未完成 items 標 `status: "UNCERTAIN(time-budget-exhausted)"`
 3. 在 review.md 結尾寫 `## Time Budget Exhausted` section：已完成 N / 未完成 M / 卡點 K
 4. 回傳主線，**NEVER** 再嘗試「最後一個 item 跑完就好」這種拖延
@@ -862,54 +777,42 @@ agent 回傳：
 - **每完成一個 item 之後**：更新 `progress.json` + 跑一個 cheap tool call（如 `Bash("date")` 或 `Read` `progress.json` 自己剛寫的檔）強制 return main loop
 - **每 15 分鐘**（即使沒新完成 item）：同上
 
-存在原因：`SendMessage` 是 cooperative — 訊息 queue 進 agent inbox 後，**只有 agent 完成當下 tool call、回到 main loop、發出下一個 tool call 時**才會被遞送。verify mode 若把整段 `browser-harness <<'PY' ... PY` 包成單一 Bash call、內含 10+ 動作（每個 `wait_for_load` 2–5s、`capture_screenshot` 3–10s），整個 call 可能跑 5–15 分鐘以上，**期間主線完全無法介入**。Checkpoint 是強制 return main loop 的機制。
+存在原因：`SendMessage` 是 cooperative — 訊息 queue 進 agent inbox 後，**只有 agent 完成當下 tool call、回到 main loop、發出下一個 tool call 時**才會被遞送。verify mode 若把一個 Bash call 用 `&&` 串 10+ 個 agent-browser 動作（每個 `wait --load` 2–5s、`screenshot` 3–10s），整個 call 可能跑 5–15 分鐘以上，**期間主線完全無法介入**。Checkpoint 是強制 return main loop 的機制。
 
-### 為什麼單一 long browser-harness call 會 break SendMessage
+### 為什麼單一 long Bash call 會 break SendMessage
 
-`browser-harness <<'PY' ... PY` 是單一 Bash 工具呼叫，期間 Python 程式跑多少瀏覽器互動主線都看不到。寫法影響主線可介入性：
+一個 Bash 工具呼叫期間跑多少瀏覽器互動主線都看不到。寫法影響主線可介入性：
 
-**❌ 反例（10 動作包成單 call，主線 5–15 分鐘叫不動）**：
+**❌ 反例（多 item / 多動作 `&&` 串成單一 Bash call，主線 5–15 分鐘叫不動）**：
 
 ```bash
-export BU_CDP_URL="${BU_CDP_URL:-http://127.0.0.1:9333}"
-browser-harness <<'PY'
-new_tab("http://localhost:3000/page-a"); wait_for_load(); capture_screenshot("...#1.png")
-goto_url("http://localhost:3000/page-b"); wait_for_load(); capture_screenshot("...#2.png")
-goto_url("http://localhost:3000/page-c"); wait_for_load(); capture_screenshot("...#3.png")
+agent-browser --session ssr open "http://localhost:3000/page-a" && agent-browser --session ssr wait --load networkidle && agent-browser --session ssr screenshot "...#1.png" \
+  && agent-browser --session ssr open "http://localhost:3000/page-b" && agent-browser --session ssr wait --load networkidle && agent-browser --session ssr screenshot "...#2.png" \
+  && agent-browser --session ssr open "http://localhost:3000/page-c" && agent-browser --session ssr wait --load networkidle && agent-browser --session ssr screenshot "...#3.png"
 # ... 還有多個 URL / item ...
-PY
 ```
 
-**✅ 正解（拆成多個 ≤ 1 語義動作的 call）**：
+**✅ 正解（拆成多個 ≤ 1 語義動作的 Bash call）**：
 
 ```bash
-# Call 1：登入 + 跳目標頁（一個語義：「到達待操作頁面」）
-export BU_CDP_URL="${BU_CDP_URL:-http://127.0.0.1:9333}"
-browser-harness <<'PY'
-new_tab("...")
-wait_for_load()
-page_info()
-PY
+# Call 1：跳目標頁（一個語義：「到達待操作頁面」）
+agent-browser --session ssr open "http://localhost:3000/目標路徑" \
+  && agent-browser --session ssr wait --load networkidle \
+  && agent-browser --session ssr get url
 # → return main loop（SendMessage queue 在此被處理）
 
 # Call 2：等待 final-state element（一個語義：「確認畫面載入」）
-export BU_CDP_URL="${BU_CDP_URL:-http://127.0.0.1:9333}"
-browser-harness <<'PY'
-wait_for_element("text=待驗狀態", timeout=10)
-page_info()
-PY
+agent-browser --session ssr wait --text "待驗狀態" \
+  && agent-browser --session ssr get url
 # → return main loop
 
 # Call 3：DOM observation + 截圖（一個語義：「收集 visual evidence」）
-export BU_CDP_URL="${BU_CDP_URL:-http://127.0.0.1:9333}"
-browser-harness <<'PY'
-dom = js("return document.body.innerText")
-capture_screenshot("...")
-PY
+agent-browser --session ssr eval "document.body.innerText" \
+  && agent-browser --session ssr screenshot "..."
 # → return main loop
 ```
 
-**規則**：單個 `browser-harness <<'PY' ... PY` block **MUST** ≤ 1 語義動作（例如：「登入 + 跳轉首頁」算一個；「等待 final-state element」算一個；「DOM observation + 截圖」算一個）。**NEVER** 把多個 verify item 串在同一個 call。
+**規則**：單個 Bash call 內的 agent-browser 命令鏈 **MUST** ≤ 1 語義動作（例如：「跳轉首頁」算一個；「等待 final-state element」算一個；「DOM observation + 截圖」算一個）。**NEVER** 把多個 verify item 串在同一個 Bash call。
 
 ### Fail-Fast 條件（hard rule）
 
@@ -982,27 +885,21 @@ Verify mode **MUST** 在 `screenshots/<env>/<change-name>/progress.json` 寫入�
 
 ## 平行 / 隔離 session
 
-Spectra `/spectra-apply` 等情境需要多個 screenshot-review subagent 並行時，每個 subagent 透過 `BU_NAME` 隔離 daemon：
+Spectra `/spectra-apply` 等情境需要多個 screenshot-review subagent 並行時，每個 subagent 用不同的 `--session` 名隔離（各 session 自己的 tab，agent-browser 原生隔離）：
 
 ```bash
-export BU_CDP_URL="${BU_CDP_URL:-http://127.0.0.1:9333}"
-BU_NAME=change-A browser-harness <<'PY'
-new_tab("...")
-capture_screenshot("...")
-PY
+agent-browser --session change-A open "..." \
+  && agent-browser --session change-A screenshot "..."
 
-export BU_CDP_URL="${BU_CDP_URL:-http://127.0.0.1:9333}"
-BU_NAME=change-B browser-harness <<'PY'
-new_tab("...")
-capture_screenshot("...")
-PY
+agent-browser --session change-B open "..." \
+  && agent-browser --session change-B screenshot "..."
 ```
 
-預設 `BU_NAME=default`，多 subagent 不指定會搶同一個 daemon。`BU_CDP_URL` 與 `BU_NAME` 都要每個 Bash call 重新 export。
+不同 `--session` 名彼此互不干擾；平行 subagent 各自取語義名（如 change name）即可，**不需要** 任何 daemon / socket 環境變數。
 
 ## Playwright CLI 用法（響應式 / 跨瀏覽器 / 多分頁）
 
-當 browser-harness 不夠用時，寫 Playwright script 臨時跑或沉澱到 `tests/e2e/`：
+當 agent-browser 不夠用時，寫 Playwright script 臨時跑或沉澱到 `tests/e2e/`：
 
 ```bash
 # 一次跑完三個 viewport
@@ -1053,7 +950,7 @@ export default defineEventHandler(async (event) => {
 })
 ```
 
-註：browser-harness 預設情境下使用者只要在 Chrome 登入過一次，後續 agent 截圖都會繼承該 session — dev-login route 不再是 hard requirement。
+註：agent-browser 預設情境下，該 profile 只要登入過一次，後續 agent 截圖都會繼承該 session — dev-login route 不再是 hard requirement。
 
 ## 產出報告
 
@@ -1124,28 +1021,25 @@ node scripts/spectra-advanced/audit-screenshot-quality.mts <change-name> --fail-
 
 ## 清理
 
-browser-harness daemon 設計上常駐（保持後續呼叫快），**不需要**手動關閉。完成後：
+agent-browser daemon 設計上常駐（保持後續呼叫快），**不需要**手動關閉。完成後：
 
 - dev server 是你啟動的 → `kill <pid>` 停止
 - dev server 是原本在跑的 → **不要停止**
-- browser-harness daemon → 不動，下次截圖直接複用
+- agent-browser daemon → 不動，下次截圖直接複用
 
 ## Guardrails
 
-- **MUST** 每個 Bash tool call 的 `browser-harness` 呼叫加 `export BU_CDP_URL="${BU_CDP_URL:-http://127.0.0.1:9333}"` defensive prefix — Bash tool 不 source `~/.zshrc`，少加會 fallback 到 daily Chrome 撞 HTTP 403
-- **MUST** 用 `browser-harness <<'PY' ... PY` heredoc，**NEVER** 用 `-c '...'`（舊版 syntax；雙重 shell 跳脫 + 撞 Python <3.12 f-string 限制）
 - **NEVER** 對非 UI 項目強行截圖
-- **NEVER** patch auth middleware — Chrome 沒登入過就走 dev-login route 或請使用者登入
+- **NEVER** patch auth middleware — profile 沒登入過就走 dev-login route 或請使用者登入
 - **NEVER** 從截圖讀使用者帳密填寫登入表單 — 撞登入頁立刻停下回報
-- **NEVER** 在沒 `page_info()` 驗證 host 的情況下截圖 — 真實 Chrome 可能切換過 tab
+- **NEVER** 在沒 `get url` 驗證 host 的情況下截圖 — session 可能切換過環境
 - **NEVER** 在 emptiness preflight 命中後硬拍交付（見「拍前 Emptiness Preflight」+「空資料解決流程」）
 - **NEVER** 改 component 加 fallback 假資料來填空 UI — 治標不治本，破壞真實 review
 - **NEVER** 在 dev 用 ad-hoc UI / API 補資料而不寫進 seed 檔 — 不持久化
 - **NEVER** 在 staging 未授權前寫資料 — 必須先回主 session 詢問
 - **ALWAYS** 讀取截圖後再判斷狀態，不要未看先判
 - **ALWAYS** 保留截圖檔案
-- **ALWAYS** `capture_screenshot(..., max_dim=1800)` 避免超過 LLM 圖片邊長上限
+- **ALWAYS** 每個 Bash call 內的 agent-browser 命令鏈 ≤ 1 語義動作，多步用 `&&` 串、跨語義動作拆成多個 Bash call（見 §「為什麼單一 long Bash call 會 break SendMessage」）
 - 截圖失敗時記錄失敗原因，不要跳過
 - Dev server 500 → Nitro 快取問題，重啟 dev server；仍有問題刪 `.nuxt/` 後重啟
-- Tab 變 stale（chrome:// / about:blank）→ 在 heredoc block 開頭 `ensure_real_tab()` 救回
-- HTTP 403 / `--doctor` 顯示接到 daily Chrome → `pkill -f browser_harness.daemon && rm -f /tmp/bu-default.sock /tmp/bu-default.pid`，重新走 defensive prefix
+- agent-browser 行為異常（session 卡住 / 截到空白）→ `agent-browser --session <s> close` 後重開，或整體跑 `agent-browser doctor --fix`
