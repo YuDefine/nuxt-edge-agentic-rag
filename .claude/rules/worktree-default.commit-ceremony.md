@@ -1,0 +1,1 @@
+/Users/charles/offline/clade/dist/nuxt-edge-agentic-rag/rules/worktree-default.commit-ceremony.md
