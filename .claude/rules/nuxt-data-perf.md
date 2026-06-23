@@ -1,0 +1,1 @@
+/Users/charles/offline/clade/dist/nuxt-edge-agentic-rag/rules/nuxt-data-perf.md
