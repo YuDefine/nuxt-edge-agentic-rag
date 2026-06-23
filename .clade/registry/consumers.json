@@ -73,6 +73,10 @@
           "variant": "node-server",
           "state": "compliant",
           "notes": "Docker + self-hosted runner; not wrangler"
+        },
+        "hub-projection": {
+          "variant": "complete",
+          "state": "compliant"
         }
       }
     },
@@ -149,6 +153,10 @@
         "deploy-track": {
           "variant": "wrangler-action",
           "state": "compliant"
+        },
+        "hub-projection": {
+          "variant": "complete",
+          "state": "compliant"
         }
       }
     },
@@ -207,6 +215,10 @@
         },
         "deploy-track": {
           "variant": "wrangler-action",
+          "state": "compliant"
+        },
+        "hub-projection": {
+          "variant": "complete",
           "state": "compliant"
         }
       }
@@ -268,6 +280,10 @@
         "deploy-track": {
           "variant": "node-server",
           "state": "compliant"
+        },
+        "hub-projection": {
+          "variant": "complete",
+          "state": "compliant"
         }
       }
     },
@@ -327,6 +343,10 @@
         "deploy-track": {
           "variant": "wrangler-action",
           "state": "compliant"
+        },
+        "hub-projection": {
+          "variant": "complete",
+          "state": "compliant"
         }
       }
     },
@@ -384,6 +404,10 @@
         },
         "deploy-track": {
           "variant": "wrangler-action",
+          "state": "compliant"
+        },
+        "hub-projection": {
+          "variant": "complete",
           "state": "compliant"
         }
       }
@@ -443,6 +467,10 @@
         "deploy-track": {
           "variant": "void-cloud",
           "state": "compliant"
+        },
+        "hub-projection": {
+          "variant": "complete",
+          "state": "compliant"
         }
       }
     },
@@ -501,6 +529,71 @@
         "deploy-track": {
           "variant": "void-cloud",
           "state": "drift"
+        },
+        "hub-projection": {
+          "variant": "complete",
+          "state": "compliant"
+        }
+      }
+    },
+    {
+      "consumer_id": "CPMS",
+      "repo_id": "fcoem/CPMS",
+      "role": "consumer",
+      "onboarded": "2026-06-23",
+      "projection_paths": {
+        "rules": ".claude/rules/",
+        "skills": ".claude/skills/",
+        "vendor": "vendor/"
+      },
+      "standard_completeness_columns": ["audit-pattern", "verify-channel", "improvement-loop"],
+      "improvement_loop_enabled": true,
+      "business_activity": "active",
+      "workflow_model": "trunk-based",
+      "capabilities": {
+        "preview_db": "none",
+        "data_branching": "none"
+      },
+      "dev_ports": {
+        "nuxt": 3090
+      },
+      "conventions": {
+        "audit-trail": {
+          "variant": "none",
+          "state": "declared"
+        },
+        "evlog-stack": {
+          "variant": "baseline",
+          "state": "declared"
+        },
+        "verify-channels": {
+          "variant": "full",
+          "state": "declared"
+        },
+        "dev-login": {
+          "variant": "none",
+          "state": "declared"
+        },
+        "code-quality-tooling": {
+          "variant": "vite-plus-aligned",
+          "state": "declared"
+        },
+        "nuxt-security": {
+          "variant": "hardened",
+          "state": "declared"
+        },
+        "user-lifecycle": {
+          "variant": "status-based",
+          "state": "declared",
+          "notes": "same pattern as TDMS: core.user_roles"
+        },
+        "deploy-track": {
+          "variant": "wrangler-action",
+          "state": "declared"
+        },
+        "hub-projection": {
+          "variant": "complete",
+          "state": "compliant"
         }
       }
     }
