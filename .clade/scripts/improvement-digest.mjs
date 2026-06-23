@@ -303,8 +303,23 @@ function readTechDebt() {
   for (const td of out) {
     td.body = td.body.join('\n').trim()
     td.status = parseTechDebtStatus(td.body)
+    td.lastReviewed = parseLastReviewed(td.body)
   }
   return out
+}
+
+const RECENTLY_REVIEWED_DAYS = 30
+
+function parseLastReviewed(body) {
+  const m = body.match(/\*\*Last reviewed\*\*:\s*(\d{4}-\d{2}-\d{2})/)
+  return m ? m[1] : null
+}
+
+function daysSinceDate(isoDate) {
+  if (!isoDate) return null
+  const t = Date.parse(isoDate)
+  if (Number.isNaN(t)) return null
+  return Math.floor((Date.now() - t) / (1000 * 60 * 60 * 24))
 }
 
 // Closed TDs SHALL NOT be re-emitted as candidates (state-layer closure): the
@@ -698,30 +713,37 @@ function detectFromTechDebt(items) {
   // digests" convergence metric (the fix has already landed — header still exists).
   return items
     .filter((td) => !isClosedTechDebt(td))
-    .map((td) => ({
-      id: digHash(['tech-debt', td.id]),
-      kind: 'tech-debt',
-      severity:
+    .map((td) => {
+      const recentlyReviewed =
+        td.lastReviewed !== null && daysSinceDate(td.lastReviewed) <= RECENTLY_REVIEWED_DAYS
+      let severity =
         td.body.includes('block production') || td.body.includes('P0')
           ? 'P0'
           : td.body.includes('P1')
             ? 'P1'
-            : 'P2',
-      source_id: td.id,
-      title: td.title,
-      evidence_predicate: {
-        target_paths: extractPathsFromBody(td.body),
-        target_symbols: [],
-        expected_state: [
-          {
-            kind: 'tech-debt-closed',
-            description: `${td.id} SHALL be marked closed or removed from docs/tech-debt.md after the fix lands`,
-          },
-        ],
-        validation_commands: [`grep -A2 '^## ${td.id}' docs/tech-debt.md`],
-        related_keywords: extractKeywords(td.title),
-      },
-    }))
+            : 'P2'
+      if (recentlyReviewed && severity === 'P2') severity = 'P3'
+      return {
+        id: digHash(['tech-debt', td.id]),
+        kind: 'tech-debt',
+        severity,
+        recently_reviewed: recentlyReviewed || undefined,
+        source_id: td.id,
+        title: td.title,
+        evidence_predicate: {
+          target_paths: extractPathsFromBody(td.body),
+          target_symbols: [],
+          expected_state: [
+            {
+              kind: 'tech-debt-closed',
+              description: `${td.id} SHALL be marked closed or removed from docs/tech-debt.md after the fix lands`,
+            },
+          ],
+          validation_commands: [`grep -A2 '^## ${td.id}' docs/tech-debt.md`],
+          related_keywords: extractKeywords(td.title),
+        },
+      }
+    })
 }
 
 function extractPathsFromBody(body) {
@@ -885,6 +907,7 @@ export function formatCandidate(c, { date = new Date().toISOString().slice(0, 10
   lines.push(`- **kind**: ${c.kind}`)
   lines.push(`- **severity**: ${c.severity}`)
   if (c.source_id) lines.push(`- **source**: ${c.source_id}`)
+  if (c.recently_reviewed) lines.push(`- **recently reviewed**: yes (severity downgraded to P3)`)
   // TD-112: prefer active/non-active split when present (signal-pattern candidates)，
   // fallback to flat `consumers` list（tech-debt / archive / stale-wt candidates 用單 list）
   if (c.active_consumers?.length || c.non_active_consumers?.length) {
@@ -1163,7 +1186,9 @@ export async function runDigest({ dryRun = false } = {}) {
     const count = priorFreq.get(c.id) ?? 0
     if (count > 0) c.unresolved_across = { count, lookback: UNRESOLVED_LOOKBACK }
   }
-  const unresolvedCount = deduped.filter((c) => (c.unresolved_across?.count ?? 0) >= 2).length
+  const unresolvedCount = deduped.filter(
+    (c) => (c.unresolved_across?.count ?? 0) >= 2 && !c.recently_reviewed,
+  ).length
 
   const signalSource =
     signals.length < 10 ? 'bootstrap-only' : signals.length < 100 ? 'partial' : 'steady-state'
