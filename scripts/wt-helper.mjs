@@ -47,6 +47,7 @@
 
 import { execFileSync, spawn, spawnSync } from 'node:child_process'
 import {
+  appendFileSync,
   copyFileSync,
   cpSync,
   existsSync,
@@ -330,6 +331,29 @@ const stripTrailingNewlines = (s) => s.replace(/\n+$/, '')
 //     spawn entirely. WT_HELPER_INDEX_BIN overrides the binary path for stub
 //     injection if/when end-to-end test coverage is needed.
 //
+// Set up per-worktree git exclude for WORKTREE-BRIEF.md so it never shows as
+// untracked. Uses $GIT_DIR/info/exclude (per-worktree for linked worktrees),
+// not .gitignore (which would affect main). Idempotent — safe to call multiple
+// times. Warn-only on failure (never blocks worktree creation).
+function setupBriefExclude(wtPath) {
+  try {
+    const wtGitDir = git(['rev-parse', '--git-dir'], { cwd: wtPath }).trim()
+    const infoDir = join(wtGitDir, 'info')
+    mkdirSync(infoDir, { recursive: true })
+    const excludePath = join(infoDir, 'exclude')
+    const existing = existsSync(excludePath) ? readFileSync(excludePath, 'utf8') : ''
+    if (!existing.split('\n').some((l) => l.trim() === 'WORKTREE-BRIEF.md')) {
+      appendFileSync(
+        excludePath,
+        `${existing.endsWith('\n') || existing === '' ? '' : '\n'}WORKTREE-BRIEF.md\n`,
+        'utf8',
+      )
+    }
+  } catch (e) {
+    console.error(`note: brief exclude setup skipped: ${e?.message ?? e}`)
+  }
+}
+
 // Returns a Promise that resolves with `{ skipped, reason? }` once the child
 // is launched (or skip decision is made) — never rejects. Caller can `.catch`
 // defensively but no error path is actually reachable.
@@ -454,7 +478,7 @@ function pinPreForkBaseline(consumerRoot, cleanSlug, iso, opts = {}) {
 async function cmdAdd(slug, opts = {}) {
   if (!slug) {
     throw new Error(
-      'Usage: wt-helper add <slug> [--precheck-baseline [<change>]] [--baseline-strategy commit|stash|warn] [--baseline-scope-paths <comma>] [--baseline-stash-name <name>] [--skip-prefork-audit] [--include-unrelated-dirty]',
+      'Usage: wt-helper add <slug> [--precheck-baseline [<change>]] [--baseline-strategy commit|stash|warn] [--baseline-scope-paths <comma>] [--baseline-stash-name <name>] [--skip-prefork-audit] [--include-unrelated-dirty] [--task-summary <text>]',
     )
   }
   const cleanSlug = makeSlugSafe(slug)
@@ -936,11 +960,14 @@ async function cmdAdd(slug, opts = {}) {
       branch,
       change_id: cleanSlug,
       expected_paths: expectedPaths,
+      task_summary: opts.taskSummary ?? null,
     })
     console.log(`  Claim: ${claim.session_id} (.clade/claims/${claim.session_id}.json)`)
   } catch (e) {
     console.error(`note: claim write skipped: ${e.message ?? e}`)
   }
+
+  setupBriefExclude(wtPath)
 
   console.log('')
   console.log('Worktree ready.')
@@ -1026,12 +1053,26 @@ function enrichWorktree(consumerRoot, w, now = Date.now()) {
   const lastCommitMs = Number.isFinite(lastCommitSec) ? lastCommitSec * 1000 : 0
   const daysOld = lastCommitMs ? Math.floor((now - lastCommitMs) / 86_400_000) : null
   const merged = mergedBranches(consumerRoot).has(branchName)
+  let briefStatus = null
+  let taskSummary = null
+  try {
+    const briefPath = join(w.path, 'WORKTREE-BRIEF.md')
+    if (existsSync(briefPath)) {
+      const content = readFileSync(briefPath, 'utf8')
+      const statusMatch = content.match(/^status:\s*(.+)$/m)
+      if (statusMatch) briefStatus = statusMatch[1].trim()
+      const taskMatch = content.match(/^# Task\s*\n+(.+)/m)
+      if (taskMatch) taskSummary = taskMatch[1].trim()
+    }
+  } catch {}
   return {
     path: w.path,
     branch: branchName,
     lastCommit: lastCommitMs ? new Date(lastCommitMs).toISOString() : null,
     daysOld,
     mergedToMain: merged,
+    briefStatus,
+    taskSummary,
   }
 }
 
@@ -1054,6 +1095,10 @@ async function cmdList(opts) {
     const mergedTag = w.mergedToMain ? ', merged' : ''
     console.log(`${w.branch}  (${ageLabel} ago${mergedTag})`)
     console.log(`  ${w.path}`)
+    if (w.taskSummary) {
+      const statusTag = w.briefStatus ? ` [${w.briefStatus}]` : ''
+      console.log(`  ${w.taskSummary}${statusTag}`)
+    }
   }
 }
 
@@ -2413,6 +2458,7 @@ async function main() {
     '--baseline-scope-paths',
     '--baseline-stash-name',
     '--show',
+    '--task-summary',
   ])
   const flags = new Set()
   const values = {}
@@ -2455,6 +2501,7 @@ async function main() {
     baselineScopePaths: values['--baseline-scope-paths'],
     baselineStashName: values['--baseline-stash-name'],
     show: values['--show'],
+    taskSummary: values['--task-summary'],
   }
 
   switch (sub) {
