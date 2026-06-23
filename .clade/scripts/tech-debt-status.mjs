@@ -10,7 +10,7 @@
 // Matched on the leading token so `-clade-scope` qualifiers count
 // (`resolved-clade-scope`, `wontfix-clade-scope`); `pending` / `deferred` /
 // `workaround` / `mitigated` stay open.
-export const CLOSED_TD_STATUSES = new Set(['done', 'resolved', 'closed', 'wontfix'])
+export const CLOSED_TD_STATUSES = new Set(['done', 'resolved', 'closed', 'wontfix', 'superseded'])
 
 // Parse the `**Status**:` field value (first token) from a TD body. Returns
 // lowercased status word (e.g. 'done', 'resolved', 'open', 'wontfix') or null.

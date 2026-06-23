@@ -28,6 +28,11 @@
  *                    Alias for merge-back. Semantic marker for migrating
  *                    grandfathered worktrees from the pre-atomic flow
  *                    (worktree-default.md §7).
+ *   orphan-prune [--force]
+ *                    Scan <consumer>-wt/ for directories not registered as
+ *                    git worktrees (no .git file). These are leftovers from
+ *                    incomplete cleanup (typically gitignored screenshots).
+ *                    Without --force: list orphans. With --force: remove them.
  *   rescue           List pre-fork baseline rescue candidates: pinned
  *                    `refs/wt-baseline/*` (cmdAdd stash strategy + post-2026-05-17
  *                    pin) and fsck-found dangling unreachable wt-baseline
@@ -49,6 +54,7 @@ import {
   readFileSync,
   readdirSync,
   realpathSync,
+  rmSync,
   unlinkSync,
 } from 'node:fs'
 import { basename, dirname, join, resolve } from 'node:path'
@@ -1655,6 +1661,16 @@ async function cmdCleanup(slug, opts) {
   if (opts.force) removeArgs.push('--force')
   removeArgs.push(target.path)
   git(removeArgs, { cwd: consumerRoot })
+  // Post-remove verification: git worktree remove may leave gitignored dirs
+  // (e.g. screenshots/) on macOS. Fallback rm ensures no orphaned directories.
+  if (existsSync(target.path)) {
+    try {
+      rmSync(target.path, { recursive: true, force: true })
+      console.log(`warn: worktree dir survived git remove — cleaned residual gitignored files`)
+    } catch (e) {
+      console.error(`warn: could not remove residual dir ${target.path}: ${e.message ?? e}`)
+    }
+  }
   try {
     git(['branch', opts.force ? '-D' : '-d', branchName], { cwd: consumerRoot })
   } catch {
@@ -2332,6 +2348,59 @@ async function cmdRescue(opts) {
   console.log('  git checkout <ref-or-sha> -- <paths>  # selective restore by path')
 }
 
+// Scan <consumer>-wt/ for directories that are not registered git worktrees
+// (no .git file). These are leftovers from incomplete cleanup — typically
+// gitignored content (screenshots) that survived `git worktree remove`.
+async function cmdOrphanPrune(opts) {
+  const consumerRoot = findConsumerRoot()
+  const consumerName = basename(consumerRoot)
+  const wtParent = join(dirname(consumerRoot), `${consumerName}-wt`)
+  if (!existsSync(wtParent)) {
+    console.log(`No worktree parent dir: ${wtParent}`)
+    return
+  }
+  const entries = readdirSync(wtParent, { withFileTypes: true })
+  const orphans = []
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue
+    const dirPath = join(wtParent, entry.name)
+    if (!existsSync(join(dirPath, '.git'))) {
+      orphans.push({ slug: entry.name, path: dirPath })
+    }
+  }
+  if (orphans.length === 0) {
+    console.log(`No orphaned directories in ${wtParent}`)
+    return
+  }
+  console.log(`Found ${orphans.length} orphaned director${orphans.length === 1 ? 'y' : 'ies'}:\n`)
+  for (const o of orphans) {
+    const files = []
+    const walk = (p) => {
+      for (const e of readdirSync(p, { withFileTypes: true })) {
+        if (e.isDirectory()) walk(join(p, e.name))
+        else files.push(join(p, e.name).replace(o.path + '/', ''))
+      }
+    }
+    try {
+      walk(o.path)
+    } catch {
+      /* best-effort */
+    }
+    console.log(`  ${o.slug}/  (${files.length} file${files.length === 1 ? '' : 's'})`)
+    for (const f of files.slice(0, 5)) console.log(`    ${f}`)
+    if (files.length > 5) console.log(`    ... and ${files.length - 5} more`)
+  }
+  if (opts.force) {
+    for (const o of orphans) {
+      rmSync(o.path, { recursive: true, force: true })
+      console.log(`Removed orphan: ${o.path}`)
+    }
+  } else {
+    console.log(`\nRe-run with --force to remove all orphaned directories:`)
+    console.log(`  node scripts/wt-helper.mjs orphan-prune --force`)
+  }
+}
+
 async function main() {
   const [, , sub, ...rest] = process.argv
 
@@ -2413,9 +2482,12 @@ async function main() {
     case 'rescue':
       await cmdRescue(opts)
       return
+    case 'orphan-prune':
+      await cmdOrphanPrune(opts)
+      return
     default:
       console.error(
-        'Usage: wt-helper <add|detect-main-dirty|list|prune|cleanup|merge-back|land-pending|rescue> [args]',
+        'Usage: wt-helper <add|detect-main-dirty|list|prune|cleanup|merge-back|land-pending|rescue|orphan-prune> [args]',
       )
       console.error('')
       console.error(
@@ -2498,6 +2570,10 @@ async function main() {
       console.error('                            List pre-fork baseline rescue candidates')
       console.error('                            (refs/wt-baseline/* pinned + fsck dangling).')
       console.error('                            --show prints full patch via stash show -p.')
+      console.error('  orphan-prune [--force]    Find and remove orphaned dirs in <consumer>-wt/')
+      console.error(
+        '                            (leftover gitignored content after worktree removal)',
+      )
       process.exit(1)
   }
 }
@@ -2509,6 +2585,7 @@ export {
   cmdLandPending,
   cmdList,
   cmdMergeBack,
+  cmdOrphanPrune,
   cmdPrune,
   cmdRescue,
   detectMainDirty,
