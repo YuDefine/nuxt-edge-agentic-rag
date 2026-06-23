@@ -1,6 +1,6 @@
 {
   "cladeRoot": "/Users/charles/offline/clade",
-  "syncedAt": "2026-06-23T04:59:19.959Z",
+  "syncedAt": "2026-06-23T12:51:52.825Z",
   "rulesProjection": "symlink",
   "distDir": "/Users/charles/offline/clade/dist/nuxt-edge-agentic-rag/rules",
   "checksums": {
@@ -27,11 +27,11 @@
     "rules/knowledge-and-decisions.md": "35f87be0b73f1716",
     "rules/local-rule-override.md": "41130b6275d285af",
     "rules/logging.md": "b25b6c6d4c3bcd0c",
-    "rules/manual-review.backend.md": "a520e188b398e3f8",
+    "rules/manual-review.backend.md": "94cf1ba83c0c6cc6",
     "rules/manual-review.data-readiness.md": "dbeea7d1391dc5a9",
     "rules/manual-review.discuss.md": "8e6e425f1cd46e29",
     "rules/manual-review.evidence.md": "f49a23ba8264d5a2",
-    "rules/manual-review.md": "502c5085258b7b22",
+    "rules/manual-review.md": "d138faf7fce28b48",
     "rules/nuxt-dev-watch.md": "7598991e63af768a",
     "rules/output-hygiene.md": "8c40efb1a84661b7",
     "rules/playwright-webserver.md": "915b5582fddc9f01",
