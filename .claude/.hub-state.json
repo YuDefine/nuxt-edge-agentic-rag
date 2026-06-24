@@ -1,6 +1,6 @@
 {
   "cladeRoot": "/Users/charles/offline/clade",
-  "syncedAt": "2026-06-24T09:21:42.455Z",
+  "syncedAt": "2026-06-24T11:29:32.930Z",
   "rulesProjection": "symlink",
   "distDir": "/Users/charles/offline/clade/dist/nuxt-edge-agentic-rag/rules",
   "checksums": {
@@ -64,7 +64,7 @@
     "rules/auth.md": "5f41e0ecffa1b12b",
     "rules/dev-login.md": "39e14be65e9093da",
     "rules/audit-schema.md": "2e5963986fb0e42a",
-    "rules/migration.md": "bd83e914c177242c",
+    "rules/migration.md": "e9b7bb5031a208a2",
     "rules/query-optimization.md": "9669852139c8d109",
     "rules/rls-policy.md": "d07ce6ca7e730a35",
     "rules/trigger.md": "f66e3e261ef51e74",
@@ -88,7 +88,7 @@
     "skills/commit/SKILL.md": "7ead7f30521af503",
     "skills/spectra/SKILL.md": "2ed77598eba98de6",
     "skills/spectra-analyze/SKILL.md": "531951f39aff871d",
-    "skills/spectra-apply/SKILL.md": "31b8ac6e3795206b",
+    "skills/spectra-apply/SKILL.md": "61fdd0c8369bb429",
     "skills/spectra-archive/SKILL.md": "2a7ded051a9f7d1f",
     "skills/spectra-ask/SKILL.md": "65108ef630053267",
     "skills/spectra-audit/SKILL.md": "8f5778710f1bc3e3",
