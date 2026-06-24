@@ -1,6 +1,6 @@
 {
   "cladeRoot": "/Users/charles/offline/clade",
-  "syncedAt": "2026-06-24T03:58:01.143Z",
+  "syncedAt": "2026-06-24T04:03:27.384Z",
   "rulesProjection": "symlink",
   "distDir": "/Users/charles/offline/clade/dist/nuxt-edge-agentic-rag/rules",
   "checksums": {
@@ -13,7 +13,6 @@
     "rules/commit.md": "04f72b5ebb4b586c",
     "rules/consumer-meta.md": "9f706e91ba769aef",
     "rules/data-layer-d1.md": "0918c3829fcac7c7",
-    "rules/database.md": "9ea627ac8d4b059b",
     "rules/db-preview-env.md": "5074958b92df10d2",
     "rules/dev-port-allocation.md": "8aa9d3e24294d0b2",
     "rules/dev-tunnel-convention.md": "4b10bb28ac1b58f4",
@@ -40,6 +39,7 @@
     "rules/proactive-skills.design-checkpoint.md": "6d6f239fb7cb5e0e",
     "rules/proactive-skills.ingest-triggers.md": "41ae386c446531a5",
     "rules/proactive-skills.md": "4466ae53cc8a9683",
+    "rules/prod-mcp-safety.md": "7220cfcea7fcf41d",
     "rules/review-gui-surface.md": "4eda83f76972d893",
     "rules/review-tiers.md": "c7d2b4b58d58954a",
     "rules/scope-discipline.md": "7cc100b3f9ab3b0a",
