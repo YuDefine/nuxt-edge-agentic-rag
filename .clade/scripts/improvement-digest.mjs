@@ -796,6 +796,43 @@ function candidateTitle(c) {
   return c.title ?? `${c.gate_name}::${c.error_fingerprint}`
 }
 
+const TD_REF_FILES = ['docs/tech-debt.md']
+
+function tdExists(tdId) {
+  const archivesDir = join(cladeRoot, 'docs', 'archives')
+  const files = [...TD_REF_FILES]
+  if (existsSync(archivesDir)) {
+    for (const f of readdirSync(archivesDir))
+      if (/^tech-debt-closed-.*\.md$/.test(f)) files.push(`docs/archives/${f}`)
+  }
+  for (const rel of files) {
+    const abs = join(cladeRoot, rel)
+    if (!existsSync(abs)) continue
+    try {
+      if (new RegExp(`^## ${tdId} `, 'm').test(readFileSync(abs, 'utf8'))) return true
+    } catch {
+      // unreadable file: skip, gracefully degrade (don't block digest)
+    }
+  }
+  return false
+}
+
+// Flag candidates whose source TD reference no longer resolves to any TD header
+// in tech-debt.md or archived closed-TD files. Such a candidate re-emits every
+// digest but can never close (its validation_command greps a non-existent TD).
+// Flag-only: kept visible for human judgement, never skipped.
+function markStaleTdRefs(candidates) {
+  for (const c of candidates) {
+    const src = c.source_id
+    if (!src || !/^TD-\d+$/.test(src)) continue
+    if (tdExists(src)) continue
+    c.staleRef = true
+    console.error(
+      `[warn] candidate ${c.id} references ${src} which does not exist in tech-debt.md or archives`,
+    )
+  }
+}
+
 function formatEvidencePredicate(ep) {
   const lines = ['**Evidence predicate**:']
   if (ep.target_paths?.length)
@@ -907,6 +944,10 @@ export function formatCandidate(c, { date = new Date().toISOString().slice(0, 10
   lines.push(`- **kind**: ${c.kind}`)
   lines.push(`- **severity**: ${c.severity}`)
   if (c.source_id) lines.push(`- **source**: ${c.source_id}`)
+  if (c.staleRef)
+    lines.push(
+      `- **stale-ref**: yes — ${c.source_id} not found in tech-debt.md or archives (needs manual review)`,
+    )
   if (c.recently_reviewed) lines.push(`- **recently reviewed**: yes (severity downgraded to P3)`)
   // TD-112: prefer active/non-active split when present (signal-pattern candidates)，
   // fallback to flat `consumers` list（tech-debt / archive / stale-wt candidates 用單 list）
@@ -1186,6 +1227,7 @@ export async function runDigest({ dryRun = false } = {}) {
     const count = priorFreq.get(c.id) ?? 0
     if (count > 0) c.unresolved_across = { count, lookback: UNRESOLVED_LOOKBACK }
   }
+  markStaleTdRefs(deduped)
   const unresolvedCount = deduped.filter(
     (c) => (c.unresolved_across?.count ?? 0) >= 2 && !c.recently_reviewed,
   ).length
