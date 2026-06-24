@@ -1,6 +1,6 @@
 {
   "cladeRoot": "/Users/charles/offline/clade",
-  "syncedAt": "2026-06-23T16:46:14.119Z",
+  "syncedAt": "2026-06-24T03:58:01.143Z",
   "rulesProjection": "symlink",
   "distDir": "/Users/charles/offline/clade/dist/nuxt-edge-agentic-rag/rules",
   "checksums": {
@@ -13,6 +13,7 @@
     "rules/commit.md": "04f72b5ebb4b586c",
     "rules/consumer-meta.md": "9f706e91ba769aef",
     "rules/data-layer-d1.md": "0918c3829fcac7c7",
+    "rules/database.md": "9ea627ac8d4b059b",
     "rules/db-preview-env.md": "5074958b92df10d2",
     "rules/dev-port-allocation.md": "8aa9d3e24294d0b2",
     "rules/dev-tunnel-convention.md": "4b10bb28ac1b58f4",
@@ -42,7 +43,7 @@
     "rules/review-gui-surface.md": "4eda83f76972d893",
     "rules/review-tiers.md": "c7d2b4b58d58954a",
     "rules/scope-discipline.md": "7cc100b3f9ab3b0a",
-    "rules/screenshot-strategy.md": "8ea133a742b3010b",
+    "rules/screenshot-strategy.md": "f7a34e96cb51e652",
     "rules/session-claims.md": "041a72db9c91056a",
     "rules/session-tasks.md": "68fdf68141e449ac",
     "rules/spectra-notion-coupling.md": "139f331ffcb26943",
