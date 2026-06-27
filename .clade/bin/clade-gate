@@ -24,14 +24,14 @@ import { execFileSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 
-let redactString = (s) => s.replace(/[A-Za-z0-9+/=]{20,}/g, '<REDACTED>')
 let appendRecord = () => {}
+let buildFP = (_stderr, exitCode) => `exit:${exitCode}`
 let signalsAvailable = false
 try {
-  const r = await import('../vendor/signals/redact.mjs')
   const l = await import('../vendor/signals/ledger-writer.mjs')
-  redactString = r.redactString
+  const s = await import('../vendor/signals/shim-core.mjs')
   appendRecord = l.appendRecord
+  buildFP = s.buildErrorFingerprint
   signalsAvailable = true
 } catch {
   // vendor/signals not populated (CI, fresh clone without clade home) — passthrough mode
@@ -79,23 +79,6 @@ function detectConsumer(cwd) {
   }
 }
 
-function stripAnsi(s) {
-  // eslint-disable-next-line no-control-regex
-  return s.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '')
-}
-
-const NOISE_LINE_RE = /^Loaded\s+\S+@|^npm warn\s|^Using\s+\S+@|^Debugger\s+attached/
-
-function buildErrorFingerprint(stderrText, exitCode) {
-  if (!stderrText) return `exit:${exitCode}`
-  const clean = stripAnsi(stderrText)
-  const lines = clean.split('\n').map((l) => l.trim()).filter(Boolean)
-    .filter((l) => !NOISE_LINE_RE.test(l))
-  if (lines.length === 0) return `exit:${exitCode}`
-  const errorLine = lines.find((l) => /^(error|fail|✖|×|FAIL|ERROR)/i.test(l)) ?? lines[0]
-  return redactString(errorLine).slice(0, 200)
-}
-
 const argv = process.argv.slice(2)
 if (argv[0] !== 'run') usage('first argument must be `run`')
 const gateLabel = argv[1]
@@ -118,7 +101,17 @@ if (process.env.CLADE_IMPROVEMENT_LOOP_OFF === '1' || !signalsAvailable) {
 } else {
   const stderrChunks = []
   let stderrLen = 0
-  const child = spawn(innerArgv[0], innerArgv.slice(1), { stdio: ['inherit', 'inherit', 'pipe'] })
+  const stdoutChunks = []
+  let stdoutLen = 0
+  const child = spawn(innerArgv[0], innerArgv.slice(1), { stdio: ['inherit', 'pipe', 'pipe'] })
+  child.stdout.on('data', (chunk) => {
+    process.stdout.write(chunk)
+    if (stdoutLen < STDERR_CAPTURE_BYTES) {
+      const room = STDERR_CAPTURE_BYTES - stdoutLen
+      stdoutChunks.push(chunk.slice(0, room))
+      stdoutLen += Math.min(room, chunk.length)
+    }
+  })
   child.stderr.on('data', (chunk) => {
     process.stderr.write(chunk)
     if (stderrLen < STDERR_CAPTURE_BYTES) {
@@ -135,6 +128,7 @@ if (process.env.CLADE_IMPROVEMENT_LOOP_OFF === '1' || !signalsAvailable) {
         const cwd = process.cwd()
         const consumer = detectConsumer(cwd)
         const stderrText = Buffer.concat(stderrChunks).toString('utf8')
+        const stdoutText = Buffer.concat(stdoutChunks).toString('utf8')
         appendRecord({
           schema_version: '1',
           consumer_id: consumer.consumer_id ?? 'unknown',
@@ -144,7 +138,7 @@ if (process.env.CLADE_IMPROVEMENT_LOOP_OFF === '1' || !signalsAvailable) {
           session_id: `repo-script-${process.pid}`,
           gate_name: gateName,
           command_fingerprint: `clade-gate:${gateLabel}:${innerArgv[0]}`,
-          error_fingerprint: buildErrorFingerprint(stderrText, exitCode),
+          error_fingerprint: buildFP(stderrText, exitCode, stdoutText + '\n' + stderrText),
           severity: 'P2',
           redaction_applied: true,
           source: 'repo-script',
