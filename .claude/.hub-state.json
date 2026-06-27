@@ -1,6 +1,6 @@
 {
   "cladeRoot": "/Users/charles/offline/clade",
-  "syncedAt": "2026-06-26T17:58:33.581Z",
+  "syncedAt": "2026-06-27T13:19:05.288Z",
   "rulesProjection": "symlink",
   "distDir": "/Users/charles/offline/clade/dist/nuxt-edge-agentic-rag/rules",
   "checksums": {
@@ -59,7 +59,7 @@
     "rules/wip-orphan-recovery.md": "6c05f4b4298fc0ad",
     "rules/work-claims.md": "ad46038f41afaaf0",
     "rules/worktree-default.commit-ceremony.md": "71fc482395c0bccf",
-    "rules/worktree-default.md": "afd39d305897c2b6",
+    "rules/worktree-default.md": "42184cbd43434574",
     "rules/worktree-default.troubleshooting.md": "cb711b09abeb1c7f",
     "rules/auth.md": "5f41e0ecffa1b12b",
     "rules/dev-login.md": "39e14be65e9093da",

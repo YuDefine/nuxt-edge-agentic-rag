@@ -84,10 +84,13 @@ function stripAnsi(s) {
   return s.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '')
 }
 
+const NOISE_LINE_RE = /^Loaded\s+\S+@|^npm warn\s|^Using\s+\S+@|^Debugger\s+attached/
+
 function buildErrorFingerprint(stderrText, exitCode) {
   if (!stderrText) return `exit:${exitCode}`
   const clean = stripAnsi(stderrText)
   const lines = clean.split('\n').map((l) => l.trim()).filter(Boolean)
+    .filter((l) => !NOISE_LINE_RE.test(l))
   if (lines.length === 0) return `exit:${exitCode}`
   const errorLine = lines.find((l) => /^(error|fail|✖|×|FAIL|ERROR)/i.test(l)) ?? lines[0]
   return redactString(errorLine).slice(0, 200)
