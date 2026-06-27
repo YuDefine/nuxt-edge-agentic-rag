@@ -1,6 +1,6 @@
 {
   "cladeRoot": "/Users/charles/offline/clade",
-  "syncedAt": "2026-06-27T16:53:19.070Z",
+  "syncedAt": "2026-06-27T17:27:34.376Z",
   "rulesProjection": "symlink",
   "distDir": "/Users/charles/offline/clade/dist/nuxt-edge-agentic-rag/rules",
   "checksums": {
@@ -78,6 +78,7 @@
     "rules/nuxt-error-localization.md": "b4942163a425b2fd",
     "rules/nuxt-form-validation.md": "794610e1df98cfc0",
     "rules/nuxt-overlay-slot.md": "8c463f59dec3d38f",
+    "rules/nuxt-review-bans.md": "4a8b0616321c24b5",
     "rules/nuxt-security.md": "2ba3039251d5fb3c",
     "rules/nuxt-ui-conventions.md": "379a560a2ff1735a",
     "rules/nuxt-ui-mcp.md": "e722f603e8db3c18",
