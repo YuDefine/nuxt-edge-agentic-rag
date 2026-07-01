@@ -1,6 +1,6 @@
 {
   "cladeRoot": "/Users/charles/offline/clade",
-  "syncedAt": "2026-06-30T17:27:23.736Z",
+  "syncedAt": "2026-07-01T01:09:52.252Z",
   "rulesProjection": "symlink",
   "distDir": "/Users/charles/offline/clade/dist/nuxt-edge-agentic-rag/rules",
   "checksums": {
@@ -87,7 +87,7 @@
     "scripts/codex-review-safe.sh": "02b730f9dbd504a3",
     "scripts/commit-lock.mjs": "f81c79df484ce5db",
     "skills/commit/SKILL.md": "7ead7f30521af503",
-    "skills/loop-engineer/SKILL.md": "e22d300701b655e5",
+    "skills/loop-engineer/SKILL.md": "eeffece3660e45eb",
     "skills/spectra/SKILL.md": "2ed77598eba98de6",
     "skills/spectra-analyze/SKILL.md": "531951f39aff871d",
     "skills/spectra-apply/SKILL.md": "b3744411b32062e8",
