@@ -131,8 +131,12 @@ export function buildErrorFingerprint(stderrText, exitCode, fullText = '') {
   // 把不相干 test 紅燈全聚成同一假 fingerprint（pnpm-test::Loaded… 根因，SWEEP-001）。
   // 修法：(1) stderr 找不到 error 行時改從 fullText（含 stdout）撈；(2) 過濾已知非
   // error 雜訊 banner，避免 fallback 落到資訊行。stderr 已有 error 行的 gate 行為不變。
+  // (3) tinyexec 的 "Process exited with non-zero status" 是 wrapper message（nuxt
+  // typecheck 經 citty 印到 stderr），把所有不同 module init error 聚成同一假 pattern
+  // （DIG-4f7343a79acf 持續未收斂根因之二）。過濾後 fallback 落到更具體的 error 行。
   const ERROR_PREFIX = /^(error|fail|✖|×|FAIL|ERROR)/i
-  const isNoise = (l) => /^Loaded\s+vitest@/i.test(l)
+  const isNoise = (l) =>
+    /^Loaded\s+vitest@/i.test(l) || /Process exited with non-zero status/i.test(l)
   const toLines = (s) =>
     stripAnsi(s ?? '')
       .split('\n')
