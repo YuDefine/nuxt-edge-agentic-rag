@@ -537,6 +537,82 @@
       }
     },
     {
+      "consumer_id": "<consumer-h>",
+      "repo_id": "<client-b>/<consumer-h>",
+      "role": "integration-target",
+      "onboarded": "2026-07-03",
+      "integration_contracts": ["<consumer-b>"],
+      "business_activity": "pre-production",
+      "notes": "Go/C# CNC edge control platform; not a clade consumer (no Nuxt/Supabase projection). Dashboard 已拆為獨立 repo <client-b>/<consumer-g> (2026-07-03 決策)。",
+      "tech_stack": ["go", "csharp", "nats", "timescaledb"],
+      "contract_sot": "packages/<consumer-b>-compat/contract.md"
+    },
+    {
+      "consumer_id": "<consumer-g>",
+      "repo_id": "<client-b>/<consumer-g>",
+      "role": "consumer",
+      "onboarded": "2026-07-03",
+      "projection_paths": {
+        "rules": ".claude/rules/",
+        "skills": ".claude/skills/",
+        "vendor": "vendor/"
+      },
+      "standard_completeness_columns": ["audit-pattern", "verify-channel", "improvement-loop"],
+      "improvement_loop_enabled": false,
+      "business_activity": "pre-production",
+      "workflow_model": "trunk-based",
+      "capabilities": {
+        "preview_db": "none",
+        "data_branching": "none"
+      },
+      "dev_ports": {
+        "nuxt": 3100
+      },
+      "notes": "<consumer-h> Platform 的 Nuxt Dashboard；消費 Platform API (HTTP/WebSocket)。從 <consumer-h> apps/dashboard/ 拆出。",
+      "integration_contracts": ["<consumer-h>"],
+      "conventions": {
+        "audit-trail": {
+          "variant": "none",
+          "state": "declared"
+        },
+        "evlog-stack": {
+          "variant": "none",
+          "state": "declared"
+        },
+        "verify-channels": {
+          "variant": "manual-only",
+          "state": "declared"
+        },
+        "dev-login": {
+          "variant": "none",
+          "state": "declared"
+        },
+        "code-quality-tooling": {
+          "variant": "vite-plus-aligned",
+          "state": "declared"
+        },
+        "nuxt-security": {
+          "variant": "hardened",
+          "state": "declared"
+        },
+        "user-lifecycle": {
+          "variant": "none",
+          "state": "declared",
+          "notes": "dashboard auth TBD; may use <consumer-h> Platform API auth"
+        },
+        "deploy-track": {
+          "variant": "node-server",
+          "state": "declared",
+          "notes": "edge server deployment alongside <consumer-h> services"
+        },
+        "hub-projection": {
+          "variant": "none",
+          "state": "declared",
+          "notes": "repo not yet created; projection pending init-consumer"
+        }
+      }
+    },
+    {
       "consumer_id": "<consumer-e>",
       "repo_id": "<client-b>/<consumer-e>",
       "role": "consumer",
