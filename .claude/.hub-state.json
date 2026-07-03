@@ -1,10 +1,10 @@
 {
   "cladeRoot": "/Users/charles/offline/clade",
-  "syncedAt": "2026-07-03T18:54:56.163Z",
+  "syncedAt": "2026-07-03T19:39:10.143Z",
   "rulesProjection": "symlink",
   "distDir": "/Users/charles/offline/clade/dist/nuxt-edge-agentic-rag/rules",
   "checksums": {
-    "rules/agent-routing.codex-watch-protocol.md": "028ab6d081a90b26",
+    "rules/agent-routing.codex-watch-protocol.md": "95243e6eb54e0503",
     "rules/agent-routing.md": "75acd93aeea79e72",
     "rules/agent-self-verification.md": "296d6a3fa62778ae",
     "rules/audit-pattern.md": "1a1a71ee72084caf",
