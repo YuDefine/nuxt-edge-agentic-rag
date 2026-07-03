@@ -1,6 +1,6 @@
 {
   "cladeRoot": "/Users/charles/offline/clade",
-  "syncedAt": "2026-07-02T17:07:42.758Z",
+  "syncedAt": "2026-07-03T03:07:14.528Z",
   "rulesProjection": "symlink",
   "distDir": "/Users/charles/offline/clade/dist/nuxt-edge-agentic-rag/rules",
   "checksums": {
@@ -23,6 +23,7 @@
     "rules/fixtures-reference.md": "6617dc9558dc11de",
     "rules/follow-up-register.md": "4b59f08c794c49da",
     "rules/goal-mode.md": "387efe160b5f3f5a",
+    "rules/golden-path-onboarding.md": "78d66b33894e7da1",
     "rules/handoff.md": "2e4d135274d03722",
     "rules/knowledge-and-decisions.md": "35f87be0b73f1716",
     "rules/local-rule-override.md": "41130b6275d285af",
