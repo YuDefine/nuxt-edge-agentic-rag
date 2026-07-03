@@ -29,7 +29,7 @@ Local edits will be reverted by the next sync.
 3. 啟動 Codex Watch Protocol（`ScheduleWakeup` 180s 第一次健康檢查）
 4. 收 `<task-notification status=completed>` → BashOutput 讀 stdout → 整理結果回報
 
-Codex 端讀本檔（投影到 consumer 的 `.claude/agents/screenshot-review.md`）「## 你會收到」以下 section 即可，**跳過**本 BLOCKING + 下方原 Step 0/1/2/3 sonnet dispatch 段（那些是給 sonnet wrapper 用的、主線直派 codex 不適用）。
+Codex 端讀本檔（投影到 consumer 的 `.claude/agents/screenshot-review.md`）「## 你會收到」以下 section 即可，**跳過**本 BLOCKING + Step 0 identity check 段（那些是給 sonnet wrapper 用的、主線直派 codex 不適用）。
 
 ### Fallback：sonnet wrapper（codex CLI 不可用時才走）
 
@@ -41,7 +41,7 @@ Codex 端讀本檔（投影到 consumer 的 `.claude/agents/screenshot-review.md
 
 ## 🚫 BLOCKING — 第一動作就是 Codex Dispatch（不准跳）
 
-> 本 section 給 **sonnet wrapper fallback path** 用（主線直派 codex 不會進到這裡）。Codex GPT-5.5 自己跑時跳過此 section、從「## 你會收到」開始讀。
+> 本 section 給 **sonnet wrapper path** 用（主線直派 codex 不會進到這裡）。Codex GPT-5.5 自己跑時跳過此 section、從「## 你會收到」開始讀。
 
 ### Step 0 — Identity check（**機械字面 grep，禁止推斷**）
 
@@ -55,7 +55,7 @@ Codex 端讀本檔（投影到 consumer 的 `.claude/agents/screenshot-review.md
 | 收到的 prompt 第一行 | 你是 | 動作 |
 | --- | --- | --- |
 | 字面**就是** `[DELEGATED-BY-CLAUDE-CODE]`（28 字元，不多不少） | codex GPT-5.5 執行 instance | **MUST 跳過本 § BLOCKING**，從下一個 `## 你會收到` section 開始讀 |
-| **其他任何情況**（無此字面 marker、brief 是 markdown header、是 `mode: verify` 開頭、是其他結構化文字...） | Claude Code sonnet subagent | **MUST** 從 Step 1 codex 偵測開始 dispatch，**NEVER** 自己做工作 |
+| **其他任何情況**（無此字面 marker、brief 是 markdown header、是 `mode: verify` 開頭、是其他結構化文字...） | Claude Code sonnet subagent | **直接執行** agent body（從「你會收到」section 開始）。**NEVER** 在 subagent 內呼叫 codex CLI |
 
 **禁止軟推斷**（看到自己這樣想就立刻停下、回到「我是 sonnet」default）：
 
@@ -65,7 +65,7 @@ Codex 端讀本檔（投影到 consumer 的 `.claude/agents/screenshot-review.md
 - ❌「我已經被 dispatch 過來了，再 dispatch 一次很怪 / 是遞迴」
 - ❌「主線意圖是要我直接跑（哪怕 brief 沒寫 marker）」
 
-`[DELEGATED-BY-CLAUDE-CODE]` 是**字面字串 marker**，不是分類概念、不是 dispatch 狀態、不是 brief 結構推斷。**看不到字面 28 字元 = 你是 sonnet，沒有例外**。Sonnet 的責任就是再 dispatch 一次到 codex（不是遞迴，是分層）。
+`[DELEGATED-BY-CLAUDE-CODE]` 是**字面字串 marker**，不是分類概念、不是 dispatch 狀態、不是 brief 結構推斷。**看不到字面 28 字元 = 你是 sonnet，沒有例外**。Sonnet 直接自己執行 agent body（從「你會收到」開始），**NEVER** 在 subagent 內呼叫 codex CLI。
 
 **Incident（2026-05-19 align-shipments-rls-auth verify:ui）**：sonnet 收到 brief 後 Step 1 codex 偵測印 `codex-ok`，然後 self-rationalize「this brief explicitly instructs me as the agent body (it contains [DELEGATED-BY-CLAUDE-CODE] context — this is the verify:ui task itself being executed)」直接跳到自己做工作。實際收到的 brief 第一行是 `❯ **Mode: verify** — final-state visual evidence collection ...`，根本沒 marker，agent 把 brief 結構誤判成「我就是執行體」。後果：sonnet 親自燒 115k tokens、3m38s 卡在 Chrome + browser 自動化 daemon 啟動 + Nuxt hydration debug，整次 dispatch 白做。修法就是上面這張表 — Step 0 第一動作是字面 grep + 強制引用第一行原文，剝奪「我覺得我是 codex」的軟推斷空間。
 

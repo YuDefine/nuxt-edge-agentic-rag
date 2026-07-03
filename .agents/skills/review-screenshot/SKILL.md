@@ -24,7 +24,7 @@ description: '統一截圖入口，派遣 screenshot-review agent（Sonnet）執
 
 ## Brief 注意事項
 
-- Brief **NEVER** 在第一行寫 `[DELEGATED-BY-CLAUDE-CODE]` — 那是 codex 派工 marker，主線派 Claude subagent 不該帶。寫了會讓 sonnet 誤判身份直接讀 agent body 跳過 dispatch。
+- Brief **NEVER** 在第一行寫 `[DELEGATED-BY-CLAUDE-CODE]` — 那是主線直派 codex 的 marker，派 Claude subagent 不該帶。寫了會讓 sonnet 誤判身份跳過 agent body。
 - Brief 結構（Setup / Items / Output format）跟誰執行**無關** — 結構像 delegated 不代表你應該寫 marker。
 
 ## 觸發時機
@@ -79,6 +79,6 @@ Agent 回傳後，主 session 應：
 
 ## 注意事項
 
-- Agent 是 sonnet wrapper，實際 screenshot 工作派給 codex GPT-5.5 low（成本 1/3–1/5）；sonnet 只負責 dispatch + watch + 結果整理
+- Verify mode 由主線直派 codex GPT-5.5 low；ad-hoc 截圖由 sonnet subagent 自己執行（subagent **NEVER** 呼叫 codex CLI）
 - 主 session **不需要**自己跑截圖命令
 - 主 session **不需要**決定用哪個工具 — agent 依 rule 判斷
