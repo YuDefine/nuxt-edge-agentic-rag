@@ -1,11 +1,11 @@
 {
   "cladeRoot": "/Users/charles/offline/clade",
-  "syncedAt": "2026-07-03T03:07:14.528Z",
+  "syncedAt": "2026-07-03T14:02:12.102Z",
   "rulesProjection": "symlink",
   "distDir": "/Users/charles/offline/clade/dist/nuxt-edge-agentic-rag/rules",
   "checksums": {
-    "rules/agent-routing.codex-watch-protocol.md": "0a4df5d63be5b17e",
-    "rules/agent-routing.md": "1fc8239fa3190cb1",
+    "rules/agent-routing.codex-watch-protocol.md": "028ab6d081a90b26",
+    "rules/agent-routing.md": "75acd93aeea79e72",
     "rules/agent-self-verification.md": "658d7f8f66c160b4",
     "rules/audit-pattern.md": "1a1a71ee72084caf",
     "rules/cloudflare-workers.md": "13947aa460173e17",
@@ -87,7 +87,7 @@
     "rules/page-loading-golden-path.md": "41988bf492591c44",
     "scripts/codex-review-safe.sh": "02b730f9dbd504a3",
     "scripts/commit-lock.mjs": "f81c79df484ce5db",
-    "skills/commit/SKILL.md": "7ead7f30521af503",
+    "skills/commit/SKILL.md": "67111ba22c5908b2",
     "skills/loop-engineer/SKILL.md": "90df178f35236729",
     "skills/spectra/SKILL.md": "2ed77598eba98de6",
     "skills/spectra-analyze/SKILL.md": "531951f39aff871d",
@@ -108,6 +108,6 @@
     "agents/code-review.md": "003aa82da5558892",
     "agents/db-backup.md": "fd21fd01389c5d29",
     "agents/references/clade-review-rules.md": "ffceebc464db8672",
-    "agents/screenshot-review.md": "5777112c32ce6339"
+    "agents/screenshot-review.md": "e6dfb328835e3d6a"
   }
 }
