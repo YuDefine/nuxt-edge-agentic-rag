@@ -1,11 +1,11 @@
 {
   "cladeRoot": "/Users/charles/offline/clade",
-  "syncedAt": "2026-07-04T22:52:16.695Z",
+  "syncedAt": "2026-07-05T07:14:29.223Z",
   "rulesProjection": "symlink",
   "distDir": "/Users/charles/offline/clade/dist/nuxt-edge-agentic-rag/rules",
   "checksums": {
     "rules/agent-routing.codex-watch-protocol.md": "95243e6eb54e0503",
-    "rules/agent-routing.md": "75acd93aeea79e72",
+    "rules/agent-routing.md": "f5d467330ba1a24b",
     "rules/agent-self-verification.md": "3ebe18e44b76f14c",
     "rules/audit-pattern.md": "1a1a71ee72084caf",
     "rules/cloudflare-workers.md": "13947aa460173e17",
@@ -42,7 +42,8 @@
     "rules/proactive-skills.md": "a585b1d58abf3953",
     "rules/prod-mcp-safety.md": "7220cfcea7fcf41d",
     "rules/review-gui-surface.md": "cfe464d5569085cf",
-    "rules/review-tiers.md": "c7d2b4b58d58954a",
+    "rules/review-tiers.md": "c429306f5520551b",
+    "rules/rule-authoring.md": "44ab903a353f5809",
     "rules/scope-discipline.md": "7cc100b3f9ab3b0a",
     "rules/screenshot-strategy.md": "a95223eddd4ea1b2",
     "rules/session-claims.md": "041a72db9c91056a",
