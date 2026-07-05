@@ -1213,6 +1213,24 @@ export async function runDigest({ dryRun = false } = {}) {
     : readJsonlScanner(SOURCES.outcomes)
 
   const metrics = computeLayeredMetrics({ candidates: candidateHistory, outcomes: allOutcomes })
+
+  // 嚴格落地率（2026-07-05 銳評）：既有 artifact_realization_rate 把 diff-keyword 弱推斷層
+  // 也算 realized（實測 ≈ close rate 同值 0.89，而 state+explicit 僅 ~2%）——「closed 高」
+  // 會被誤讀成「都驗證補好了」。不動既有 5-metric 契約，另計 strict 版供 header 顯眼揭露。
+  const latestOutcomeByDig = new Map()
+  for (const o of allOutcomes) {
+    const prev = latestOutcomeByDig.get(o.id)
+    if (!prev || (o.inferred_at && o.inferred_at > prev.inferred_at))
+      latestOutcomeByDig.set(o.id, o)
+  }
+  let strictRealized = 0
+  let closedAnyLayer = 0
+  for (const o of latestOutcomeByDig.values()) {
+    if (o.layer === 'explicit' || o.layer === 'state' || o.layer === 'diff') closedAnyLayer++
+    if (o.layer === 'explicit' || o.layer === 'state') strictRealized++
+  }
+  const strictRealizationRate =
+    closedAnyLayer === 0 ? '0.00' : (strictRealized / closedAnyLayer).toFixed(2)
   const today = new Date().toISOString().slice(0, 10)
 
   // Annotate candidates that have appeared in prior digests but didn't close —
@@ -1258,6 +1276,9 @@ export async function runDigest({ dryRun = false } = {}) {
     `- signal records rejected (validation): ${signalsRejected}`,
     `- candidates emitted: ${deduped.length}`,
     `- candidates unresolved across ≥2 of last ${UNRESOLVED_LOOKBACK} digests: ${unresolvedCount}`,
+    // 落地率誠實揭露（2026-07-05 銳評）：closed 的絕大多數靠最弱 diff-keyword 推斷，
+    // strict（state+explicit）才代表「驗證過真的補了」——別讓「closed 高」被誤讀。
+    `- ⚠ strict_realization_rate（state+explicit / closed；diff-keyword 弱推斷不計）: ${strictRealizationRate}（對照 artifact_realization_rate=${metrics.artifact_realization_rate}，該值含 diff 層）`,
     '',
     sourceNote,
     '',
@@ -1272,7 +1293,36 @@ export async function runDigest({ dryRun = false } = {}) {
 
   const sweepSection = formatSweepEffectiveness()
 
-  const output = `${header}${body}${sweepSection}${formatMetrics(metrics)}`
+  // unresolved_across ≥3 的候選：重發多輪、既沒被 close 也沒人升級 → 輸出 TD 草案讓人一鍵落地。
+  // 僅輸出草案文字，不自動寫 tech-debt.md（per improvement-loop 契約：digest 不自動改標準層）。
+  const stuck = deduped.filter((c) => (c.unresolved_across?.count ?? 0) >= 3)
+  const tdDraftSection =
+    stuck.length === 0
+      ? ''
+      : [
+          '## 建議升級 TD 草案（unresolved ≥3 輪，人工 review 後貼進 docs/tech-debt.md）',
+          '',
+          ...stuck.map((c) =>
+            [
+              `### 草案 — ${c.id}`,
+              '',
+              '```markdown',
+              `## TD-NNN — ${(c.summary || c.title || c.id).slice(0, 80)}`,
+              '',
+              '**Class**: A | B | D — <人工判定>',
+              '**Status**: open',
+              '**Priority**: mid',
+              `**Discovered**: ${today}`,
+              '',
+              `來源：improvement digest 候選 ${c.id}，連續 ${c.unresolved_across.count}/${c.unresolved_across.lookback} 輪未收斂。`,
+              `Refs: ${c.id}`,
+              '```',
+              '',
+            ].join('\n'),
+          ),
+        ].join('\n')
+
+  const output = `${header}${body}${tdDraftSection}${sweepSection}${formatMetrics(metrics)}`
 
   if (dryRun) {
     process.stdout.write(output)
