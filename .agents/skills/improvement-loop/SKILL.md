@@ -11,7 +11,7 @@ metadata:
 
 # Improvement Loop
 
-clade 的稽核強化 loop：跨 consumer 訊號 → 結構化 digest → outcome ledger → 「該補哪條標準」候選。本 skill 定義其執行契約。完整背景見 `docs/discussions/2026-05-14-improvement-loop.md`，技術設計見 `openspec/changes/archive/<...>-clade-improvement-digest-loop/design.md`（archive 後）。
+clade 的稽核強化 loop：跨 consumer 訊號 → 結構化 digest → outcome ledger → 「該補哪條標準」候選。本 skill 定義其執行契約。完整背景見 `docs/discussions/2026-05-14-improvement-loop.md`；技術設計紀錄於 git history。
 
 ## When to run digest
 
@@ -60,11 +60,10 @@ digest 與 closure scanner **MUST NOT** 自動修改：
 - `rules/core/**`
 - `plugins/hub-core/skills/**`
 - `plugins/hub-core/hooks/**`
-- `openspec/changes/**`
 
 候選的建議行動（「該補 rule X」「該開 spectra change Y」）以**文字**形式寫進 `docs/digests/<date>.md`，由人類決定是否落地。
 
-任何引入「auto-stub spectra change」「auto-edit rules」「auto-PR rule injection」的 PR 都違反本 skill，必須先改本 skill（提 spectra change 改契約）才能 land。
+任何引入「auto-stub spectra change」「auto-edit rules」「auto-PR rule injection」的 PR 都違反本 skill，必須先改本 skill（走 clade plan mode＋tasks/ 流程改契約）才能 land。
 
 ## v1 boundaries
 
@@ -75,7 +74,7 @@ digest 與 closure scanner **MUST NOT** 自動修改：
 - **Daemon / fixed-schedule digest** — 必須由事件或 user 觸發
 - **Claude-Code-specific PostToolUse hook 作主要 instrument** — agent-agnostic same-name PATH shim 才是主力。Hook 是可選 fallback，且不應假設 Codex 也有對應 hook
 
-要拿掉任何一條限制，必須先改本 skill（spectra change）。
+要拿掉任何一條限制，必須先改本 skill（走 clade plan mode＋tasks/ 流程）。
 
 ## Consumer registry
 
@@ -83,11 +82,11 @@ digest 與 closure scanner **MUST NOT** 自動修改：
 
 ## Canary rollout
 
-每個 consumer entry 帶 `improvement_loop_enabled: boolean`。**v1 起手只有 perno + clade 自己 = true**，其他 4 consumer = false。
+每個 consumer entry 帶 `improvement_loop_enabled: boolean`。**v1 起手只有 perno + clade 自己 = true**，其餘 consumer 以 registry `improvement_loop_enabled` 為準。
 
 當 flag = true：
 
-1. `scripts/lib/vendor-targets.mjs` 自動把 11 個 improvement-loop 檔案加入該 consumer 的 vendor projection（`.clade/bin/`, `.clade/signals/`, `.clade/scripts/`, `.clade/registry/consumers.json`），下次 `pnpm hub:vendor` / `propagate.mjs` 散播
+1. `scripts/lib/vendor-targets.mjs` 自動把 improvement-loop 檔案加入該 consumer 的 vendor projection（`.clade/bin/`, `.clade/signals/`, `.clade/scripts/`, `.clade/registry/consumers.json`），下次 `pnpm hub:vendor` / `propagate.mjs` 散播
 2. **package.json 改寫是 explicit opt-in**：跑 `node vendor/scripts/install-clade-gate.mjs <consumer-path>` 才會包 `pnpm test` / `lint` / `typecheck` 進 `clade-gate run`。Backup 寫到 `package.json.clade-gate-backup`，rollback 用 `... --rollback`
 
 **禁**：在 consumer working tree dirty 時跑 propagate / install-clade-gate。consumer 應先 commit 完業務 WIP，再做 improvement-loop projection。

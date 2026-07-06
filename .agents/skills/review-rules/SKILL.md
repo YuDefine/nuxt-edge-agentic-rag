@@ -41,7 +41,7 @@ description: 管理兩層 review 規則清單（clade / project）— 新增、�
   "options": [
     {
       "label": "project — 只該專案限定",
-      "description": "在當前專案自己的 .codex/agents/references/project-review-rules.md 加條目；不影響其他 4 個 consumer；不需 publish/propagate；不需 cd 到 clade。最常用、預設選項。"
+      "description": "在當前專案自己的 .codex/agents/references/project-review-rules.md 加條目；不影響其餘 consumer；不需 publish/propagate；不需 cd 到 clade。最常用、預設選項。"
     },
     {
       "label": "clade — 跨所有 consumer 共用嚴格條目",

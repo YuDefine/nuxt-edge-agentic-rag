@@ -242,8 +242,10 @@ Use when the user asks to check a running Docker deployment on a remote host.
 - **Has confirmed P0 issues.** Dockerfile uses plain `ARG` for secrets (`SUPABASE_KEY`, `SENTRY_AUTH_TOKEN`) that get baked into image layer history.
 - Uses `COPY . .` instead of selective copy — cache-busting on any file change.
 - Compose uses mutable `image: yuntech-usr-sroi:latest`.
-- Full fix recipe in brief: `tasks/2026-06-05-docker-doctor-skill-brief.md` § yuntech secret-ARG fix recipe.
-- Summary: `NUXT_PUBLIC_*` vars → runtime env (Nitro reads at startup); `SUPABASE_KEY` / `SENTRY_AUTH_TOKEN` → BuildKit secret mount or CI env; `COPY . .` → selective copy (perno pattern).
+
+#### Fix Recipe
+
+`NUXT_PUBLIC_*` vars → runtime env (Nitro reads at startup); `SUPABASE_KEY` / `SENTRY_AUTH_TOKEN` → BuildKit secret mount or CI env; `COPY . .` → selective copy (perno pattern).
 
 ### TDMS
 

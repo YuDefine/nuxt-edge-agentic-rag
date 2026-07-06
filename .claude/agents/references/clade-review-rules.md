@@ -7,21 +7,24 @@ Local edits will be reverted by the next sync.
 
 # 專案風格審查規則
 
-Code review 時，除了標準檢查項目外，**MUST** 額外檢查以下專案特定規則。
-違反項目歸類為 🟠 Major。
+本檔是 review 規則的**定義 SoT＋reviewer 語意兜底參考**。機械可檢段的 enforcement 由 `vendor/review-rules/patterns.json`（pre-commit / pre-push / CI 三層自動執行）承擔，**不靠 agent 讀本檔自律**；語意段由 commit 0-A review prompt 的 Semantic Verdict 契約承擔。新增規則 **MUST** 先分類機械或語意（見 [[pitfall-clade-review-rules-not-enforced-at-consumer]]）。
 
-> **Enforcement 架構（TD-194，v1.4.176+）**：本檔只留**需 AI 語意判斷**的規則。純機械規則已移到 deterministic enforcement 層：
+違反本檔語意段的項目歸類為 🟠 Major。
+
+> **Enforcement 架構（TD-194，v1.4.176+；W5 四層攔截網）**：
 >
 > | 層 | 位置 | 職責 |
 > | --- | --- | --- |
-> | **pre-commit hook** | `vendor/review-rules/patterns.json` + `scripts/pre-commit/checks/review-rules-ban.sh` | 純 grep pattern，staged `.vue` 違規擋 commit |
+> | **pre-commit / pre-push / CI** | `vendor/review-rules/patterns.json` + `vendor/review-rules/scan.mjs` | 純 grep pattern，三層自動執行（fail-fast，不靠 agent 自律） |
 > | **audit script** | `scripts/audit-review-rules.mjs --all-consumers` | 半機械 grep fleet scanner，reference signal |
 > | **path-scoped rule** | `rules/modules/framework/nuxt/nuxt-overlay-slot.md` / `nuxt-form-validation.md` / `nuxt-error-localization.md` | 語意規則，改 `.vue` 時 session 自動載入 |
-> | **本檔** | review agent Step 0 讀取 | 複雜語意規則（需讀 context 判斷），機械層抓不到的 |
+> | **本檔（語意段）** | commit 0-A review prompt 的 Semantic Verdict 契約 | 複雜語意規則（需讀 context 判斷），機械層抓不到的；review prompt 逐 verdict-id 輸出 pass/fail/n-a |
 >
-> Reviewer 仍 MUST 讀本檔 — 機械層是 fail-fast 第一道網，本檔是需要 AI 理解 context 的最後一道。
+> 每個 `##` section 標題下的 `> enforcement:` 行標明其機械 / 語意歸屬；`scripts/audit-review-rules.mjs --alignment` 對照 `patterns.json` 驗證一致性，為 publish blocking gate。
 
 ## 自定義 Review 清單熱區
+
+> enforcement: mechanical(raw-img-tag, ubadge-size-ban, ubadge-size-ban-config, client-side-mutation, dark-mode-hardcoded-color, dark-mode-dark-prefix, dark-mode-semantic-color, overlay-width-class) + semantic(form-validation, error-localization, overlay-body-slot)
 
 若本次變更包含下列路徑，**MUST** 逐條套用對應 checklist：
 
@@ -38,6 +41,8 @@ Code review 時，除了標準檢查項目外，**MUST** 額外檢查以下專�
 
 ## Overlay 元件語意補充（機械層抓不到的）
 
+> enforcement: mechanical(overlay-width-class) + semantic(overlay-body-slot)
+
 機械層（hook + path-scoped rule）已覆蓋 `#body` slot 與 `max-w-` class 的 deterministic 違規。
 
 Reviewer **額外**需人工判斷：
@@ -46,6 +51,8 @@ Reviewer **額外**需人工判斷：
 2. **`#header` 內手寫 close button**：`<UButton icon="i-lucide-x"` → 優先改用 `title` prop + 內建 close，減少冗餘
 
 ## Pinia Colada mutation loading 欄位（機械層難抓的靜默 bug）
+
+> enforcement: audit(audit-pinia-mutation-loading.mjs)（單檔偵測器另見 `vendor/scripts/checks/mutation-loading-detect.mjs`；無對應 patterns.json semantic id）
 
 `@pinia/colada` 的 `useMutation()` 回傳的 `status`（`'pending' | 'success' | 'error'`）是 **data-state**，mount 當下就是 `'pending'`（還沒呼叫過、沒 data），**與有沒有執行無關**。拿它當 loading → 按鈕 / spinner 一進頁面就永久 loading，且 typecheck 全綠（`status` 是合法欄位、`'pending'` 是合法值）、不發任何 request、查 log 也查不到。實證：perno 30+ 處、TDMS 3 處（含**跨行 destructuring** 寫法，舊單行 grep heuristic 會漏抓）。
 
@@ -69,12 +76,16 @@ node vendor/scripts/checks/mutation-loading-detect.mjs $(git diff --name-only <b
 
 ## MCP / DDL 存取限制
 
+> enforcement: semantic(layered-truth)（工具呼叫層約束由 [[prod-mcp-safety]] settings deny 承擔；diff-review 僅涵蓋 layering 面）
+
 | 禁止使用 | 說明 |
 | --- | --- |
 | `mcp__*-supabase__apply_migration` 執行 DDL | MCP 使用 `supabase_admin` role，建立的物件 owner 錯誤會導致 CI/CD 部署失敗。DDL 必須透過 `supabase migration new` 建立 migration 檔案。 |
 | `mcp__*-supabase__execute_sql` 執行 DDL | 同上。Supabase MCP 只能用於 SELECT 查詢、除錯、檢查 table owner。 |
 
 ## 分層真相 / API 契約
+
+> enforcement: mechanical(app-imports-server-internals) + semantic(layered-truth)
 
 | 禁止使用 / 必查項 | 位置 | 說明 |
 | --- | --- | --- |
@@ -87,6 +98,8 @@ node vendor/scripts/checks/mutation-loading-detect.mjs $(git diff --name-only <b
 
 ## Drizzle 邊界
 
+> enforcement: semantic(layered-truth)（Drizzle 邊界與分層真相同源，共用同一 semantic id，定案 2026-07-06）
+
 | 禁止使用 / 必查項 | 位置 | 說明 |
 | --- | --- | --- |
 | `drizzle-kit generate` / `drizzle-kit push` 引入正式流程 | `package.json`、`scripts/**`、CI | Supabase CLI 才是 migration owner。Drizzle 只能是選用 query layer。 |
@@ -95,6 +108,8 @@ node vendor/scripts/checks/mutation-loading-detect.mjs $(git diff --name-only <b
 | 文件暗示「有 Drizzle 就不需要 Supabase migration」 | `docs/**`、`.claude/**` | 直接破壞 truth layer。 |
 
 ## evlog 採用一致性
+
+> enforcement: mechanical(server-console-logging, server-raw-throw-error) + semantic(evlog-consistency) + audit(evlog-adoption-audit.mjs)
 
 若專案已採用 evlog（`package.json` 列了 `evlog` 依賴），新寫或大改的程式碼 **MUST** 套用 evlog 模式。
 
@@ -113,6 +128,8 @@ node vendor/scripts/checks/mutation-loading-detect.mjs $(git diff --name-only <b
 
 ## D-pattern audit 一致性
 
+> enforcement: mechanical(audit-table-direct-insert) + semantic(d-pattern-audit) + audit(d-pattern-audit.mjs)
+
 若專案已採用 D-pattern（`server/utils/audit.ts` 存在），新寫或大改的 mutation handler **MUST** 套用。
 
 > **機械層已覆蓋**：`d-pattern-audit.mjs` 掃 helper bypass / PII in migration / createError no-why / log.audit missing eventId。本段是 reviewer 補語意判斷。
@@ -125,9 +142,13 @@ node vendor/scripts/checks/mutation-loading-detect.mjs $(git diff --name-only <b
 
 ## Bug 修正文件同步
 
+> enforcement: semantic(doc-sync)
+
 若本次變更包含 `🐛 fix` 類型的 commit，檢查是否已更新 `docs/verify/PRODUCTION_BUG_PATTERNS.md`。
 
 ## Nuxt a11y 採用一致性
+
+> enforcement: semantic(a11y-adoption) + audit(audit-review-rules.mjs)
 
 若專案已採用 `@nuxt/a11y`，新寫或大改的 UI 元件 **MUST** 套用 a11y 規則。
 

@@ -177,7 +177,7 @@ rg --type md "<關鍵字>" ~/offline/clade/docs/pitfalls/
 | `status` | 預設 `open` | 新建一律 `open` |
 | `severity` | 從 user 對話推 | `critical` / `high` / `mid` / `low` |
 | `discovered` | 當天 ISO date | — |
-| `discovered_at` | 觸發 consumer 名 | `perno` / `TDMS` / `nuxt-edge-agentic-rag` / `yuntech-usr-sroi` / `nuxt-supabase-starter` / `clade` |
+| `discovered_at` | 觸發 consumer 名 | registry/consumers.json 內任一 `consumer_id`（role=consumer 或 clade）|
 | `last_verified` | 當天 ISO date | 同 `discovered` |
 | `affects.packages` | 從 stack trace 推 | format: `<pkg>@^<ver>` |
 | `affects.features` | feature tag | 從 tags.yml controlled vocabulary |
@@ -236,7 +236,7 @@ done
 **規約**：
 
 - 觸發 consumer（`discovered_at`）通常 `affected=affected, fixed=fixed`，commit 由使用者提供或留 null
-- 其他 4 consumer 若 grep 0 命中 → `affected=unaffected`（除非有理由懷疑掃不到）
+- 其餘 registry consumer 若 grep 0 命中 → `affected=unaffected`（除非有理由懷疑掃不到）
 - 若 grep 跑不通（例如該 consumer 不在 ~/offline/）→ `affected=unknown, reason: <why>`
 
 **NEVER** 留全部 `unknown` 而不寫 reason — audit script 會 block。
