@@ -279,9 +279,7 @@ function readRegistry() {
   return JSON.parse(readFileSync(SOURCES.registry, 'utf8'))
 }
 
-function readTechDebt() {
-  if (!existsSync(SOURCES.techDebt)) return []
-  const text = readFileSync(SOURCES.techDebt, 'utf8')
+export function parseTechDebtEntries(text) {
   const out = []
   const lines = text.split('\n')
   let current = null
@@ -306,6 +304,11 @@ function readTechDebt() {
     td.lastReviewed = parseLastReviewed(td.body)
   }
   return out
+}
+
+function readTechDebt() {
+  if (!existsSync(SOURCES.techDebt)) return []
+  return parseTechDebtEntries(readFileSync(SOURCES.techDebt, 'utf8'))
 }
 
 const RECENTLY_REVIEWED_DAYS = 30
@@ -782,6 +785,66 @@ function annotatePriorArt(candidates, archived) {
   }
 }
 
+// TD-233: rejected-decision KB (mattpocock/skills `.out-of-scope/` pattern, clade 形態)。
+// Wontfix TDs are prior rejections; when a new candidate's keywords overlap a wontfix
+// TD title, annotate it so the digest reader sees「已拒絕過＋理由在哪」instead of
+// re-litigating the same proposal every sweep. Scans the live tech-debt file plus
+// closed-TD archives (rejections get archived too). `superseded` is not a rejection
+// (the work happened elsewhere) so it is deliberately excluded. Keyword matching is
+// ASCII-token based (extractKeywords) — Chinese-only titles won't match; accepted
+// limitation, keeps the pipeline embedding-free.
+export function readWontfixEntries({ root = cladeRoot } = {}) {
+  const files = [join(root, 'docs', 'tech-debt.md')]
+  const archivesDir = join(root, 'docs', 'archives')
+  if (existsSync(archivesDir)) {
+    for (const f of readdirSync(archivesDir))
+      if (/^tech-debt-closed-.*\.md$/.test(f)) files.push(join(archivesDir, f))
+  }
+  const out = []
+  for (const abs of files) {
+    if (!existsSync(abs)) continue
+    let text
+    try {
+      text = readFileSync(abs, 'utf8')
+    } catch {
+      continue // unreadable file: skip, gracefully degrade (don't block digest)
+    }
+    for (const td of parseTechDebtEntries(text)) {
+      if (td.status !== null && td.status.split('-')[0] === 'wontfix') out.push(td)
+    }
+  }
+  return out
+}
+
+export function wontfixKeywordIndex(entries) {
+  const idx = new Map()
+  for (const td of entries) {
+    for (const w of extractKeywords(td.title)) {
+      const key = w.toLowerCase()
+      if (!idx.has(key)) idx.set(key, [])
+      idx.get(key).push({ id: td.id, status: td.status })
+    }
+  }
+  return idx
+}
+
+export function annotateRejectedPrior(candidates, wontfixEntries) {
+  const idx = wontfixKeywordIndex(wontfixEntries)
+  for (const c of candidates) {
+    const keywords = c.evidence_predicate?.related_keywords ?? []
+    const matched = new Map()
+    for (const w of keywords) {
+      const hits = idx.get(w.toLowerCase())
+      if (hits) for (const h of hits) matched.set(h.id, h)
+    }
+    // Defensive: a candidate must not cite its own source TD as a prior rejection
+    // (detectFromTechDebt already skips closed TDs, so this is belt-and-braces).
+    matched.delete(c.source_id)
+    const rejected = [...matched.values()].slice(0, 3)
+    if (rejected.length) c.rejected_prior = rejected
+  }
+}
+
 function deduplicateCandidates(candidates) {
   const seen = new Map()
   for (const c of candidates) {
@@ -975,6 +1038,10 @@ export function formatCandidate(c, { date = new Date().toISOString().slice(0, 10
   if (c.sample_event_ids?.length)
     lines.push(`- **sample event ids**: ${c.sample_event_ids.join(', ')}`)
   if (c.prior_art?.length) lines.push(`- **prior art**: ${c.prior_art.join(', ')}`)
+  if (c.rejected_prior?.length)
+    lines.push(
+      `- **⚠️ rejected prior**: ${c.rejected_prior.map((r) => `${r.id} (${r.status})`).join(', ')} — 同題材曾被拒，重審前先讀該 TD 的拒絕理由`,
+    )
   lines.push('')
   lines.push(...formatEvidencePredicate(ep))
   const action = classifyAction(c)
@@ -1184,6 +1251,7 @@ export async function runDigest({ dryRun = false } = {}) {
     ...detectFromClaudeAnalyzedDrift(),
   ]
   annotatePriorArt(candidates, archived)
+  annotateRejectedPrior(candidates, readWontfixEntries())
   const deduped = deduplicateCandidates(candidates)
   deduped.sort((a, b) => {
     const order = { P0: 0, P1: 1, P2: 2 }
