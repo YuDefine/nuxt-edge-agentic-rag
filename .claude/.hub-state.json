@@ -1,6 +1,6 @@
 {
   "cladeRoot": "/Users/charles/offline/clade",
-  "syncedAt": "2026-07-08T02:30:10.527Z",
+  "syncedAt": "2026-07-08T03:14:59.261Z",
   "rulesProjection": "symlink",
   "distDir": "/Users/charles/offline/clade/dist/nuxt-edge-agentic-rag/rules",
   "checksums": {
@@ -32,7 +32,7 @@
     "rules/manual-review.data-readiness.md": "9b3884fd75da3125",
     "rules/manual-review.discuss.md": "8e6e425f1cd46e29",
     "rules/manual-review.evidence.md": "f49a23ba8264d5a2",
-    "rules/manual-review.md": "ef0cfd7f1f01c986",
+    "rules/manual-review.md": "eb6fbdf336e245dc",
     "rules/nuxt-data-perf.md": "edfcb3503ce54117",
     "rules/nuxt-dev-watch.md": "7598991e63af768a",
     "rules/output-hygiene.md": "8c40efb1a84661b7",
@@ -86,9 +86,9 @@
     "rules/nuxt-ui-mcp.md": "e722f603e8db3c18",
     "rules/nuxt-ui-native-picker-ban.md": "9027dbdece72e872",
     "rules/page-loading-golden-path.md": "5af6a78908c1795a",
-    "scripts/codex-review-safe.sh": "ed31f2cc08b341c8",
+    "scripts/codex-review-safe.sh": "4d58702fbe747411",
     "scripts/commit-lock.mjs": "f81c79df484ce5db",
-    "skills/change-loop/SKILL.md": "55fabbd5a8f0a294",
+    "skills/change-loop/SKILL.md": "fc634f3911e08bee",
     "skills/commit/SKILL.md": "b6db5b092226b134",
     "skills/loop-engineer/SKILL.md": "555fa613fbb657cc",
     "skills/spectra/SKILL.md": "ffd7cd8994c2fc83",
