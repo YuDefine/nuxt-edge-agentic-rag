@@ -1,11 +1,11 @@
 {
   "cladeRoot": "/Users/charles/offline/clade",
-  "syncedAt": "2026-07-08T03:14:59.261Z",
+  "syncedAt": "2026-07-10T01:41:23.315Z",
   "rulesProjection": "symlink",
   "distDir": "/Users/charles/offline/clade/dist/nuxt-edge-agentic-rag/rules",
   "checksums": {
-    "rules/agent-routing.codex-watch-protocol.md": "666a68b2ec97de47",
-    "rules/agent-routing.md": "428d8119cacd17e9",
+    "rules/agent-routing.codex-watch-protocol.md": "cff1e61eabd15fcd",
+    "rules/agent-routing.md": "6f87c1cd36076dd8",
     "rules/agent-self-verification.md": "3ebe18e44b76f14c",
     "rules/audit-pattern.md": "1a1a71ee72084caf",
     "rules/cloudflare-workers.md": "6494ed8d0479b4fe",
@@ -86,14 +86,14 @@
     "rules/nuxt-ui-mcp.md": "e722f603e8db3c18",
     "rules/nuxt-ui-native-picker-ban.md": "9027dbdece72e872",
     "rules/page-loading-golden-path.md": "5af6a78908c1795a",
-    "scripts/codex-review-safe.sh": "4d58702fbe747411",
+    "scripts/codex-review-safe.sh": "76b703cd80ccb33b",
     "scripts/commit-lock.mjs": "f81c79df484ce5db",
     "skills/change-loop/SKILL.md": "fc634f3911e08bee",
-    "skills/commit/SKILL.md": "b6db5b092226b134",
+    "skills/commit/SKILL.md": "d408e856cb8db767",
     "skills/loop-engineer/SKILL.md": "555fa613fbb657cc",
     "skills/spectra/SKILL.md": "ffd7cd8994c2fc83",
     "skills/spectra-analyze/SKILL.md": "531951f39aff871d",
-    "skills/spectra-apply/SKILL.md": "c61c599809d7c28a",
+    "skills/spectra-apply/SKILL.md": "4f2c9c8aa8126b1f",
     "skills/spectra-archive/SKILL.md": "f10b68bf06cb247b",
     "skills/spectra-ask/SKILL.md": "65108ef630053267",
     "skills/spectra-audit/SKILL.md": "6768737e8b058983",
@@ -102,7 +102,7 @@
     "skills/spectra-discuss/SKILL.md": "dae6d42a2eb215b2",
     "skills/spectra-drift/SKILL.md": "5ff79f5b1b8ee9fb",
     "skills/spectra-ingest/SKILL.md": "ce88322b085cc890",
-    "skills/spectra-propose/SKILL.md": "7382680f3839e02b",
+    "skills/spectra-propose/SKILL.md": "ffc556dcc8e13dd6",
     "skills/spectra-verify/SKILL.md": "7c69633fc0fa38b3",
     "commands/db-migration.md": "e5c82dd3565bce47",
     "commands/doc-sync.md": "cdad8d95f0d048bf",
@@ -110,6 +110,6 @@
     "agents/code-review.md": "35fb619ca660ae10",
     "agents/db-backup.md": "fd21fd01389c5d29",
     "agents/references/clade-review-rules.md": "653fa995893761e9",
-    "agents/screenshot-review.md": "e0959355e3e25a15"
+    "agents/screenshot-review.md": "8158c92046c9d5af"
   }
 }

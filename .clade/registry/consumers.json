@@ -156,7 +156,8 @@
         },
         "hub-projection": {
           "variant": "complete",
-          "state": "compliant"
+          "state": "compliant",
+          "notes": "projection targets template/ only; root meta layer intentionally unprojected (too little activity to justify projection overhead)"
         }
       }
     },
