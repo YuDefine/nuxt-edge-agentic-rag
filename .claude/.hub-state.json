@@ -1,6 +1,6 @@
 {
   "cladeRoot": "/Users/charles/offline/clade",
-  "syncedAt": "2026-07-10T01:41:23.315Z",
+  "syncedAt": "2026-07-10T04:43:44.102Z",
   "rulesProjection": "symlink",
   "distDir": "/Users/charles/offline/clade/dist/nuxt-edge-agentic-rag/rules",
   "checksums": {
@@ -41,7 +41,7 @@
     "rules/proactive-skills.ingest-triggers.md": "495a6934f0f2e13e",
     "rules/proactive-skills.md": "681686b575acaff4",
     "rules/prod-mcp-safety.md": "7220cfcea7fcf41d",
-    "rules/review-gui-surface.md": "b5f828a65609dee1",
+    "rules/review-gui-surface.md": "77969cb1d93baed8",
     "rules/review-tiers.md": "bd6d8f632a17fb2d",
     "rules/rule-authoring.md": "b331c7bf260d004e",
     "rules/scope-discipline.md": "52f546676161be95",
