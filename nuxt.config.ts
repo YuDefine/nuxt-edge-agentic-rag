@@ -101,6 +101,17 @@ const knowledgeRuntimeConfig = createKnowledgeRuntimeConfig({
 })
 
 export default defineNuxtConfig({
+  ignore: [
+    '.claude/**',
+    '.agents/**',
+    '.codex/**',
+    '.clade/**',
+    '.spectra/**',
+    'tasks/**',
+    'openspec/**',
+    'screenshots/**',
+  ],
+
   compatibilityDate: '2025-07-15',
   ssr: false,
 
@@ -357,6 +368,23 @@ export default defineNuxtConfig({
         // Alias it back so the virtual module can resolve and the dev overlay
         // stops blanking the entire SPA.
         '/_nuxt/@vite-plugin-checker-runtime': '/@vite-plugin-checker-runtime',
+      },
+    },
+    server: {
+      watch: {
+        ignored: [
+          '**/.git/**',
+          '**/node_modules/**',
+          '**/test-results/**',
+          '**/.claude/**',
+          '**/.agents/**',
+          '**/.codex/**',
+          '**/.clade/**',
+          '**/.spectra/**',
+          '**/tasks/**',
+          '**/openspec/**',
+          '**/screenshots/**',
+        ],
       },
     },
     build: {
