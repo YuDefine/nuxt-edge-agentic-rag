@@ -7,7 +7,7 @@
     "rules/agent-self-verification.md": "3f608fb8d5c9e268",
     "rules/audit-pattern.md": "6b038c311bfe3e2e",
     "rules/auth-data-path-consistency.md": "68c4747dff7c97da",
-    "rules/cloudflare-workers.md": "4f229d67d6ffc524",
+    "rules/cloudflare-workers.md": "8d28e5a0eb6a805e",
     "rules/code-style.md": "7b25b85ca55827da",
     "rules/commit.md": "e55f00ce9df9b790",
     "rules/consumer-meta.md": "17fa80e66327eb81",
