@@ -77,6 +77,12 @@
         "hub-projection": {
           "variant": "complete",
           "state": "compliant"
+        },
+        "timezone": {
+          "variant": "explicit-tz",
+          "state": "compliant",
+          "adopted_at": "2026-07-14",
+          "notes": "audit-timezone.mjs 5 signals all clean"
         }
       }
     },
