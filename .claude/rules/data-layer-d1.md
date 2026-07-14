@@ -1,1 +1,1 @@
-/Users/charles/offline/clade/dist/nuxt-edge-agentic-rag/rules/data-layer-d1.md
+../../.clade/runtime/rules/data-layer-d1.md

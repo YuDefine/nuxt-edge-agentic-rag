@@ -1,1 +1,1 @@
-/Users/charles/offline/clade/dist/nuxt-edge-agentic-rag/rules/manual-review.backend.md
+../../.clade/runtime/rules/manual-review.backend.md

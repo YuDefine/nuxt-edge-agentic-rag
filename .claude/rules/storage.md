@@ -1,1 +1,1 @@
-/Users/charles/offline/clade/dist/nuxt-edge-agentic-rag/rules/storage.md
+../../.clade/runtime/rules/storage.md

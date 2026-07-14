@@ -1,1 +1,1 @@
-/Users/charles/offline/clade/dist/nuxt-edge-agentic-rag/rules/spectra-notion-coupling.md
+../../.clade/runtime/rules/spectra-notion-coupling.md

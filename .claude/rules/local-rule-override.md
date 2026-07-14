@@ -1,1 +1,1 @@
-/Users/charles/offline/clade/dist/nuxt-edge-agentic-rag/rules/local-rule-override.md
+../../.clade/runtime/rules/local-rule-override.md

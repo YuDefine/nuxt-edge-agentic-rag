@@ -1,1 +1,1 @@
-/Users/charles/offline/clade/dist/nuxt-edge-agentic-rag/rules/scope-discipline.md
+../../.clade/runtime/rules/scope-discipline.md

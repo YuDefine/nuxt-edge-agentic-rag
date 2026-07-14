@@ -1,1 +1,1 @@
-/Users/charles/offline/clade/dist/nuxt-edge-agentic-rag/rules/spectra-workflow.md
+../../.clade/runtime/rules/spectra-workflow.md

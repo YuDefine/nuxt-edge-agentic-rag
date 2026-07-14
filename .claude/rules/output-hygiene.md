@@ -1,1 +1,1 @@
-/Users/charles/offline/clade/dist/nuxt-edge-agentic-rag/rules/output-hygiene.md
+../../.clade/runtime/rules/output-hygiene.md

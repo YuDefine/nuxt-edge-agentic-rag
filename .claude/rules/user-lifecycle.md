@@ -1,1 +1,1 @@
-/Users/charles/offline/clade/dist/nuxt-edge-agentic-rag/rules/user-lifecycle.md
+../../.clade/runtime/rules/user-lifecycle.md

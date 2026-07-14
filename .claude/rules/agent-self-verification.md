@@ -1,1 +1,1 @@
-/Users/charles/offline/clade/dist/nuxt-edge-agentic-rag/rules/agent-self-verification.md
+../../.clade/runtime/rules/agent-self-verification.md

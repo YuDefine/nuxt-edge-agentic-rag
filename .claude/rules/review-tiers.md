@@ -1,1 +1,1 @@
-/Users/charles/offline/clade/dist/nuxt-edge-agentic-rag/rules/review-tiers.md
+../../.clade/runtime/rules/review-tiers.md

@@ -1,1 +1,1 @@
-/Users/charles/offline/clade/dist/nuxt-edge-agentic-rag/rules/rls-policy.md
+../../.clade/runtime/rules/rls-policy.md

@@ -1,1 +1,1 @@
-/Users/charles/offline/clade/dist/nuxt-edge-agentic-rag/rules/evlog-stream-extend.md
+../../.clade/runtime/rules/evlog-stream-extend.md

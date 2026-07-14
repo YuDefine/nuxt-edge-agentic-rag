@@ -1,1 +1,1 @@
-/Users/charles/offline/clade/dist/nuxt-edge-agentic-rag/rules/nuxt-form-validation.md
+../../.clade/runtime/rules/nuxt-form-validation.md

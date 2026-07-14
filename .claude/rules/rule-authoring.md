@@ -1,1 +1,1 @@
-/Users/charles/offline/clade/dist/nuxt-edge-agentic-rag/rules/rule-authoring.md
+../../.clade/runtime/rules/rule-authoring.md

@@ -1,1 +1,1 @@
-/Users/charles/offline/clade/dist/nuxt-edge-agentic-rag/rules/migration.md
+../../.clade/runtime/rules/migration.md

@@ -1,1 +1,1 @@
-/Users/charles/offline/clade/dist/nuxt-edge-agentic-rag/rules/nuxt-security.md
+../../.clade/runtime/rules/nuxt-security.md

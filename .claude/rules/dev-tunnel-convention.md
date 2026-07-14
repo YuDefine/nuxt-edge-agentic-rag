@@ -1,1 +1,1 @@
-/Users/charles/offline/clade/dist/nuxt-edge-agentic-rag/rules/dev-tunnel-convention.md
+../../.clade/runtime/rules/dev-tunnel-convention.md

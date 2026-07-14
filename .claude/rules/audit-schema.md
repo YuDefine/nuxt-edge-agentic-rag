@@ -1,1 +1,1 @@
-/Users/charles/offline/clade/dist/nuxt-edge-agentic-rag/rules/audit-schema.md
+../../.clade/runtime/rules/audit-schema.md

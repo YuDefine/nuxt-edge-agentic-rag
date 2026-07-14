@@ -1,1 +1,1 @@
-/Users/charles/offline/clade/dist/nuxt-edge-agentic-rag/rules/code-style.md
+../../.clade/runtime/rules/code-style.md

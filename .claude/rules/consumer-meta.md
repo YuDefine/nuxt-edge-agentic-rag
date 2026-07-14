@@ -1,1 +1,1 @@
-/Users/charles/offline/clade/dist/nuxt-edge-agentic-rag/rules/consumer-meta.md
+../../.clade/runtime/rules/consumer-meta.md

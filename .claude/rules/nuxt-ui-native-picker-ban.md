@@ -1,1 +1,1 @@
-/Users/charles/offline/clade/dist/nuxt-edge-agentic-rag/rules/nuxt-ui-native-picker-ban.md
+../../.clade/runtime/rules/nuxt-ui-native-picker-ban.md

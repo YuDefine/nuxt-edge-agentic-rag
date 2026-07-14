@@ -1,1 +1,1 @@
-/Users/charles/offline/clade/dist/nuxt-edge-agentic-rag/rules/secrets.md
+../../.clade/runtime/rules/secrets.md

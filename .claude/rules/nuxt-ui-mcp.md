@@ -1,1 +1,1 @@
-/Users/charles/offline/clade/dist/nuxt-edge-agentic-rag/rules/nuxt-ui-mcp.md
+../../.clade/runtime/rules/nuxt-ui-mcp.md

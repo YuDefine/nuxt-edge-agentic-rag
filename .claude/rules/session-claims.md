@@ -1,1 +1,1 @@
-/Users/charles/offline/clade/dist/nuxt-edge-agentic-rag/rules/session-claims.md
+../../.clade/runtime/rules/session-claims.md

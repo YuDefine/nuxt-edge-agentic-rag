@@ -1,1 +1,1 @@
-/Users/charles/offline/clade/dist/nuxt-edge-agentic-rag/rules/evlog-investigate.md
+../../.clade/runtime/rules/evlog-investigate.md

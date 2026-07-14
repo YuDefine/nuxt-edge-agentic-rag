@@ -1,1 +1,1 @@
-/Users/charles/offline/clade/dist/nuxt-edge-agentic-rag/rules/knowledge-and-decisions.md
+../../.clade/runtime/rules/knowledge-and-decisions.md

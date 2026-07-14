@@ -1,1 +1,1 @@
-/Users/charles/offline/clade/dist/nuxt-edge-agentic-rag/rules/proactive-skills.md
+../../.clade/runtime/rules/proactive-skills.md

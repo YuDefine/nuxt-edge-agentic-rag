@@ -1,1 +1,1 @@
-/Users/charles/offline/clade/dist/nuxt-edge-agentic-rag/rules/db-preview-env.md
+../../.clade/runtime/rules/db-preview-env.md

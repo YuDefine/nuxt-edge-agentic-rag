@@ -1,1 +1,1 @@
-/Users/charles/offline/clade/dist/nuxt-edge-agentic-rag/rules/page-loading-golden-path.md
+../../.clade/runtime/rules/page-loading-golden-path.md

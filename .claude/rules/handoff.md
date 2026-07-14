@@ -1,1 +1,1 @@
-/Users/charles/offline/clade/dist/nuxt-edge-agentic-rag/rules/handoff.md
+../../.clade/runtime/rules/handoff.md

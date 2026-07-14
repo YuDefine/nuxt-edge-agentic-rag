@@ -1,1 +1,1 @@
-/Users/charles/offline/clade/dist/nuxt-edge-agentic-rag/rules/ux-completeness.md
+../../.clade/runtime/rules/ux-completeness.md

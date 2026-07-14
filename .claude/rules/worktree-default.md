@@ -1,1 +1,1 @@
-/Users/charles/offline/clade/dist/nuxt-edge-agentic-rag/rules/worktree-default.md
+../../.clade/runtime/rules/worktree-default.md

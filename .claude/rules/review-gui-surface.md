@@ -1,1 +1,1 @@
-/Users/charles/offline/clade/dist/nuxt-edge-agentic-rag/rules/review-gui-surface.md
+../../.clade/runtime/rules/review-gui-surface.md

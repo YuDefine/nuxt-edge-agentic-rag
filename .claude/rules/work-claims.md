@@ -1,1 +1,1 @@
-/Users/charles/offline/clade/dist/nuxt-edge-agentic-rag/rules/work-claims.md
+../../.clade/runtime/rules/work-claims.md

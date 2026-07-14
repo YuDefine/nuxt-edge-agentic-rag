@@ -1,1 +1,1 @@
-/Users/charles/offline/clade/dist/nuxt-edge-agentic-rag/rules/prod-mcp-safety.md
+../../.clade/runtime/rules/prod-mcp-safety.md

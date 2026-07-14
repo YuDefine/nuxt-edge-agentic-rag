@@ -1,1 +1,1 @@
-/Users/charles/offline/clade/dist/nuxt-edge-agentic-rag/rules/tech-debt-routing.md
+../../.clade/runtime/rules/tech-debt-routing.md

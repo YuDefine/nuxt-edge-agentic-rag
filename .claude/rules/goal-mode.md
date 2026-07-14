@@ -1,1 +1,1 @@
-/Users/charles/offline/clade/dist/nuxt-edge-agentic-rag/rules/goal-mode.md
+../../.clade/runtime/rules/goal-mode.md

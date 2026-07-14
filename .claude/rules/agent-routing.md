@@ -1,1 +1,1 @@
-/Users/charles/offline/clade/dist/nuxt-edge-agentic-rag/rules/agent-routing.md
+../../.clade/runtime/rules/agent-routing.md

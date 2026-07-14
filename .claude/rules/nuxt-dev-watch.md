@@ -1,1 +1,1 @@
-/Users/charles/offline/clade/dist/nuxt-edge-agentic-rag/rules/nuxt-dev-watch.md
+../../.clade/runtime/rules/nuxt-dev-watch.md

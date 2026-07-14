@@ -1,1 +1,1 @@
-/Users/charles/offline/clade/dist/nuxt-edge-agentic-rag/rules/query-optimization.md
+../../.clade/runtime/rules/query-optimization.md

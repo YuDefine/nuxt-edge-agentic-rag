@@ -1,1 +1,1 @@
-/Users/charles/offline/clade/dist/nuxt-edge-agentic-rag/rules/fixtures-reference.md
+../../.clade/runtime/rules/fixtures-reference.md

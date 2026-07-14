@@ -1,1 +1,1 @@
-/Users/charles/offline/clade/dist/nuxt-edge-agentic-rag/rules/nuxt-review-bans.md
+../../.clade/runtime/rules/nuxt-review-bans.md

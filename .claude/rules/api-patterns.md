@@ -1,1 +1,1 @@
-/Users/charles/offline/clade/dist/nuxt-edge-agentic-rag/rules/api-patterns.md
+../../.clade/runtime/rules/api-patterns.md

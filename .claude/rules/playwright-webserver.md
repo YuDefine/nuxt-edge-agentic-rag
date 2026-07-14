@@ -1,1 +1,1 @@
-/Users/charles/offline/clade/dist/nuxt-edge-agentic-rag/rules/playwright-webserver.md
+../../.clade/runtime/rules/playwright-webserver.md

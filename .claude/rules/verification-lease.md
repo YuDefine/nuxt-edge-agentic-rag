@@ -1,1 +1,1 @@
-/Users/charles/offline/clade/dist/nuxt-edge-agentic-rag/rules/verification-lease.md
+../../.clade/runtime/rules/verification-lease.md

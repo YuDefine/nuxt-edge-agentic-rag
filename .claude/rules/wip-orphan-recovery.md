@@ -1,1 +1,1 @@
-/Users/charles/offline/clade/dist/nuxt-edge-agentic-rag/rules/wip-orphan-recovery.md
+../../.clade/runtime/rules/wip-orphan-recovery.md
