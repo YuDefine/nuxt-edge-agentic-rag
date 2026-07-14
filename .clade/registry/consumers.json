@@ -52,6 +52,11 @@
           "variant": "full",
           "state": "declared"
         },
+        "auth-data-path": {
+          "variant": "server-mediated",
+          "state": "declared",
+          "notes": "Supabase Auth + server API; no client table queries"
+        },
         "dev-login": {
           "variant": "adopted",
           "state": "compliant"
@@ -140,6 +145,11 @@
           "variant": "manual-only",
           "state": "detected"
         },
+        "auth-data-path": {
+          "variant": "server-mediated",
+          "state": "declared",
+          "notes": "starter template; Supabase Auth + server API pattern"
+        },
         "dev-login": {
           "variant": "adopted",
           "state": "compliant"
@@ -201,6 +211,11 @@
         "verify-channels": {
           "variant": "full",
           "state": "declared"
+        },
+        "auth-data-path": {
+          "variant": "server-mediated",
+          "state": "declared",
+          "notes": "better-auth; no client-side Supabase table queries"
         },
         "dev-login": {
           "variant": "adopted",
@@ -264,6 +279,11 @@
         "verify-channels": {
           "variant": "manual-only",
           "state": "declared"
+        },
+        "auth-data-path": {
+          "variant": "server-mediated",
+          "state": "declared",
+          "notes": "Supabase Auth + server API; no client table queries"
         },
         "dev-login": {
           "variant": "adopted",
@@ -329,6 +349,11 @@
           "variant": "full",
           "state": "declared"
         },
+        "auth-data-path": {
+          "variant": "mixed-unresolved",
+          "state": "declared",
+          "notes": "13 client table query files + nuxt-auth-utils session; 2026-07-14 production 401 incident"
+        },
         "dev-login": {
           "variant": "adopted",
           "state": "compliant",
@@ -391,6 +416,11 @@
           "variant": "manual-only",
           "state": "detected"
         },
+        "auth-data-path": {
+          "variant": "not-applicable",
+          "state": "declared",
+          "notes": "nuxt-auth-utils + D1; no Supabase"
+        },
         "dev-login": {
           "variant": "none",
           "state": "declared",
@@ -452,6 +482,11 @@
         "verify-channels": {
           "variant": "manual-only",
           "state": "declared"
+        },
+        "auth-data-path": {
+          "variant": "not-applicable",
+          "state": "declared",
+          "notes": "nuxt-auth-utils + D1; no Supabase"
         },
         "dev-login": {
           "variant": "none",
@@ -533,6 +568,11 @@
           "state": "declared",
           "notes": "blog, no user management"
         },
+        "auth-data-path": {
+          "variant": "not-applicable",
+          "state": "declared",
+          "notes": "blog; no Supabase"
+        },
         "deploy-track": {
           "variant": "void-cloud",
           "state": "drift"
@@ -607,6 +647,11 @@
           "state": "declared",
           "notes": "dashboard auth TBD; may use CNC-Link Platform API auth"
         },
+        "auth-data-path": {
+          "variant": "not-applicable",
+          "state": "declared",
+          "notes": "CNC-Link dashboard; auth TBD, no Supabase"
+        },
         "deploy-track": {
           "variant": "node-server",
           "state": "declared",
@@ -669,6 +714,11 @@
           "variant": "status-based",
           "state": "declared",
           "notes": "same pattern as TDMS: core.user_roles"
+        },
+        "auth-data-path": {
+          "variant": "server-mediated",
+          "state": "declared",
+          "notes": "Supabase self-hosted; same TDMS pattern, server API only"
         },
         "deploy-track": {
           "variant": "wrangler-action",
