@@ -1,1 +1,1 @@
-<clade-central-repo>/dist/nuxt-edge-agentic-rag/rules/review-gui-surface.md
+../../.clade/runtime/rules/review-gui-surface.md

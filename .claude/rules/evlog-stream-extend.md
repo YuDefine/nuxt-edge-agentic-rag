@@ -1,1 +1,1 @@
-<clade-central-repo>/dist/nuxt-edge-agentic-rag/rules/evlog-stream-extend.md
+../../.clade/runtime/rules/evlog-stream-extend.md

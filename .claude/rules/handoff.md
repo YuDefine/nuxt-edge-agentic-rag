@@ -1,1 +1,1 @@
-<clade-central-repo>/dist/nuxt-edge-agentic-rag/rules/handoff.md
+../../.clade/runtime/rules/handoff.md

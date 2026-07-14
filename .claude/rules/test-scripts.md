@@ -1,1 +1,1 @@
-<clade-central-repo>/dist/nuxt-edge-agentic-rag/rules/test-scripts.md
+../../.clade/runtime/rules/test-scripts.md

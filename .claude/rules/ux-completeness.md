@@ -1,1 +1,1 @@
-<clade-central-repo>/dist/nuxt-edge-agentic-rag/rules/ux-completeness.md
+../../.clade/runtime/rules/ux-completeness.md

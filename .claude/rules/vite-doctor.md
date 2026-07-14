@@ -1,1 +1,1 @@
-<clade-central-repo>/dist/nuxt-edge-agentic-rag/rules/vite-doctor.md
+../../.clade/runtime/rules/vite-doctor.md

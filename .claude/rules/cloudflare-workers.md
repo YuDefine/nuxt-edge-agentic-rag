@@ -1,1 +1,1 @@
-<clade-central-repo>/dist/nuxt-edge-agentic-rag/rules/cloudflare-workers.md
+../../.clade/runtime/rules/cloudflare-workers.md

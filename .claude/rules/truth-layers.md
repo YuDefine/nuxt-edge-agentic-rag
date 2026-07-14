@@ -1,1 +1,1 @@
-<clade-central-repo>/dist/nuxt-edge-agentic-rag/rules/truth-layers.md
+../../.clade/runtime/rules/truth-layers.md

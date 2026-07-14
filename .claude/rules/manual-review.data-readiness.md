@@ -1,1 +1,1 @@
-<clade-central-repo>/dist/nuxt-edge-agentic-rag/rules/manual-review.data-readiness.md
+../../.clade/runtime/rules/manual-review.data-readiness.md

@@ -1,1 +1,1 @@
-<clade-central-repo>/dist/nuxt-edge-agentic-rag/rules/nuxt-data-perf.md
+../../.clade/runtime/rules/nuxt-data-perf.md

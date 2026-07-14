@@ -1,1 +1,1 @@
-<clade-central-repo>/dist/nuxt-edge-agentic-rag/rules/agent-self-verification.md
+../../.clade/runtime/rules/agent-self-verification.md

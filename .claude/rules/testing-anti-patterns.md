@@ -1,1 +1,1 @@
-<clade-central-repo>/dist/nuxt-edge-agentic-rag/rules/testing-anti-patterns.md
+../../.clade/runtime/rules/testing-anti-patterns.md

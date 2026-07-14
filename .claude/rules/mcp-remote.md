@@ -1,1 +1,1 @@
-<clade-central-repo>/dist/nuxt-edge-agentic-rag/rules/mcp-remote.md
+../../.clade/runtime/rules/mcp-remote.md

@@ -1,1 +1,1 @@
-<clade-central-repo>/dist/nuxt-edge-agentic-rag/rules/worktree-default.troubleshooting.md
+../../.clade/runtime/rules/worktree-default.troubleshooting.md

@@ -1,1 +1,1 @@
-<clade-central-repo>/dist/nuxt-edge-agentic-rag/rules/nuxt-overlay-slot.md
+../../.clade/runtime/rules/nuxt-overlay-slot.md

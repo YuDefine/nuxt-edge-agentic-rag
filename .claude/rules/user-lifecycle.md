@@ -1,1 +1,1 @@
-<clade-central-repo>/dist/nuxt-edge-agentic-rag/rules/user-lifecycle.md
+../../.clade/runtime/rules/user-lifecycle.md

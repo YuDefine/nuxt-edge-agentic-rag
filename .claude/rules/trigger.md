@@ -1,1 +1,1 @@
-<clade-central-repo>/dist/nuxt-edge-agentic-rag/rules/trigger.md
+../../.clade/runtime/rules/trigger.md

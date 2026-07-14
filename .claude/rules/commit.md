@@ -1,1 +1,1 @@
-<clade-central-repo>/dist/nuxt-edge-agentic-rag/rules/commit.md
+../../.clade/runtime/rules/commit.md

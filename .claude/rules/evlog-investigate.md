@@ -1,1 +1,1 @@
-<clade-central-repo>/dist/nuxt-edge-agentic-rag/rules/evlog-investigate.md
+../../.clade/runtime/rules/evlog-investigate.md

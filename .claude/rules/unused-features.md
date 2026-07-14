@@ -1,1 +1,1 @@
-<clade-central-repo>/dist/nuxt-edge-agentic-rag/rules/unused-features.md
+../../.clade/runtime/rules/unused-features.md

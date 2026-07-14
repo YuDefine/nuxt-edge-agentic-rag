@@ -1,1 +1,1 @@
-<clade-central-repo>/dist/nuxt-edge-agentic-rag/rules/secrets.md
+../../.clade/runtime/rules/secrets.md

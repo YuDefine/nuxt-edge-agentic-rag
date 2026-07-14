@@ -1,1 +1,1 @@
-<clade-central-repo>/dist/nuxt-edge-agentic-rag/rules/review-tiers.md
+../../.clade/runtime/rules/review-tiers.md

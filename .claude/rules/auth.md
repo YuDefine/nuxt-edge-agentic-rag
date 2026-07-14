@@ -1,1 +1,1 @@
-<clade-central-repo>/dist/nuxt-edge-agentic-rag/rules/auth.md
+../../.clade/runtime/rules/auth.md

@@ -1,1 +1,1 @@
-<clade-central-repo>/dist/nuxt-edge-agentic-rag/rules/agent-routing.md
+../../.clade/runtime/rules/agent-routing.md

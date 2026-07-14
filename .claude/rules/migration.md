@@ -1,1 +1,1 @@
-<clade-central-repo>/dist/nuxt-edge-agentic-rag/rules/migration.md
+../../.clade/runtime/rules/migration.md

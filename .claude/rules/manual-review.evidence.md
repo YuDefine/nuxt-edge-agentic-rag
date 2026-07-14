@@ -1,1 +1,1 @@
-<clade-central-repo>/dist/nuxt-edge-agentic-rag/rules/manual-review.evidence.md
+../../.clade/runtime/rules/manual-review.evidence.md

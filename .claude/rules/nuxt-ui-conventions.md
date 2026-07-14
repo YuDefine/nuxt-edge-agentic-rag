@@ -1,1 +1,1 @@
-<clade-central-repo>/dist/nuxt-edge-agentic-rag/rules/nuxt-ui-conventions.md
+../../.clade/runtime/rules/nuxt-ui-conventions.md

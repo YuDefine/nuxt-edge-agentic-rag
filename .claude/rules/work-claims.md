@@ -1,1 +1,1 @@
-<clade-central-repo>/dist/nuxt-edge-agentic-rag/rules/work-claims.md
+../../.clade/runtime/rules/work-claims.md

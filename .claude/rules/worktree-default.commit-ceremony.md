@@ -1,1 +1,1 @@
-<clade-central-repo>/dist/nuxt-edge-agentic-rag/rules/worktree-default.commit-ceremony.md
+../../.clade/runtime/rules/worktree-default.commit-ceremony.md

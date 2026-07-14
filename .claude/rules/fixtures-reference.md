@@ -1,1 +1,1 @@
-<clade-central-repo>/dist/nuxt-edge-agentic-rag/rules/fixtures-reference.md
+../../.clade/runtime/rules/fixtures-reference.md

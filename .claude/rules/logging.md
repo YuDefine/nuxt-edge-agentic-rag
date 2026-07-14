@@ -1,1 +1,1 @@
-<clade-central-repo>/dist/nuxt-edge-agentic-rag/rules/logging.md
+../../.clade/runtime/rules/logging.md

@@ -1,1 +1,1 @@
-<clade-central-repo>/dist/nuxt-edge-agentic-rag/rules/session-tasks.md
+../../.clade/runtime/rules/session-tasks.md

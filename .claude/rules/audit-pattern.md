@@ -1,1 +1,1 @@
-<clade-central-repo>/dist/nuxt-edge-agentic-rag/rules/audit-pattern.md
+../../.clade/runtime/rules/audit-pattern.md

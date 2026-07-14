@@ -1,1 +1,1 @@
-<clade-central-repo>/dist/nuxt-edge-agentic-rag/rules/spectra-workflow.md
+../../.clade/runtime/rules/spectra-workflow.md

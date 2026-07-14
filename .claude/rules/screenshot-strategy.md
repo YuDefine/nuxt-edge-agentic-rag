@@ -1,1 +1,1 @@
-<clade-central-repo>/dist/nuxt-edge-agentic-rag/rules/screenshot-strategy.md
+../../.clade/runtime/rules/screenshot-strategy.md

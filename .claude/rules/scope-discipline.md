@@ -1,1 +1,1 @@
-<clade-central-repo>/dist/nuxt-edge-agentic-rag/rules/scope-discipline.md
+../../.clade/runtime/rules/scope-discipline.md

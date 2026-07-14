@@ -1,1 +1,1 @@
-<clade-central-repo>/dist/nuxt-edge-agentic-rag/rules/error-handling.md
+../../.clade/runtime/rules/error-handling.md

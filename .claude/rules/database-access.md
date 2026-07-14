@@ -1,1 +1,1 @@
-<clade-central-repo>/dist/nuxt-edge-agentic-rag/rules/database-access.md
+../../.clade/runtime/rules/database-access.md

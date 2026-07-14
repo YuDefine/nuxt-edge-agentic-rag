@@ -1,1 +1,1 @@
-<clade-central-repo>/dist/nuxt-edge-agentic-rag/rules/db-preview-env.md
+../../.clade/runtime/rules/db-preview-env.md

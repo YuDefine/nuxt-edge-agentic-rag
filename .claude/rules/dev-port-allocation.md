@@ -1,1 +1,1 @@
-<clade-central-repo>/dist/nuxt-edge-agentic-rag/rules/dev-port-allocation.md
+../../.clade/runtime/rules/dev-port-allocation.md

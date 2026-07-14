@@ -1,1 +1,1 @@
-<clade-central-repo>/dist/nuxt-edge-agentic-rag/rules/tech-debt-routing.md
+../../.clade/runtime/rules/tech-debt-routing.md

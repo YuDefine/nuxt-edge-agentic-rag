@@ -1,1 +1,1 @@
-<clade-central-repo>/dist/nuxt-edge-agentic-rag/rules/agent-routing.codex-watch-protocol.md
+../../.clade/runtime/rules/agent-routing.codex-watch-protocol.md

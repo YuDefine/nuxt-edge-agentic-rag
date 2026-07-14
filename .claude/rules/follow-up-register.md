@@ -1,1 +1,1 @@
-<clade-central-repo>/dist/nuxt-edge-agentic-rag/rules/follow-up-register.md
+../../.clade/runtime/rules/follow-up-register.md

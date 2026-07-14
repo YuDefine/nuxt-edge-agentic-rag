@@ -1,1 +1,1 @@
-<clade-central-repo>/dist/nuxt-edge-agentic-rag/rules/dev-login.md
+../../.clade/runtime/rules/dev-login.md

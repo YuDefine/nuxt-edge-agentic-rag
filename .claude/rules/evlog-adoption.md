@@ -1,1 +1,1 @@
-<clade-central-repo>/dist/nuxt-edge-agentic-rag/rules/evlog-adoption.md
+../../.clade/runtime/rules/evlog-adoption.md
