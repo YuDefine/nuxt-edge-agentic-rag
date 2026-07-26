@@ -113,17 +113,21 @@ export function buildErrorFingerprint(stderrText, exitCode, fullText = '') {
   // 統計（純 TS\d+ 無路徑無識別字）— redaction-safe by construction。
   const tsCodes = stripAnsi(fullText || stderrText || '').match(/error (TS\d+)/g)
   if (tsCodes && tsCodes.length > 0) {
-    const counts = new Map()
-    for (const m of tsCodes) {
-      const code = m.slice('error '.length)
-      counts.set(code, (counts.get(code) ?? 0) + 1)
-    }
-    const sig = [...counts.entries()]
-      .toSorted((a, b) => b[1] - a[1])
-      .slice(0, 3)
-      .map(([code, n]) => `${code}x${n}`)
-      .join(',')
-    return `ts:${sig}`
+    // 只取 distinct code 集合、按 code 字母序排——**不含出現次數**。
+    //
+    // 早期版本回 `TS2322x3,TS2339x2`，把「該次 run 該碼出現幾次」烤進身分字串。
+    // 後果：同一批型別債務只要錯誤數增減一個就變成「全新」pattern，永遠對不上舊
+    // fingerprint，closure 推斷因此結構性失敗。2026-07-25 digest 實證——`ts:TS2322`
+    // 的 x1/x2/x3/x4 與 `ts:TS2304` 的 x1/x2/x12 各自獨立成候選，25 條 candidate
+    // 背後其實只有 3-4 個真實 pattern。
+    //
+    // 排序基準同時要換掉：舊版依 count 降序取 top 3，count 波動會改變「哪三個入選」
+    // 與「排列順序」，光拿掉 `x{n}` 仍不穩定。改字母序後，fingerprint 只在**錯誤碼
+    // 種類集合**變動時才變——那本來就是不同 pattern。
+    //
+    // 真實出現次數由 signal record 的 occurrences 欄位獨立記錄，不需疊在身分上。
+    const codes = [...new Set(tsCodes.map((m) => m.slice('error '.length)))].toSorted()
+    return `ts:${codes.slice(0, 3).join(',')}`
   }
   // 通用萃取：找以 error/fail 開頭的行。vitest 等把實際 FAIL 印在 stdout，卻把
   // coverage 版本不符 banner（`Loaded vitest@x and @vitest/coverage-v8@y`）印在

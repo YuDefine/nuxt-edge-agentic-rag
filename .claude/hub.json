@@ -1,5 +1,5 @@
 {
-  "version": "1.4.275",
+  "version": "1.4.342",
   "rules_projection": "symlink",
   "consumer_id": "nuxt-edge-agentic-rag",
   "modules": {
@@ -11,5 +11,7 @@
     "domain": [],
     "maintenance": "full"
   },
-  "localHooks": ["post-migration-gen-types.sh"]
+  "localHooks": [
+    "post-migration-gen-types.sh"
+  ]
 }

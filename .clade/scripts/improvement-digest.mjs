@@ -115,9 +115,16 @@ function forbidLLMScoring() {
 
 // clade 自家工具鏈 gate — 這些 gate fail 多半是 shim/script 本體問題，非 consumer 行為
 const TOOLING_GATES = new Set(['validate-manifests', 'publish', 'propagate'])
-// target_paths 指向 clade shim/script 的 pattern（bin/vp、bin/clade-gate、scripts/*、hooks/*、*.sh）
-const TOOLING_PATH_RE =
-  /^(?:bin|scripts|vendor\/scripts|plugins\/hub-core\/hooks)\/|\.sh$|(?:^|\/)(?:vp|clade-gate)$/
+// target_paths 指向 clade shim/script 的 pattern，依 ownership 明確度分兩類。
+//
+// 明確類：consumer 端不會長出這種結構——投影落在 consumer 的 `scripts/`，不是
+// `vendor/scripts/`；`bin/vp` 與 `bin/clade-gate` 是 clade 的 same-name PATH shim。
+// 路徑本身就足以證明 ownership，跨幾個 consumer 都成立。
+const TOOLING_PATH_CLADE_RE =
+  /^(?:bin|vendor\/scripts|plugins\/hub-core\/hooks)\/|(?:^|\/)(?:vp|clade-gate)$/
+// 模糊類：clade 與 consumer 兩邊都有 `scripts/` 和 `*.sh`，路徑字串不帶 ownership
+// 資訊，需要候選來源佐證（見 hasToolingSignature）。
+const TOOLING_PATH_AMBIGUOUS_RE = /^scripts\/|\.sh$/
 // fingerprint keywords 指向工具層的詞（extractKeywords 產出為小寫比對）
 const TOOLING_KEYWORDS = new Set(['shim', 'wrapper', 'hook', 'propagate', 'publish', 'sync'])
 
@@ -196,14 +203,24 @@ const ACTION_RULES = [
 function hasToolingSignature(c) {
   if (TOOLING_GATES.has(c.gate_name)) return true
   const paths = c.evidence_predicate?.target_paths ?? []
-  if (paths.some((p) => TOOLING_PATH_RE.test(p))) return true
+  // 明確 clade 路徑：路徑本身即證明 ownership，跨幾個 consumer 都算工具層問題
+  if (paths.some((p) => TOOLING_PATH_CLADE_RE.test(p))) return true
+  // 模糊路徑（scripts/、*.sh）需要來源佐證：只有候選完全出自 clade 自己時才採信。
+  // 少了這道 gate，consumer 自家的 scripts/ 會被歸成 Class A 標準層 issue——實證
+  // DIG-d7c0a4931ca4：perno 的 scripts/v1-migration/reconciliation.test.mjs 被判成
+  // clade 工具鏈問題，實際與 clade scripts/ 毫無關係。
+  const consumers = [...(c.consumers ?? [])]
+  const cladeOnly = consumers.length > 0 && consumers.every((x) => x === 'clade')
+  if (cladeOnly && paths.some((p) => TOOLING_PATH_AMBIGUOUS_RE.test(p))) return true
   const kws = c.evidence_predicate?.related_keywords ?? []
   return kws.some((k) => TOOLING_KEYWORDS.has(String(k).toLowerCase()))
 }
 
 function toolingTargetsOf(c) {
+  // 這裡只產生建議文字裡的路徑清單，不做 ownership 分類（那是 hasToolingSignature
+  // 的職責，且已經先過），所以兩類 pattern 都列。
   return (c.evidence_predicate?.target_paths ?? [])
-    .filter((p) => TOOLING_PATH_RE.test(p))
+    .filter((p) => TOOLING_PATH_CLADE_RE.test(p) || TOOLING_PATH_AMBIGUOUS_RE.test(p))
     .map((p) => `\`${p}\``)
 }
 
@@ -445,13 +462,25 @@ export function detectFromSignals(signals, registry, nowMs = Date.now()) {
 function thresholdFor(gate) {
   if (gate === 'validate-manifests' || gate === 'publish' || gate === 'propagate')
     return THRESHOLDS.publishGate
-  // typecheck / lint / fmt check gates — consumers emit pnpm-* variants via the
+  // pnpm-typecheck 不產生候選（2026-07-25）。
+  //
+  // 它是 ledger 最大來源（541/999），但 12 輪 digest 累計產出的 ts:TS**** 候選
+  // **沒有任何一條**被推進成 rule 或 TD——docs/tech-debt.md 對這些錯誤碼零命中。
+  //
+  // 這不是巧合而是結構限制：buildErrorFingerprint 對 TS 診斷只抓 `error TS\d+`
+  // 這個碼本身，不留檔案路徑與 symbol（redaction-safe by design）。於是
+  // 「兩個 consumer 剛好都寫錯型別」與「clade 共用型別有 bug」產生一模一樣的
+  // fingerprint——裸診斷碼沒有可 codify 的具體對象，寫不成規約。
+  //
+  // 關掉的只是候選生成；shim 照樣把 raw signal 寫進 ledger。真要查跨 consumer
+  // 型別 pattern，/oops Mode D 直接讀 vendor/ledger/signals.jsonl 隨時可以。
+  if (gate === 'pnpm-typecheck') return null
+  // lint / fmt check gates — consumers emit pnpm-* variants via the
   // clade-gate wrapper (TD-152 adoption). Same grouping shape as vp-check.
   if (
     gate === 'vp-check' ||
     gate === 'vp-lint' ||
     gate === 'vp-fmt' ||
-    gate === 'pnpm-typecheck' ||
     gate === 'pnpm-lint' ||
     gate === 'pnpm-fmt'
   )
@@ -828,6 +857,14 @@ export function wontfixKeywordIndex(entries) {
   return idx
 }
 
+// `rejected prior` 要幾個 keyword 同時指向同一條 TD 才標。
+//
+// 門檻曾是 1（命中任一詞即標），結果 2026-07-25 那輪 17/21（81%）候選都掛上這個
+// 警示——幾乎每條都亮的警示等於沒有警示。根因不是索引裡有通用詞（實測 91 個索引詞
+// 有 76 個只對應唯一一條 TD，區辨力其實好），而是候選本來就帶 5-6 個 keyword，
+// 對上 91 個詞的索引，至少命中一個幾乎必然。
+export const REJECTED_PRIOR_MIN_HITS = 2
+
 export function annotateRejectedPrior(candidates, wontfixEntries) {
   const idx = wontfixKeywordIndex(wontfixEntries)
   for (const c of candidates) {
@@ -835,12 +872,18 @@ export function annotateRejectedPrior(candidates, wontfixEntries) {
     const matched = new Map()
     for (const w of keywords) {
       const hits = idx.get(w.toLowerCase())
-      if (hits) for (const h of hits) matched.set(h.id, h)
+      if (hits)
+        for (const h of hits) {
+          const prev = matched.get(h.id)
+          matched.set(h.id, { ...h, hits: (prev?.hits ?? 0) + 1 })
+        }
     }
     // Defensive: a candidate must not cite its own source TD as a prior rejection
     // (detectFromTechDebt already skips closed TDs, so this is belt-and-braces).
     matched.delete(c.source_id)
-    const rejected = [...matched.values()].slice(0, 3)
+    const rejected = [...matched.values()]
+      .filter((h) => h.hits >= REJECTED_PRIOR_MIN_HITS)
+      .slice(0, 3)
     if (rejected.length) c.rejected_prior = rejected
   }
 }
@@ -1229,6 +1272,21 @@ function persistOutcomes(outcomes) {
   }
 }
 
+// Emit freeze（2026-07-26）：digest 先前的隱含 metric 是「emit 多少 candidate」，不是
+// 「關掉多少」——candidate 產量從 28 爬到 87，同期 strict_realization_rate 0.07。
+// unresolved 積到門檻時停發新 candidate、只 re-emit 積壓的那些，把注意力壓回收斂。
+// 被壓下的候選不會消失：它們沒有 unresolved_across 紀錄，下一輪 unresolved 降到門檻
+// 以下就會重新出現。
+export const EMIT_FREEZE_THRESHOLD = 10
+
+export function applyEmitFreeze(candidates, unresolvedCount, threshold = EMIT_FREEZE_THRESHOLD) {
+  const frozen = unresolvedCount >= threshold
+  const emitted = frozen
+    ? candidates.filter((c) => (c.unresolved_across?.count ?? 0) > 0)
+    : candidates
+  return { frozen, emitted, suppressedCount: candidates.length - emitted.length }
+}
+
 export async function runDigest({ dryRun = false } = {}) {
   forbidLLMScoring()
   // TD-189: consumer signals are written to <consumer>/.clade/vendor/ledger/ and
@@ -1318,6 +1376,8 @@ export async function runDigest({ dryRun = false } = {}) {
     (c) => (c.unresolved_across?.count ?? 0) >= 2 && !c.recently_reviewed,
   ).length
 
+  const { frozen: emitFrozen, emitted, suppressedCount } = applyEmitFreeze(deduped, unresolvedCount)
+
   const signalSource =
     signals.length < 10 ? 'bootstrap-only' : signals.length < 100 ? 'partial' : 'steady-state'
   const sourceNote = {
@@ -1342,11 +1402,19 @@ export async function runDigest({ dryRun = false } = {}) {
     `- archived changes ingested: ${archived.length}`,
     `- signal records accepted: ${signals.length}`,
     `- signal records rejected (validation): ${signalsRejected}`,
-    `- candidates emitted: ${deduped.length}`,
-    `- candidates unresolved across ≥2 of last ${UNRESOLVED_LOOKBACK} digests: ${unresolvedCount}`,
+    // 收斂面在前、產量面在後（2026-07-26）：header 第一眼該回答「關掉多少」，
+    // 不是「發了多少」——emit 數擺第一會讓產量看起來像成果。
+    `- candidates closed（explicit+state+diff 任一層）: ${closedAnyLayer}`,
     // 落地率誠實揭露（2026-07-05 銳評）：closed 的絕大多數靠最弱 diff-keyword 推斷，
     // strict（state+explicit）才代表「驗證過真的補了」——別讓「closed 高」被誤讀。
     `- ⚠ strict_realization_rate（state+explicit / closed；diff-keyword 弱推斷不計）: ${strictRealizationRate}（對照 artifact_realization_rate=${metrics.artifact_realization_rate}，該值含 diff 層）`,
+    `- candidates unresolved across ≥2 of last ${UNRESOLVED_LOOKBACK} digests: ${unresolvedCount}`,
+    `- candidates emitted: ${emitted.length}`,
+    ...(emitFrozen
+      ? [
+          `- ⏸ **emit frozen** — unresolved ${unresolvedCount} ≥ ${EMIT_FREEZE_THRESHOLD}：本輪只 re-emit 積壓候選，新候選 ${suppressedCount} 條暫不發。先關既有的，unresolved 降到 ${EMIT_FREEZE_THRESHOLD} 以下自動解凍`,
+        ]
+      : []),
     '',
     sourceNote,
     '',
@@ -1355,15 +1423,15 @@ export async function runDigest({ dryRun = false } = {}) {
   ].join('\n')
 
   const body =
-    deduped.length > 0
-      ? deduped.map((c) => formatCandidate(c, { date: today })).join('\n')
+    emitted.length > 0
+      ? emitted.map((c) => formatCandidate(c, { date: today })).join('\n')
       : '_no candidates — bootstrap sources produced no qualifying patterns._\n\n'
 
   const sweepSection = formatSweepEffectiveness()
 
   // unresolved_across ≥3 的候選：重發多輪、既沒被 close 也沒人升級 → 輸出 TD 草案讓人一鍵落地。
   // 僅輸出草案文字，不自動寫 tech-debt.md（per improvement-loop 契約：digest 不自動改標準層）。
-  const stuck = deduped.filter((c) => (c.unresolved_across?.count ?? 0) >= 3)
+  const stuck = emitted.filter((c) => (c.unresolved_across?.count ?? 0) >= 3)
   const tdDraftSection =
     stuck.length === 0
       ? ''
