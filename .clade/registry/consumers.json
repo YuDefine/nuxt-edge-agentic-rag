@@ -139,6 +139,10 @@
           "<clade-central-repo>": "<clade-central-repo>",
           "<home>/offline/": "<home>/offline/",
           "~/": "~/",
+          "<HOME>/.local/bin/": "<HOME>/.local/bin/",
+          "<clade-central-repo>": "<clade-central-repo>",
+          "<home>/offline/": "<home>/offline/",
+          "~/": "~/",
           "charles@yudefine.com.tw": "<maintainer-email>",
           "yudefine.com.tw": "<maintainer-domain>"
         },
