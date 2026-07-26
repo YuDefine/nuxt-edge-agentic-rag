@@ -1,83 +1,118 @@
 #!/usr/bin/env bash
-# codex-review-safe.sh — codex review wrapper that survives MCP hangs
+# codex-review-safe.sh — cross-model code review via `codex exec`
 #
-# Why: `codex review --uncommitted` loads MCP servers from ~/.codex/config.toml
-# at startup. If any MCP (e.g. codebase-memory-mcp) hangs on a tool call, codex
-# review dies with no actionable output. `-c mcp_servers={}` does NOT clear the
-# nested TOML table (codex merges instead of replacing).
-#
-# Strategy: build a shadow CODEX_HOME via symlinks so codex review still sees
-# auth / plugins / memories / cache / sessions / hooks shared with ~/.codex,
-# but write a sanitized `config.toml` copy that drops every [mcp_servers.*]
-# section. The real ~/.codex/config.toml is never moved or rewritten, so
-# user-managed keys (e.g. [features].goals = true) survive even if this
-# wrapper dies under SIGKILL or system reboot.
+# Engine: `codex exec -s read-only` with an embedded review prompt — not
+# `codex review`, which hardcodes a `workspace-write` sandbox that permanently
+# hangs any MCP server registered in ~/.codex/config.toml on its first tool
+# call (see rules/core/agent-routing.codex-watch-protocol.md § "`codex review`
+# 禁用"). read-only sandbox allows shell commands (git diff, cat) but rejects
+# write operations and MCP tool calls (fail-fast, not hang) — matches review's
+# read-only intent and blocks prompt-injection escape to write/MCP side-effects.
+# ~/.codex/config.toml is never read, copied, or moved by this script.
 #
 # Usage:
 #   .claude/scripts/codex-review-safe.sh [reasoning_effort] [extra codex args...]
 #
 # Default reasoning_effort = xhigh. The commit 0-A flow calls this twice:
-# 0-A.1 with `high` (always, unless fast-path skips), and 0-A.2 with `xhigh`
-# (conditional — only when 0-A.1 surfaces Critical/Major). Other contexts
-# (Spectra propose/apply) use xhigh. See .claude/skills/commit/SKILL.md Step 0-A.
+# 0-A.1 with `xhigh` (always, unless fast-path skips), and 0-A.2 Step 1 with
+# `max` (conditional — only when 0-A.1 surfaces Critical/Major; 0-A.2 Step 2
+# then hands Codex output to Fable code-review agent for final verdict).
+# Other contexts (Spectra propose/apply) use xhigh.
+# See .claude/skills/commit/SKILL.md Step 0-A.
 #
-# Exit code: passes through codex review's exit code.
+# The embedded prompt tells codex to collect the uncommitted diff itself
+# (staged + unstaged + untracked) as the first thing it does in its own
+# turn — that's what gives Step 0-A its "reviews a snapshot; later
+# working-tree edits don't retroactively affect an already-running review"
+# semantics.
+#
+# TD-235 resolved: migrated from --dangerously-bypass-approvals-and-sandbox to
+# -s read-only (2026-07-08). Prompt injection can no longer escape to writes or
+# MCP side-effects; "fleet-own diffs only" constraint remains as defense-in-depth.
+#
+# TD-247 resolved: added --disable skills (2026-07-24). Codex review sessions
+# were self-invoking second-opinion skills (~6000 lines clade-review-rules.md),
+# consuming ~38% context budget and starving max-effort reviews of diff+verdict
+# space.
+#
+# Semantic Verdict injection (W5-6): the prompt is assembled from two literal
+# (single-quoted) heredocs sandwiching a runtime-generated block that lists
+# vendor/review-rules/patterns.json's `semantic` rules — that block cannot be
+# a plain `<<'PROMPT_EOF'` heredoc because heredocs quoted that way never
+# expand shell variables. Missing/empty patterns.json degrades to an empty
+# block plus one stderr warning; it never fails the script.
+#
+# Exit code: passes through codex exec's exit code.
 
 set -uo pipefail
 
 REASONING="${1:-xhigh}"
 shift || true  # tolerate no args after reasoning
 
-REAL_HOME="$HOME/.codex"
-REAL_CONFIG="$REAL_HOME/config.toml"
+# Resolve repo root via git, not the script's own path — clade's own checkout
+# (plugins/hub-core/scripts/) and a consumer's projected copy (.claude/scripts/)
+# sit at different depths, so a path computed from $0 would resolve wrong in
+# one of the two contexts.
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+PATTERNS_JSON="$REPO_ROOT/vendor/review-rules/patterns.json"
 
-if [[ ! -d "$REAL_HOME" ]]; then
-  echo "[codex-review-safe] $REAL_HOME does not exist" >&2
-  exit 1
-fi
-
-# Reclaim leftover shadow dirs from dead PIDs (defensive — mktemp dirs are
-# normally cleaned up by trap, but SIGKILL / reboot can leave them behind).
-for stale in "${TMPDIR:-/tmp}"/codex-review-shadow.*; do
-  [[ -d "$stale" ]] || continue
-  stale_pid="${stale##*.}"
-  [[ "$stale_pid" =~ ^[0-9]+$ ]] || { rm -rf "$stale" 2>/dev/null; continue; }
-  kill -0 "$stale_pid" 2>/dev/null && continue
-  rm -rf "$stale" 2>/dev/null
-done
-
-SHADOW=$(mktemp -d -t "codex-review-shadow.$$.XXXXXX")
-trap 'rm -rf "$SHADOW"' EXIT INT TERM HUP
-
-# Mirror every entry from ~/.codex into the shadow via symlinks (visible files
-# + dotfiles, but never `.` / `..`). codex_review still reads/writes through
-# these into the real ~/.codex, so sessions / cache / memories are preserved.
-# config.toml is the only file we materialize as a real (sanitized) copy.
-shopt -s nullglob
-for entry in "$REAL_HOME"/* "$REAL_HOME"/.[!.]* "$REAL_HOME"/..?*; do
-  [[ -e "$entry" ]] || continue
-  name=$(basename "$entry")
-  [[ "$name" == "config.toml" ]] && continue
-  ln -s "$entry" "$SHADOW/$name"
-done
-shopt -u nullglob
-
-# Sanitized config: drop every [mcp_servers] / [mcp_servers.*] section, keep
-# everything else (model, personality, [features], [plugins.*], [projects.*],
-# [tui], [marketplaces.*], etc.). codex writes table headers at column 0, so
-# matching `^[mcp_servers]` / `^[mcp_servers.` is sufficient.
-if [[ -f "$REAL_CONFIG" ]]; then
-  awk '
-    /^\[mcp_servers[].]/ { in_mcp = 1; next }
-    /^\[/ { in_mcp = 0 }
-    !in_mcp { print }
-  ' "$REAL_CONFIG" > "$SHADOW/config.toml"
+SEMANTIC_LIST=""
+if [ -f "$PATTERNS_JSON" ]; then
+  SEMANTIC_LIST="$(node -e '
+    const fs = require("fs")
+    try {
+      const data = JSON.parse(fs.readFileSync(process.argv[1], "utf8"))
+      const items = Array.isArray(data.semantic) ? data.semantic : []
+      if (items.length > 0) {
+        console.log("Semantic rules to also evaluate (each requires a verdict below):")
+        for (const it of items) console.log(`- ${it.id}: ${it.guidance}`)
+      }
+    } catch {}
+  ' "$PATTERNS_JSON" 2>/dev/null)"
+  if [ -z "$SEMANTIC_LIST" ]; then
+    echo "[codex-review-safe] warn: $PATTERNS_JSON 無 semantic 規則 — 略過 Semantic Verdict 注入" >&2
+  fi
 else
-  echo "[codex-review-safe] no config at $REAL_CONFIG, running with empty config" >&2
-  : > "$SHADOW/config.toml"
+  echo "[codex-review-safe] warn: $PATTERNS_JSON 不存在 — 略過 Semantic Verdict 注入" >&2
 fi
 
-CODEX_HOME="$SHADOW" codex review --uncommitted \
-  -c model="gpt-5.5" \
+{
+  cat <<'PROMPT_PREFIX'
+You are performing a cross-model code review of the current git working tree.
+
+Collect the uncommitted changes yourself first, using:
+- `git diff --cached` for staged changes
+- `git diff` for unstaged changes
+- `git ls-files --others --exclude-standard` for untracked new files — read each one
+
+Review those changes for bugs, logic errors, security issues, and edge
+cases — not style or formatting. This is a read-only review: **NEVER** edit,
+create, or delete any file, and **NEVER** run any command that changes
+repository or working-tree state (no git add/commit/checkout/stash/push, no
+file writes via any tool). Only run read-only inspection commands.
+
+PROMPT_PREFIX
+  if [ -n "$SEMANTIC_LIST" ]; then
+    printf '%s\n\n' "$SEMANTIC_LIST"
+  fi
+  cat <<'PROMPT_SUFFIX'
+Output your findings under a single `## Review Verdict` heading, one line
+per finding:
+- [Critical|Major|Minor] <file>:<line> — <one-sentence finding and why it matters>
+
+If you find nothing, output exactly one line under that heading:
+- No findings.
+PROMPT_SUFFIX
+  if [ -n "$SEMANTIC_LIST" ]; then
+    cat <<'PROMPT_VERDICT'
+Additionally, for EACH semantic rule listed above, output a `## Semantic Verdict` table with one row per id: `| <id> | pass|fail|n-a | <one-line evidence> |`. Use n-a only when the diff touches no file in that rule's scope.
+PROMPT_VERDICT
+  fi
+} | codex exec \
+  --model gpt-5.6-sol \
+  -s read-only \
+  --skip-git-repo-check \
   -c model_reasoning_effort="$REASONING" \
-  "$@"
+  --ephemeral \
+  --disable memories \
+  "$@" 2>&1

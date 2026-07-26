@@ -62,3 +62,7 @@ openspec/.vector-search.db*
 # Clade local runtime state
 
 .codex/
+
+.clade/runtime/
+.clade/vendor/ledger/*.jsonl
+.clade/vendor/ledger/*.jsonl.lock
