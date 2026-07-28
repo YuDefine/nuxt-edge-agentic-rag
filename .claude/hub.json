@@ -1,5 +1,5 @@
 {
-  "version": "1.4.348",
+  "version": "1.4.349",
   "rules_projection": "symlink",
   "consumer_id": "nuxt-edge-agentic-rag",
   "modules": {
@@ -8,8 +8,7 @@
     "db-runtime": "cf-workers",
     "runtime": "cf-workers",
     "framework": "nuxt",
-    "domain": [],
-    "maintenance": "full"
+    "domain": []
   },
   "localHooks": ["post-migration-gen-types.sh"]
 }
