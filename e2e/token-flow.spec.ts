@@ -27,7 +27,7 @@ test('A - create token and reveal', async ({ page }) => {
 
   // Click create button (top right header)
   await page.getByRole('button', { name: '建立 Token' }).first().click()
-  await page.waitForSelector('text=建立 MCP Token', { timeout: 5000 })
+  await page.waitForSelector('text=建立 Legacy MCP Token', { timeout: 5000 })
   await ss(page, 'A3-token-create-form.png')
 
   // Fill name field
@@ -46,7 +46,7 @@ test('A - create token and reveal', async ({ page }) => {
   await ss(page, 'A5-token-reveal-modal.png')
 
   // Close the modal
-  const tokenDialog = page.getByRole('dialog', { name: '建立 MCP Token' })
+  const tokenDialog = page.getByRole('dialog', { name: '建立 Legacy MCP Token' })
   await tokenDialog.getByRole('button', { name: '關閉' }).last().click()
   await page.waitForTimeout(800)
   await ss(page, 'A6-token-list-after-create.png')

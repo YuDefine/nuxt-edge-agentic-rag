@@ -1,6 +1,19 @@
 import type { Page } from '@playwright/test'
 
 export const BASE_URL = process.env.E2E_BASE_URL ?? 'http://localhost:3010'
+
+/**
+ * Generate a date relative to now by subtracting the given number of days
+ * (and optional hours). Useful for seeding conversations that must land in
+ * specific recency buckets (today / yesterday / thisWeek / thisMonth / earlier)
+ * regardless of when the test runs.
+ */
+export function daysAgo(days: number, hours = 10): Date {
+  const d = new Date()
+  d.setDate(d.getDate() - days)
+  d.setHours(hours, 0, 0, 0)
+  return d
+}
 export const ADMIN_EMAIL = process.env.E2E_ADMIN_EMAIL ?? 'admin@test.local'
 export const MEMBER_EMAIL = process.env.E2E_MEMBER_EMAIL ?? 'member@test.local'
 

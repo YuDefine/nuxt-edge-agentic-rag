@@ -1,6 +1,7 @@
 /* eslint-disable no-underscore-dangle */
 import AxeBuilder from '@axe-core/playwright'
 import { expect, test, type Page } from '@playwright/test'
+import { daysAgo } from './helpers'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -22,11 +23,11 @@ interface MockConversation {
 }
 
 const seededConversations: MockConversation[] = [
-  createConversation('today', '今天的對話', new Date(2026, 3, 24, 10).toISOString()),
-  createConversation('yesterday', '昨天的對話', new Date(2026, 3, 23, 10).toISOString()),
-  createConversation('week', '本週的對話', new Date(2026, 3, 20, 10).toISOString()),
-  createConversation('month', '本月的對話', new Date(2026, 3, 4, 10).toISOString()),
-  createConversation('earlier', '更早的對話', new Date(2026, 2, 20, 10).toISOString()),
+  createConversation('today', '今天的對話', daysAgo(0).toISOString()),
+  createConversation('yesterday', '昨天的對話', daysAgo(1).toISOString()),
+  createConversation('week', '本週的對話', daysAgo(4).toISOString()),
+  createConversation('month', '本月的對話', daysAgo(20).toISOString()),
+  createConversation('earlier', '更早的對話', daysAgo(60).toISOString()),
 ]
 
 function createConversation(id: string, title: string, updatedAt: string): MockConversation {

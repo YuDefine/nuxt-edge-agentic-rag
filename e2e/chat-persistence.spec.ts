@@ -1,5 +1,6 @@
 /* eslint-disable no-underscore-dangle */
 import { expect, test, type Page } from '@playwright/test'
+import { daysAgo } from './helpers'
 import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
@@ -67,8 +68,8 @@ function createMessage(input: {
 }
 
 function createSeededConversation(): MockConversation {
-  const createdAt = '2026-04-23T08:00:00.000Z'
-  const updatedAt = '2026-04-23T08:05:00.000Z'
+  const createdAt = daysAgo(0, 8).toISOString()
+  const updatedAt = new Date(daysAgo(0, 8).getTime() + 5 * 60_000).toISOString()
 
   return {
     id: SEEDED_CONVERSATION_ID,
@@ -203,8 +204,8 @@ async function installConversationRoutes(
     })
 
     if (!body.conversationId) {
-      const createdAt = '2026-04-23T09:00:00.000Z'
-      const updatedAt = '2026-04-23T09:00:05.000Z'
+      const createdAt = daysAgo(0, 9).toISOString()
+      const updatedAt = new Date(daysAgo(0, 9).getTime() + 5 * 60_000).toISOString()
       const conversation: MockConversation = {
         id: CREATED_CONVERSATION_ID,
         title: CREATED_TITLE,
@@ -416,11 +417,11 @@ async function installAuthenticatedSession(page: Page): Promise<void> {
       contentType: 'application/json',
       body: JSON.stringify({
         session: {
-          createdAt: '2026-04-23T07:30:00.000Z',
-          expiresAt: '2026-04-30T07:30:00.000Z',
+          createdAt: daysAgo(0, 7).toISOString(),
+          expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
           id: 'session-1',
           token: 'session-token-for-e2e',
-          updatedAt: '2026-04-23T07:30:00.000Z',
+          updatedAt: daysAgo(0, 7).toISOString(),
           userId: 'user-1',
         },
         user: {

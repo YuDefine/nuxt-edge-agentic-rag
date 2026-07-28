@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { daysAgo } from './helpers'
 
 interface MockConversation {
   id: string
@@ -21,8 +22,8 @@ function createConversation(id: string, title: string, updatedAt: string): MockC
 }
 
 const seededConversations: MockConversation[] = [
-  createConversation('conv-a', '採購流程', new Date(2026, 3, 25, 10).toISOString()),
-  createConversation('conv-b', 'ERP 報表', new Date(2026, 3, 24, 10).toISOString()),
+  createConversation('conv-a', '採購流程', daysAgo(0).toISOString()),
+  createConversation('conv-b', 'ERP 報表', daysAgo(1).toISOString()),
 ]
 
 const STORAGE_KEY = 'web-chat:active-conversation:user-1'
@@ -36,11 +37,11 @@ async function installAuthenticatedChat(page: Page, conversations = seededConver
       contentType: 'application/json',
       body: JSON.stringify({
         session: {
-          createdAt: '2026-04-25T01:00:00.000Z',
-          expiresAt: '2026-05-02T01:00:00.000Z',
+          createdAt: daysAgo(0, 1).toISOString(),
+          expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
           id: 'session-1',
           token: 'session-token',
-          updatedAt: '2026-04-25T01:00:00.000Z',
+          updatedAt: daysAgo(0, 1).toISOString(),
           userId: 'user-1',
         },
         user: {

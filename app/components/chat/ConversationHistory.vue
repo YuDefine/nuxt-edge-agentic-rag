@@ -1,3 +1,4 @@
+<!-- data-perf-ignore-file: pure mutation component — $csrfFetch is passed to createChatConversationHistory for mutations (delete, select), not SSR data-fetching -->
 <script setup lang="ts">
   import { inject, toRef } from 'vue'
 
@@ -153,7 +154,7 @@
           data-testid="conversation-history-new-button-expanded"
           icon="i-lucide-message-circle-plus"
           variant="soft"
-          color="primary"
+          color="neutral"
           size="xs"
           aria-label="新對話"
           :disabled="disabled"
@@ -193,7 +194,7 @@
               aria-hidden="true"
             />
             <span class="min-w-0 flex-1 truncate">{{ group.label }}</span>
-            <LazyUBadge color="neutral" variant="subtle" size="xs">
+            <LazyUBadge color="neutral" variant="subtle" size="md">
               {{ group.conversations.length }}
             </LazyUBadge>
           </button>
