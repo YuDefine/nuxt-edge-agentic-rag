@@ -25,17 +25,21 @@ const MOCK_SESSION = {
   },
 }
 
-const MOCK_CHAT_RESPONSE = {
-  data: {
-    answer:
-      '採購流程通常包含以下步驟：\n1. 需求確認：由需求部門填寫採購申請單\n2. 預算審核：財務部門確認預算是否充足\n3. 尋訪供應商：採購部門尋找合適的供應商並取得報價\n4. 比價評估：比較至少3家供應商的報價和品質\n5. 採購核准：依金額大小送相關主管審核\n6. 簽訂合約：與選定供應商簽訂採購合約\n7. 驗收入庫：收貨後進行品質驗收',
-    citations: [
-      { citationId: 'cit_mock_001', rank: 1 },
-      { citationId: 'cit_mock_002', rank: 2 },
-      { citationId: 'cit_mock_003', rank: 3 },
-    ],
-    refused: false,
-  },
+const MOCK_ANSWER =
+  '採購流程通常包含以下步驟：\n1. 需求確認：由需求部門填寫採購申請單\n2. 預算審核：財務部門確認預算是否充足\n3. 尋訪供應商：採購部門尋找合適的供應商並取得報價\n4. 比價評估：比較至少3家供應商的報價和品質\n5. 採購核准：依金額大小送相關主管審核\n6. 簽訂合約：與選定供應商簽訂採購合約\n7. 驗收入庫：收貨後進行品質驗收'
+
+const MOCK_CITATIONS = [
+  { citationId: 'cit_mock_001', sourceChunkId: 'chunk_mock_001' },
+  { citationId: 'cit_mock_002', sourceChunkId: 'chunk_mock_002' },
+  { citationId: 'cit_mock_003', sourceChunkId: 'chunk_mock_003' },
+]
+
+/** Build an SSE-formatted body that the chat stream parser expects. */
+function buildSseChatBody(): string {
+  const ready = `event: ready\ndata: ${JSON.stringify({ conversationId: 'conv-mock-001', conversationCreated: true })}\n\n`
+  const delta = `event: delta\ndata: ${JSON.stringify({ content: MOCK_ANSWER })}\n\n`
+  const complete = `event: complete\ndata: ${JSON.stringify({ answer: MOCK_ANSWER, citations: MOCK_CITATIONS, conversationId: 'conv-mock-001', conversationCreated: true, refused: false })}\n\n`
+  return ready + delta + complete
 }
 
 const MOCK_CITATION_RESPONSE = {
@@ -67,12 +71,22 @@ async function setupAllMocks(page: Page) {
     })
   })
 
-  // Mock chat API
-  await page.route('**/api/chat', async (route) => {
+  // Mock guest-policy endpoint
+  await page.route('**/api/guest-policy/effective', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify(MOCK_CHAT_RESPONSE),
+      body: JSON.stringify({ data: { value: 'same_as_member' } }),
+    })
+  })
+
+  // Mock chat API — must return text/event-stream (SSE) because the
+  // chat component uses streaming via readChatStream().
+  await page.route('**/api/chat', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'text/event-stream',
+      body: buildSseChatBody(),
     })
   })
 

@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { daysAgo } from './helpers'
 
 interface MockConversation {
   id: string
@@ -21,8 +22,8 @@ function createConversation(id: string, title: string, updatedAt: string): MockC
 }
 
 const seededConversations: MockConversation[] = [
-  createConversation('today', '今天的對話', new Date(2026, 3, 24, 10).toISOString()),
-  createConversation('earlier', '更早的對話', new Date(2026, 2, 20, 10).toISOString()),
+  createConversation('today', '今天的對話', daysAgo(0).toISOString()),
+  createConversation('earlier', '更早的對話', daysAgo(60).toISOString()),
 ]
 
 async function installAuthenticatedChat(

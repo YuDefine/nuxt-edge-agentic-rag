@@ -65,7 +65,7 @@ test('A - full create flow via UI + page.evaluate $fetch', async ({ page }) => {
 
   // Open create modal via UI
   await page.getByRole('button', { name: '建立 Token' }).first().click()
-  await page.waitForSelector('text=建立 MCP Token', { timeout: 5000 })
+  await page.waitForSelector('text=建立 Legacy MCP Token', { timeout: 5000 })
   await ss(page, 'A3-token-create-form.png')
 
   // Fill name
