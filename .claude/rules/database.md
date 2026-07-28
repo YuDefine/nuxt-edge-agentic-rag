@@ -1,1 +1,0 @@
-<clade-central-repo>/dist/nuxt-edge-agentic-rag/rules/database.md
