@@ -3,7 +3,7 @@
   "$comment": "Fleet sweep TD-159, scaffolded by clade scripts/scaffold-consumer-meta.mjs 2026-06-04. Nuxt 4 + NuxtHub on Cloudflare Workers + better-auth + libsql on port 3010.",
   "schemaVersion": "1",
   "consumerId": "nuxt-edge-agentic-rag",
-  "deploymentType": "B",
+  "deploymentType": "workers-d1",
 
   "dev": {
     "ports": [
