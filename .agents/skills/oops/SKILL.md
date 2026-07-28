@@ -52,7 +52,7 @@ metadata:
 ```text
 mcp__codebase-memory-mcp__search_code(
   pattern     = "<關鍵字>",
-  project     = "Users-charles-offline-clade",
+  project     = "<clade-project>",
   path_filter = "^docs/pitfalls/"
 )
 ```
@@ -214,7 +214,7 @@ Mode D 是**分析 + 候選清單**，不是執行。
       但 session 內沒有 mcp__codebase-memory-mcp__search_code 呼叫紀錄
 
 修正方式：
-  - 暫停動作，先跑 search_code project="Users-charles-offline-clade" path_filter="^docs/pitfalls/" pattern="<關鍵字>"
+  - 暫停動作，先跑 search_code project="<clade-project>" path_filter="^docs/pitfalls/" pattern="<關鍵字>"
   - 命中 → 套用 fix recipe；未命中 → 動手 + session 結束前走 /oops Mode B 新增條目
 
 繞過：
