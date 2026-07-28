@@ -33,13 +33,13 @@
 ```text
 mcp__codebase-memory-mcp__search_code(
   pattern     = "<關鍵字1：套件名 + 版本>",
-  project     = "Users-charles-offline-clade",
+  project     = "<clade-project>",
   path_filter = "^docs/pitfalls/"
 )
 
 mcp__codebase-memory-mcp__search_code(
   pattern     = "<關鍵字2：錯誤訊息 token 或 API 名>",
-  project     = "Users-charles-offline-clade",
+  project     = "<clade-project>",
   path_filter = "^docs/pitfalls/"
 )
 ```
