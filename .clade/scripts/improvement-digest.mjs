@@ -57,7 +57,7 @@ const THRESHOLDS = {
     // SWEEP-003: crossConsumerCountMin / singleConsumerCountMin 過去是 dead config —
     // 欄位名不符 matchesThreshold 實際讀的 totalMin / singleConsumerTotalMin（同
     // SWEEP-002 class）。後果：(1) cross-consumer 沒有事件數下限（任 2 consumer 各 1 筆
-    // 就達標）；(2) single-consumer 分支從不觸發（singleConsumerTotalMin 未定義 → TDMS
+    // 就達標）；(2) single-consumer 分支從不觸發（singleConsumerTotalMin 未定義 → <consumer-b>
     // 等單一 consumer 的持續 test 失敗永遠 surface 不出來）。接上欄位名、維持原數值語意。
     // windowDays:14（對齊 vpCheck）必須配 single-consumer 偵測一起上：否則啟用後 pre-SWEEP-001
     // 的歷史殘渣 fingerprint（vitest banner 等）因 testFailure 原本無窗而永久佔位 digest。
@@ -207,7 +207,7 @@ function hasToolingSignature(c) {
   if (paths.some((p) => TOOLING_PATH_CLADE_RE.test(p))) return true
   // 模糊路徑（scripts/、*.sh）需要來源佐證：只有候選完全出自 clade 自己時才採信。
   // 少了這道 gate，consumer 自家的 scripts/ 會被歸成 Class A 標準層 issue——實證
-  // DIG-d7c0a4931ca4：perno 的 scripts/v1-migration/reconciliation.test.mjs 被判成
+  // DIG-d7c0a4931ca4：<consumer-g> 的 scripts/v1-migration/reconciliation.test.mjs 被判成
   // clade 工具鏈問題，實際與 clade scripts/ 毫無關係。
   const consumers = [...(c.consumers ?? [])]
   const cladeOnly = consumers.length > 0 && consumers.every((x) => x === 'clade')

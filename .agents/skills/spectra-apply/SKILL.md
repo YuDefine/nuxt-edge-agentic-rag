@@ -99,7 +99,7 @@ Implement tasks from a Spectra change.
 
    c.5. **Main-side unpark + commit-to-git**（clade fork addition；critical data-safety guardrail，per `docs/pitfalls/2026-05-22-agent-tool-subagent-worktree-bypass.md`）：
 
-      **理由**：spectra v3 `spectra park` 把 artifacts 從 disk 搬進 `.git/spectra-app/spectra.db` SQLite blob（**不在 git tracked file**）；後續 `spectra unpark` 會 restore artifacts 到 cwd 的 worktree disk 並把 SQLite parked 條目刪除。若 unpark 在 AI Agent `Agent` tool dispatched subagent 的 ephemeral cwd（`.claude/worktrees/agent-*/`，session 結束 GC）跑 → artifacts 寫進去就被 GC 清掉、SQLite 也沒了 → **永久遺失**（co-purchase 已撞，99 tasks + 5 specs + proposal 蒸發）。
+      **理由**：spectra v3 `spectra park` 把 artifacts 從 disk 搬進 `.git/spectra-app/spectra.db` SQLite blob（**不在 git tracked file**）；後續 `spectra unpark` 會 restore artifacts 到 cwd 的 worktree disk 並把 SQLite parked 條目刪除。若 unpark 在 AI Agent `Agent` tool dispatched subagent 的 ephemeral cwd（`.claude/worktrees/agent-*/`，session 結束 GC）跑 → artifacts 寫進去就被 GC 清掉、SQLite 也沒了 → **永久遺失**（<consumer-e> 已撞，99 tasks + 5 specs + proposal 蒸發）。
 
       因此 **MUST** 在 dispatch subagent **之前**，由主線在 main worktree（**或** Step 0c 剛 fork 出的 session worktree — 兩者都是 persistent disk，非 ephemeral）跑 unpark + commit-to-git，artifacts 落 git tracked file，subagent fork 出去後天然帶過、不再依賴 SQLite blob。
 
@@ -622,7 +622,7 @@ If there is no request_user_input 工具 available, present options as plain tex
 
 6c. **Refactor Invariant Check**（clade fork addition；Layer B of pre-handoff quality gates；not in upstream spectra）
 
-   **理由**：a UI-view refactor MUST NOT change observable behavior. perno `app-status-badge-extraction`（2026-05-24）做 `UBadge → AppStatusBadge` refactor，但 `attendance/amendments.vue` 的 `useEmployeeListQuery({ perPage: 200 })` 違反 schema `max(100)` → API 400 → `employeeNameMap` empty → 員工 column 整列「-」。Refactor「component substitute + typecheck pass」判定通過，但 page runtime 已壞 — design review / verify:ui / manual review 全沒攔，user 親眼才抓到。Step 6c 是針對這條失效鏈的 mechanical gate。
+   **理由**：a UI-view refactor MUST NOT change observable behavior. <consumer-g> `app-status-badge-extraction`（2026-05-24）做 `UBadge → AppStatusBadge` refactor，但 `attendance/amendments.vue` 的 `useEmployeeListQuery({ perPage: 200 })` 違反 schema `max(100)` → API 400 → `employeeNameMap` empty → 員工 column 整列「-」。Refactor「component substitute + typecheck pass」判定通過，但 page runtime 已壞 — design review / verify:ui / manual review 全沒攔，user 親眼才抓到。Step 6c 是針對這條失效鏈的 mechanical gate。
 
    **觸發範圍**：每個 **Class B（UI view）phase** 由主線在 Step 7 實作完成後、該 phase commit / 標 tasks done **之前**，跑一次。Class A / Class C phase 不觸發（Class C 已由 codex view-layer guard 擋住 view 改動；Class A 是純設計審查）。Phase 內 touched files 沒有 `.vue` list/table page → script 自動 skip（exit 0），不需主線預判。
 
@@ -652,7 +652,7 @@ If there is no request_user_input 工具 available, present options as plain tex
 
 6d. **Review Rules Check**（clade fork addition；not in upstream spectra）
 
-   **理由**：`vendor/review-rules/patterns.json` 定義的機械可檢規則（如 `ubadge-size-ban`、`overlay-width-class`）在 pre-commit hook 有逐行 grep 的 fallback，但跨行 Vue template props（如 `<UBadge\n  size="xs"\n/>`）在 hook 首次落地前會漏抓。在 apply 階段加 multi-line 整檔掃描是 defense-in-depth。perno `line-notification-system`（2026-06-26）的 `UBadge size="xs"` 穿過 pre-commit hook 上線即為實證。
+   **理由**：`vendor/review-rules/patterns.json` 定義的機械可檢規則（如 `ubadge-size-ban`、`overlay-width-class`）在 pre-commit hook 有逐行 grep 的 fallback，但跨行 Vue template props（如 `<UBadge\n  size="xs"\n/>`）在 hook 首次落地前會漏抓。在 apply 階段加 multi-line 整檔掃描是 defense-in-depth。<consumer-g> `line-notification-system`（2026-06-26）的 `UBadge size="xs"` 穿過 pre-commit hook 上線即為實證。
 
    **觸發範圍**：每個 **Class B（UI view）phase** 由主線在 Step 6c 之後、該 phase commit / 標 tasks done **之前**，跑一次。Class A / Class C phase 不觸發。Phase 內 touched files 沒有 `.vue` → skip。
 
@@ -965,7 +965,7 @@ If there is no request_user_input 工具 available, present options as plain tex
       共用規約：
 
       - Brief **MUST** 提供 change name、dev server URL、每個 item 的 known URL、**`ready_signal`（structured，見下）**、預期 screenshot path。
-      - **主線 MUST 為每個 assertion-bearing verify:ui item 建 `ready_signal`**：從 item 描述的具體可斷言短語抽機械可判 signal（`text` / `text_all` / `text_any` / `selector` / `regex` / `min_rows`），放進 `--items-json` 的 `ready_signal` 欄。agent capture 前 poll 它命中才拍、拍後 cross-check 它仍在才算 PASS（見 `manual-review.data-readiness.md` § `[verify:ui]` ready_signal 契約 + screenshot-review Verify Mode step 2-4）。**理由**：頁面 async query 資料在 `wait_for_load()` 之後才填，無 signal 時 agent 只能盲拍 → 拍到空殼（per TDMS monitoring-slot 2026-05-30 incident）。
+      - **主線 MUST 為每個 assertion-bearing verify:ui item 建 `ready_signal`**：從 item 描述的具體可斷言短語抽機械可判 signal（`text` / `text_all` / `text_any` / `selector` / `regex` / `min_rows`），放進 `--items-json` 的 `ready_signal` 欄。agent capture 前 poll 它命中才拍、拍後 cross-check 它仍在才算 PASS（見 `manual-review.data-readiness.md` § `[verify:ui]` ready_signal 契約 + screenshot-review Verify Mode step 2-4）。**理由**：頁面 async query 資料在 `wait_for_load()` 之後才填，無 signal 時 agent 只能盲拍 → 拍到空殼（per <consumer-b> monitoring-slot 2026-05-30 incident）。
       - **建不出 `ready_signal`**（描述只有「畫面正常」「顯示資料」等模糊語、無具體斷言點）→ **NEVER** 硬 dispatch；依 `manual-review.data-readiness.md` § signal-less 分流 reclassify（純主觀視覺 → `[review:ui]`；需互動才出現 → `[verify:e2e]` / `[verify:api]`）。既有未帶 signal 的 grandfather item → agent 走 generic-settle fallback（**不可**當 PASS 充分條件）。
       - Agent scope **MUST** 限於 open known URL + readiness gate poll（≤15s 等 ready_signal）+ final-state screenshot + post-capture cross-check + DOM observation。
       - Agent **NEVER** 做 mutation / form fill / click sequences / multi-role login switching / seed repair。
@@ -1093,7 +1093,7 @@ If there is no request_user_input 工具 available, present options as plain tex
 
 8a.6. **Pre-Manual-Review Self-Analysis** (clade fork addition — Layer E.1 of pre-handoff quality gates; not in upstream spectra)
 
-   The user must not be the **first** to discover trivial UX/data defects in the GUI. perno `app-status-badge-extraction`（2026-05-24）handed 9 fabricated `(verified-ui:)` annotations + an all-「-」員工 column straight to the user because nothing between Step 8a and the GUI re-checked the change. Step 8a.6 is that re-check.
+   The user must not be the **first** to discover trivial UX/data defects in the GUI. <consumer-g> `app-status-badge-extraction`（2026-05-24）handed 9 fabricated `(verified-ui:)` annotations + an all-「-」員工 column straight to the user because nothing between Step 8a and the GUI re-checked the change. Step 8a.6 is that re-check.
 
    **Model allocation**：E.1 五維分析由 **codex GPT-5.6-sol medium** 收集 + **codex GPT-5.6-sol xhigh** 判定。E.2 cross-model opinion 由 **codex GPT-5.6-sol xhigh** 執行。
 
@@ -1244,8 +1244,8 @@ If there is no request_user_input 工具 available, present options as plain tex
      > GUI 啟動後直接打開：
      >
      >   http://127.0.0.1:5174/review/<consumer-id>:<change-name>
-     >   # 例 co-purchase 的 mvp-financial-layer-bootstrap：
-     >   # http://127.0.0.1:5174/review/co-purchase:mvp-financial-layer-bootstrap
+     >   # 例 <consumer-e> 的 mvp-financial-layer-bootstrap：
+     >   # http://127.0.0.1:5174/review/<consumer-e>:mvp-financial-layer-bootstrap
      >
      > GUI 會自動配對 `screenshots/local/<change-name>/#<N>-*.png`、conflict-aware 寫回 tasks.md、對 `[verify:e2e]` / `[verify:api]` automatic-only items 自動勾 `[x]`、對 `[verify:ui]` / `[review:ui]` items 顯示 evidence 等你 OK / Issue / Skip。完成後回報，我繼續 Step 9 status。
    - **MUST 直接給 review-gui deep-link**（per `rules/core/proactive-skills.md` § Inline Review-GUI Deep-Link）：訊息 **MUST** 含 `http://127.0.0.1:5174/review/<consumer-id>:<change-name>` 完整 URL（cross-consumer mode 預設啟用，沒 `<consumer-id>:` prefix 會 fallback 到 clade mainEntry → API 404；`<consumer-id>` 從 `~/offline/clade/registry/consumers.json` 對應 entry 抓）。**NEVER** 寫「請在 worktree root 執行」或「請在 main consumer root 執行」當預設措辭——review-gui (`vendor/scripts/review-gui.mts` `listSourceRoots`) 從 clade home 跑時偵測 `vendor/scripts/review-gui.mts` + `consumers.local` 雙標記 → 進 cross-consumer mode，自動聚合所有 consumer + worktree change；consumer 端跑會被 `preflightCladeOnly` guard 擋下、退出 exit 2。**NEVER** 列 dev server URL（`http://localhost:3040/admin/...`）當替代——review-gui 內部已有 final-state screenshot + evidence。若 review 過程發現需要 fresh screenshot 或 user 想 sanity check，**MUST** 由 agent 自起 dev server（per `rules/core/proactive-skills.md` § Dev Server Auto-Spawn：scan free port 3001–3050、避開 3000、`run_in_background`、回報 URL + shellId），**NEVER** 叫 user cd worktree 跑 `pnpm dev`。`5174` 是 `vendor/scripts/review-gui.mts` `DEFAULT_PORT`，找不到時會 fallback 到 5174-5194，由 GUI startup banner 告知 user，主線不必猜。

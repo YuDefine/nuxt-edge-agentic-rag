@@ -180,7 +180,7 @@ ELSE:
   → 走原 bucket routing
 ```
 
-**「bucket=ready 但 issued>0」是最致命的盲區**（2026-07-21 perno 實證：5 個 issued items 被 `ready` bucket 掩蓋，change-loop 宣告 user-bound 然後 30min idle，user 被迫在 review-gui 等 Claude 不會來的接手）。
+**「bucket=ready 但 issued>0」是最致命的盲區**（2026-07-21 <consumer-g> 實證：5 個 issued items 被 `ready` bucket 掩蓋，change-loop 宣告 user-bound 然後 30min idle，user 被迫在 review-gui 等 Claude 不會來的接手）。
 
 **「bucket=applyBlocked 但人工檢查有 Claude-actionable」同理**：impl 卡 blocker ≠ review items 也卡。人工檢查 lifecycle 獨立於 impl lifecycle — applyBlocked change 的 review items 照樣要 triage。
 
@@ -435,7 +435,7 @@ Tasks.md 格式問題或 Pre-Review Data Readiness violation。
 
 - 有 actionable item 未處理卻停下來「等 user」= 違反核心 contract＋護欄 #11
 - in-flight agent 還在跑就寫 HANDOFF、釋放 lock 收工 = 違反護欄 #12
-- 寫「下一輪要做的」「下次 session 處理」然後收工 = **最常見違反**（2026-07-21 perno 實證）。E2E spec failure / guard bug / annotation drift 都是 fixable issues——MUST 就地修 → 重跑 → re-scan → 繼續 loop，**NEVER** 列 TODO 然後釋放 lock
+- 寫「下一輪要做的」「下次 session 處理」然後收工 = **最常見違反**（2026-07-21 <consumer-g> 實證）。E2E spec failure / guard bug / annotation drift 都是 fixable issues——MUST 就地修 → 重跑 → re-scan → 繼續 loop，**NEVER** 列 TODO 然後釋放 lock
 - 把 evidence 收集過程中發現的 code bug（guard 漏路徑 / spec selector 錯）分類成「下一輪」→ 違反 Error handling § fixable issue 規約
 
 ## Step 5 — Update HANDOFF
@@ -469,7 +469,7 @@ git push
 10. **不因 size/progress 跳過 dispatch** — applyInProgress item 不管進度 0% 或 change 看起來多大，MUST invoke `/spectra-apply`；dispatch 後 spectra-apply 自管 pause / blocker / timeout。「需要完整 session」「不適合 loop-engineer」等判斷 = 違反本條
 11. **主動 contract ＋ Output contract** — 能自主決策的自主完成；不確定時**MUST request_user_input**（blocker 是否解除、designated session 是否接手、商業決策），**NEVER 靜默跳過可以問 user 就解決的卡點**。Output 是純進度報告（shipped N / progressed N / skipped N），不是讓 user 做決定的選單——正向定義見開頭 § Output contract（✅ / ❌ 範例表）。scan 結果有 actionable item 就 MUST dispatch 或 ask，NEVER 停下「先等 user 驗收再繼續」
 12. **收割護欄** — in-flight ledger > 0 時**不是**停止狀態，即使四組皆空：**MUST** 走 Step 4.5 收割每一個回報，**NEVER** 提早寫 HANDOFF 收工；lock 在 in-flight > 0 期間**不釋放**（防第二輪 routine 疊上來）；超過 **2 小時**無任何 agent 回報 → 強制退出（尚未回報的 in-flight 條目按 dispatch 失敗記 fail-streak、寫 HANDOFF + 釋放 lock），防 hang；`--unattended` 的 3-item cap **包含**收割後補 dispatch 的 items
-13. **Bucket ≠ ball ownership（Claude-actionable override 護欄）** — `bucket=ready` 不等於 user-bound；`bucket=applyBlocked` 不等於 Claude 無事可做。**MUST** 在每條 change 的 bucket routing 後檢查 `issued` / `verifyClaudePendingCount` / `discussPendingCount` / `staleEvidenceCount`。任一 > 0 = Claude 仍有工作，**NEVER** 以 bucket 為由 skip。實證（2026-07-21 perno）：bucket=`ready` + issued=5 → change-loop 宣告 user-bound + 30min idle，user 在 review-gui 等 Claude 接手永遠等不到。**「所有 change 卡 user action」這句話在 issued>0 時就是錯誤判斷。**
+13. **Bucket ≠ ball ownership（Claude-actionable override 護欄）** — `bucket=ready` 不等於 user-bound；`bucket=applyBlocked` 不等於 Claude 無事可做。**MUST** 在每條 change 的 bucket routing 後檢查 `issued` / `verifyClaudePendingCount` / `discussPendingCount` / `staleEvidenceCount`。任一 > 0 = Claude 仍有工作，**NEVER** 以 bucket 為由 skip。實證（2026-07-21 <consumer-g>）：bucket=`ready` + issued=5 → change-loop 宣告 user-bound + 30min idle，user 在 review-gui 等 Claude 接手永遠等不到。**「所有 change 卡 user action」這句話在 issued>0 時就是錯誤判斷。**
 
 ## Reference
 

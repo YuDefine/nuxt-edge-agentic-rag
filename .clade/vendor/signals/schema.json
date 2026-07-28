@@ -35,7 +35,7 @@
       "type": "string",
       "minLength": 1,
       "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$",
-      "description": "owner/repo form, e.g. BigByte-Education-IT/perno."
+      "description": "owner/repo form, e.g. <client-a>/<consumer-g>."
     },
     "event_id": {
       "type": "string",
