@@ -1,1 +1,0 @@
-/Users/charles/offline/clade/dist/nuxt-edge-agentic-rag/rules/database.md
