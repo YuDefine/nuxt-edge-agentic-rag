@@ -3,6 +3,11 @@
     "codebase-memory-mcp": {
       "type": "stdio",
       "command": "/Users/charles/.local/bin/codebase-memory-mcp"
+    },
+    "chrome-devtools-mcp": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "chrome-devtools-mcp@latest"]
     }
   }
 }
