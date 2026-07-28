@@ -96,7 +96,7 @@
     "rules/page-loading-golden-path.md": "3528bcda789fa8c0",
     "scripts/codex-review-safe.sh": "a65c0b678844cb05",
     "scripts/commit-lock.mjs": "f81c79df484ce5db",
-    "scripts/gh-ci-watch.sh": "1280b3f842d06939",
+    "scripts/gh-ci-watch.sh": "b21bbfcea6c50b8b",
     "skills/change-loop/SKILL.md": "9d62a327cd72ac64",
     "skills/change-loop/reference/blocker-evaluation.md": "bac88575c171f124",
     "skills/change-loop/reference/dispatch-topology.md": "b47be66334bb9ed9",
