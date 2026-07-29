@@ -4,7 +4,7 @@
   "checksums": {
     "rules/agent-routing.codex-input-intercept.md": "f62802d55d55ac83",
     "rules/agent-routing.codex-watch-protocol.md": "3e1a82e97a9c805b",
-    "rules/agent-routing.md": "b62719cadc665f37",
+    "rules/agent-routing.md": "4046f9349abebeeb",
     "rules/agent-self-verification.md": "27e8e7c83980bf23",
     "rules/audit-pattern.md": "f4911bd34782a73c",
     "rules/auth-data-path-consistency.md": "68c4747dff7c97da",
@@ -50,7 +50,7 @@
     "rules/review-tiers.md": "e74bf5bca84d7178",
     "rules/rule-authoring.md": "85bcab1bc848aab0",
     "rules/scope-discipline.md": "a9be76be7d812dc0",
-    "rules/screenshot-strategy.md": "80ffbd4e9e57d80c",
+    "rules/screenshot-strategy.md": "783a13ca2771061a",
     "rules/self-hosted-runner.md": "3ae4e6155382e854",
     "rules/session-claims.md": "1d9ed015c3cb5eee",
     "rules/session-tasks.md": "878a7ce6f8d6a854",
