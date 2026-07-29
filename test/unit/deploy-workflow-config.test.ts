@@ -3,10 +3,13 @@ import { resolve } from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
+import { behaviourView } from '../helpers/config-text'
+
 const workflowPath = resolve(process.cwd(), '.github/workflows/deploy.yml')
-const workflowSource = readFileSync(workflowPath, 'utf8')
+// 行為斷言綁剝除註解後的 view — 註解會逐字引用它所解釋的設定，綁原文的話刪掉實作也照樣通過
+const workflowSource = behaviourView(readFileSync(workflowPath, 'utf8'))
 const stagingWranglerPath = resolve(process.cwd(), 'wrangler.staging.jsonc')
-const stagingWranglerSource = readFileSync(stagingWranglerPath, 'utf8')
+const stagingWranglerSource = behaviourView(readFileSync(stagingWranglerPath, 'utf8'))
 
 describe('deploy workflow config', () => {
   it('injects ADMIN_EMAIL_ALLOWLIST into the production build env', () => {
