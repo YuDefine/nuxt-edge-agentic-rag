@@ -27,6 +27,7 @@
 | TD-068 | deploy.yml 兩個 wrangler-action step 缺 secrets: list（違反 cf-workers/secrets.md rule）                                                                                                                                                                             | mid      | open        | 2026-05-09 — clade v0.5.25 新增 rules/modules/runtime/cf-workers/secrets.md 後對 5 consumer 跑 verify checklist 揭露 | —     |
 | TD-069 | T3 evlog 落地 production 缺 D1 evlog_events migration（drain 在 prod 是 dead-write）                                                                                                                                                                                 | high — T3 evlog 在 production 形同無作用，所有 wide event drain 都會 silently fail | open        | 2026-05-10 — clade HANDOFF §2.4 dev smoke 跑 wrangler d1 execute agentic-rag-db --remote --command "SELECT count(*) FROM evlog_events" 回 no such table: evlog_events: SQLITE_ERROR [code: 7500] | —     |
 | TD-070 | `rag-query-rewriting` 人工檢查對齊新 manual-review 規範（補 `[discuss]` marker + verify channel + Pre-Review Data Readiness）                                                                                                                                 | mid      | open        | 2026-05-12 clade v1.3.6 manual-review.md 新規散播                | —     |
+| TD-071 | deploy-workflow contract test 對 workflow 原文做無錨點斷言、未剝除註解 — 註解引用同一字串即恆綠 | mid | open | 2026-07-29 clade pitfall 跨 consumer 掃描 | — |
 
 ---
 
@@ -690,3 +691,32 @@ User 決定本次 session **登記不處理**（2026-05-12 對話中明示「age
 - `archive-gate.sh` Check 4 驗 `[discuss]` items 都有 evidence trail 或勾選
 - `spectra-archive` 可通過 manual-review hygiene gate
 
+---
+
+## TD-071 — deploy-workflow contract test 對 workflow 原文無錨點斷言、未剝除註解
+
+**Status**: open
+**Priority**: mid
+**Discovered**: 2026-07-29 — clade `pitfall-config-assertion-satisfied-by-own-comment` 的跨 consumer 掃描
+**Location**: `test/unit/deploy-workflow-config.test.ts`、`test/unit/deploy-workflow-passkey-env.test.ts`
+
+### Problem
+
+兩個 test 讀 `.github/workflows/*.yml` 的**原文**做字面斷言，共 26 條無錨點 `toContain` + 2 條 `not.toContain`，**0 處剝除註解**。註解為了解釋實作會逐字引用實作，因此只要被斷言的字串同時出現在註解裡，把實作刪掉斷言仍成立 —— 測試恆綠；反向的 `not.toContain` 則是註解命中造成誤報。
+
+2026-07-29 逐條掃描（比對每個被斷言字面值是否出現在目標檔註解行）**沒有找到當下已恆真的斷言**，屬潛在形態不是現行缺陷。
+
+同 repo 內的 `test/unit/ci-gate.test.ts`、`test/unit/staging-gate.test.ts` 不在此列 —— 它們對匯出的純函式（`evaluateCiGate` / `evaluateStagingGate`）跑 in-test fixture，從不讀 workflow 檔，結構上免疫，可作為本 repo 的正解範例。
+
+### Fix approach
+
+依 clade `rules/core/testing-anti-patterns.md` §「對設定檔原文的斷言，標的是行為本身」：
+
+1. 讀進 workflow 後先建行為 view（濾掉 `/^\s*#/` 的行），所有行為斷言改綁該 view；或改用 YAML parser 對節點斷言
+2. 每條斷言附一次 mutation 證明（改壞被鎖的那行、確認轉紅），在 repo 外的複本上跑
+3. 更根本的選項：比照 ci-gate / staging-gate，把判斷邏輯抽成純函式再對函式測試
+
+### Acceptance
+
+- 兩個 test 的行為斷言不再直接綁含註解的原文
+- 對其中任一條斷言做 mutation 可觀察到轉紅
