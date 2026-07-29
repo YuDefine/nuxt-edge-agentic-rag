@@ -27,7 +27,7 @@
 | TD-068 | deploy.yml 兩個 wrangler-action step 缺 secrets: list（違反 cf-workers/secrets.md rule）                                                                                                                                                                             | mid      | open        | 2026-05-09 — clade v0.5.25 新增 rules/modules/runtime/cf-workers/secrets.md 後對 5 consumer 跑 verify checklist 揭露 | —     |
 | TD-069 | T3 evlog 落地 production 缺 D1 evlog_events migration（drain 在 prod 是 dead-write）                                                                                                                                                                                 | high — T3 evlog 在 production 形同無作用，所有 wide event drain 都會 silently fail | open        | 2026-05-10 — clade HANDOFF §2.4 dev smoke 跑 wrangler d1 execute agentic-rag-db --remote --command "SELECT count(*) FROM evlog_events" 回 no such table: evlog_events: SQLITE_ERROR [code: 7500] | —     |
 | TD-070 | `rag-query-rewriting` 人工檢查對齊新 manual-review 規範（補 `[discuss]` marker + verify channel + Pre-Review Data Readiness）                                                                                                                                 | mid      | open        | 2026-05-12 clade v1.3.6 manual-review.md 新規散播                | —     |
-| TD-071 | deploy-workflow contract test 對 workflow 原文做無錨點斷言、未剝除註解 — 註解引用同一字串即恆綠 | mid | open | 2026-07-29 clade pitfall 跨 consumer 掃描 | — |
+| TD-071 | deploy-workflow contract test 對 workflow 原文做無錨點斷言、未剝除註解 — 註解引用同一字串即恆綠 | mid | done | 2026-07-29 clade pitfall 跨 consumer 掃描 | — |
 
 ---
 
@@ -695,7 +695,7 @@ User 決定本次 session **登記不處理**（2026-05-12 對話中明示「age
 
 ## TD-071 — deploy-workflow contract test 對 workflow 原文無錨點斷言、未剝除註解
 
-**Status**: open
+**Status**: done
 **Priority**: mid
 **Discovered**: 2026-07-29 — clade `pitfall-config-assertion-satisfied-by-own-comment` 的跨 consumer 掃描
 **Location**: `test/unit/deploy-workflow-config.test.ts`、`test/unit/deploy-workflow-passkey-env.test.ts`
@@ -720,3 +720,9 @@ User 決定本次 session **登記不處理**（2026-05-12 對話中明示「age
 
 - 兩個 test 的行為斷言不再直接綁含註解的原文
 - 對其中任一條斷言做 mutation 可觀察到轉紅
+
+### Resolution（2026-07-29，commit `1896b929`）
+
+新增 `test/helpers/config-text.ts` 的 `behaviourView()`（濾掉 YAML `#` 與 JSONC `//` 整行註解），
+兩個 test 的 source 改綁該 view。Mutation 實證：把註解放進被斷言的切片內、同時刪掉 secret 注入 →
+綁原文假 PASS、綁 `behaviourView` FAIL。128 test files / 829 tests 全綠。
