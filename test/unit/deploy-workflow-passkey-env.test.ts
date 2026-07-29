@@ -3,7 +3,10 @@ import { resolve } from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
-const deployWorkflow = readFileSync(resolve('.github/workflows/deploy.yml'), 'utf8')
+import { behaviourView } from '../helpers/config-text'
+
+// 行為斷言綁剝除註解後的 view — 註解會逐字引用它所解釋的設定，綁原文的話刪掉實作也照樣通過
+const deployWorkflow = behaviourView(readFileSync(resolve('.github/workflows/deploy.yml'), 'utf8'))
 
 function getStepBlock(stepName: string): string {
   const marker = `- name: ${stepName}`
