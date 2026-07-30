@@ -242,6 +242,23 @@ git diff --stat                 # 僅輔助看 tracked 改動規模；NEVER 當�
 - path/to/file.ts
 ```
 
+`類型` 取值與 Step 4 訊息開頭的 emoji（`commitlint.config.ts`）：
+
+| Emoji | Type     | 用途     |
+| ----- | -------- | -------- |
+| ✨    | feat     | 新功能   |
+| 🐛    | fix      | Bug 修復 |
+| 🧹    | chore    | 維護     |
+| 🔨    | refactor | 重構     |
+| 🧪    | test     | 測試     |
+| 🎨    | style    | 樣式     |
+| 📝    | docs     | 文件     |
+| 📦    | build    | 建置     |
+| 👷    | ci       | CI/CD    |
+| ⏪    | revert   | 還原     |
+| 🚀    | deploy   | 部署     |
+| 🎉    | init     | 初始化   |
+
 **分組輸入 = Step 2 的 `git status --porcelain` 完整輸出**（tracked modified + untracked 非 ignored），**NEVER** 只用 `git diff --stat`。
 
 - **Untracked 非 ignored 檔（`??`）一律納入分組**，通常自成獨立 `chore` group（除非語義明確屬於某 feat / fix group）
