@@ -1,0 +1,1 @@
+../../.clade/runtime/rules/agent-self-verification.screenshot-evidence.md
