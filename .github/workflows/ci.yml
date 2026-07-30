@@ -46,6 +46,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          # evlog map gate 要跟 base ref 比對，才判斷得出「本次 diff 觸及哪些
+          # entry point」。shallow clone 會讓那條判定退化成 warning。
+          fetch-depth: 0
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -72,3 +76,8 @@ jobs:
           BETTER_AUTH_SECRET: test-better-auth-secret-at-least-32-chars
           NUXT_SESSION_PASSWORD: test-session-password-at-least-32-chars
         run: pnpm test
+
+      - name: evlog map coverage gate
+        uses: ./.github/actions/evlog-map-gate
+        with:
+          base-ref: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || 'origin/main' }}

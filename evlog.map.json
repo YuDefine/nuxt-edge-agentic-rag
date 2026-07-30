@@ -1,0 +1,2706 @@
+{
+  "version": 1,
+  "generatedAt": "2026-07-30T23:27:10.851Z",
+  "framework": "nuxt",
+  "projectName": "nuxt-edge-agentic-rag",
+  "score": 56,
+  "routes": [
+    {
+      "framework": "nuxt",
+      "kind": "middleware",
+      "method": null,
+      "path": "*",
+      "file": "server/middleware/00-evlog-actor.ts",
+      "handler": {
+        "line": 21,
+        "column": 0
+      },
+      "id": "3b83b97c095f",
+      "checks": {
+        "structured-errors": {
+          "status": "n/a"
+        },
+        "audit": {
+          "status": "n/a"
+        },
+        "wide-event": {
+          "status": "pass"
+        },
+        "context": {
+          "status": "pass"
+        },
+        "error-handling": {
+          "status": "fail",
+          "message": "empty catch block swallows errors",
+          "evidence": {
+            "file": "server/middleware/00-evlog-actor.ts",
+            "line": 40,
+            "snippet": "} catch {"
+          }
+        }
+      },
+      "suggestions": {},
+      "sensitivity": {
+        "level": "none",
+        "reasons": []
+      },
+      "score": 85
+    },
+    {
+      "framework": "nuxt",
+      "kind": "page",
+      "method": null,
+      "path": "/",
+      "file": "app/pages/index.vue",
+      "handler": null,
+      "id": "8e327f197322",
+      "checks": {
+        "page-error-handling": {
+          "status": "n/a"
+        }
+      },
+      "suggestions": {},
+      "sensitivity": {
+        "level": "none",
+        "reasons": []
+      },
+      "score": 100
+    },
+    {
+      "framework": "nuxt",
+      "kind": "page",
+      "method": null,
+      "path": "/account-pending",
+      "file": "app/pages/account-pending.vue",
+      "handler": null,
+      "id": "533322b7a0ee",
+      "checks": {
+        "page-error-handling": {
+          "status": "n/a"
+        }
+      },
+      "suggestions": {},
+      "sensitivity": {
+        "level": "none",
+        "reasons": []
+      },
+      "score": 100
+    },
+    {
+      "framework": "nuxt",
+      "kind": "page",
+      "method": null,
+      "path": "/account/settings",
+      "file": "app/pages/account/settings.vue",
+      "handler": null,
+      "id": "0eb38b708f77",
+      "checks": {
+        "page-error-handling": {
+          "status": "n/a"
+        }
+      },
+      "suggestions": {},
+      "sensitivity": {
+        "level": "none",
+        "reasons": []
+      },
+      "score": 100
+    },
+    {
+      "framework": "nuxt",
+      "kind": "page",
+      "method": null,
+      "path": "/admin/dashboard",
+      "file": "app/pages/admin/dashboard/index.vue",
+      "handler": null,
+      "id": "7d67782584d6",
+      "checks": {
+        "page-error-handling": {
+          "status": "n/a"
+        }
+      },
+      "suggestions": {},
+      "sensitivity": {
+        "level": "none",
+        "reasons": []
+      },
+      "score": 100
+    },
+    {
+      "framework": "nuxt",
+      "kind": "page",
+      "method": null,
+      "path": "/admin/debug/latency",
+      "file": "app/pages/admin/debug/latency/index.vue",
+      "handler": null,
+      "id": "994a1cc1d886",
+      "checks": {
+        "page-error-handling": {
+          "status": "pass"
+        }
+      },
+      "suggestions": {},
+      "sensitivity": {
+        "level": "none",
+        "reasons": []
+      },
+      "score": 100
+    },
+    {
+      "framework": "nuxt",
+      "kind": "page",
+      "method": null,
+      "path": "/admin/debug/query-logs/:id",
+      "file": "app/pages/admin/debug/query-logs/[id].vue",
+      "handler": null,
+      "id": "7454160fb2ba",
+      "checks": {
+        "page-error-handling": {
+          "status": "pass"
+        }
+      },
+      "suggestions": {},
+      "sensitivity": {
+        "level": "none",
+        "reasons": []
+      },
+      "score": 100
+    },
+    {
+      "framework": "nuxt",
+      "kind": "page",
+      "method": null,
+      "path": "/admin/documents",
+      "file": "app/pages/admin/documents/index.vue",
+      "handler": null,
+      "id": "faf29d25bc71",
+      "checks": {
+        "page-error-handling": {
+          "status": "pass"
+        }
+      },
+      "suggestions": {},
+      "sensitivity": {
+        "level": "none",
+        "reasons": []
+      },
+      "score": 100
+    },
+    {
+      "framework": "nuxt",
+      "kind": "page",
+      "method": null,
+      "path": "/admin/documents/:id",
+      "file": "app/pages/admin/documents/[id].vue",
+      "handler": null,
+      "id": "a57cdc1d7fc7",
+      "checks": {
+        "page-error-handling": {
+          "status": "pass"
+        }
+      },
+      "suggestions": {},
+      "sensitivity": {
+        "level": "none",
+        "reasons": []
+      },
+      "score": 100
+    },
+    {
+      "framework": "nuxt",
+      "kind": "page",
+      "method": null,
+      "path": "/admin/documents/upload",
+      "file": "app/pages/admin/documents/upload.vue",
+      "handler": null,
+      "id": "f6cc3655c63a",
+      "checks": {
+        "page-error-handling": {
+          "status": "fail",
+          "message": "useFetch() without error handling — the page breaks when it fails",
+          "evidence": {
+            "file": "app/pages/admin/documents/upload.vue",
+            "line": 27
+          }
+        }
+      },
+      "suggestions": {},
+      "sensitivity": {
+        "level": "none",
+        "reasons": []
+      },
+      "score": 80
+    },
+    {
+      "framework": "nuxt",
+      "kind": "page",
+      "method": null,
+      "path": "/admin/members",
+      "file": "app/pages/admin/members/index.vue",
+      "handler": null,
+      "id": "6a8fbf29a180",
+      "checks": {
+        "page-error-handling": {
+          "status": "n/a"
+        }
+      },
+      "suggestions": {},
+      "sensitivity": {
+        "level": "none",
+        "reasons": []
+      },
+      "score": 100
+    },
+    {
+      "framework": "nuxt",
+      "kind": "page",
+      "method": null,
+      "path": "/admin/query-logs",
+      "file": "app/pages/admin/query-logs/index.vue",
+      "handler": null,
+      "id": "a3328cfdb8e3",
+      "checks": {
+        "page-error-handling": {
+          "status": "n/a"
+        }
+      },
+      "suggestions": {},
+      "sensitivity": {
+        "level": "none",
+        "reasons": []
+      },
+      "score": 100
+    },
+    {
+      "framework": "nuxt",
+      "kind": "page",
+      "method": null,
+      "path": "/admin/query-logs/:id",
+      "file": "app/pages/admin/query-logs/[id].vue",
+      "handler": null,
+      "id": "bbadbab6f53b",
+      "checks": {
+        "page-error-handling": {
+          "status": "pass"
+        }
+      },
+      "suggestions": {},
+      "sensitivity": {
+        "level": "none",
+        "reasons": []
+      },
+      "score": 100
+    },
+    {
+      "framework": "nuxt",
+      "kind": "page",
+      "method": null,
+      "path": "/admin/settings/guest-policy",
+      "file": "app/pages/admin/settings/guest-policy.vue",
+      "handler": null,
+      "id": "82262c80ba32",
+      "checks": {
+        "page-error-handling": {
+          "status": "pass"
+        }
+      },
+      "suggestions": {},
+      "sensitivity": {
+        "level": "none",
+        "reasons": []
+      },
+      "score": 100
+    },
+    {
+      "framework": "nuxt",
+      "kind": "page",
+      "method": null,
+      "path": "/admin/tokens",
+      "file": "app/pages/admin/tokens/index.vue",
+      "handler": null,
+      "id": "f63bdcbc28d2",
+      "checks": {
+        "page-error-handling": {
+          "status": "n/a"
+        }
+      },
+      "suggestions": {},
+      "sensitivity": {
+        "level": "high",
+        "reasons": ["auth: path says \"token\""]
+      },
+      "score": 100
+    },
+    {
+      "framework": "nuxt",
+      "kind": "page",
+      "method": null,
+      "path": "/admin/usage",
+      "file": "app/pages/admin/usage.vue",
+      "handler": null,
+      "id": "47fbce15784b",
+      "checks": {
+        "page-error-handling": {
+          "status": "pass"
+        }
+      },
+      "suggestions": {},
+      "sensitivity": {
+        "level": "none",
+        "reasons": []
+      },
+      "score": 100
+    },
+    {
+      "framework": "nuxt",
+      "kind": "api",
+      "method": "POST",
+      "path": "/api/_dev/chat-smoke",
+      "file": "server/api/_dev/chat-smoke.post.ts",
+      "handler": {
+        "line": 17,
+        "column": 0
+      },
+      "id": "d32ee55fdd3b",
+      "checks": {
+        "audit": {
+          "status": "n/a"
+        },
+        "wide-event": {
+          "status": "pass"
+        },
+        "context": {
+          "status": "fail",
+          "message": "no log.set() context accumulation",
+          "evidence": {
+            "file": "server/api/_dev/chat-smoke.post.ts",
+            "line": 17
+          }
+        },
+        "structured-errors": {
+          "status": "fail",
+          "message": "createError() missing why and fix",
+          "evidence": {
+            "file": "server/api/_dev/chat-smoke.post.ts",
+            "line": 22,
+            "snippet": "throw createError({"
+          }
+        },
+        "error-handling": {
+          "status": "pass"
+        }
+      },
+      "suggestions": {},
+      "sensitivity": {
+        "level": "none",
+        "reasons": []
+      },
+      "score": 65
+    },
+    {
+      "framework": "nuxt",
+      "kind": "api",
+      "method": "POST",
+      "path": "/api/_dev/login",
+      "file": "server/api/_dev/login.post.ts",
+      "handler": {
+        "line": 212,
+        "column": 0
+      },
+      "id": "7dbdefa0e7eb",
+      "checks": {
+        "wide-event": {
+          "status": "pass"
+        },
+        "context": {
+          "status": "fail",
+          "message": "no log.set() context accumulation",
+          "evidence": {
+            "file": "server/api/_dev/login.post.ts",
+            "line": 212
+          }
+        },
+        "structured-errors": {
+          "status": "fail",
+          "message": "createError() missing why and fix",
+          "evidence": {
+            "file": "server/api/_dev/login.post.ts",
+            "line": 175,
+            "snippet": "throw createError({"
+          }
+        },
+        "audit": {
+          "status": "fail",
+          "message": "has logger + context but no log.audit() — sensitive route needs audit trail",
+          "evidence": {
+            "file": "server/api/_dev/login.post.ts",
+            "line": 212
+          }
+        },
+        "error-handling": {
+          "status": "fail",
+          "message": "empty catch block swallows errors",
+          "evidence": {
+            "file": "server/api/_dev/login.post.ts",
+            "line": 287,
+            "snippet": "} catch {"
+          }
+        }
+      },
+      "suggestions": {},
+      "sensitivity": {
+        "level": "high",
+        "reasons": ["auth: path says \"login\"", "pii: write operation with sensitive fields"]
+      },
+      "score": 25
+    },
+    {
+      "framework": "nuxt",
+      "kind": "api",
+      "method": "POST",
+      "path": "/api/_dev/seed-mock-documents",
+      "file": "server/api/_dev/seed-mock-documents.post.ts",
+      "handler": {
+        "line": 31,
+        "column": 0
+      },
+      "id": "352c09e7150b",
+      "checks": {
+        "audit": {
+          "status": "n/a"
+        },
+        "wide-event": {
+          "status": "pass"
+        },
+        "context": {
+          "status": "fail",
+          "message": "no log.set() context accumulation",
+          "evidence": {
+            "file": "server/api/_dev/seed-mock-documents.post.ts",
+            "line": 31
+          }
+        },
+        "structured-errors": {
+          "status": "fail",
+          "message": "createError() missing why and fix",
+          "evidence": {
+            "file": "server/api/_dev/seed-mock-documents.post.ts",
+            "line": 36,
+            "snippet": "throw createError({"
+          }
+        },
+        "error-handling": {
+          "status": "pass"
+        }
+      },
+      "suggestions": {},
+      "sensitivity": {
+        "level": "none",
+        "reasons": []
+      },
+      "score": 65
+    },
+    {
+      "framework": "nuxt",
+      "kind": "api",
+      "method": "PUT",
+      "path": "/api/_dev/uploads/local",
+      "file": "server/api/_dev/uploads/local.put.ts",
+      "handler": {
+        "line": 14,
+        "column": 0
+      },
+      "id": "53922aaa68a0",
+      "checks": {
+        "audit": {
+          "status": "n/a"
+        },
+        "wide-event": {
+          "status": "pass"
+        },
+        "context": {
+          "status": "fail",
+          "message": "no log.set() context accumulation",
+          "evidence": {
+            "file": "server/api/_dev/uploads/local.put.ts",
+            "line": 14
+          }
+        },
+        "structured-errors": {
+          "status": "fail",
+          "message": "createError() missing why and fix",
+          "evidence": {
+            "file": "server/api/_dev/uploads/local.put.ts",
+            "line": 19,
+            "snippet": "throw createError({"
+          }
+        },
+        "error-handling": {
+          "status": "pass"
+        }
+      },
+      "suggestions": {},
+      "sensitivity": {
+        "level": "none",
+        "reasons": []
+      },
+      "score": 65
+    },
+    {
+      "framework": "nuxt",
+      "kind": "api",
+      "method": "GET",
+      "path": "/api/admin/dashboard/summary",
+      "file": "server/api/admin/dashboard/summary.get.ts",
+      "handler": {
+        "line": 16,
+        "column": 0
+      },
+      "id": "1fe5c2490786",
+      "checks": {
+        "audit": {
+          "status": "n/a"
+        },
+        "wide-event": {
+          "status": "pass"
+        },
+        "context": {
+          "status": "pass"
+        },
+        "structured-errors": {
+          "status": "fail",
+          "message": "createError() missing why and fix",
+          "evidence": {
+            "file": "server/api/admin/dashboard/summary.get.ts",
+            "line": 25,
+            "snippet": "throw createError({"
+          }
+        },
+        "error-handling": {
+          "status": "pass"
+        }
+      },
+      "suggestions": {},
+      "sensitivity": {
+        "level": "none",
+        "reasons": []
+      },
+      "score": 80
+    },
+    {
+      "framework": "nuxt",
+      "kind": "api",
+      "method": "GET",
+      "path": "/api/admin/debug/latency/summary",
+      "file": "server/api/admin/debug/latency/summary.get.ts",
+      "handler": {
+        "line": 27,
+        "column": 0
+      },
+      "id": "4456bf552c74",
+      "checks": {
+        "audit": {
+          "status": "n/a"
+        },
+        "wide-event": {
+          "status": "pass"
+        },
+        "context": {
+          "status": "pass"
+        },
+        "structured-errors": {
+          "status": "fail",
+          "message": "createError() missing why and fix",
+          "evidence": {
+            "file": "server/api/admin/debug/latency/summary.get.ts",
+            "line": 55,
+            "snippet": "throw createError({"
+          }
+        },
+        "error-handling": {
+          "status": "pass"
+        }
+      },
+      "suggestions": {},
+      "sensitivity": {
+        "level": "none",
+        "reasons": []
+      },
+      "score": 80
+    },
+    {
+      "framework": "nuxt",
+      "kind": "api",
+      "method": "GET",
+      "path": "/api/admin/debug/query-logs/:id",
+      "file": "server/api/admin/debug/query-logs/[id].get.ts",
+      "handler": {
+        "line": 18,
+        "column": 0
+      },
+      "id": "b6658ae888f3",
+      "checks": {
+        "audit": {
+          "status": "n/a"
+        },
+        "wide-event": {
+          "status": "pass"
+        },
+        "context": {
+          "status": "pass"
+        },
+        "structured-errors": {
+          "status": "fail",
+          "message": "createError() missing why and fix",
+          "evidence": {
+            "file": "server/api/admin/debug/query-logs/[id].get.ts",
+            "line": 41,
+            "snippet": "throw createError({"
+          }
+        },
+        "error-handling": {
+          "status": "pass"
+        }
+      },
+      "suggestions": {},
+      "sensitivity": {
+        "level": "none",
+        "reasons": []
+      },
+      "score": 80
+    },
+    {
+      "framework": "nuxt",
+      "kind": "api",
+      "method": "GET",
+      "path": "/api/admin/documents",
+      "file": "server/api/admin/documents/index.get.ts",
+      "handler": {
+        "line": 5,
+        "column": 0
+      },
+      "id": "9f3ebf21d947",
+      "checks": {
+        "audit": {
+          "status": "n/a"
+        },
+        "wide-event": {
+          "status": "pass"
+        },
+        "context": {
+          "status": "fail",
+          "message": "no log.set() context accumulation",
+          "evidence": {
+            "file": "server/api/admin/documents/index.get.ts",
+            "line": 5
+          }
+        },
+        "structured-errors": {
+          "status": "fail",
+          "message": "createError() missing why and fix",
+          "evidence": {
+            "file": "server/api/admin/documents/index.get.ts",
+            "line": 18,
+            "snippet": "throw createError({"
+          }
+        },
+        "error-handling": {
+          "status": "pass"
+        }
+      },
+      "suggestions": {},
+      "sensitivity": {
+        "level": "none",
+        "reasons": []
+      },
+      "score": 65
+    },
+    {
+      "framework": "nuxt",
+      "kind": "api",
+      "method": "DELETE",
+      "path": "/api/admin/documents/:id",
+      "file": "server/api/admin/documents/[id].delete.ts",
+      "handler": {
+        "line": 11,
+        "column": 0
+      },
+      "id": "53d8d0c62a96",
+      "checks": {
+        "audit": {
+          "status": "n/a"
+        },
+        "wide-event": {
+          "status": "pass"
+        },
+        "context": {
+          "status": "pass"
+        },
+        "structured-errors": {
+          "status": "fail",
+          "message": "createError() missing why and fix",
+          "evidence": {
+            "file": "server/api/admin/documents/[id].delete.ts",
+            "line": 48,
+            "snippet": "throw createError({"
+          }
+        },
+        "error-handling": {
+          "status": "pass"
+        }
+      },
+      "suggestions": {},
+      "sensitivity": {
+        "level": "none",
+        "reasons": []
+      },
+      "score": 80
+    },
+    {
+      "framework": "nuxt",
+      "kind": "api",
+      "method": "GET",
+      "path": "/api/admin/documents/:id",
+      "file": "server/api/admin/documents/[id].get.ts",
+      "handler": {
+        "line": 7,
+        "column": 0
+      },
+      "id": "17b25c3b6db9",
+      "checks": {
+        "audit": {
+          "status": "n/a"
+        },
+        "wide-event": {
+          "status": "pass"
+        },
+        "context": {
+          "status": "fail",
+          "message": "no log.set() context accumulation",
+          "evidence": {
+            "file": "server/api/admin/documents/[id].get.ts",
+            "line": 7
+          }
+        },
+        "structured-errors": {
+          "status": "fail",
+          "message": "createError() missing why and fix",
+          "evidence": {
+            "file": "server/api/admin/documents/[id].get.ts",
+            "line": 19,
+            "snippet": "throw createError({"
+          }
+        },
+        "error-handling": {
+          "status": "pass"
+        }
+      },
+      "suggestions": {},
+      "sensitivity": {
+        "level": "none",
+        "reasons": []
+      },
+      "score": 65
+    },
+    {
+      "framework": "nuxt",
+      "kind": "api",
+      "method": "POST",
+      "path": "/api/admin/documents/:id/archive",
+      "file": "server/api/admin/documents/[id]/archive.post.ts",
+      "handler": {
+        "line": 6,
+        "column": 0
+      },
+      "id": "26421f214e69",
+      "checks": {
+        "audit": {
+          "status": "n/a"
+        },
+        "wide-event": {
+          "status": "pass"
+        },
+        "context": {
+          "status": "pass"
+        },
+        "structured-errors": {
+          "status": "fail",
+          "message": "createError() missing why and fix",
+          "evidence": {
+            "file": "server/api/admin/documents/[id]/archive.post.ts",
+            "line": 34,
+            "snippet": "throw createError({"
+          }
+        },
+        "error-handling": {
+          "status": "pass"
+        }
+      },
+      "suggestions": {},
+      "sensitivity": {
+        "level": "none",
+        "reasons": []
+      },
+      "score": 80
+    },
+    {
+      "framework": "nuxt",
+      "kind": "api",
+      "method": "POST",
+      "path": "/api/admin/documents/:id/unarchive",
+      "file": "server/api/admin/documents/[id]/unarchive.post.ts",
+      "handler": {
+        "line": 6,
+        "column": 0
+      },
+      "id": "3ad6077387e3",
+      "checks": {
+        "audit": {
+          "status": "n/a"
+        },
+        "wide-event": {
+          "status": "pass"
+        },
+        "context": {
+          "status": "pass"
+        },
+        "structured-errors": {
+          "status": "fail",
+          "message": "createError() missing why and fix",
+          "evidence": {
+            "file": "server/api/admin/documents/[id]/unarchive.post.ts",
+            "line": 34,
+            "snippet": "throw createError({"
+          }
+        },
+        "error-handling": {
+          "status": "pass"
+        }
+      },
+      "suggestions": {},
+      "sensitivity": {
+        "level": "none",
+        "reasons": []
+      },
+      "score": 80
+    },
+    {
+      "framework": "nuxt",
+      "kind": "api",
+      "method": "POST",
+      "path": "/api/admin/documents/:id/versions/:versionId/retry-sync",
+      "file": "server/api/admin/documents/[id]/versions/[versionId]/retry-sync.post.ts",
+      "handler": {
+        "line": 6,
+        "column": 0
+      },
+      "id": "83a07bf47cea",
+      "checks": {
+        "audit": {
+          "status": "n/a"
+        },
+        "wide-event": {
+          "status": "pass"
+        },
+        "context": {
+          "status": "pass"
+        },
+        "structured-errors": {
+          "status": "fail",
+          "message": "createError() missing why and fix",
+          "evidence": {
+            "file": "server/api/admin/documents/[id]/versions/[versionId]/retry-sync.post.ts",
+            "line": 42,
+            "snippet": "throw createError({"
+          }
+        },
+        "error-handling": {
+          "status": "pass"
+        }
+      },
+      "suggestions": {},
+      "sensitivity": {
+        "level": "none",
+        "reasons": []
+      },
+      "score": 80
+    },
+    {
+      "framework": "nuxt",
+      "kind": "api",
+      "method": "GET",
+      "path": "/api/admin/documents/check-slug",
+      "file": "server/api/admin/documents/check-slug.get.ts",
+      "handler": {
+        "line": 14,
+        "column": 0
+      },
+      "id": "5ce94e5d1ecd",
+      "checks": {
+        "audit": {
+          "status": "n/a"
+        },
+        "wide-event": {
+          "status": "pass"
+        },
+        "context": {
+          "status": "fail",
+          "message": "no log.set() context accumulation",
+          "evidence": {
+            "file": "server/api/admin/documents/check-slug.get.ts",
+            "line": 14
+          }
+        },
+        "structured-errors": {
+          "status": "fail",
+          "message": "createError() missing why and fix",
+          "evidence": {
+            "file": "server/api/admin/documents/check-slug.get.ts",
+            "line": 33,
+            "snippet": "throw createError({"
+          }
+        },
+        "error-handling": {
+          "status": "pass"
+        }
+      },
+      "suggestions": {},
+      "sensitivity": {
+        "level": "none",
+        "reasons": []
+      },
+      "score": 65
+    },
+    {
+      "framework": "nuxt",
+      "kind": "api",
+      "method": "GET",
+      "path": "/api/admin/mcp-tokens",
+      "file": "server/api/admin/mcp-tokens/index.get.ts",
+      "handler": {
+        "line": 14,
+        "column": 0
+      },
+      "id": "116e119a6b5d",
+      "checks": {
+        "wide-event": {
+          "status": "pass"
+        },
+        "context": {
+          "status": "pass"
+        },
+        "structured-errors": {
+          "status": "fail",
+          "message": "createError() missing why and fix",
+          "evidence": {
+            "file": "server/api/admin/mcp-tokens/index.get.ts",
+            "line": 40,
+            "snippet": "throw createError({"
+          }
+        },
+        "audit": {
+          "status": "fail",
+          "message": "has logger + context but no log.audit() — sensitive route needs audit trail",
+          "evidence": {
+            "file": "server/api/admin/mcp-tokens/index.get.ts",
+            "line": 14
+          }
+        },
+        "error-handling": {
+          "status": "pass"
+        }
+      },
+      "suggestions": {},
+      "sensitivity": {
+        "level": "high",
+        "reasons": ["auth: path says \"token\""]
+      },
+      "score": 55
+    },
+    {
+      "framework": "nuxt",
+      "kind": "api",
+      "method": "POST",
+      "path": "/api/admin/mcp-tokens",
+      "file": "server/api/admin/mcp-tokens/index.post.ts",
+      "handler": {
+        "line": 25,
+        "column": 0
+      },
+      "id": "cba6b75e2e8a",
+      "checks": {
+        "wide-event": {
+          "status": "pass"
+        },
+        "context": {
+          "status": "pass"
+        },
+        "structured-errors": {
+          "status": "fail",
+          "message": "createError() missing why and fix",
+          "evidence": {
+            "file": "server/api/admin/mcp-tokens/index.post.ts",
+            "line": 38,
+            "snippet": "throw createError({"
+          }
+        },
+        "audit": {
+          "status": "fail",
+          "message": "has logger + context but no log.audit() — sensitive route needs audit trail",
+          "evidence": {
+            "file": "server/api/admin/mcp-tokens/index.post.ts",
+            "line": 25
+          }
+        },
+        "error-handling": {
+          "status": "pass"
+        }
+      },
+      "suggestions": {},
+      "sensitivity": {
+        "level": "high",
+        "reasons": ["auth: path says \"token\""]
+      },
+      "score": 55
+    },
+    {
+      "framework": "nuxt",
+      "kind": "api",
+      "method": "DELETE",
+      "path": "/api/admin/mcp-tokens/:id",
+      "file": "server/api/admin/mcp-tokens/[id].delete.ts",
+      "handler": {
+        "line": 23,
+        "column": 0
+      },
+      "id": "58da673b03d2",
+      "checks": {
+        "wide-event": {
+          "status": "pass"
+        },
+        "context": {
+          "status": "pass"
+        },
+        "structured-errors": {
+          "status": "fail",
+          "message": "createError() missing why and fix",
+          "evidence": {
+            "file": "server/api/admin/mcp-tokens/[id].delete.ts",
+            "line": 44,
+            "snippet": "throw createError({"
+          }
+        },
+        "audit": {
+          "status": "fail",
+          "message": "has logger + context but no log.audit() — sensitive route needs audit trail",
+          "evidence": {
+            "file": "server/api/admin/mcp-tokens/[id].delete.ts",
+            "line": 23
+          }
+        },
+        "error-handling": {
+          "status": "fail",
+          "message": "catch block swallows error without logging or rethrow",
+          "evidence": {
+            "file": "server/api/admin/mcp-tokens/[id].delete.ts",
+            "line": 134,
+            "snippet": "} catch (error) {"
+          }
+        }
+      },
+      "suggestions": {},
+      "sensitivity": {
+        "level": "high",
+        "reasons": ["auth: path says \"token\""]
+      },
+      "score": 40
+    },
+    {
+      "framework": "nuxt",
+      "kind": "api",
+      "method": "GET",
+      "path": "/api/admin/members",
+      "file": "server/api/admin/members/index.get.ts",
+      "handler": {
+        "line": 83,
+        "column": 0
+      },
+      "id": "7e1f8baa0673",
+      "checks": {
+        "audit": {
+          "status": "n/a"
+        },
+        "wide-event": {
+          "status": "pass"
+        },
+        "context": {
+          "status": "pass"
+        },
+        "structured-errors": {
+          "status": "fail",
+          "message": "createError() missing why and fix",
+          "evidence": {
+            "file": "server/api/admin/members/index.get.ts",
+            "line": 216,
+            "snippet": "throw createError({"
+          }
+        },
+        "error-handling": {
+          "status": "pass"
+        }
+      },
+      "suggestions": {},
+      "sensitivity": {
+        "level": "none",
+        "reasons": []
+      },
+      "score": 80
+    },
+    {
+      "framework": "nuxt",
+      "kind": "api",
+      "method": "PATCH",
+      "path": "/api/admin/members/:userId",
+      "file": "server/api/admin/members/[userId].patch.ts",
+      "handler": {
+        "line": 69,
+        "column": 0
+      },
+      "id": "fa1d275f444b",
+      "checks": {
+        "audit": {
+          "status": "n/a"
+        },
+        "wide-event": {
+          "status": "pass"
+        },
+        "context": {
+          "status": "pass"
+        },
+        "structured-errors": {
+          "status": "fail",
+          "message": "createError() missing why and fix",
+          "evidence": {
+            "file": "server/api/admin/members/[userId].patch.ts",
+            "line": 62,
+            "snippet": "throw createError({ statusCode: 403, statusMessage: 'Forbidden', message })"
+          }
+        },
+        "error-handling": {
+          "status": "pass"
+        }
+      },
+      "suggestions": {},
+      "sensitivity": {
+        "level": "medium",
+        "reasons": ["pii: write operation with sensitive fields"]
+      },
+      "score": 80
+    },
+    {
+      "framework": "nuxt",
+      "kind": "api",
+      "method": "GET",
+      "path": "/api/admin/query-logs",
+      "file": "server/api/admin/query-logs/index.get.ts",
+      "handler": {
+        "line": 20,
+        "column": 0
+      },
+      "id": "1f4ff9fa4136",
+      "checks": {
+        "audit": {
+          "status": "n/a"
+        },
+        "wide-event": {
+          "status": "pass"
+        },
+        "context": {
+          "status": "pass"
+        },
+        "structured-errors": {
+          "status": "fail",
+          "message": "createError() missing why and fix",
+          "evidence": {
+            "file": "server/api/admin/query-logs/index.get.ts",
+            "line": 54,
+            "snippet": "throw createError({"
+          }
+        },
+        "error-handling": {
+          "status": "pass"
+        }
+      },
+      "suggestions": {},
+      "sensitivity": {
+        "level": "none",
+        "reasons": []
+      },
+      "score": 80
+    },
+    {
+      "framework": "nuxt",
+      "kind": "api",
+      "method": "GET",
+      "path": "/api/admin/query-logs/:id",
+      "file": "server/api/admin/query-logs/[id].get.ts",
+      "handler": {
+        "line": 9,
+        "column": 0
+      },
+      "id": "e25abd478344",
+      "checks": {
+        "audit": {
+          "status": "n/a"
+        },
+        "wide-event": {
+          "status": "pass"
+        },
+        "context": {
+          "status": "pass"
+        },
+        "structured-errors": {
+          "status": "fail",
+          "message": "createError() missing why and fix",
+          "evidence": {
+            "file": "server/api/admin/query-logs/[id].get.ts",
+            "line": 30,
+            "snippet": "throw createError({"
+          }
+        },
+        "error-handling": {
+          "status": "pass"
+        }
+      },
+      "suggestions": {},
+      "sensitivity": {
+        "level": "none",
+        "reasons": []
+      },
+      "score": 80
+    },
+    {
+      "framework": "nuxt",
+      "kind": "api",
+      "method": "POST",
+      "path": "/api/admin/retention/prune",
+      "file": "server/api/admin/retention/prune.post.ts",
+      "handler": {
+        "line": 31,
+        "column": 0
+      },
+      "id": "270c94505166",
+      "checks": {
+        "audit": {
+          "status": "n/a"
+        },
+        "wide-event": {
+          "status": "pass"
+        },
+        "context": {
+          "status": "pass"
+        },
+        "structured-errors": {
+          "status": "fail",
+          "message": "createError() missing why and fix",
+          "evidence": {
+            "file": "server/api/admin/retention/prune.post.ts",
+            "line": 41,
+            "snippet": "throw createError({"
+          }
+        },
+        "error-handling": {
+          "status": "pass"
+        }
+      },
+      "suggestions": {},
+      "sensitivity": {
+        "level": "none",
+        "reasons": []
+      },
+      "score": 80
+    },
+    {
+      "framework": "nuxt",
+      "kind": "api",
+      "method": "GET",
+      "path": "/api/admin/settings/guest-policy",
+      "file": "server/api/admin/settings/guest-policy.get.ts",
+      "handler": {
+        "line": 13,
+        "column": 0
+      },
+      "id": "02a741dda236",
+      "checks": {
+        "audit": {
+          "status": "n/a"
+        },
+        "wide-event": {
+          "status": "pass"
+        },
+        "context": {
+          "status": "pass"
+        },
+        "structured-errors": {
+          "status": "fail",
+          "message": "createError() missing why and fix",
+          "evidence": {
+            "file": "server/api/admin/settings/guest-policy.get.ts",
+            "line": 22,
+            "snippet": "throw createError({"
+          }
+        },
+        "error-handling": {
+          "status": "pass"
+        }
+      },
+      "suggestions": {},
+      "sensitivity": {
+        "level": "none",
+        "reasons": []
+      },
+      "score": 80
+    },
+    {
+      "framework": "nuxt",
+      "kind": "api",
+      "method": "PATCH",
+      "path": "/api/admin/settings/guest-policy",
+      "file": "server/api/admin/settings/guest-policy.patch.ts",
+      "handler": {
+        "line": 21,
+        "column": 0
+      },
+      "id": "a70db5552efe",
+      "checks": {
+        "audit": {
+          "status": "n/a"
+        },
+        "wide-event": {
+          "status": "pass"
+        },
+        "context": {
+          "status": "pass"
+        },
+        "structured-errors": {
+          "status": "fail",
+          "message": "createError() missing why and fix",
+          "evidence": {
+            "file": "server/api/admin/settings/guest-policy.patch.ts",
+            "line": 41,
+            "snippet": "throw createError({"
+          }
+        },
+        "error-handling": {
+          "status": "pass"
+        }
+      },
+      "suggestions": {},
+      "sensitivity": {
+        "level": "none",
+        "reasons": []
+      },
+      "score": 80
+    },
+    {
+      "framework": "nuxt",
+      "kind": "api",
+      "method": "GET",
+      "path": "/api/admin/usage",
+      "file": "server/api/admin/usage.get.ts",
+      "handler": {
+        "line": 16,
+        "column": 0
+      },
+      "id": "9bb0f1eb2d40",
+      "checks": {
+        "audit": {
+          "status": "n/a"
+        },
+        "wide-event": {
+          "status": "pass"
+        },
+        "context": {
+          "status": "pass"
+        },
+        "structured-errors": {
+          "status": "fail",
+          "message": "createError() missing why and fix",
+          "evidence": {
+            "file": "server/api/admin/usage.get.ts",
+            "line": 48,
+            "snippet": "throw createError({"
+          }
+        },
+        "error-handling": {
+          "status": "pass"
+        }
+      },
+      "suggestions": {},
+      "sensitivity": {
+        "level": "none",
+        "reasons": []
+      },
+      "score": 80
+    },
+    {
+      "framework": "nuxt",
+      "kind": "api",
+      "method": "POST",
+      "path": "/api/auth/account/delete",
+      "file": "server/api/auth/account/delete.post.ts",
+      "handler": {
+        "line": 38,
+        "column": 0
+      },
+      "id": "eeca8207f71e",
+      "checks": {
+        "wide-event": {
+          "status": "pass"
+        },
+        "context": {
+          "status": "pass"
+        },
+        "structured-errors": {
+          "status": "fail",
+          "message": "createError() missing why and fix",
+          "evidence": {
+            "file": "server/api/auth/account/delete.post.ts",
+            "line": 45,
+            "snippet": "throw createError({"
+          }
+        },
+        "audit": {
+          "status": "fail",
+          "message": "has logger + context but no log.audit() — sensitive route needs audit trail",
+          "evidence": {
+            "file": "server/api/auth/account/delete.post.ts",
+            "line": 38
+          }
+        },
+        "error-handling": {
+          "status": "pass"
+        }
+      },
+      "suggestions": {},
+      "sensitivity": {
+        "level": "high",
+        "reasons": ["auth: path says \"auth\""]
+      },
+      "score": 55
+    },
+    {
+      "framework": "nuxt",
+      "kind": "api",
+      "method": "GET",
+      "path": "/api/auth/account/link-google-for-passkey-first",
+      "file": "server/api/auth/account/link-google-for-passkey-first/index.get.ts",
+      "handler": {
+        "line": 15,
+        "column": 0
+      },
+      "id": "e73c2192758b",
+      "checks": {
+        "error-handling": {
+          "status": "n/a"
+        },
+        "wide-event": {
+          "status": "pass"
+        },
+        "context": {
+          "status": "pass"
+        },
+        "structured-errors": {
+          "status": "fail",
+          "message": "createError() missing why and fix",
+          "evidence": {
+            "file": "server/api/auth/account/link-google-for-passkey-first/index.get.ts",
+            "line": 21,
+            "snippet": "throw createError({"
+          }
+        },
+        "audit": {
+          "status": "fail",
+          "message": "has logger + context but no log.audit() — sensitive route needs audit trail",
+          "evidence": {
+            "file": "server/api/auth/account/link-google-for-passkey-first/index.get.ts",
+            "line": 15
+          }
+        }
+      },
+      "suggestions": {},
+      "sensitivity": {
+        "level": "high",
+        "reasons": ["auth: path says \"auth\""]
+      },
+      "score": 55
+    },
+    {
+      "framework": "nuxt",
+      "kind": "api",
+      "method": "GET",
+      "path": "/api/auth/account/link-google-for-passkey-first/callback",
+      "file": "server/api/auth/account/link-google-for-passkey-first/callback.get.ts",
+      "handler": {
+        "line": 31,
+        "column": 0
+      },
+      "id": "907f5dd13a01",
+      "checks": {
+        "wide-event": {
+          "status": "pass"
+        },
+        "context": {
+          "status": "pass"
+        },
+        "structured-errors": {
+          "status": "fail",
+          "message": "createError() missing why and fix",
+          "evidence": {
+            "file": "server/api/auth/account/link-google-for-passkey-first/callback.get.ts",
+            "line": 37,
+            "snippet": "throw createError({"
+          }
+        },
+        "audit": {
+          "status": "fail",
+          "message": "has logger + context but no log.audit() — sensitive route needs audit trail",
+          "evidence": {
+            "file": "server/api/auth/account/link-google-for-passkey-first/callback.get.ts",
+            "line": 31
+          }
+        },
+        "error-handling": {
+          "status": "pass"
+        }
+      },
+      "suggestions": {},
+      "sensitivity": {
+        "level": "high",
+        "reasons": ["auth: path says \"auth\"", "pii: write operation with sensitive fields"]
+      },
+      "score": 55
+    },
+    {
+      "framework": "nuxt",
+      "kind": "api",
+      "method": "GET",
+      "path": "/api/auth/mcp/authorize",
+      "file": "server/api/auth/mcp/authorize.get.ts",
+      "handler": {
+        "line": 60,
+        "column": 0
+      },
+      "id": "16c2f73dd512",
+      "checks": {
+        "wide-event": {
+          "status": "fail",
+          "message": "handler adds nothing to its request event — only method, path and status are recorded",
+          "evidence": {
+            "file": "server/api/auth/mcp/authorize.get.ts",
+            "line": 60
+          }
+        },
+        "context": {
+          "status": "fail",
+          "message": "no log.set() context accumulation",
+          "evidence": {
+            "file": "server/api/auth/mcp/authorize.get.ts",
+            "line": 60
+          }
+        },
+        "structured-errors": {
+          "status": "fail",
+          "message": "createError() missing why and fix",
+          "evidence": {
+            "file": "server/api/auth/mcp/authorize.get.ts",
+            "line": 11,
+            "snippet": "throw createError({"
+          }
+        },
+        "audit": {
+          "status": "fail",
+          "message": "has logger + context but no log.audit() — sensitive route needs audit trail",
+          "evidence": {
+            "file": "server/api/auth/mcp/authorize.get.ts",
+            "line": 60
+          }
+        },
+        "error-handling": {
+          "status": "pass"
+        }
+      },
+      "suggestions": {},
+      "sensitivity": {
+        "level": "high",
+        "reasons": ["auth: path says \"auth\""]
+      },
+      "score": 0
+    },
+    {
+      "framework": "nuxt",
+      "kind": "api",
+      "method": "POST",
+      "path": "/api/auth/mcp/authorize",
+      "file": "server/api/auth/mcp/authorize.post.ts",
+      "handler": {
+        "line": 24,
+        "column": 0
+      },
+      "id": "7662134f9e51",
+      "checks": {
+        "wide-event": {
+          "status": "fail",
+          "message": "handler adds nothing to its request event — only method, path and status are recorded",
+          "evidence": {
+            "file": "server/api/auth/mcp/authorize.post.ts",
+            "line": 24
+          }
+        },
+        "context": {
+          "status": "fail",
+          "message": "no log.set() context accumulation",
+          "evidence": {
+            "file": "server/api/auth/mcp/authorize.post.ts",
+            "line": 24
+          }
+        },
+        "structured-errors": {
+          "status": "fail",
+          "message": "createError() missing why and fix",
+          "evidence": {
+            "file": "server/api/auth/mcp/authorize.post.ts",
+            "line": 27,
+            "snippet": "throw createError({"
+          }
+        },
+        "audit": {
+          "status": "fail",
+          "message": "has logger + context but no log.audit() — sensitive route needs audit trail",
+          "evidence": {
+            "file": "server/api/auth/mcp/authorize.post.ts",
+            "line": 24
+          }
+        },
+        "error-handling": {
+          "status": "pass"
+        }
+      },
+      "suggestions": {},
+      "sensitivity": {
+        "level": "high",
+        "reasons": ["auth: path says \"auth\""]
+      },
+      "score": 0
+    },
+    {
+      "framework": "nuxt",
+      "kind": "api",
+      "method": "GET",
+      "path": "/api/auth/mcp/chatgpt-client-metadata",
+      "file": "server/api/auth/mcp/chatgpt-client-metadata.get.ts",
+      "handler": {
+        "line": 40,
+        "column": 0
+      },
+      "id": "28e4bfc88b55",
+      "checks": {
+        "wide-event": {
+          "status": "fail",
+          "message": "handler adds nothing to its request event — only method, path and status are recorded",
+          "evidence": {
+            "file": "server/api/auth/mcp/chatgpt-client-metadata.get.ts",
+            "line": 40
+          }
+        },
+        "context": {
+          "status": "fail",
+          "message": "no log.set() context accumulation",
+          "evidence": {
+            "file": "server/api/auth/mcp/chatgpt-client-metadata.get.ts",
+            "line": 40
+          }
+        },
+        "structured-errors": {
+          "status": "fail",
+          "message": "createError() missing why and fix",
+          "evidence": {
+            "file": "server/api/auth/mcp/chatgpt-client-metadata.get.ts",
+            "line": 53,
+            "snippet": "throw createError({"
+          }
+        },
+        "audit": {
+          "status": "fail",
+          "message": "has logger + context but no log.audit() — sensitive route needs audit trail",
+          "evidence": {
+            "file": "server/api/auth/mcp/chatgpt-client-metadata.get.ts",
+            "line": 40
+          }
+        },
+        "error-handling": {
+          "status": "pass"
+        }
+      },
+      "suggestions": {},
+      "sensitivity": {
+        "level": "high",
+        "reasons": ["auth: path says \"auth\""]
+      },
+      "score": 0
+    },
+    {
+      "framework": "nuxt",
+      "kind": "api",
+      "method": "POST",
+      "path": "/api/auth/mcp/register",
+      "file": "server/api/auth/mcp/register.post.ts",
+      "handler": {
+        "line": 68,
+        "column": 0
+      },
+      "id": "2ed8db54215d",
+      "checks": {
+        "wide-event": {
+          "status": "fail",
+          "message": "handler adds nothing to its request event — only method, path and status are recorded",
+          "evidence": {
+            "file": "server/api/auth/mcp/register.post.ts",
+            "line": 68
+          }
+        },
+        "context": {
+          "status": "fail",
+          "message": "no log.set() context accumulation",
+          "evidence": {
+            "file": "server/api/auth/mcp/register.post.ts",
+            "line": 68
+          }
+        },
+        "structured-errors": {
+          "status": "fail",
+          "message": "createError() missing why and fix",
+          "evidence": {
+            "file": "server/api/auth/mcp/register.post.ts",
+            "line": 81,
+            "snippet": "throw createError({"
+          }
+        },
+        "audit": {
+          "status": "fail",
+          "message": "has logger + context but no log.audit() — sensitive route needs audit trail",
+          "evidence": {
+            "file": "server/api/auth/mcp/register.post.ts",
+            "line": 68
+          }
+        },
+        "error-handling": {
+          "status": "pass"
+        }
+      },
+      "suggestions": {},
+      "sensitivity": {
+        "level": "high",
+        "reasons": ["auth: path says \"auth\""]
+      },
+      "score": 0
+    },
+    {
+      "framework": "nuxt",
+      "kind": "api",
+      "method": "POST",
+      "path": "/api/auth/mcp/token",
+      "file": "server/api/auth/mcp/token.post.ts",
+      "handler": {
+        "line": 55,
+        "column": 0
+      },
+      "id": "58713a23091e",
+      "checks": {
+        "wide-event": {
+          "status": "fail",
+          "message": "handler adds nothing to its request event — only method, path and status are recorded",
+          "evidence": {
+            "file": "server/api/auth/mcp/token.post.ts",
+            "line": 55
+          }
+        },
+        "context": {
+          "status": "fail",
+          "message": "no log.set() context accumulation",
+          "evidence": {
+            "file": "server/api/auth/mcp/token.post.ts",
+            "line": 55
+          }
+        },
+        "structured-errors": {
+          "status": "fail",
+          "message": "createError() missing why and fix",
+          "evidence": {
+            "file": "server/api/auth/mcp/token.post.ts",
+            "line": 68,
+            "snippet": "throw createError({"
+          }
+        },
+        "audit": {
+          "status": "fail",
+          "message": "has logger + context but no log.audit() — sensitive route needs audit trail",
+          "evidence": {
+            "file": "server/api/auth/mcp/token.post.ts",
+            "line": 55
+          }
+        },
+        "error-handling": {
+          "status": "pass"
+        }
+      },
+      "suggestions": {},
+      "sensitivity": {
+        "level": "high",
+        "reasons": ["auth: path says \"auth\""]
+      },
+      "score": 0
+    },
+    {
+      "framework": "nuxt",
+      "kind": "api",
+      "method": "GET",
+      "path": "/api/auth/me/credentials",
+      "file": "server/api/auth/me/credentials.get.ts",
+      "handler": {
+        "line": 29,
+        "column": 0
+      },
+      "id": "f7d0e413f305",
+      "checks": {
+        "wide-event": {
+          "status": "pass"
+        },
+        "context": {
+          "status": "pass"
+        },
+        "structured-errors": {
+          "status": "fail",
+          "message": "createError() missing why and fix",
+          "evidence": {
+            "file": "server/api/auth/me/credentials.get.ts",
+            "line": 36,
+            "snippet": "throw createError({"
+          }
+        },
+        "audit": {
+          "status": "fail",
+          "message": "has logger + context but no log.audit() — sensitive route needs audit trail",
+          "evidence": {
+            "file": "server/api/auth/me/credentials.get.ts",
+            "line": 29
+          }
+        },
+        "error-handling": {
+          "status": "pass"
+        }
+      },
+      "suggestions": {},
+      "sensitivity": {
+        "level": "high",
+        "reasons": ["auth: path says \"auth\""]
+      },
+      "score": 55
+    },
+    {
+      "framework": "nuxt",
+      "kind": "api",
+      "method": "GET",
+      "path": "/api/auth/nickname/check",
+      "file": "server/api/auth/nickname/check.get.ts",
+      "handler": {
+        "line": 37,
+        "column": 0
+      },
+      "id": "8c403407fd56",
+      "checks": {
+        "wide-event": {
+          "status": "pass"
+        },
+        "context": {
+          "status": "pass"
+        },
+        "structured-errors": {
+          "status": "fail",
+          "message": "createError() missing why and fix",
+          "evidence": {
+            "file": "server/api/auth/nickname/check.get.ts",
+            "line": 59,
+            "snippet": "throw createError({"
+          }
+        },
+        "audit": {
+          "status": "fail",
+          "message": "has logger + context but no log.audit() — sensitive route needs audit trail",
+          "evidence": {
+            "file": "server/api/auth/nickname/check.get.ts",
+            "line": 37
+          }
+        },
+        "error-handling": {
+          "status": "pass"
+        }
+      },
+      "suggestions": {},
+      "sensitivity": {
+        "level": "high",
+        "reasons": ["auth: path says \"auth\""]
+      },
+      "score": 55
+    },
+    {
+      "framework": "nuxt",
+      "kind": "api",
+      "method": "POST",
+      "path": "/api/auth/passkey/verify-authentication",
+      "file": "server/api/auth/passkey/verify-authentication.post.ts",
+      "handler": {
+        "line": 9,
+        "column": 0
+      },
+      "id": "66c963b0343b",
+      "checks": {
+        "wide-event": {
+          "status": "fail",
+          "message": "handler adds nothing to its request event — only method, path and status are recorded",
+          "evidence": {
+            "file": "server/api/auth/passkey/verify-authentication.post.ts",
+            "line": 9
+          }
+        },
+        "context": {
+          "status": "fail",
+          "message": "no log.set() context accumulation",
+          "evidence": {
+            "file": "server/api/auth/passkey/verify-authentication.post.ts",
+            "line": 9
+          }
+        },
+        "structured-errors": {
+          "status": "fail",
+          "message": "createError() missing why and fix",
+          "evidence": {
+            "file": "server/api/auth/passkey/verify-authentication.post.ts",
+            "line": 11,
+            "snippet": "throw createError({"
+          }
+        },
+        "audit": {
+          "status": "fail",
+          "message": "has logger + context but no log.audit() — sensitive route needs audit trail",
+          "evidence": {
+            "file": "server/api/auth/passkey/verify-authentication.post.ts",
+            "line": 9
+          }
+        },
+        "error-handling": {
+          "status": "pass"
+        }
+      },
+      "suggestions": {},
+      "sensitivity": {
+        "level": "high",
+        "reasons": ["auth: path says \"auth\""]
+      },
+      "score": 0
+    },
+    {
+      "framework": "nuxt",
+      "kind": "api",
+      "method": "POST",
+      "path": "/api/chat",
+      "file": "server/api/chat.post.ts",
+      "handler": {
+        "line": 100,
+        "column": 0
+      },
+      "id": "7347c6aaa791",
+      "checks": {
+        "audit": {
+          "status": "n/a"
+        },
+        "wide-event": {
+          "status": "pass"
+        },
+        "context": {
+          "status": "pass"
+        },
+        "structured-errors": {
+          "status": "fail",
+          "message": "createError() missing why and fix",
+          "evidence": {
+            "file": "server/api/chat.post.ts",
+            "line": 147,
+            "snippet": "throw createError({"
+          }
+        },
+        "error-handling": {
+          "status": "pass"
+        }
+      },
+      "suggestions": {},
+      "sensitivity": {
+        "level": "none",
+        "reasons": []
+      },
+      "score": 80
+    },
+    {
+      "framework": "nuxt",
+      "kind": "api",
+      "method": "GET",
+      "path": "/api/citations/:citationId",
+      "file": "server/api/citations/[citationId].get.ts",
+      "handler": {
+        "line": 32,
+        "column": 0
+      },
+      "id": "5dc61703fe2c",
+      "checks": {
+        "audit": {
+          "status": "n/a"
+        },
+        "wide-event": {
+          "status": "pass"
+        },
+        "context": {
+          "status": "fail",
+          "message": "no log.set() context accumulation",
+          "evidence": {
+            "file": "server/api/citations/[citationId].get.ts",
+            "line": 32
+          }
+        },
+        "structured-errors": {
+          "status": "fail",
+          "message": "createError() missing why and fix",
+          "evidence": {
+            "file": "server/api/citations/[citationId].get.ts",
+            "line": 40,
+            "snippet": "throw createError({"
+          }
+        },
+        "error-handling": {
+          "status": "pass"
+        }
+      },
+      "suggestions": {},
+      "sensitivity": {
+        "level": "none",
+        "reasons": []
+      },
+      "score": 65
+    },
+    {
+      "framework": "nuxt",
+      "kind": "api",
+      "method": "GET",
+      "path": "/api/conversations",
+      "file": "server/api/conversations/index.get.ts",
+      "handler": {
+        "line": 37,
+        "column": 0
+      },
+      "id": "97ce2b8d8706",
+      "checks": {
+        "audit": {
+          "status": "n/a"
+        },
+        "wide-event": {
+          "status": "pass"
+        },
+        "context": {
+          "status": "pass"
+        },
+        "structured-errors": {
+          "status": "fail",
+          "message": "createError() missing why and fix",
+          "evidence": {
+            "file": "server/api/conversations/index.get.ts",
+            "line": 79,
+            "snippet": "throw createError({"
+          }
+        },
+        "error-handling": {
+          "status": "pass"
+        }
+      },
+      "suggestions": {},
+      "sensitivity": {
+        "level": "none",
+        "reasons": []
+      },
+      "score": 80
+    },
+    {
+      "framework": "nuxt",
+      "kind": "api",
+      "method": "DELETE",
+      "path": "/api/conversations/:id",
+      "file": "server/api/conversations/[id].delete.ts",
+      "handler": {
+        "line": 35,
+        "column": 0
+      },
+      "id": "8f6da46125a3",
+      "checks": {
+        "audit": {
+          "status": "n/a"
+        },
+        "wide-event": {
+          "status": "pass"
+        },
+        "context": {
+          "status": "pass"
+        },
+        "structured-errors": {
+          "status": "fail",
+          "message": "createError() missing why and fix",
+          "evidence": {
+            "file": "server/api/conversations/[id].delete.ts",
+            "line": 61,
+            "snippet": "throw createError({"
+          }
+        },
+        "error-handling": {
+          "status": "pass"
+        }
+      },
+      "suggestions": {},
+      "sensitivity": {
+        "level": "none",
+        "reasons": []
+      },
+      "score": 80
+    },
+    {
+      "framework": "nuxt",
+      "kind": "api",
+      "method": "GET",
+      "path": "/api/conversations/:id",
+      "file": "server/api/conversations/[id].get.ts",
+      "handler": {
+        "line": 35,
+        "column": 0
+      },
+      "id": "af55b94aa22c",
+      "checks": {
+        "audit": {
+          "status": "n/a"
+        },
+        "wide-event": {
+          "status": "pass"
+        },
+        "context": {
+          "status": "pass"
+        },
+        "structured-errors": {
+          "status": "fail",
+          "message": "createError() missing why and fix",
+          "evidence": {
+            "file": "server/api/conversations/[id].get.ts",
+            "line": 65,
+            "snippet": "throw createError({"
+          }
+        },
+        "error-handling": {
+          "status": "pass"
+        }
+      },
+      "suggestions": {},
+      "sensitivity": {
+        "level": "none",
+        "reasons": []
+      },
+      "score": 80
+    },
+    {
+      "framework": "nuxt",
+      "kind": "api",
+      "method": "GET",
+      "path": "/api/conversations/:id/messages",
+      "file": "server/api/conversations/[id]/messages.get.ts",
+      "handler": {
+        "line": 35,
+        "column": 0
+      },
+      "id": "0b0ca87f1349",
+      "checks": {
+        "audit": {
+          "status": "n/a"
+        },
+        "wide-event": {
+          "status": "pass"
+        },
+        "context": {
+          "status": "pass"
+        },
+        "structured-errors": {
+          "status": "fail",
+          "message": "createError() missing why and fix",
+          "evidence": {
+            "file": "server/api/conversations/[id]/messages.get.ts",
+            "line": 64,
+            "snippet": "throw createError({"
+          }
+        },
+        "error-handling": {
+          "status": "pass"
+        }
+      },
+      "suggestions": {},
+      "sensitivity": {
+        "level": "none",
+        "reasons": []
+      },
+      "score": 80
+    },
+    {
+      "framework": "nuxt",
+      "kind": "api",
+      "method": "GET",
+      "path": "/api/documents/:documentId/versions/:versionId/index-status",
+      "file": "server/api/documents/[documentId]/versions/[versionId]/index-status.get.ts",
+      "handler": {
+        "line": 7,
+        "column": 0
+      },
+      "id": "1d7d5b4dfabb",
+      "checks": {
+        "audit": {
+          "status": "n/a"
+        },
+        "wide-event": {
+          "status": "pass"
+        },
+        "context": {
+          "status": "fail",
+          "message": "no log.set() context accumulation",
+          "evidence": {
+            "file": "server/api/documents/[documentId]/versions/[versionId]/index-status.get.ts",
+            "line": 7
+          }
+        },
+        "structured-errors": {
+          "status": "fail",
+          "message": "createError() missing why and fix",
+          "evidence": {
+            "file": "server/api/documents/[documentId]/versions/[versionId]/index-status.get.ts",
+            "line": 15,
+            "snippet": "throw createError({"
+          }
+        },
+        "error-handling": {
+          "status": "pass"
+        }
+      },
+      "suggestions": {},
+      "sensitivity": {
+        "level": "none",
+        "reasons": []
+      },
+      "score": 65
+    },
+    {
+      "framework": "nuxt",
+      "kind": "api",
+      "method": "POST",
+      "path": "/api/documents/:documentId/versions/:versionId/publish",
+      "file": "server/api/documents/[documentId]/versions/[versionId]/publish.post.ts",
+      "handler": {
+        "line": 8,
+        "column": 0
+      },
+      "id": "27fd40d93e16",
+      "checks": {
+        "audit": {
+          "status": "n/a"
+        },
+        "wide-event": {
+          "status": "pass"
+        },
+        "context": {
+          "status": "fail",
+          "message": "no log.set() context accumulation",
+          "evidence": {
+            "file": "server/api/documents/[documentId]/versions/[versionId]/publish.post.ts",
+            "line": 8
+          }
+        },
+        "structured-errors": {
+          "status": "fail",
+          "message": "createError() missing why and fix",
+          "evidence": {
+            "file": "server/api/documents/[documentId]/versions/[versionId]/publish.post.ts",
+            "line": 17,
+            "snippet": "throw createError({"
+          }
+        },
+        "error-handling": {
+          "status": "pass"
+        }
+      },
+      "suggestions": {},
+      "sensitivity": {
+        "level": "none",
+        "reasons": []
+      },
+      "score": 65
+    },
+    {
+      "framework": "nuxt",
+      "kind": "api",
+      "method": "POST",
+      "path": "/api/documents/sync",
+      "file": "server/api/documents/sync.post.ts",
+      "handler": {
+        "line": 22,
+        "column": 0
+      },
+      "id": "82166d8071b7",
+      "checks": {
+        "audit": {
+          "status": "n/a"
+        },
+        "wide-event": {
+          "status": "pass"
+        },
+        "context": {
+          "status": "fail",
+          "message": "no log.set() context accumulation",
+          "evidence": {
+            "file": "server/api/documents/sync.post.ts",
+            "line": 22
+          }
+        },
+        "structured-errors": {
+          "status": "fail",
+          "message": "createError() missing why and fix",
+          "evidence": {
+            "file": "server/api/documents/sync.post.ts",
+            "line": 53,
+            "snippet": "throw createError({"
+          }
+        },
+        "error-handling": {
+          "status": "pass"
+        }
+      },
+      "suggestions": {},
+      "sensitivity": {
+        "level": "none",
+        "reasons": []
+      },
+      "score": 65
+    },
+    {
+      "framework": "nuxt",
+      "kind": "api",
+      "method": "GET",
+      "path": "/api/guest-policy/effective",
+      "file": "server/api/guest-policy/effective.get.ts",
+      "handler": {
+        "line": 33,
+        "column": 0
+      },
+      "id": "c3438f382308",
+      "checks": {
+        "audit": {
+          "status": "n/a"
+        },
+        "wide-event": {
+          "status": "pass"
+        },
+        "context": {
+          "status": "pass"
+        },
+        "structured-errors": {
+          "status": "fail",
+          "message": "createError() missing why and fix",
+          "evidence": {
+            "file": "server/api/guest-policy/effective.get.ts",
+            "line": 42,
+            "snippet": "throw createError({"
+          }
+        },
+        "error-handling": {
+          "status": "pass"
+        }
+      },
+      "suggestions": {},
+      "sensitivity": {
+        "level": "none",
+        "reasons": []
+      },
+      "score": 80
+    },
+    {
+      "framework": "nuxt",
+      "kind": "api",
+      "method": "POST",
+      "path": "/api/setup/create-admin",
+      "file": "server/api/setup/create-admin.post.ts",
+      "handler": {
+        "line": 26,
+        "column": 0
+      },
+      "id": "5c8b00018c45",
+      "checks": {
+        "audit": {
+          "status": "n/a"
+        },
+        "wide-event": {
+          "status": "pass"
+        },
+        "context": {
+          "status": "fail",
+          "message": "no log.set() context accumulation",
+          "evidence": {
+            "file": "server/api/setup/create-admin.post.ts",
+            "line": 26
+          }
+        },
+        "structured-errors": {
+          "status": "fail",
+          "message": "createError() missing why and fix",
+          "evidence": {
+            "file": "server/api/setup/create-admin.post.ts",
+            "line": 31,
+            "snippet": "throw createError({"
+          }
+        },
+        "error-handling": {
+          "status": "pass"
+        }
+      },
+      "suggestions": {},
+      "sensitivity": {
+        "level": "none",
+        "reasons": []
+      },
+      "score": 65
+    },
+    {
+      "framework": "nuxt",
+      "kind": "api",
+      "method": "POST",
+      "path": "/api/uploads/finalize",
+      "file": "server/api/uploads/finalize.post.ts",
+      "handler": {
+        "line": 12,
+        "column": 0
+      },
+      "id": "48587746d181",
+      "checks": {
+        "audit": {
+          "status": "n/a"
+        },
+        "wide-event": {
+          "status": "pass"
+        },
+        "context": {
+          "status": "fail",
+          "message": "no log.set() context accumulation",
+          "evidence": {
+            "file": "server/api/uploads/finalize.post.ts",
+            "line": 12
+          }
+        },
+        "structured-errors": {
+          "status": "fail",
+          "message": "createError() missing why and fix",
+          "evidence": {
+            "file": "server/api/uploads/finalize.post.ts",
+            "line": 38,
+            "snippet": "throw createError({"
+          }
+        },
+        "error-handling": {
+          "status": "pass"
+        }
+      },
+      "suggestions": {},
+      "sensitivity": {
+        "level": "none",
+        "reasons": []
+      },
+      "score": 65
+    },
+    {
+      "framework": "nuxt",
+      "kind": "api",
+      "method": "POST",
+      "path": "/api/uploads/presign",
+      "file": "server/api/uploads/presign.post.ts",
+      "handler": {
+        "line": 18,
+        "column": 0
+      },
+      "id": "912d4ae14615",
+      "checks": {
+        "audit": {
+          "status": "n/a"
+        },
+        "wide-event": {
+          "status": "pass"
+        },
+        "context": {
+          "status": "fail",
+          "message": "no log.set() context accumulation",
+          "evidence": {
+            "file": "server/api/uploads/presign.post.ts",
+            "line": 18
+          }
+        },
+        "structured-errors": {
+          "status": "fail",
+          "message": "createError() missing why and fix",
+          "evidence": {
+            "file": "server/api/uploads/presign.post.ts",
+            "line": 35,
+            "snippet": "throw createError({"
+          }
+        },
+        "error-handling": {
+          "status": "pass"
+        }
+      },
+      "suggestions": {},
+      "sensitivity": {
+        "level": "none",
+        "reasons": []
+      },
+      "score": 65
+    },
+    {
+      "framework": "nuxt",
+      "kind": "page",
+      "method": null,
+      "path": "/auth/callback",
+      "file": "app/pages/auth/callback.vue",
+      "handler": null,
+      "id": "20b5b9326b43",
+      "checks": {
+        "page-error-handling": {
+          "status": "n/a"
+        }
+      },
+      "suggestions": {},
+      "sensitivity": {
+        "level": "high",
+        "reasons": ["auth: path says \"auth\""]
+      },
+      "score": 100
+    },
+    {
+      "framework": "nuxt",
+      "kind": "page",
+      "method": null,
+      "path": "/auth/login",
+      "file": "app/pages/auth/login.vue",
+      "handler": null,
+      "id": "d039f5fce9ff",
+      "checks": {
+        "page-error-handling": {
+          "status": "n/a"
+        }
+      },
+      "suggestions": {},
+      "sensitivity": {
+        "level": "high",
+        "reasons": ["auth: path says \"auth\""]
+      },
+      "score": 100
+    },
+    {
+      "framework": "nuxt",
+      "kind": "page",
+      "method": null,
+      "path": "/auth/mcp/authorize",
+      "file": "app/pages/auth/mcp/authorize.vue",
+      "handler": null,
+      "id": "e264e753c6a8",
+      "checks": {
+        "page-error-handling": {
+          "status": "n/a"
+        }
+      },
+      "suggestions": {},
+      "sensitivity": {
+        "level": "high",
+        "reasons": ["auth: path says \"auth\""]
+      },
+      "score": 100
+    },
+    {
+      "framework": "nuxt",
+      "kind": "page",
+      "method": null,
+      "path": "/chat",
+      "file": "app/pages/chat/index.vue",
+      "handler": null,
+      "id": "35849602d656",
+      "checks": {
+        "page-error-handling": {
+          "status": "n/a"
+        }
+      },
+      "suggestions": {},
+      "sensitivity": {
+        "level": "none",
+        "reasons": []
+      },
+      "score": 100
+    },
+    {
+      "framework": "nuxt",
+      "kind": "cron",
+      "method": null,
+      "path": "/tasks/retention-cleanup",
+      "file": "server/tasks/retention-cleanup.ts",
+      "handler": {
+        "line": 26,
+        "column": 0
+      },
+      "id": "08a904dba67e",
+      "checks": {
+        "audit": {
+          "status": "n/a"
+        },
+        "wide-event": {
+          "status": "fail",
+          "message": "handler adds nothing to its request event — only method, path and status are recorded",
+          "evidence": {
+            "file": "server/tasks/retention-cleanup.ts",
+            "line": 26
+          }
+        },
+        "context": {
+          "status": "fail",
+          "message": "no log.set() context accumulation",
+          "evidence": {
+            "file": "server/tasks/retention-cleanup.ts",
+            "line": 26
+          }
+        },
+        "structured-errors": {
+          "status": "pass"
+        },
+        "error-handling": {
+          "status": "pass"
+        }
+      },
+      "suggestions": {},
+      "sensitivity": {
+        "level": "none",
+        "reasons": []
+      },
+      "score": 45
+    }
+  ]
+}
