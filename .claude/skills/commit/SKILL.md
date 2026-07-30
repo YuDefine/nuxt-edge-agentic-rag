@@ -1,6 +1,6 @@
 ---
 name: commit
-description: Use when 使用者要求 commit，或 working tree 有多組 unrelated 變更需分批提交。
+description: Use when 使用者要求把工作區的變更寫進版本歷史，不論用詞是 commit、提交、送進 git 還是「整理一下」；需要拆成多筆時同樣適用。
 effort: high
 ---
 <!--
@@ -17,7 +17,7 @@ Local edits will be reverted by the next sync.
 $ARGUMENTS
 ```
 
-政策、禁止事項、commit 類型表見 `.claude/rules/commit.md`。本檔只定義執行流程。
+政策與禁止事項見 `.claude/rules/commit.md`。本檔定義執行流程，commit 類型 / emoji 對照表在 Step 3。
 
 ## Step 0-Lock: 單一 session 防呆（**必做第一步**）
 
