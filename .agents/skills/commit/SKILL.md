@@ -2,6 +2,7 @@
 name: commit
 description: Use when 使用者要求把工作區的變更寫進版本歷史，不論用詞是 commit、提交、送進 git 還是「整理一下」；需要拆成多筆時同樣適用。
 effort: high
+permission_tier: action
 ---
 <!--
 🔒 LOCKED — managed by clade
