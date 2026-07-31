@@ -82,7 +82,7 @@ const THRESHOLDS = {
 // TD-112: business_activity weight for signal aggregation
 // See rules/local/improvement-loop.md § 2 + docs/discussions/2026-05-18-active-consumer-subset.md
 // active=primary signal source; maintenance=downweighted; paused=excluded from cookbook count;
-// auto=unset default (treated as 1.0 conservatively; metric-based promotion deferred to propagate.mjs drift check)
+// auto=unset default (treated as 1.0 conservatively; metric-based promotion deferred to propagate.ts drift check)
 const ACTIVITY_WEIGHTS = { active: 1.0, maintenance: 0.3, paused: 0, auto: 1.0 }
 
 function weightForActivity(activity) {
@@ -172,7 +172,7 @@ const ACTION_RULES = [
     match: (c) => c.kind.startsWith('audit-'),
     rationale: () => 'audit script 已有偵測 signal 但無強制執行點 — 候選持續出現代表純 warn 不收斂',
     suggestion: () =>
-      '為該 audit signal 加強制點（publish.mjs smoke gate / pre-commit hook / propagate 結尾 fail-loud），warn 升級成 block 後用 digest 觀察歸零',
+      '為該 audit signal 加強制點（publish.ts smoke gate / pre-commit hook / propagate 結尾 fail-loud），warn 升級成 block 後用 digest 觀察歸零',
   },
   {
     actionType: 'fix-tooling',
