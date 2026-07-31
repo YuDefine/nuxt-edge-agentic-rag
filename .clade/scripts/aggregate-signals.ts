@@ -16,8 +16,8 @@
 // reading signals so every digest run sees fresh consumer signals.
 //
 // Usage:
-//   node vendor/scripts/aggregate-signals.mjs            # pull + write home ledger
-//   node vendor/scripts/aggregate-signals.mjs --dry-run  # report only, no write
+//   node vendor/scripts/aggregate-signals.ts            # pull + write home ledger
+//   node vendor/scripts/aggregate-signals.ts --dry-run  # report only, no write
 
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'

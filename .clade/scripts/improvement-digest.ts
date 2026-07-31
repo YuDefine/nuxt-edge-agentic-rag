@@ -12,8 +12,8 @@
 // forbidden in v1: any code path attempting llm-based scoring MUST throw.
 //
 // Usage:
-//   node vendor/scripts/improvement-digest.mjs            # emit today's digest
-//   node vendor/scripts/improvement-digest.mjs --dry-run  # print candidates, don't write
+//   node vendor/scripts/improvement-digest.ts            # emit today's digest
+//   node vendor/scripts/improvement-digest.ts --dry-run  # print candidates, don't write
 
 import { execFileSync, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
@@ -167,14 +167,14 @@ const ACTION_RULES = [
     match: (c) => c.kind === 'wt-stale-merged',
     rationale: () => 'stale worktree 類（已 merge）— 一次性清理即可關閉，無標準層缺口',
     suggestion: () =>
-      '跑 `node scripts/wt-helper.mjs cleanup <slug>` 移除已 merge 的 worktree，再跑 validation_commands 確認列表乾淨',
+      '跑 `node scripts/wt-helper.ts cleanup <slug>` 移除已 merge 的 worktree，再跑 validation_commands 確認列表乾淨',
   },
   {
     actionType: 'cleanup',
     match: (c) => c.kind === 'wt-stale-idle',
     rationale: () => 'stale worktree 類（idle 超過門檻）— 一次性處置即可關閉，無標準層缺口',
     suggestion: () =>
-      '確認該 session branch 要續做還是放棄：續做就 resume worktree，放棄就 `node scripts/wt-helper.mjs cleanup --force <slug>`',
+      '確認該 session branch 要續做還是放棄：續做就 resume worktree，放棄就 `node scripts/wt-helper.ts cleanup --force <slug>`',
   },
   {
     actionType: 'cleanup',
@@ -540,7 +540,7 @@ function buildSignalEvidence(gate, errFp) {
         description: `signal '${gate}::${errFp}' SHALL NOT recur in 7 consecutive days after the fix is promoted`,
       },
     ],
-    validation_commands: [`node vendor/scripts/improvement-digest.mjs --dry-run | grep ${errFp}`],
+    validation_commands: [`node vendor/scripts/improvement-digest.ts --dry-run | grep ${errFp}`],
     related_keywords: extractKeywords(errFp),
   }
 }
@@ -629,10 +629,10 @@ function detectFromStaleWorktrees(now = Date.now()) {
           expected_state: [
             {
               kind: 'worktree-removed',
-              description: `worktree at ${w.path} SHALL be removed via \`node scripts/wt-helper.mjs cleanup <slug>\` once safe to clean`,
+              description: `worktree at ${w.path} SHALL be removed via \`node scripts/wt-helper.ts cleanup <slug>\` once safe to clean`,
             },
           ],
-          validation_commands: [`node vendor/scripts/wt-helper.mjs list --json`],
+          validation_commands: [`node vendor/scripts/wt-helper.ts list --json`],
           related_keywords: ['worktree', 'merged', 'cleanup'],
         },
       })
@@ -654,7 +654,7 @@ function detectFromStaleWorktrees(now = Date.now()) {
               description: `branch ${branchName} SHALL either resume activity or be cleaned up (merge → cleanup, or abandon → cleanup --force)`,
             },
           ],
-          validation_commands: [`node vendor/scripts/wt-helper.mjs list --json`],
+          validation_commands: [`node vendor/scripts/wt-helper.ts list --json`],
           related_keywords: ['worktree', 'idle', 'stale'],
         },
       })
@@ -721,7 +721,7 @@ function detectFromScreenshotStaleness() {
 }
 
 function detectFromClaudeAnalyzedDrift() {
-  const script = join(cladeRoot, 'vendor', 'scripts', 'audit-claude-analyzed-drift.mjs')
+  const script = join(cladeRoot, 'vendor', 'scripts', 'audit-claude-analyzed-drift.ts')
   if (!existsSync(script)) return []
   const report = runAuditScript(script, ['--all-consumers', '--json'])
   if (!report?.summary) return []
@@ -738,7 +738,7 @@ function detectFromClaudeAnalyzedDrift() {
       consumers: affected,
       title: `Claude-analyzed drift: ${total} item(s) with resolved prose but no machine annotation across ${affected.length} consumer(s)`,
       evidence_predicate: {
-        target_paths: ['vendor/scripts/audit-claude-analyzed-drift.mjs'],
+        target_paths: ['vendor/scripts/audit-claude-analyzed-drift.ts'],
         target_symbols: [],
         expected_state: [
           {
@@ -747,7 +747,7 @@ function detectFromClaudeAnalyzedDrift() {
           },
         ],
         validation_commands: [
-          'node vendor/scripts/audit-claude-analyzed-drift.mjs --all-consumers --json | jq .summary',
+          'node vendor/scripts/audit-claude-analyzed-drift.ts --all-consumers --json | jq .summary',
         ],
         related_keywords: ['claude-analyzed', 'drift', 'annotation', 'review-gui', 'bucket'],
       },
