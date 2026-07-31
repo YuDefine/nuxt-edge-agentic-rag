@@ -19,7 +19,7 @@
 import { spawn } from 'node:child_process'
 import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
@@ -95,15 +95,45 @@ const GATE_MAP = {
 }
 const gateName = GATE_MAP[gateLabel] ?? 'other'
 
+// ── Heavy-gate 併發閘門 ────────────────────────────────────────────────────
+// typecheck（預設）這類 gate 單跑就吃 2–4 GiB RAM + 一整顆核心。多 repo session 並行時
+// 需要一個跨 repo 的總量上限，否則整台開發機進 CPU wait + swap thrash。
+// 實際的鎖邏輯是 vendor/scripts/gate-slot.sh（consumer 投影於 scripts/gate-slot.sh）——
+// 這裡只負責把 inner command 包進去。找不到 helper 就照舊直接跑（零行為改變）。
+const HEAVY_GATES = (process.env.CLADE_HEAVY_GATES ?? 'typecheck')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean)
+const SLOT_BUSY_EXIT = 75
+
+function resolveGateSlot(cwd) {
+  const top = gitSafe(['rev-parse', '--show-toplevel'], cwd) || cwd
+  // consumer 投影在 scripts/、clade home 源檔在 vendor/scripts/
+  for (const p of [join(top, 'scripts', 'gate-slot.sh'), join(top, 'vendor', 'scripts', 'gate-slot.sh')]) {
+    if (existsSync(p)) return { slotPath: p, top }
+  }
+  return { slotPath: '', top }
+}
+
+let execArgv = innerArgv
+if (HEAVY_GATES.includes(gateLabel) && process.env.CLADE_GATE_SLOT_HELD !== '1') {
+  const { slotPath, top } = resolveGateSlot(process.cwd())
+  if (slotPath) {
+    // wait 模式：pre-push / 手動 pnpm typecheck 是品質 gate，只能排隊，不能被略過。
+    const key = createHash('sha1').update(top).digest('hex').slice(0, 12)
+    execArgv = ['bash', slotPath, 'wait', key, '--', ...innerArgv]
+  }
+}
+
 if (process.env.CLADE_IMPROVEMENT_LOOP_OFF === '1' || !signalsAvailable) {
-  const c = spawn(innerArgv[0], innerArgv.slice(1), { stdio: 'inherit' })
+  const c = spawn(execArgv[0], execArgv.slice(1), { stdio: 'inherit' })
   c.on('exit', (code, sig) => process.exit(code ?? (sig ? 128 : 0)))
 } else {
   const stderrChunks = []
   let stderrLen = 0
   const stdoutChunks = []
   let stdoutLen = 0
-  const child = spawn(innerArgv[0], innerArgv.slice(1), { stdio: ['inherit', 'pipe', 'pipe'] })
+  const child = spawn(execArgv[0], execArgv.slice(1), { stdio: ['inherit', 'pipe', 'pipe'] })
   child.stdout.on('data', (chunk) => {
     process.stdout.write(chunk)
     if (stdoutLen < STDERR_CAPTURE_BYTES) {
@@ -122,7 +152,10 @@ if (process.env.CLADE_IMPROVEMENT_LOOP_OFF === '1' || !signalsAvailable) {
   })
   child.on('exit', (code, sig) => {
     const exitCode = code ?? (sig ? 128 : 0)
-    const shouldLog = exitCode !== 0 || process.env.CLADE_IMPROVEMENT_LOOP_LOG_ALL === '1'
+    // exit 75 = gate-slot 等不到 slot（EX_TEMPFAIL），不是 gate 本身失敗 → 不記訊號。
+    const shouldLog =
+      exitCode !== SLOT_BUSY_EXIT &&
+      (exitCode !== 0 || process.env.CLADE_IMPROVEMENT_LOOP_LOG_ALL === '1')
     if (shouldLog) {
       try {
         const cwd = process.cwd()
