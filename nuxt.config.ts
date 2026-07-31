@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url'
 import { createNitroRollupConfig } from './build/nitro/rollup'
 import { createKnowledgeRuntimeConfig } from './shared/schemas/knowledge-runtime'
 import { parseMcpConnectorClientsEnv } from './shared/utils/mcp-connector-client-registry'
-import { doctorRules } from './vendor/doctor-shared/preset.mjs'
+import { doctorRules } from './vendor/doctor-shared/preset.mts'
 
 const isVitest = process.env.VITEST === 'true'
 const disableNuxtHints =
