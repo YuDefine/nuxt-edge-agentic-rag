@@ -1,8 +1,8 @@
 // clade improvement-loop: shared tech-debt `**Status**:` parsing.
 //
 // Single source of truth for "is this TD closed?" so the emission path
-// (improvement-digest.mjs detectFromTechDebt) and the closure path
-// (closure-scanner.mjs evaluateStatePredicate) cannot drift apart — they
+// (improvement-digest.ts detectFromTechDebt) and the closure path
+// (closure-scanner.ts evaluateStatePredicate) cannot drift apart — they
 // previously disagreed: emission skipped Status-closed TDs while the closure
 // scanner only recognised a TD as closed when its entry was physically removed.
 
@@ -35,7 +35,7 @@ export function isClosedStatus(status) {
 
 // Extract the `**Status**:` of a single TD entry from a full tech-debt.md
 // content string. Slices the block from the `## <tdId>` heading to the next
-// `## ` heading (same splitting contract as improvement-digest.mjs readTechDebt)
+// `## ` heading (same splitting contract as improvement-digest.ts readTechDebt)
 // so a sibling TD's Status line can't leak in. Returns the lowercased status
 // token, or null when the entry is absent or has no Status field.
 export function getTechDebtStatus(fileContent, tdId) {
