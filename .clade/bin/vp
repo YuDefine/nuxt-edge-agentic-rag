@@ -11,7 +11,7 @@
 import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { runShim } from '../vendor/signals/shim-core.mjs'
+import { runShim } from '../vendor/signals/shim-core.ts'
 
 await runShim({
   binName: 'vp',

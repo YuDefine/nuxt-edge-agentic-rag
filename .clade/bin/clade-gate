@@ -28,8 +28,8 @@ let appendRecord = () => {}
 let buildFP = (_stderr, exitCode) => `exit:${exitCode}`
 let signalsAvailable = false
 try {
-  const l = await import('../vendor/signals/ledger-writer.mjs')
-  const s = await import('../vendor/signals/shim-core.mjs')
+  const l = await import('../vendor/signals/ledger-writer.ts')
+  const s = await import('../vendor/signals/shim-core.ts')
   appendRecord = l.appendRecord
   buildFP = s.buildErrorFingerprint
   signalsAvailable = true
