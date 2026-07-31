@@ -114,9 +114,9 @@ Self-host Supabase production migration 前，先分類 migration 風險：
 - **MUST** 區分 PostgREST schema cache reload 與 DB lock；split surface 不能解除同一張 table 的 blocking lock。
 - **MUST** 在 self-host production deploy 保存 `/ready` evidence、traffic smoke summary、PostgREST logs。
 - 可用 clade script prototype（consumer sync 後位於 `.codex/scripts/postgrest-resilience/`）：
-  - `.codex/scripts/postgrest-resilience/classify-migration.mjs <migration.sql>`
-  - `.codex/scripts/postgrest-resilience/ready-watch.mjs --url=<admin-ready-url>`
-  - `.codex/scripts/postgrest-resilience/smoke-runner.mjs --endpoint=<name=url>`
+  - `.codex/scripts/postgrest-resilience/classify-migration.ts <migration.sql>`
+  - `.codex/scripts/postgrest-resilience/ready-watch.ts --url=<admin-ready-url>`
+  - `.codex/scripts/postgrest-resilience/smoke-runner.ts --endpoint=<name=url>`
 
 ## Schema 規範
 
