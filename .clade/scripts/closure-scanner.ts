@@ -1,6 +1,6 @@
 // clade improvement-loop: four-layer closure scanner.
 //
-// Reads candidates (DIG-<hash> records emitted by improvement-digest.mjs) and
+// Reads candidates (DIG-<hash> records emitted by improvement-digest.ts) and
 // produces closure outcomes via four mechanisms, in descending confidence:
 //
 //   1. Explicit closure — commit / spectra change / TD / PR references "DIG-<hash>".

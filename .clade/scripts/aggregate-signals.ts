@@ -6,7 +6,7 @@
 // consumer runs the projected `.clade/bin/clade-gate`, it imports
 // `<consumer>/.clade/vendor/signals/ledger-writer.mjs`, so signals get appended to
 // `<consumer>/.clade/vendor/ledger/signals.jsonl` — which never reaches clade home,
-// where `improvement-digest.mjs` reads `vendor/ledger/signals.jsonl`. The entire
+// where `improvement-digest.ts` reads `vendor/ledger/signals.jsonl`. The entire
 // signal dimension of the loop ran on clade-home-only data.
 //
 // This script pulls each consumer's local ledger back into the clade home ledger,
