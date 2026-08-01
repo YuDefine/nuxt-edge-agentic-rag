@@ -48,7 +48,8 @@ npx skills add https://www.evlog.dev $COPY_FLAGS
 echo "  ✓ Evlog Skills 完成"
 echo ""
 
-# Impeccable Design Skill（pbakaus/impeccable v3.0.6 — 單一 skill 含 24 sub-command；clade design orchestrator 鎖定此版本）
+# Impeccable Design Skill（pbakaus/impeccable — 單一 skill 含 23 sub-command；版本鎖定見 clade
+# plugins/hub-core/skills/design/SKILL.md § Prerequisites，目前 v4.0.4）
 echo "📦 Impeccable Design Skill..."
 npx skills add pbakaus/impeccable $COPY_FLAGS
 echo "  ✓ Impeccable Design Skill 完成"
