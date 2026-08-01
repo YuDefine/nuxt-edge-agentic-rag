@@ -59,6 +59,9 @@ interface ThresholdConfig {
   severity?: string
 }
 
+// 欄位名 MUST 對得上 `matchesThreshold` 實際讀的名字（`totalMin` / `singleConsumerTotalMin`
+// 等，見上方 ThresholdConfig）。名字打錯不會報錯，只會讓那條門檻**靜默失效**：cross-consumer
+// 變成沒有事件數下限、single-consumer 分支從不觸發。SWEEP-002/003 各踩過一次。
 const THRESHOLDS: Record<string, ThresholdConfig> = {
   publishGate: { windowDays: 7, sameFingerprintMin: 2, crossConsumerMin: 2, severity: 'P1' },
   vpCheck: {
@@ -67,21 +70,6 @@ const THRESHOLDS: Record<string, ThresholdConfig> = {
     totalMin: 3,
     singleConsumerSessionsMin: 3,
     singleConsumerTotalMin: 5,
-    severity: 'P2',
-  },
-  testFailure: {
-    // SWEEP-003: crossConsumerCountMin / singleConsumerCountMin 過去是 dead config —
-    // 欄位名不符 matchesThreshold 實際讀的 totalMin / singleConsumerTotalMin（同
-    // SWEEP-002 class）。後果：(1) cross-consumer 沒有事件數下限（任 2 consumer 各 1 筆
-    // 就達標）；(2) single-consumer 分支從不觸發（singleConsumerTotalMin 未定義 → <consumer-b>
-    // 等單一 consumer 的持續 test 失敗永遠 surface 不出來）。接上欄位名、維持原數值語意。
-    // windowDays:14（對齊 vpCheck）必須配 single-consumer 偵測一起上：否則啟用後 pre-SWEEP-001
-    // 的歷史殘渣 fingerprint（vitest banner 等）因 testFailure 原本無窗而永久佔位 digest。
-    windowDays: 14,
-    crossConsumerMin: 2,
-    totalMin: 2,
-    singleConsumerSessionsMin: 3,
-    singleConsumerTotalMin: 3,
     severity: 'P2',
   },
   preCommit: { windowDays: 7, crossConsumerMin: 2, totalMin: 3, severity: 'P2' },
@@ -436,7 +424,7 @@ export function detectFromSignals(signals, registry, nowMs = Date.now()) {
     // SWEEP-002: windowDays 過去是 dead config（定義於 THRESHOLDS 卻從未消費）→ stale
     // 訊號永久滿足 threshold + occurrences 灌水（sync-rules-drift 報 18 occ，其中 17 筆
     // 是 2 週前的死事件）。修法：有設 windowDays 的 gate 只計窗內事件做 threshold/計數；
-    // 沒設 windowDays 的 gate（testFailure / review / handoff）維持 lifetime 行為不變。
+    // 沒設 windowDays 的 gate（review / handoff）維持 lifetime 行為不變。
     const events = tCfg.windowDays
       ? allEvents.filter((e) => {
           const ms = Date.parse(e.ts_utc)
@@ -501,7 +489,22 @@ function thresholdFor(gate) {
     gate === 'pnpm-fmt'
   )
     return THRESHOLDS.vpCheck
-  if (gate === 'pnpm-test') return THRESHOLDS.testFailure
+  // pnpm-test 不產生候選（2026-08-02，TD-263 § 重訪條件 命中後比照 typecheck 處置）。
+  //
+  // 觸發判準是 TD 寫死的兩條，本輪逐條實測命中：pnpm-test 類仍主導候選池（2026-08-01
+  // digest 的 9 條 signal-pattern 候選**全部**是 pnpm-test），且累計 7 輪、66 條候選裡
+  // 被推進成 rule 或 TD 的是 **0 條**（`grep -rlE 'pnpm-test::' rules/ docs/tech-debt.md`
+  // 零命中）。
+  //
+  // 結構限制與 typecheck 同源、方向相反：typecheck 的 fingerprint 太**粗**（裸 TS 碼，
+  // 沒有可 codify 的對象）；pnpm-test 太**細**——fingerprint 帶著 consumer 自家的測試檔
+  // 路徑與 test name（`test/unit/api/school-window-reporting.test.ts > GET /api/v1/... >
+  // returns 422`）。那種身分依定義不可能在第二個 consumer 出現，跨 consumer 永遠不成群，
+  // 而「跨 consumer 成群」正是這條 loop 用來判斷「這是 clade 標準層該管的事」的唯一依據。
+  //
+  // 關掉的只是候選生成；shim 照樣把 raw signal 寫進 ledger（本輪 461 筆），要查 consumer
+  // 測試紅燈趨勢隨時可讀。
+  if (gate === 'pnpm-test') return null
   if (gate === 'pre-commit') return THRESHOLDS.preCommit
   if (gate === 'review-output') return THRESHOLDS.review
   return null
