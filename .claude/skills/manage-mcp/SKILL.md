@@ -1,20 +1,23 @@
 ---
 name: manage-mcp
-description: Manage MCP servers in Nuxt - setup, create, customize with middleware, review, and troubleshoot
+description: Manage MCP servers in Nuxt with @nuxtjs/mcp-toolkit — setup, create tools/resources/prompts, organize with handlers, build interactive MCP Apps, add elicitation/logging/sessions, review, and troubleshoot.
 ---
 
 # Manage MCP
 
-Complete skill for managing Model Context Protocol (MCP) servers in Nuxt applications. Setup, create, customize with middleware and handlers, review, and troubleshoot.
+Complete skill for managing Model Context Protocol (MCP) servers in Nuxt with [`@nuxtjs/mcp-toolkit`](https://mcp-toolkit.nuxt.dev). Setup, create tools/resources/prompts, organize with multi-handler folder convention, build interactive UI widgets (MCP Apps), wire up sessions and observability, review, and troubleshoot.
 
 ## When to Use
 
-- **Setup**: "Setup an MCP server in my Nuxt app"
-- **Create**: "Create a tool to calculate BMI" / "Add a resource to read the README"
-- **Customize**: "Add authentication to my MCP server" / "Create middleware for rate limiting"
-- **Review**: "Review my MCP implementation" / "Check for best practices"
-- **Troubleshoot**: "My auto-imports aren't working" / "Cannot connect to endpoint"
-- **Test**: "Create tests for my MCP tools"
+- **Setup**: "Setup an MCP server in my Nuxt app", "Add MCP to Nuxt"
+- **Create**: "Add a tool that calculates BMI", "Expose a README as a resource", "Create a code-review prompt"
+- **Organize**: "Split my MCP into admin + public endpoints", "Filter tools per user"
+- **Customize**: "Add authentication to my MCP", "Log every tool call to Axiom", "Stream progress to the client"
+- **Build apps**: "Add an interactive Vue widget callable from ChatGPT/Cursor"
+- **Persist state**: "Remember the user across tool calls in one session"
+- **Review**: "Review my MCP implementation", "Check for best practices"
+- **Troubleshoot**: "My tool isn't discovered", "Auto-imports don't work", "OAuth flow keeps triggering"
+- **Test**: "Eval which tools the model picks for these prompts"
 
 ---
 
@@ -22,22 +25,38 @@ Complete skill for managing Model Context Protocol (MCP) servers in Nuxt applica
 
 ### Installation
 
-**Automatic (recommended):**
-```bash
-npx nuxt module add mcp-toolkit
+::code-group
+```bash [pnpm]
+pnpm add @nuxtjs/mcp-toolkit zod
 ```
+```bash [npm]
+npm install @nuxtjs/mcp-toolkit zod
+```
+```bash [yarn]
+yarn add @nuxtjs/mcp-toolkit zod
+```
+```bash [bun]
+bun add @nuxtjs/mcp-toolkit zod
+```
+::
 
-**Manual:**
+Or in one go via the Nuxt CLI:
+
 ```bash
-pnpm add -D @nuxtjs/mcp-toolkit zod
+npx nuxt add mcp
 ```
 
 Add to `nuxt.config.ts`:
-```typescript
+
+```typescript [nuxt.config.ts]
 export default defineNuxtConfig({
   modules: ['@nuxtjs/mcp-toolkit'],
   mcp: {
     name: 'My MCP Server',
+    description: 'Read and update todos for the current user.',
+  },
+  nitro: {
+    experimental: { asyncContext: true }, // required for useEvent / useMcpServer / useMcpLogger
   },
 })
 ```
@@ -46,104 +65,127 @@ export default defineNuxtConfig({
 
 ```
 server/mcp/
-├── tools/           # Actions AI can perform
-│   ├── admin/       # Subdirectory → group: 'admin'
-│   └── content/     # Subdirectory → group: 'content'
-├── resources/       # Data AI can read
-└── prompts/         # Message templates
+├── tools/                 # Actions the AI can perform
+│   └── admin/             # Subdirectory → group: 'admin'
+├── resources/             # Data the AI can read
+├── prompts/               # Reusable message templates
+└── handlers/              # Optional: named handlers mounted at /mcp/<name>
+    └── admin/
+        ├── index.ts       # defineMcpHandler({ middleware: requireAdmin })
+        ├── tools/         # auto-attached to /mcp/admin
+        └── resources/
+
+app/mcp/                   # Optional: MCP Apps (interactive Vue widgets)
+└── palette.vue            # → app `palette`, callable from ChatGPT / Cursor
 ```
 
 ### Verification
 
-1. Start: `pnpm dev`
-2. Check: `http://localhost:3000/mcp` (should redirect)
-3. Open DevTools (Shift+Alt+D) → MCP tab
+1. Start the dev server: `pnpm dev`
+2. Hit the endpoint: `curl http://localhost:3000/mcp` (responds to MCP JSON-RPC)
+3. Open Nuxt DevTools (Shift+Alt+D) → **MCP** tab — bundled MCP Inspector for live testing.
 
 ---
 
 ## Create Tools
 
-Tools are functions AI assistants can call.
+Tools are functions AI assistants can call. Auto-discovered from any `.ts`/`.js` file under `server/mcp/tools/`.
 
-### Basic Structure
+### Basic Tool
+
+```typescript [server/mcp/tools/echo.ts]
+import { z } from 'zod'
+
+export default defineMcpTool({
+  description: 'Echo a message back to the user',
+  inputSchema: {
+    message: z.string().describe('Text to echo'),
+  },
+  handler: async ({ message }) => {
+    return `Echo: ${message}` // string is auto-wrapped into a text content item
+  },
+})
+```
+
+`name` and `title` are auto-derived from the filename (`echo.ts` → `name: 'echo'`, `title: 'Echo'`). Override either by setting them explicitly.
+
+### Return Values
+
+Handlers can return any of these — the toolkit normalizes them:
+
+| Return | Wrapped as |
+| --- | --- |
+| `string` / `number` / `boolean` | `{ content: [{ type: 'text', text: String(v) }] }` |
+| Plain object / array | JSON-stringified into a text content item |
+| `imageResult(base64, mime)` | `{ content: [{ type: 'image', data, mimeType }] }` |
+| `audioResult(base64, mime)` | `{ content: [{ type: 'audio', data, mimeType }] }` |
+| Full `CallToolResult` | Passed through (use for `structuredContent`, embedded resources, multi-content) |
+| Thrown error | Caught and converted to `isError: true`. `createError({ statusCode, message })` from h3 includes the status code in the response. |
 
 ```typescript
 import { z } from 'zod'
 
 export default defineMcpTool({
-  description: 'What the tool does',
-  inputSchema: {
-    param: z.string().describe('Parameter description'),
-  },
-  handler: async ({ param }) => {
-    return 'Result' // or return { foo: 'bar' } for JSON; full CallToolResult still supported
+  description: 'Get a user by ID',
+  inputSchema: { id: z.string().describe('User ID') },
+  handler: async ({ id }) => {
+    const user = await getUser(id)
+    if (!user) throw createError({ statusCode: 404, message: 'User not found' })
+    return user // plain object — auto-stringified
   },
 })
 ```
 
-### Input Patterns
+For typed structured output, pair `outputSchema` with a `structuredContent` return:
 
 ```typescript
-// Required
-name: z.string().describe('User name')
+import { z } from 'zod'
 
-// Optional with default
-limit: z.number().default(10).describe('Max results')
-
-// Enum
-format: z.enum(['json', 'xml']).describe('Format')
-
-// Array
-tags: z.array(z.string()).describe('Tags')
+export default defineMcpTool({
+  description: 'Calculate Body Mass Index',
+  inputSchema: {
+    height: z.number().describe('Height in meters'),
+    weight: z.number().describe('Weight in kilograms'),
+  },
+  outputSchema: {
+    bmi: z.number(),
+    category: z.string(),
+  },
+  handler: async ({ height, weight }) => {
+    const bmi = weight / (height * height)
+    const category = bmi < 18.5 ? 'underweight' : bmi < 25 ? 'normal' : bmi < 30 ? 'overweight' : 'obese'
+    return { structuredContent: { bmi, category } }
+  },
+})
 ```
 
-### Error Handling
+### Annotations & Input Examples
 
-```typescript
-if (!param) {
-  throw createError({ statusCode: 400, message: 'Error: param required' })
-}
-```
-
-### Annotations
-
-Behavioral hints that help MCP clients decide when to prompt for confirmation:
+Behavioral hints that help clients decide whether to prompt for confirmation:
 
 ```typescript
 export default defineMcpTool({
+  description: 'Delete a user account',
   annotations: {
-    readOnlyHint: true,     // Only reads data, no side effects
-    destructiveHint: false,  // Does not delete or destroy data
-    idempotentHint: false,   // Multiple calls may have different effects
-    openWorldHint: false,    // No external API calls
+    readOnlyHint: false,
+    destructiveHint: true,
+    idempotentHint: true,
+    openWorldHint: false,
   },
-  // ...
+  inputSchema: { id: z.string() },
+  inputExamples: [{ id: 'usr_42' }, { id: 'admin' }],
+  handler: async ({ id }) => {
+    await deleteUser(id)
+    return `Deleted ${id}.`
+  },
 })
 ```
 
-Common patterns: read-only tools → `readOnlyHint: true`, create → `idempotentHint: false`, update → `idempotentHint: true`, delete → `destructiveHint: true, idempotentHint: true`.
+Common patterns: read-only → `readOnlyHint: true`; create → `idempotentHint: false`; update → `idempotentHint: true`; delete → `destructiveHint: true, idempotentHint: true`.
 
-### Input Examples
+### Groups, Tags & Folder Inference
 
-Type-safe usage examples that help AI models fill in parameters correctly:
-
-```typescript
-export default defineMcpTool({
-  inputSchema: {
-    title: z.string().describe('Todo title'),
-    content: z.string().optional().describe('Description'),
-  },
-  inputExamples: [
-    { title: 'Buy groceries', content: 'Milk, eggs, bread' },
-    { title: 'Fix login bug' },
-  ],
-  // ...
-})
-```
-
-### Groups and Tags
-
-Organize tools with `group` and `tags` for filtering and progressive discovery:
+`group` (single) and `tags` (free-form) help organize tools and feed `listMcpTools({ group, tags })` filters. `group` is **auto-inferred from the parent folder** — `server/mcp/tools/admin/delete-user.ts` → `group: 'admin'`. Explicit `group` wins.
 
 ```typescript
 export default defineMcpTool({
@@ -154,275 +196,449 @@ export default defineMcpTool({
 })
 ```
 
-Groups are auto-inferred from subdirectories: `server/mcp/tools/admin/delete-user.ts` → `group: 'admin'`. Explicit `group` takes precedence.
-
 ### Caching
 
 ```typescript
 export default defineMcpTool({
-  cache: '5m',  // 5 minutes
-  // ...
+  cache: '5m',  // also accepts `Number` of ms or full Nitro cache options
+  description: 'Fetch weather (cached)',
+  inputSchema: { city: z.string() },
+  handler: async ({ city }) => $fetch(`/api/weather?city=${city}`),
 })
 ```
 
-See [detailed examples →](./references/tools.md)
+### Conditional Visibility (`enabled`)
+
+Hide a tool per request — runs **after** middleware, so `event.context` is populated:
+
+```typescript
+export default defineMcpTool({
+  enabled: event => Boolean(event.context.user),
+  description: 'List the current user’s todos',
+  handler: async () => listTodos(useEvent().context.user.id),
+})
+```
+
+See [tool examples →](./references/tools.md).
 
 ---
 
 ## Create Resources
 
-Resources expose read-only data.
+Resources expose **read-only data** addressable by URI. Auto-discovered from `server/mcp/resources/`.
 
-### File Resource
+### File Shorthand (zero handler)
 
-```typescript
-import { readFile } from 'node:fs/promises'
-
+```typescript [server/mcp/resources/readme.ts]
 export default defineMcpResource({
-  description: 'Read a file',
-  uri: 'file:///README.md',
-  mimeType: 'text/markdown',
-  handler: async (uri: URL) => {
-    const content = await readFile('README.md', 'utf-8')
-    return {
-      contents: [{
-        uri: uri.toString(),
-        text: content,
-        mimeType: 'text/markdown',
-      }],
-    }
-  },
+  description: 'Project README file',
+  file: 'README.md', // URI, MIME type, and handler auto-generated
 })
 ```
 
-### API Resource
+### Standard Resource (custom handler)
 
-```typescript
+```typescript [server/mcp/resources/config.ts]
 export default defineMcpResource({
-  description: 'Fetch API data',
-  uri: 'api:///users',
-  mimeType: 'application/json',
-  cache: '5m',
-  handler: async (uri: URL) => {
-    const data = await $fetch('https://api.example.com/users')
+  description: 'Application config',
+  uri: 'config:///app',
+  metadata: { mimeType: 'application/json' },
+  handler: async (uri) => ({
+    contents: [{
+      uri: uri.toString(),
+      mimeType: 'application/json',
+      text: JSON.stringify({ env: process.env.NODE_ENV }, null, 2),
+    }],
+  }),
+})
+```
+
+### Template Resource (URI variables)
+
+Pass a `ResourceTemplate` from the SDK as `uri`:
+
+```typescript [server/mcp/resources/user.ts]
+import { ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js'
+
+export default defineMcpResource({
+  description: 'Fetch a user by ID',
+  uri: new ResourceTemplate('user:///{id}', { list: undefined }),
+  handler: async (uri, { id }) => {
+    const user = await getUser(String(id))
     return {
       contents: [{
         uri: uri.toString(),
-        text: JSON.stringify(data, null, 2),
         mimeType: 'application/json',
+        text: JSON.stringify(user, null, 2),
       }],
     }
   },
 })
 ```
 
-### Dynamic Resource
+### Metadata & Annotations
+
+Use the top-level `metadata` field for MIME type and `annotations` (audience, priority, lastModified):
 
 ```typescript
-import { z } from 'zod'
-
 export default defineMcpResource({
-  description: 'Fetch by ID',
-  uriTemplate: {
-    uriTemplate: 'user:///{id}',
-    arguments: {
-      id: z.string().describe('User ID'),
+  description: 'Project README',
+  file: 'README.md',
+  metadata: {
+    mimeType: 'text/markdown',
+    annotations: {
+      audience: ['user', 'assistant'],
+      priority: 0.8,
+      lastModified: new Date().toISOString(),
     },
   },
-  handler: async (uri: URL, args) => {
-    const user = await fetchUser(args.id)
-    return {
-      contents: [{
-        uri: uri.toString(),
-        text: JSON.stringify(user),
-        mimeType: 'application/json',
-      }],
-    }
-  },
 })
 ```
 
-See [detailed examples →](./references/resources.md)
+See [resource examples →](./references/resources.md).
 
 ---
 
 ## Create Prompts
 
-Prompts are reusable message templates.
+Prompts are reusable message templates. Auto-discovered from `server/mcp/prompts/`.
 
-### Static Prompt
+### Simple String Prompt
 
-```typescript
+```typescript [server/mcp/prompts/code-review.ts]
 export default defineMcpPrompt({
-  description: 'Code review',
-  handler: async () => {
-    return {
-      messages: [{
-        role: 'user',
-        content: {
-          type: 'text',
-          text: 'Review this code for best practices.',
-        },
-      }],
-    }
-  },
+  description: 'Code-review assistant',
+  handler: async () => 'You are a senior reviewer. Be concise and actionable.',
 })
 ```
 
-### Dynamic Prompt
+The string is wrapped into a single user message. Set `role: 'assistant'` to wrap as an assistant message instead.
+
+### Parameterized Prompt
+
+```typescript [server/mcp/prompts/review.ts]
+import { z } from 'zod'
+
+export default defineMcpPrompt({
+  description: 'Generate a focused code review',
+  inputSchema: {
+    language: z.string().describe('Programming language'),
+    focus: z.enum(['performance', 'security', 'maintainability']).describe('Review focus'),
+  },
+  handler: async ({ language, focus }) =>
+    `Review my ${language} code. Focus on ${focus}.`,
+})
+```
+
+### Argument Autocomplete with `completable()`
+
+Surface dynamic suggestions in clients that support `prompts/complete`:
 
 ```typescript
 import { z } from 'zod'
 
 export default defineMcpPrompt({
-  description: 'Custom review',
+  description: 'Open an issue for a project',
   inputSchema: {
-    language: z.string().describe('Language'),
-    focus: z.array(z.string()).describe('Focus areas'),
+    project: completable(z.string(), async (value) => {
+      const projects = await listProjects()
+      return projects.filter(p => p.startsWith(value)).slice(0, 5)
+    }).describe('Project name'),
   },
-  handler: async ({ language, focus }) => {
-    return {
-      messages: [{
-        role: 'user',
-        content: {
-          type: 'text',
-          text: `Review my ${language} code: ${focus.join(', ')}`,
-        },
-      }],
-    }
-  },
+  handler: async ({ project }) => `Open an issue for ${project}.`,
 })
 ```
 
-See [detailed examples →](./references/prompts.md)
+### Full `GetPromptResult` (multi-message)
+
+```typescript
+export default defineMcpPrompt({
+  description: 'Structured debugging session',
+  inputSchema: { issue: z.string(), env: z.enum(['dev', 'staging', 'prod']) },
+  handler: async ({ issue, env }) => ({
+    messages: [
+      { role: 'user', content: { type: 'text', text: `Debug in ${env}:\n${issue}` } },
+      { role: 'assistant', content: { type: 'text', text: 'Let me analyze step by step:' } },
+    ],
+  }),
+})
+```
+
+::callout{icon="i-lucide-info" color="info"}
+The MCP spec only allows `user` and `assistant` roles. Put system instructions inside the user message text.
+::
+
+See [prompt examples →](./references/prompts.md).
 
 ---
 
-## Middleware & Handlers
+## Multi-Handler Organization
 
-Customize MCP behavior with middleware and handlers for authentication, logging, rate limiting, and more.
+By default everything under `server/mcp/{tools,resources,prompts}/` is exposed at `/mcp`. To split into multiple endpoints with different middleware, use the **folder convention**:
 
-### Basic Middleware
-
-```typescript
-// server/mcp/middleware.ts
-export default defineMcpMiddleware({
-  handler: async (event, next) => {
-    console.log('MCP Request:', event.path)
-
-    // Check auth
-    const token = event.headers.get('authorization')
-    if (!token) {
-      return createError({ statusCode: 401, message: 'Unauthorized' })
-    }
-
-    return next()
-  },
-})
+```
+server/mcp/
+├── tools/                       # → /mcp (default handler)
+└── handlers/
+    ├── admin/
+    │   ├── index.ts             # defineMcpHandler({ middleware: requireAdmin })
+    │   ├── tools/               # → /mcp/admin (auto)
+    │   └── prompts/
+    └── public/
+        ├── index.ts
+        └── tools/               # → /mcp/public (auto)
 ```
 
-### Custom Handler
-
-```typescript
-// server/mcp/handlers/custom.ts
+```typescript [server/mcp/handlers/admin/index.ts]
 export default defineMcpHandler({
-  name: 'custom-mcp',
-  route: '/mcp/custom',
-  handler: async (event) => {
-    return {
-      tools: await loadCustomTools(),
-      resources: [],
-      prompts: [],
+  description: 'Admin tools — destructive operations gated by Bearer auth.',
+  middleware: async (event) => {
+    const apiKey = getHeader(event, 'authorization')?.replace('Bearer ', '')
+    const user = apiKey ? await verifyAdmin(apiKey) : null
+    if (user) event.context.user = user
+    // No throw — let `enabled` guards on individual tools hide them when there's no user
+  },
+  // tools / resources / prompts omitted → folder convention auto-attaches them
+})
+```
+
+`mcp.defaultHandlerStrategy` controls what `/mcp` exposes when named handlers exist:
+
+- `'orphans'` (default) — only definitions **not** attached to a named handler.
+- `'all'` — every discovered definition (the kitchen-sink route).
+
+Cross-cutting filters use the function form:
+
+```typescript
+import { defineMcpHandler, getMcpTools } from '@nuxtjs/mcp-toolkit/server'
+
+export default defineMcpHandler({
+  // Every tool tagged 'searchable', regardless of folder
+  tools: event => getMcpTools({ event, tags: ['searchable'] }),
+})
+```
+
+See [handlers reference →](./references/handlers.md).
+
+---
+
+## Middleware
+
+Middleware lives on `defineMcpHandler` (no separate `defineMcpMiddleware` exists). It runs before/after the MCP request, can populate `event.context`, and supports auto-`next()`:
+
+```typescript [server/mcp/index.ts]
+// Override the default `/mcp` handler with custom middleware
+export default defineMcpHandler({
+  middleware: async (event) => {
+    // Soft auth: set context on success, never throw 401 from middleware
+    // (throwing 401 triggers OAuth discovery in MCP clients)
+    const apiKey = getHeader(event, 'authorization')?.replace('Bearer ', '')
+    if (apiKey) {
+      const user = await verifyApiKey(apiKey).catch(() => null)
+      if (user) event.context.user = user
     }
   },
 })
 ```
 
-### Common Use Cases
+::callout{icon="i-lucide-triangle-alert" color="warning"}
+**Don't `throw createError({ statusCode: 401 })`** from middleware — most clients interpret a 401 on the MCP route as "this server requires OAuth" and stop the regular flow. Either return `403` for hard rejections, or keep auth soft and let per-tool `enabled` guards hide what the user can't access.
+::
 
-- **Authentication**: API keys, JWT tokens
-- **Rate limiting**: Per IP or per user
-- **Logging**: Request/response tracking
-- **CORS**: Cross-origin configuration
-- **Multiple endpoints**: Public/admin separation
+### Logging Middleware (with `next()` for timing)
 
-See [detailed middleware guide →](./references/middleware.md)
+```typescript
+import { extractToolNames } from '@nuxtjs/mcp-toolkit/server'
+
+export default defineMcpHandler({
+  middleware: async (event, next) => {
+    const start = Date.now()
+    const response = await next()
+    const tools = await extractToolNames(event)
+    console.log(`[mcp] ${tools.join(',') || 'rpc'} took ${Date.now() - start}ms`)
+    return response
+  },
+})
+```
+
+For structured wide events on every MCP request, use [`useMcpLogger()`](#observability) instead of `console.log` — it tags `mcp.tool`, `mcp.session_id`, `user.id`, etc. automatically.
+
+See [middleware patterns →](./references/middleware.md).
 
 ---
 
-## Interactive Composables
+## Nitro Runtime Hooks
 
-### `useMcpElicitation()`
+Two per-request Nitro hooks fire during the MCP request lifecycle. Subscribe from a `server/plugins/*.ts` plugin to mutate the resolved config or reach the SDK `McpServer` instance from anywhere — no need to own a `defineMcpHandler`. Listeners that throw are logged and the request continues.
 
-Ask the connected client for structured input mid-request, or send the user to a URL.
+```
+defineMcpHandler middleware → mcp:config:resolved → createMcpServer → mcp:server:created → transport
+```
+
+### `mcp:config:resolved` — mutate tools/resources/prompts per request
+
+Fires after dynamic resolvers and `enabled(event)` guards, before the per-request `McpServer` is built. Mutate `ctx.config` in place.
+
+```typescript [server/plugins/mcp-filter.ts]
+export default defineNitroPlugin((nitroApp) => {
+  nitroApp.hooks.hook('mcp:config:resolved', ({ config, event }) => {
+    if (!event.context.user) {
+      config.tools = config.tools.filter(t => !t.tags?.includes('admin'))
+    }
+  })
+})
+```
+
+### `mcp:server:created` — reach the SDK server
+
+Fires after every tool/resource/prompt has been registered, before the server is connected to the transport. Use the SDK API to register definitions late or call `getSdkServer(server)` for low-level handlers.
+
+```typescript [server/plugins/mcp-whoami.ts]
+export default defineNitroPlugin((nitroApp) => {
+  nitroApp.hooks.hook('mcp:server:created', ({ server, event }) => {
+    server.registerTool(
+      'whoami',
+      { description: 'Return the current user id' },
+      async () => ({
+        content: [{ type: 'text', text: String(event.context.userId ?? 'anonymous') }],
+      }),
+    )
+  })
+})
+```
+
+See the [hooks reference →](https://mcp-toolkit.nuxt.dev/advanced/hooks).
+
+---
+
+## Sessions
+
+Stateful MCP — server assigns an `Mcp-Session-Id` and remembers data across tool calls in the same session.
+
+```typescript [nuxt.config.ts]
+export default defineNuxtConfig({
+  mcp: {
+    sessions: true, // or { maxDuration: 30 * 60_000, maxSessions: 1000 }
+  },
+})
+```
+
+```typescript [server/mcp/tools/remember.ts]
+import { z } from 'zod'
+
+export default defineMcpTool({
+  description: 'Remember a fact for this session',
+  inputSchema: { key: z.string(), value: z.string() },
+  handler: async ({ key, value }) => {
+    const session = useMcpSession<{ facts: Record<string, string> }>()
+    const facts = (await session.get('facts')) ?? {}
+    facts[key] = value
+    await session.set('facts', facts)
+    return `Remembered ${key}.`
+  },
+})
+```
+
+Sessions enable SSE streaming, server-to-client notifications, and elicitation. See [sessions reference →](./references/sessions.md).
+
+---
+
+## Elicitation
+
+Ask the connected client for structured input mid-request, or send the user to a URL (MCP spec 2025-11-25).
 
 ```typescript
 import { z } from 'zod'
 
 export default defineMcpTool({
-  name: 'create_release',
+  description: 'Create a release after asking for the channel',
   inputSchema: { name: z.string() },
   handler: async ({ name }) => {
     const elicit = useMcpElicitation()
+    if (!elicit.supports('form')) {
+      return `Pass --channel via your client; "${name}" needs a release channel.`
+    }
 
     const result = await elicit.form({
       message: `Pick a channel for "${name}"`,
       schema: {
         channel: z.enum(['stable', 'beta']).describe('Release channel'),
+        notify: z.boolean().default(true),
       },
     })
-
-    if (result.action !== 'accept') return 'Cancelled.'
-    return `Released "${name}" on ${result.content.channel}.`
+    if (result.action !== 'accept') return `Cancelled (${result.action}).`
+    return `Released ${name} on ${result.content.channel}.`
   },
 })
 ```
 
-- **Form mode**: pass a Zod raw shape, the response is validated and typed.
-- **URL mode**: `elicit.url({ message, url })` — opt-in per spec, gate with `elicit.supports('url')`.
-- **Confirm**: `await elicit.confirm('Continue?')` returns a boolean.
-- **Capability check**: `elicit.supports('form' | 'url')` — always `false` before init completes.
-- **Errors**: catch `McpElicitationError` (`code: 'unsupported' | 'invalid-schema' | 'invalid-response'`) to fall back when the client doesn't support elicitation.
-- Schema must be a **flat object of primitives** (string/number/boolean), enums, or string-enum arrays — nested objects are rejected by the spec.
+- **Form mode** — Zod raw shape, validated and typed. Schema must be a flat object of primitives, enums, or string-enum arrays.
+- **URL mode** — `elicit.url({ message, url })`, opt-in per spec; gate with `elicit.supports('url')`.
+- **Confirm** — `await elicit.confirm('Continue?')` returns `boolean`.
+- **Errors** — catch `McpElicitationError` (`code: 'unsupported' | 'invalid-schema' | 'invalid-response'`) to fall back gracefully.
 
-See [elicitation docs →](https://mcp-toolkit.nuxt.dev/advanced/elicitation)
+Requires `nitro.experimental.asyncContext: true` and a client that declared the `elicitation` capability.
+
+See [elicitation docs →](https://mcp-toolkit.nuxt.dev/advanced/elicitation).
 
 ---
 
-## Observability
+## Observability — `useMcpLogger()`
 
-### `useMcpLogger()`
-
-Split-channel logger: notify the connected client and capture structured wide events (powered by [evlog](https://evlog.dev), an **optional peer dependency** — install with `pnpm add evlog` to enable wide events).
+Split-channel logger. `notify` goes to the connected client; `set` / `event` / `evlog` feed the request's [evlog](https://evlog.dev) wide event when observability is on.
 
 ```typescript
+import { z } from 'zod'
+
 export default defineMcpTool({
-  name: 'charge_card',
-  inputSchema: { userId: z.string(), amount: z.number().int() },
+  description: 'Charge a payment method',
+  inputSchema: { userId: z.string(), amount: z.number().int().positive() },
+  annotations: { destructiveHint: true, idempotentHint: false },
   handler: async ({ userId, amount }) => {
     const log = useMcpLogger('billing')
-
-    // → server-side wide event (dev terminal + drains)
-    log.set({ user: { id: userId }, billing: { amount } })
-    log.event('charge_started', { amount })
-
-    // → MCP client (Inspector / Cursor / Claude)
+    log.set({ billing: { amount } })
     await log.notify.info({ msg: 'starting charge', amount })
 
-    const receipt = await charge(userId, amount)
-    return `Charged ${amount}.`
+    try {
+      const receipt = await chargeCard(userId, amount)
+      log.event('charge_completed', { receiptId: receipt.id })
+      return `Charged ${amount}. Receipt: ${receipt.id}`
+    }
+    catch (err) {
+      log.evlog.error('charge failed', err as Error)
+      throw err
+    }
   },
 })
 ```
 
-- **Client channel** (`log.notify`): `notify(level, data, logger?)` plus `notify.debug` / `notify.info` / `notify.warning` / `notify.error` shortcuts. Always resolves, never throws — respects the client's `logging/setLevel` per session. Works with or without `evlog`.
-- **Server channel** (requires `evlog` installed): `set(fields)` accumulates context onto the request's wide event; `event(name, fields?)` captures a discrete event; `evlog` exposes the full request logger. These throw `McpObservabilityNotEnabledError` when observability is off.
-- Wide events are auto-tagged with `mcp.transport`, `mcp.route`, `mcp.session_id`, `mcp.method`, `mcp.request_id`, and `mcp.tool` / `mcp.resource` / `mcp.prompt` based on the JSON-RPC payload (no user code required).
-- `mcp.logging` modes: omit (auto-detect — on if `evlog` installed), `true` / object (force on, throws at build if missing), `false` (force off — `notify` keeps working).
+- **Client channel** (`log.notify`): `notify(level, data, logger?)` + `.debug` / `.info` / `.warning` / `.error`. Always resolves, never throws.
+- **Server channel**: `set(fields)` / `event(name, fields?)` / `setUser({ id, email, name })` / `setSession({ id })` / `evlog`. Throws `McpObservabilityNotEnabledError` when off.
+- Wide events are auto-tagged: `mcp.method`, `mcp.tool`, `mcp.session_id`, `mcp.request_id`, `service: '<env.service>/mcp'`. `user.*` / `session.*` flow through automatically when middleware sets `event.context.user` / `event.context.session`.
 
-#### Ship to a backend (drains)
+### Setup
 
-Ship every MCP wide event to **Axiom, Sentry, OTLP, HyperDX, Datadog, Better Stack, or PostHog** with a single Nitro plugin. Each adapter lives under `evlog/adapters/*` and is registered on the `evlog:drain` hook:
+::code-group
+```bash [pnpm]
+pnpm add evlog
+```
+```bash [npm]
+npm install evlog
+```
+::
+
+```typescript [nuxt.config.ts]
+export default defineNuxtConfig({
+  modules: ['evlog/nuxt', '@nuxtjs/mcp-toolkit'],
+  evlog: { env: { service: 'my-app' } },
+})
+```
+
+`mcp.logging`: omit (auto-detect), `true` (assert `evlog/nuxt` is registered), `false` (opt out).
+
+### Drains
+
+Ship every MCP wide event to **Axiom, Sentry, OTLP, HyperDX, Datadog, Better Stack, or PostHog** with one Nitro plugin:
 
 ```typescript [server/plugins/evlog-axiom.ts]
 import { createAxiomDrain } from 'evlog/adapters/axiom'
@@ -432,131 +648,239 @@ export default defineNitroPlugin((nitroApp) => {
 })
 ```
 
-The hook is additive — register multiple drains in parallel. Custom drains are just `(ctx) => Promise<void>` registered on the same hook.
+See [logging docs →](https://mcp-toolkit.nuxt.dev/advanced/logging) and [evlog.dev →](https://evlog.dev).
 
-See [evlog.dev →](https://evlog.dev) for the full list of adapters, env-var conventions, sampling, and redaction.
+---
 
-See [logging docs →](https://mcp-toolkit.nuxt.dev/advanced/logging)
+## MCP Apps (interactive UI widgets)
+
+Author Vue Single-File Components in `app/mcp/` — they ship to MCP-Apps-compatible hosts (ChatGPT, Cursor) as interactive widgets backed by your MCP tool handler.
+
+```vue [app/mcp/palette.vue]
+<script setup lang="ts">
+import { z } from 'zod'
+
+defineMcpApp({
+  description: 'Pick a colour and preview a palette.',
+  inputSchema: { base: z.string().describe('Hex colour, e.g. #2563eb') },
+  handler: async ({ base }) => ({
+    structuredContent: await $fetch('/api/palette', { query: { base } }),
+  }),
+})
+
+const { data, sendPrompt } = useMcpApp<{ swatches: { name: string, hex: string }[] }>()
+</script>
+
+<template>
+  <div class="grid grid-cols-3 gap-2">
+    <button
+      v-for="s in data?.swatches"
+      :key="s.hex"
+      class="rounded-md p-3 text-white"
+      :style="{ background: s.hex }"
+      @click="sendPrompt(`Use ${s.name}`)"
+    >
+      {{ s.name }}
+    </button>
+  </div>
+</template>
+```
+
+Each SFC becomes a tool, a UI resource at `ui://mcp-app/<name>`, and a single-file HTML bundle. The handler runs server-side; `structuredContent` is inlined into the HTML so the iframe boots **with full data on the first paint**.
+
+`useMcpApp<T>()` exposes `data`, `loading`, `error`, `hostContext`, `callTool(name, params)`, `sendPrompt(prompt)`, and `openLink(url)`.
+
+CSP is strict by default — opt extra origins in:
+
+```typescript
+defineMcpApp({
+  csp: {
+    resourceDomains: ['https://images.example.com'], // <img>, <style>, fonts
+    connectDomains: ['https://api.example.com'], // fetch / XHR / WebSocket
+  },
+  // ...
+})
+```
+
+See [MCP Apps reference →](./references/apps.md).
+
+---
+
+## Server Metadata
+
+Identify the server in client UIs and steer the LLM with operational instructions:
+
+```typescript [nuxt.config.ts]
+export default defineNuxtConfig({
+  mcp: {
+    name: 'Todos MCP',
+    description: 'Read and update todos for the current user.', // shown in client UIs
+    instructions: 'Always call list-todos before create-todo. Group results by status.', // injected into the LLM system prompt
+    icons: [
+      { src: 'https://example.com/icon.png', mimeType: 'image/png', sizes: ['64x64'] },
+    ],
+  },
+})
+```
+
+Override per-handler when an endpoint needs a different identity (e.g. `/mcp/admin` with its own description and icons).
+
+---
+
+## Listing Definitions (read your catalog)
+
+Use `listMcp*` to expose summaries (catalog endpoints) and `getMcp*` for raw definitions to feed into a handler:
+
+```typescript [server/routes/.well-known/mcp/server-card.json.get.ts]
+import { listMcpDefinitions } from '@nuxtjs/mcp-toolkit/server'
+
+export default defineEventHandler(async (event) => {
+  const { tools, resources, prompts } = await listMcpDefinitions({ event })
+  return {
+    name: 'My MCP Server',
+    tools: tools.map(t => ({ name: t.name, description: t.description })),
+    resources: resources.map(r => ({ name: r.name, uri: r.uri })),
+    prompts: prompts.map(p => ({ name: p.name, description: p.description })),
+  }
+})
+```
+
+Filters: `event` (apply `enabled` guards), `group`, `tags`, `handler`, `orphansOnly`. Pass `event` to match exactly what the request would see.
+
+---
+
+## Code Mode (experimental)
+
+Wrap every tool exposed by a handler into a single `code` tool. The LLM writes JavaScript that calls tools via `codemode.*`, executed in a secure V8 isolate via [`secure-exec`](https://www.npmjs.com/package/secure-exec).
+
+```typescript [server/mcp/handlers/codemode/index.ts]
+export default defineMcpHandler({
+  experimental_codeMode: {
+    progressive: true,
+    memoryLimit: 128,        // MB
+    cpuTimeLimitMs: 5000,
+    maxToolCalls: 20,
+  },
+})
+```
+
+```bash
+npm install secure-exec
+```
+
+Useful for letting the LLM orchestrate many tool calls in one round-trip. Not supported on Cloudflare Workers (returns a clear runtime error).
+
+See [Code Mode docs →](https://mcp-toolkit.nuxt.dev/advanced/code-mode).
 
 ---
 
 ## Review & Best Practices
 
-### MCP code review (agents & humans)
+When reviewing or modernizing `server/mcp/**`, walk this checklist:
 
-When reviewing or modernizing `server/mcp/**`, walk through this list so implementations stay aligned with current toolkit behavior and Nuxt server typing.
+### Tools
 
-**Tool return values**
+✅ Direct returns (`string`, object, array) instead of full `CallToolResult`
+✅ `throw createError({ statusCode, message })` for failures (caught and returned as `isError`)
+✅ `.describe()` on every Zod field
+✅ Honest `annotations` (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint`)
+✅ `inputExamples` for non-trivial schemas
+✅ `enabled: event => Boolean(event.context.user)` to hide tools per request
+✅ `cache: '5m'` (or full Nitro options) for expensive idempotent ops
+✅ `nitro.experimental.asyncContext: true` when calling `useEvent()` / `useMcpServer()` / `useMcpSession()` / `useMcpLogger()` / `useMcpElicitation()`
 
-- Prefer **direct returns**: `string`, `number`, `boolean`, plain objects, or arrays. The module wraps them into `CallToolResult` (JSON is pretty-printed for objects).
-- **Avoid deprecated helpers** unless you must support very old code: `textResult`, `jsonResult`, `errorResult` — migrate to direct values and `throw createError({ statusCode, message })` (or `throw new Error(...)`) for failures.
-- Reserve **full `CallToolResult`** (`content`, `structuredContent`, embedded resources, `isError`) for cases that need explicit MCP shapes.
+❌ `textResult` / `jsonResult` / `errorResult` (deprecated — use direct returns or throw)
+❌ `defineMcpMiddleware` (does not exist — middleware is a field on `defineMcpHandler`)
+❌ Throwing `401` from middleware (triggers OAuth discovery in clients — return `403`, or use soft auth + `enabled` guards)
+❌ Generic descriptions, missing `await`, unvalidated input, exposed secrets
 
-**Async context & server composables**
+### Resources
 
-- **`useMcpServer()`** needs `nitro.experimental.asyncContext: true` in `nuxt.config`. If TypeScript reports `Promise<McpServerHelper>` (common with server auto-imports), use `const mcp = await useMcpServer()` before `registerTool` / `removeTool` / etc.
-- **`useMcpSession()`** / **`useEvent()`**: await if the IDE or `vue-tsc` indicates a `Promise`; keep session and event usage inside tool, resource, or prompt handlers.
+✅ `mimeType` under `metadata` (not at top level)
+✅ `file: 'README.md'` shorthand for static files (URI, MIME and handler auto-generated)
+✅ `ResourceTemplate` for parameterized URIs
+✅ `metadata.annotations` for `audience` / `priority` / `lastModified`
 
-**Hygiene**
+❌ Returning huge payloads — paginate via templates
+❌ Skipping the MIME type — clients use it to render correctly
 
-- Every **`await`** on a Promise-backed call in handlers (DB, `fetch`, composables that return promises).
-- **Zod**: required `.describe()` on schema fields for good model UX; use `inputExamples` for non-trivial shapes.
-- **Annotations**: set `readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint` honestly.
-- Run **`pnpm eslint`** / **`nuxi typecheck`** on the app after refactors (catch deprecated APIs and missing `await` early).
+### Prompts
 
-### Tool Checklist
+✅ Plain `string` returns when one user message is enough (uses `role` field, default `'user'`)
+✅ `completable(z.string(), async value => suggestions)` for argument autocomplete
+✅ Single, focused purpose per prompt
 
-✅ Use kebab-case filenames
-✅ Add `.describe()` to all Zod fields
-✅ Return plain values or throw `createError` for failures (not deprecated `errorResult`)
-✅ Add caching for expensive ops
-✅ Clear, actionable descriptions
-✅ Validate all inputs
-✅ Add `annotations` (readOnlyHint, destructiveHint, etc.)
-✅ Add `inputExamples` for tools with optional/complex params
-✅ `nitro.experimental.asyncContext: true` when using `useMcpServer()`
+❌ Mixing system instructions outside the `user` message (the spec rejects `system` role)
 
-❌ Generic descriptions
-❌ Skip error handling
-❌ Expose sensitive data
-❌ No input validation
-❌ `textResult` / `jsonResult` / `errorResult` in new code (deprecated)
+### Handlers
 
-### Resource Checklist
-
-✅ Descriptive URIs (`config:///app`)
-✅ Set appropriate MIME types
-✅ Enable caching when needed
-✅ Handle errors gracefully
-✅ Use URI templates for collections
-
-❌ Unclear URI schemes
-❌ Skip MIME types
-❌ Expose sensitive data
-❌ Return huge datasets without pagination
-
-### Prompt Checklist
-
-✅ Clear descriptions
-✅ Meaningful parameters
-✅ Default values where appropriate
-✅ Single, focused purpose
-✅ Reusable design
-
-❌ Overly complex
-❌ Skip descriptions
-❌ Mix multiple concerns
+✅ Folder convention (`server/mcp/handlers/<name>/`) over manual `tools: [...]` arrays
+✅ One responsibility per handler (admin / public / apps), pick the right `defaultHandlerStrategy`
+✅ Per-handler `description` / `instructions` / `icons` when an endpoint has its own identity
 
 ---
 
 ## Troubleshooting
 
-### Auto-imports Not Working
+### Tool / Resource / Prompt not discovered
 
-**Fix:**
-1. Check `modules: ['@nuxtjs/mcp-toolkit']` in config
-2. Restart dev server
-3. Files in `server/mcp/` directory?
-4. Run `pnpm nuxt prepare`
+1. File is under `server/mcp/{tools,resources,prompts}/` (or under a `handlers/<name>/` subfolder)?
+2. `export default` (not a named export)?
+3. Restart dev server and run `pnpm nuxt prepare`.
 
-### Endpoint Not Accessible
+### Auto-imports not working
 
-**Fix:**
-1. Dev server running?
-2. Test: `curl http://localhost:3000/mcp`
-3. Check `enabled: true` in config
-4. Review server logs
+1. `'@nuxtjs/mcp-toolkit'` listed in `modules` in `nuxt.config.ts`?
+2. Run `pnpm dev:prepare` (or `pnpm nuxt prepare`) to regenerate type stubs.
+3. Restart the TypeScript server in your IDE.
+4. If you've set `mcp.autoImports: false`, import explicitly from `@nuxtjs/mcp-toolkit/server`.
 
-### Validation Errors
+### Endpoint not accessible
 
-**Fix:**
-- Required fields provided?
-- Types match schema?
-- Use `.optional()` for optional fields
-- Enum values exact match?
+```bash
+curl -X POST http://localhost:3000/mcp \
+  -H 'content-type: application/json' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+```
 
-### Tool Not Discovered
+Should return a JSON-RPC response. If `404`, check `mcp.enabled !== false` and `mcp.route`.
 
-**Fix:**
-- File extension `.ts` or `.js`?
-- Using `export default`?
-- File in correct directory?
-- Restart dev server
+### `useEvent()` / `useMcpServer()` / `useMcpSession()` throws "no async context"
 
-See [detailed troubleshooting →](./references/troubleshooting.md)
+Add `nitro.experimental.asyncContext: true` to `nuxt.config.ts`. These composables read the current event from Nitro's async-local storage, which only works when `asyncContext` is on (default since Nuxt 3.8+).
+
+If your IDE / `vue-tsc` infers `Promise<…>` for one of these (a known auto-import quirk), `await` the call defensively — runtime works either way: `const mcp = await useMcpServer()`.
+
+### Client triggers OAuth flow on every request
+
+You're throwing `401` from middleware. Switch to **soft auth**: set `event.context.user` on success, return `403` for hard rejections, and gate per-tool with `enabled: event => Boolean(event.context.user)`.
+
+### Origin checks rejecting browser clients
+
+Set `mcp.security.allowedOrigins`:
+
+```typescript
+mcp: {
+  security: {
+    allowedOrigins: ['https://my-app.vercel.app'],
+    // allowedOrigins: '*' // explicit opt-out — use with care
+  },
+}
+```
+
+See [troubleshooting reference →](./references/troubleshooting.md).
 
 ---
 
 ## Testing with Evals
 
-### Setup
+Eval the right-tool-for-the-prompt selection with [Evalite](https://evalite.dev):
 
 ```bash
 pnpm add -D evalite vitest @ai-sdk/mcp ai
 ```
 
-Add to `package.json`:
-```json
+```json [package.json]
 {
   "scripts": {
     "eval": "evalite",
@@ -565,10 +889,7 @@ Add to `package.json`:
 }
 ```
 
-### Basic Test
-
-Create `test/mcp.eval.ts`:
-```typescript
+```typescript [test/mcp.eval.ts]
 import { experimental_createMCPClient as createMCPClient } from '@ai-sdk/mcp'
 import { generateText } from 'ai'
 import { evalite } from 'evalite'
@@ -578,10 +899,7 @@ evalite('MCP Tool Selection', {
   data: async () => [
     {
       input: 'Calculate BMI for 70kg 1.75m',
-      expected: [{
-        toolName: 'bmi-calculator',
-        input: { weight: 70, height: 1.75 },
-      }],
+      expected: [{ toolName: 'bmi-calculator', input: { weight: 70, height: 1.75 } }],
     },
   ],
   task: async (input) => {
@@ -601,76 +919,79 @@ evalite('MCP Tool Selection', {
     }
   },
   scorers: [
-    ({ output, expected }) => toolCallAccuracy({
-      actualCalls: output,
-      expectedCalls: expected,
-    }),
+    ({ output, expected }) => toolCallAccuracy({ actualCalls: output, expectedCalls: expected }),
   ],
 })
 ```
 
-### Running
+Run it:
 
 ```bash
-# Start server
-pnpm dev
-
-# Run tests (in another terminal)
-pnpm eval
-
-# Or with UI
-pnpm eval:ui  # http://localhost:3006
+pnpm dev          # in one terminal
+pnpm eval         # in another, or `pnpm eval:ui` for the watcher UI
 ```
 
-See [detailed testing guide →](./references/testing.md)
+See [testing reference →](./references/testing.md).
 
 ---
 
 ## Quick Reference
 
-### Common Commands
-
-```bash
-# Setup
-npx nuxt module add mcp-toolkit
-
-# Dev
-pnpm dev
-
-# Test endpoint
-curl http://localhost:3000/mcp
-
-# Regenerate types
-pnpm nuxt prepare
-
-# Run evals
-pnpm eval
-```
-
 ### Configuration
 
-```typescript
-// nuxt.config.ts
+```typescript [nuxt.config.ts]
 export default defineNuxtConfig({
+  modules: ['@nuxtjs/mcp-toolkit'],
   mcp: {
     name: 'My Server',
+    description: 'What this server does',
+    instructions: 'How the LLM should use it',
     route: '/mcp',
-    enabled: true,
-    dir: 'mcp',
+    sessions: true,
+    defaultHandlerStrategy: 'orphans', // or 'all'
+    security: { allowedOrigins: ['https://my-app.vercel.app'] },
+    logging: true, // requires evlog/nuxt
   },
+  nitro: { experimental: { asyncContext: true } },
 })
 ```
 
-### Debug Tools
+### Server-Side API (auto-imported)
 
-- **DevTools**: Shift+Alt+D → MCP tab
-- **Logs**: Check terminal
-- **curl**: Test endpoint
+| Helper | Purpose |
+| --- | --- |
+| `defineMcpTool` / `defineMcpResource` / `defineMcpPrompt` | Declare a definition (auto-discovered). |
+| `defineMcpHandler` | Custom handler with middleware / dynamic tools. |
+| `defineMcpApp` (in `app/mcp/*.vue`) | Interactive Vue widget. |
+| `imageResult` / `audioResult` | Wrap binary content in a tool response. |
+| `completable` | Argument autocomplete on prompts. |
+| `extractToolNames` | Parse tool names from the JSON-RPC body in middleware. |
+| `useMcpServer()` | Mid-session register/unregister tools. |
+| `useMcpSession<T>()` | Per-session storage (sessions must be enabled). |
+| `useMcpLogger(name?)` | Client notifications + server-side wide events. |
+| `useMcpElicitation()` | Form / URL / confirm prompts to the client. |
+| `useMcpApp<T>()` (in MCP App SFCs) | Reactive `data` + `callTool` / `sendPrompt` bridge. |
+| `listMcpTools` / `listMcpResources` / `listMcpPrompts` / `listMcpDefinitions` | JSON-friendly summaries (catalog endpoints). |
+| `getMcpTools` / `getMcpResources` / `getMcpPrompts` | Raw definitions (feed back into a handler). |
+| `getSdkServer` | Reach the low-level SDK `Server` from an `McpServer` (advanced). |
+
+### Nitro Hooks
+
+| Hook | Fires |
+| --- | --- |
+| `mcp:config:resolved` | Per request, after dynamic resolvers — mutate `config.tools / resources / prompts / instructions / icons / name`. |
+| `mcp:server:created` | Per request, after every definition is registered — call `server.registerTool(...)`, `getSdkServer(server).setRequestHandler(...)`, etc. |
+
+### Debug
+
+- **DevTools**: Shift+Alt+D → MCP tab (bundled MCP Inspector).
+- **CLI Inspector**: `npx @modelcontextprotocol/inspector http://localhost:3000/mcp`
+- **curl smoke test**: `curl -X POST … -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'`
 
 ## Learn More
 
-- [Documentation](https://mcp-toolkit.nuxt.dev/)
-- [Tools Guide](https://mcp-toolkit.nuxt.dev/core-concepts/tools)
-- [Resources Guide](https://mcp-toolkit.nuxt.dev/core-concepts/resources)
-- [Prompts Guide](https://mcp-toolkit.nuxt.dev/core-concepts/prompts)
-- [MCP Protocol](https://modelcontextprotocol.io/)
+- [Documentation](https://mcp-toolkit.nuxt.dev)
+- [Tools](https://mcp-toolkit.nuxt.dev/tools/overview) · [Resources](https://mcp-toolkit.nuxt.dev/resources/overview) · [Prompts](https://mcp-toolkit.nuxt.dev/prompts/overview)
+- [Handlers](https://mcp-toolkit.nuxt.dev/handlers/overview) · [Apps](https://mcp-toolkit.nuxt.dev/apps/overview)
+- [Sessions](https://mcp-toolkit.nuxt.dev/advanced/sessions) · [Logging](https://mcp-toolkit.nuxt.dev/advanced/logging) · [Elicitation](https://mcp-toolkit.nuxt.dev/advanced/elicitation) · [Hooks](https://mcp-toolkit.nuxt.dev/advanced/hooks)
+- [MCP Specification](https://modelcontextprotocol.io)

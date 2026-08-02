@@ -10,15 +10,17 @@ Reactive swipe detection based on [PointerEvents](https://developer.mozilla.org/
 
 ```vue
 <script setup lang="ts">
-  import { usePointerSwipe } from '@vueuse/core'
-  import { useTemplateRef } from 'vue'
+import { usePointerSwipe } from '@vueuse/core'
+import { useTemplateRef } from 'vue'
 
-  const el = useTemplateRef('el')
-  const { isSwiping, direction } = usePointerSwipe(el)
+const el = useTemplateRef('el')
+const { isSwiping, direction } = usePointerSwipe(el)
 </script>
 
 <template>
-  <div ref="el">Swipe here</div>
+  <div ref="el">
+    Swipe here
+  </div>
 </template>
 ```
 
@@ -58,8 +60,8 @@ export interface UsePointerSwipeOptions {
 export interface UsePointerSwipeReturn {
   readonly isSwiping: ShallowRef<boolean>
   direction: Readonly<ShallowRef<UseSwipeDirection>>
-  readonly posStart: Position
-  readonly posEnd: Position
+  readonly posStart: DeepReadonly<Position>
+  readonly posEnd: DeepReadonly<Position>
   distanceX: Readonly<ComputedRef<number>>
   distanceY: Readonly<ComputedRef<number>>
   stop: () => void
@@ -73,6 +75,6 @@ export interface UsePointerSwipeReturn {
  */
 export declare function usePointerSwipe(
   target: MaybeRefOrGetter<HTMLElement | null | undefined>,
-  options?: UsePointerSwipeOptions
+  options?: UsePointerSwipeOptions,
 ): UsePointerSwipeReturn
 ```

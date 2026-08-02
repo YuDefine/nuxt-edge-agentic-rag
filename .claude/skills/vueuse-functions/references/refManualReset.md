@@ -20,6 +20,10 @@ message.reset()
 console.log(message.value) // 'default message'
 ```
 
+> [!NOTE]
+> `refManualReset` is shallow, which may cause your UI not updated on value changes.
+> Wrap your value with `reactive` can achieve deep reactivity, but this workaround may not suit all use cases.
+
 ## Type Declarations
 
 ```ts
@@ -39,6 +43,6 @@ export interface ManualResetRefReturn<T> extends Ref<T> {
  * @param defaultValue The value which will be set.
  */
 export declare function refManualReset<T>(
-  defaultValue: MaybeRefOrGetter<T>
+  defaultValue: MaybeRefOrGetter<T>,
 ): ManualResetRefReturn<T>
 ```

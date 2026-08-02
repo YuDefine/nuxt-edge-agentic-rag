@@ -13,13 +13,7 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "my-app",
   "compatibility_flags": ["nodejs_compat"],
-  "d1_databases": [
-    {
-      "binding": "DB",
-      "database_name": "my-app-db",
-      "database_id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
-    },
-  ],
+  "d1_databases": [{ "binding": "DB", "database_name": "my-app-db", "database_id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" }]
 }
 ```
 
@@ -30,18 +24,12 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "my-app",
   "compatibility_flags": ["nodejs_compat"],
-  "d1_databases": [
-    {
-      "binding": "DB",
-      "database_name": "my-app-db",
-      "database_id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
-    },
-  ],
+  "d1_databases": [{ "binding": "DB", "database_name": "my-app-db", "database_id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" }],
   "kv_namespaces": [
     { "binding": "KV", "id": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" },
-    { "binding": "CACHE", "id": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" },
+    { "binding": "CACHE", "id": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" }
   ],
-  "r2_buckets": [{ "binding": "BLOB", "bucket_name": "my-app-bucket" }],
+  "r2_buckets": [{ "binding": "BLOB", "bucket_name": "my-app-bucket" }]
 }
 ```
 
@@ -53,12 +41,12 @@ Enable logging to track performance and debug issues:
 {
   "observability": {
     "logs": {
-      "enabled": true, // Enable log collection
-      "head_sampling_rate": 1, // Sample rate 0-1 (1 = 100% of requests)
-      "invocation_logs": true, // Log function invocations
-      "persist": true, // Persist logs to storage
-    },
-  },
+      "enabled": true,          // Enable log collection
+      "head_sampling_rate": 1,  // Sample rate 0-1 (1 = 100% of requests)
+      "invocation_logs": true,  // Log function invocations
+      "persist": true           // Persist logs to storage
+    }
+  }
 }
 ```
 
@@ -72,14 +60,12 @@ Specify migrations table and directory:
 
 ```jsonc
 {
-  "d1_databases": [
-    {
-      "binding": "DB",
-      "database_id": "<id>",
-      "migrations_table": "_hub_migrations",
-      "migrations_dir": ".output/server/db/migrations/",
-    },
-  ],
+  "d1_databases": [{
+    "binding": "DB",
+    "database_id": "<id>",
+    "migrations_table": "_hub_migrations",
+    "migrations_dir": ".output/server/db/migrations/"
+  }]
 }
 ```
 
@@ -119,16 +105,12 @@ npx wrangler r2 bucket create my-app-bucket
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "my-app",
   "compatibility_flags": ["nodejs_compat"],
-  "d1_databases": [
-    { "binding": "DB", "database_name": "my-app-db-prod", "database_id": "prod-db-id" },
-  ],
+  "d1_databases": [{ "binding": "DB", "database_name": "my-app-db-prod", "database_id": "prod-db-id" }],
   "env": {
     "staging": {
-      "d1_databases": [
-        { "binding": "DB", "database_name": "my-app-db-staging", "database_id": "staging-db-id" },
-      ],
-    },
-  },
+      "d1_databases": [{ "binding": "DB", "database_name": "my-app-db-staging", "database_id": "staging-db-id" }]
+    }
+  }
 }
 ```
 
@@ -145,21 +127,21 @@ export default defineNuxtConfig({
     db: {
       dialect: 'sqlite',
       driver: 'd1',
-      connection: { databaseId: '<database-id>' },
+      connection: { databaseId: '<database-id>' }
     },
     kv: {
       driver: 'cloudflare-kv-binding',
-      namespaceId: '<kv-namespace-id>',
+      namespaceId: '<kv-namespace-id>'
     },
     cache: {
       driver: 'cloudflare-kv-binding',
-      namespaceId: '<cache-namespace-id>',
+      namespaceId: '<cache-namespace-id>'
     },
     blob: {
       driver: 'cloudflare-r2',
-      bucketName: '<bucket-name>',
-    },
-  },
+      bucketName: '<bucket-name>'
+    }
+  }
 })
 ```
 
@@ -174,11 +156,11 @@ export default defineNuxtConfig({
         d1_databases: [{ binding: 'DB', database_id: '<id>' }],
         kv_namespaces: [
           { binding: 'KV', id: '<kv-id>' },
-          { binding: 'CACHE', id: '<cache-id>' },
+          { binding: 'CACHE', id: '<cache-id>' }
         ],
-        r2_buckets: [{ binding: 'BLOB', bucket_name: '<bucket>' }],
-      },
-    },
-  },
+        r2_buckets: [{ binding: 'BLOB', bucket_name: '<bucket>' }]
+      }
+    }
+  }
 })
 ```

@@ -30,23 +30,19 @@ UApp
 
 ```vue [app.vue]
 <script setup lang="ts">
-  import type { NavigationMenuItem } from '@nuxt/ui'
+import type { NavigationMenuItem } from '@nuxt/ui'
 
-  const route = useRoute()
+const route = useRoute()
 
-  const { data: navigation } = await useAsyncData('navigation', () =>
-    queryCollectionNavigation('docs')
-  )
+const { data: navigation } = await useAsyncData('navigation', () => queryCollectionNavigation('docs'))
 
-  provide('navigation', navigation)
+provide('navigation', navigation)
 
-  const items = computed<NavigationMenuItem[]>(() => [
-    {
-      label: 'Docs',
-      to: '/docs/getting-started',
-      active: route.path.startsWith('/docs'),
-    },
-  ])
+const items = computed<NavigationMenuItem[]>(() => [{
+  label: 'Docs',
+  to: '/docs/getting-started',
+  active: route.path.startsWith('/docs')
+}])
 </script>
 
 <template>
@@ -81,9 +77,9 @@ UApp
 
 ```vue [layouts/docs.vue]
 <script setup lang="ts">
-  import type { ContentNavigationItem } from '@nuxt/content'
+import type { ContentNavigationItem } from '@nuxt/content'
 
-  const navigation = inject<Ref<ContentNavigationItem[]>>('navigation')
+const navigation = inject<Ref<ContentNavigationItem[]>>('navigation')
 </script>
 
 <template>
@@ -103,17 +99,17 @@ UApp
 
 ```vue [pages/docs/[...slug].vue]
 <script setup lang="ts">
-  const route = useRoute()
+const route = useRoute()
 
-  definePageMeta({ layout: 'docs' })
+definePageMeta({ layout: 'docs' })
 
-  const { data: page } = await useAsyncData(route.path, () => {
-    return queryCollection('docs').path(route.path).first()
-  })
+const { data: page } = await useAsyncData(route.path, () => {
+  return queryCollection('docs').path(route.path).first()
+})
 
-  const { data: surround } = await useAsyncData(`${route.path}-surround`, () => {
-    return queryCollectionItemSurroundings('docs', route.path)
-  })
+const { data: surround } = await useAsyncData(`${route.path}-surround`, () => {
+  return queryCollectionItemSurroundings('docs', route.path)
+})
 </script>
 
 <template>

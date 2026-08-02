@@ -23,8 +23,10 @@ echo "  ✓ Antfu Skills 完成"
 echo ""
 
 # Onmax Nuxt Skills
+# onmax/nuxt-skills@vueuse 已於上游下架（2026-08-02 實測 npx skills add 列不到），
+# 故從清單移除。VueUse 的 composable 參考仍由 antfu/skills@vueuse-functions 提供。
 echo "📦 Onmax Nuxt Skills..."
-for skill in nuxthub vueuse reka-ui motion nuxt-better-auth; do
+for skill in nuxthub reka-ui motion nuxt-better-auth; do
   npx skills add onmax/nuxt-skills@$skill $COPY_FLAGS
 done
 echo "  ✓ Onmax Nuxt Skills 完成"

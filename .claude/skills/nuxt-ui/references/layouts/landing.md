@@ -13,22 +13,18 @@ Build public-facing pages — landing, blog, changelog, pricing — using the He
 
 ```vue [app.vue]
 <script setup lang="ts">
-  import type { NavigationMenuItem } from '@nuxt/ui'
+import type { NavigationMenuItem } from '@nuxt/ui'
 
-  const items = computed<NavigationMenuItem[]>(() => [
-    {
-      label: 'Features',
-      to: '#features',
-    },
-    {
-      label: 'Pricing',
-      to: '/pricing',
-    },
-    {
-      label: 'Blog',
-      to: '/blog',
-    },
-  ])
+const items = computed<NavigationMenuItem[]>(() => [{
+  label: 'Features',
+  to: '#features'
+}, {
+  label: 'Pricing',
+  to: '/pricing'
+}, {
+  label: 'Blog',
+  to: '/blog'
+}])
 </script>
 
 <template>
@@ -60,13 +56,7 @@ Build public-facing pages — landing, blog, changelog, pricing — using the He
         <p class="text-muted text-sm">Copyright © {{ new Date().getFullYear() }}</p>
       </template>
       <template #right>
-        <UButton
-          icon="i-simple-icons-github"
-          color="neutral"
-          variant="ghost"
-          to="https://github.com"
-          target="_blank"
-        />
+        <UButton icon="i-simple-icons-github" color="neutral" variant="ghost" to="https://github.com" target="_blank" />
       </template>
     </UFooter>
   </UApp>
@@ -87,20 +77,11 @@ Build public-facing pages — landing, blog, changelog, pricing — using the He
     description="A comprehensive Vue UI component library."
     :links="[
       { label: 'Get started', to: '/docs', icon: 'i-lucide-square-play' },
-      {
-        label: 'Learn more',
-        color: 'neutral',
-        variant: 'subtle',
-        trailingIcon: 'i-lucide-arrow-right',
-      },
+      { label: 'Learn more', color: 'neutral', variant: 'subtle', trailingIcon: 'i-lucide-arrow-right' }
     ]"
     orientation="horizontal"
   >
-    <img
-      src="/hero-image.png"
-      alt="App screenshot"
-      class="rounded-lg shadow-2xl ring ring-default"
-    />
+    <img src="/hero-image.png" alt="App screenshot" class="rounded-lg shadow-2xl ring ring-default" />
   </UPageHero>
 
   <UPageSection
@@ -109,21 +90,9 @@ Build public-facing pages — landing, blog, changelog, pricing — using the He
     title="Everything you need"
     description="A comprehensive suite of components and utilities."
     :features="[
-      {
-        title: 'Accessible',
-        description: 'Built on Reka UI with full ARIA support.',
-        icon: 'i-lucide-accessibility',
-      },
-      {
-        title: 'Customizable',
-        description: 'Tailwind Variants theming with full control.',
-        icon: 'i-lucide-palette',
-      },
-      {
-        title: 'Responsive',
-        description: 'Mobile-first components.',
-        icon: 'i-lucide-monitor-smartphone',
-      },
+      { title: 'Accessible', description: 'Built on Reka UI with full ARIA support.', icon: 'i-lucide-accessibility' },
+      { title: 'Customizable', description: 'Tailwind Variants theming with full control.', icon: 'i-lucide-palette' },
+      { title: 'Responsive', description: 'Mobile-first components.', icon: 'i-lucide-monitor-smartphone' }
     ]"
   />
 
@@ -132,37 +101,16 @@ Build public-facing pages — landing, blog, changelog, pricing — using the He
     description="Join the community and start building today."
     :links="[
       { label: 'Get started', color: 'neutral' },
-      {
-        label: 'Star on GitHub',
-        color: 'neutral',
-        variant: 'subtle',
-        trailingIcon: 'i-lucide-arrow-right',
-      },
+      { label: 'Star on GitHub', color: 'neutral', variant: 'subtle', trailingIcon: 'i-lucide-arrow-right' }
     ]"
   />
 
   <UPageSection id="pricing" headline="Pricing" title="Simple, transparent pricing">
     <UPricingPlans
       :plans="[
-        {
-          title: 'Free',
-          price: '$0',
-          description: 'For personal projects',
-          features: ['10 components', 'Community support'],
-        },
-        {
-          title: 'Pro',
-          price: '$99',
-          description: 'For teams',
-          features: ['All components', 'Priority support'],
-          highlight: true,
-        },
-        {
-          title: 'Enterprise',
-          price: 'Custom',
-          description: 'For large teams',
-          features: ['Custom components', 'Dedicated support'],
-        },
+        { title: 'Free', price: '$0', description: 'For personal projects', features: ['10 components', 'Community support'] },
+        { title: 'Pro', price: '$99', description: 'For teams', features: ['All components', 'Priority support'], highlight: true },
+        { title: 'Enterprise', price: 'Custom', description: 'For large teams', features: ['Custom components', 'Dedicated support'] }
       ]"
     />
   </UPageSection>
@@ -198,7 +146,7 @@ Build public-facing pages — landing, blog, changelog, pricing — using the He
 
 ```vue [pages/blog/index.vue]
 <script setup lang="ts">
-  const { data: posts } = await useAsyncData('posts', () => queryCollection('posts').all())
+const { data: posts } = await useAsyncData('posts', () => queryCollection('posts').all())
 </script>
 
 <template>
@@ -219,9 +167,7 @@ Build public-facing pages — landing, blog, changelog, pricing — using the He
 
 ```vue [pages/changelog.vue]
 <script setup lang="ts">
-  const { data: versions } = await useAsyncData('versions', () =>
-    queryCollection('changelog').all()
-  )
+const { data: versions } = await useAsyncData('versions', () => queryCollection('changelog').all())
 </script>
 
 <template>

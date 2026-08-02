@@ -16,19 +16,19 @@ defineConfig({
     projects: [
       // Glob patterns for config files
       'packages/*',
-
+      
       // Inline config
       {
         test: {
           name: 'unit',
-          include: ['test/unit/**/*.test.ts'],
+          include: ['tests/unit/**/*.test.ts'],
           environment: 'node',
         },
       },
       {
         test: {
           name: 'integration',
-          include: ['test/integration/**/*.test.ts'],
+          include: ['tests/integration/**/*.test.ts'],
           environment: 'jsdom',
         },
       },
@@ -105,14 +105,14 @@ defineConfig({
       {
         test: {
           name: 'unit',
-          include: ['test/unit/**/*.test.ts'],
+          include: ['tests/unit/**/*.test.ts'],
           environment: 'node',
         },
       },
       {
         test: {
           name: 'browser',
-          include: ['test/browser/**/*.test.ts'],
+          include: ['tests/browser/**/*.test.ts'],
           browser: {
             enabled: true,
             name: 'chromium',
@@ -144,14 +144,14 @@ defineConfig({
         test: {
           ...sharedConfig,
           name: 'unit',
-          include: ['test/unit/**/*.test.ts'],
+          include: ['tests/unit/**/*.test.ts'],
         },
       },
       {
         test: {
           ...sharedConfig,
           name: 'e2e',
-          include: ['e2e/**/*.spec.ts'],
+          include: ['tests/e2e/**/*.test.ts'],
         },
       },
     ],
@@ -189,11 +189,12 @@ defineConfig({
 vitest --project unit
 vitest --project integration
 
-# Multiple projects
+# Multiple projects / wildcards
 vitest --project unit --project e2e
+vitest --project="packages*"
 
-# Exclude project
-vitest --project.ignore browser
+# Exclude a project
+vitest --project="!browser"
 ```
 
 ## Providing Values to Projects
@@ -248,9 +249,9 @@ test('uses injected url', ({ apiUrl }) => {
 })
 ```
 
-## Project Isolation
+## Per-Project Pool & Isolation (v4)
 
-Each project runs in its own thread pool by default:
+Since the v4 pool rework, isolation, parallelism, and Node CLI options can be set **per project**:
 
 ```ts
 defineConfig({
@@ -258,9 +259,22 @@ defineConfig({
     projects: [
       {
         test: {
-          name: 'isolated',
-          isolate: true, // Full isolation
-          pool: 'forks',
+          name: 'unit',
+          isolate: false,                 // fast, non-isolated unit tests
+          exclude: ['**/*.integration.test.ts'],
+        },
+      },
+      {
+        test: {
+          name: 'sequential',
+          include: ['**/*.sequential.test.ts'],
+          fileParallelism: false,         // run these files one at a time
+        },
+      },
+      {
+        test: {
+          name: 'staging',
+          execArgv: ['--env-file=.env.staging'], // per-project Node flags
         },
       },
     ],
@@ -287,14 +301,14 @@ defineConfig({
 
 ## Key Points
 
-- Projects run in same Vitest process
-- Each project can have different environment, config
+- Projects run in same Vitest process (replaces the removed `workspace` option)
+- Each project can have different environment, pool, isolation, and config
 - Use glob patterns for monorepo packages
-- Run specific projects with `--project` flag
+- Run specific projects with `--project` (supports wildcards and `!` exclusion)
 - Use `provide` to inject config values into tests
 - Projects inherit from root config unless overridden
 
-<!--
+<!-- 
 Source references:
 - https://vitest.dev/guide/projects.html
 -->

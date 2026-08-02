@@ -38,8 +38,8 @@ export default defineNuxtConfig({
     blob: true,
     cache: true,
     dir: '.data', // local storage directory
-    remote: false, // use production bindings in dev (v0.10+)
-  },
+    remote: false // use production bindings in dev (v0.10+)
+  }
 })
 ```
 
@@ -81,7 +81,7 @@ export const users = sqliteTable('users', {
   id: integer().primaryKey({ autoIncrement: true }),
   name: text().notNull(),
   email: text().notNull().unique(),
-  createdAt: integer({ mode: 'timestamp' }).notNull(),
+  createdAt: integer({ mode: 'timestamp' }).notNull()
 })
 ```
 
@@ -94,7 +94,7 @@ export const users = pgTable('users', {
   id: serial().primaryKey(),
   name: text().notNull(),
   email: text().notNull().unique(),
-  createdAt: timestamp().notNull().defaultNow(),
+  createdAt: timestamp().notNull().defaultNow()
 })
 ```
 
@@ -109,10 +109,7 @@ const users = await db.select().from(schema.users)
 const user = await db.query.users.findFirst({ where: eq(schema.users.id, 1) })
 
 // Insert
-const [newUser] = await db
-  .insert(schema.users)
-  .values({ name: 'John', email: 'john@example.com' })
-  .returning()
+const [newUser] = await db.insert(schema.users).values({ name: 'John', email: 'john@example.com' }).returning()
 
 // Update
 await db.update(schema.users).set({ name: 'Jane' }).where(eq(schema.users.id, 1))
@@ -185,7 +182,7 @@ const result = await blob.put('path/file.txt', body, {
   contentType: 'text/plain',
   access: 'public', // 'public' | 'private' (v0.10.2+)
   addRandomSuffix: true,
-  prefix: 'uploads',
+  prefix: 'uploads'
 })
 // Returns: { pathname, contentType, size, httpEtag, uploadedAt }
 
@@ -193,11 +190,7 @@ const result = await blob.put('path/file.txt', body, {
 const file = await blob.get('path/file.txt') // Returns Blob or null
 
 // List
-const { blobs, cursor, hasMore, folders } = await blob.list({
-  prefix: 'uploads/',
-  limit: 10,
-  folded: true,
-})
+const { blobs, cursor, hasMore, folders } = await blob.list({ prefix: 'uploads/', limit: 10, folded: true })
 
 // Serve (with proper headers)
 return blob.serve(event, 'path/file.txt')
@@ -219,7 +212,7 @@ export default eventHandler(async (event) => {
     formKey: 'files',
     multiple: true,
     ensure: { maxSize: '10MB', types: ['image/png', 'image/jpeg'] },
-    put: { addRandomSuffix: true, prefix: 'images' },
+    put: { addRandomSuffix: true, prefix: 'images' }
   })
 })
 
@@ -259,15 +252,12 @@ Response and function caching.
 ### Route Handler Caching
 
 ```ts
-export default cachedEventHandler(
-  (event) => {
-    return { data: 'cached', date: new Date().toISOString() }
-  },
-  {
-    maxAge: 60 * 60, // 1 hour
-    getKey: (event) => event.path,
-  }
-)
+export default cachedEventHandler((event) => {
+  return { data: 'cached', date: new Date().toISOString() }
+}, {
+  maxAge: 60 * 60, // 1 hour
+  getKey: event => event.path
+})
 ```
 
 ### Function Caching
@@ -307,21 +297,21 @@ export default defineNuxtConfig({
     db: {
       dialect: 'sqlite',
       driver: 'd1',
-      connection: { databaseId: '<database-id>' },
+      connection: { databaseId: '<database-id>' }
     },
     kv: {
       driver: 'cloudflare-kv-binding',
-      namespaceId: '<kv-namespace-id>',
+      namespaceId: '<kv-namespace-id>'
     },
     cache: {
       driver: 'cloudflare-kv-binding',
-      namespaceId: '<cache-namespace-id>',
+      namespaceId: '<cache-namespace-id>'
     },
     blob: {
       driver: 'cloudflare-r2',
-      bucketName: '<bucket-name>',
-    },
-  },
+      bucketName: '<bucket-name>'
+    }
+  }
 })
 ```
 
@@ -335,9 +325,9 @@ export default defineNuxtConfig({
       "enabled": true,
       "head_sampling_rate": 1,
       "invocation_logs": true,
-      "persist": true,
-    },
-  },
+      "persist": true
+    }
+  }
 }
 ```
 
@@ -412,11 +402,7 @@ Enable experimental WebSocket:
 
 ```ts
 // nuxt.config.ts
-nitro: {
-  experimental: {
-    websocket: true
-  }
-}
+nitro: { experimental: { websocket: true } }
 ```
 
 ```ts
@@ -431,7 +417,7 @@ export default defineWebSocketHandler({
   },
   close(peer) {
     peer.unsubscribe('chat')
-  },
+  }
 })
 ```
 
