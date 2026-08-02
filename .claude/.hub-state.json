@@ -14,7 +14,7 @@
     "rules/cloudflare-workers.md": "15821bfed20b0632",
     "rules/code-style.md": "1d64a38ed96b1f87",
     "rules/code-style.toolchain.md": "126792545577b4ce",
-    "rules/commit.md": "5cc87e444a5c7f76",
+    "rules/commit.md": "39c15fe7f11115c6",
     "rules/commit.trunk-gates.md": "199be6a09ac492ad",
     "rules/consumer-meta.md": "325c0cb33250ed13",
     "rules/db-preview-env.md": "94f287155f1ace7c",
