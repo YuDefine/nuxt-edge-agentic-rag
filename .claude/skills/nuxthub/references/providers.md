@@ -17,21 +17,21 @@ export default defineNuxtConfig({
     db: {
       dialect: 'sqlite',
       driver: 'd1',
-      connection: { databaseId: '<database-id>' },
+      connection: { databaseId: '<database-id>' }
     },
     kv: {
       driver: 'cloudflare-kv-binding',
-      namespaceId: '<kv-namespace-id>',
+      namespaceId: '<kv-namespace-id>'
     },
     cache: {
       driver: 'cloudflare-kv-binding',
-      namespaceId: '<cache-namespace-id>',
+      namespaceId: '<cache-namespace-id>'
     },
     blob: {
       driver: 'cloudflare-r2',
-      bucketName: '<bucket-name>',
-    },
-  },
+      bucketName: '<bucket-name>'
+    }
+  }
 })
 ```
 
@@ -47,9 +47,9 @@ Enable logging for production:
       "enabled": true,
       "head_sampling_rate": 1,
       "invocation_logs": true,
-      "persist": true,
-    },
-  },
+      "persist": true
+    }
+  }
 }
 ```
 
@@ -79,9 +79,9 @@ Configure in wrangler.jsonc:
   "d1_databases": [{ "binding": "DB", "database_id": "prod-id" }],
   "env": {
     "preview": {
-      "d1_databases": [{ "binding": "DB", "database_id": "preview-id" }],
-    },
-  },
+      "d1_databases": [{ "binding": "DB", "database_id": "preview-id" }]
+    }
+  }
 }
 ```
 
@@ -104,10 +104,10 @@ export default defineNuxtConfig({
   hub: {
     db: {
       dialect: 'postgresql',
-      driver: 'postgres-js',
+      driver: 'postgres-js'
       // DATABASE_URL env var auto-detected
-    },
-  },
+    }
+  }
 })
 ```
 
@@ -200,9 +200,9 @@ export default defineNuxtConfig({
   hub: {
     db: {
       dialect: 'sqlite',
-      driver: 'libsql', // or postgres-js, mysql2
-    },
-  },
+      driver: 'libsql' // or postgres-js, mysql2
+    }
+  }
 })
 ```
 

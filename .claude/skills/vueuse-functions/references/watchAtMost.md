@@ -15,19 +15,19 @@ import { watchAtMost } from '@vueuse/core'
 
 watchAtMost(
   source,
-  () => {
-    console.log('trigger!')
-  }, // triggered it at most 3 times
+  () => { console.log('trigger!') }, // triggered it at most 3 times
   {
     count: 3, // the number of times triggered
-  }
+  },
 )
 ```
 
 ## Type Declarations
 
 ```ts
-export interface WatchAtMostOptions<Immediate> extends WatchWithFilterOptions<Immediate> {
+export interface WatchAtMostOptions<
+  Immediate,
+> extends WatchWithFilterOptions<Immediate> {
   count: MaybeRefOrGetter<number>
 }
 export interface WatchAtMostReturn {
@@ -37,16 +37,27 @@ export interface WatchAtMostReturn {
   count: ShallowRef<number>
 }
 export declare function watchAtMost<
+  T,
+  Immediate extends Readonly<boolean> = false,
+>(
+  sources: WatchSource<T>,
+  cb: WatchCallback<T, Immediate extends true ? T | undefined : T>,
+  options: WatchAtMostOptions<Immediate>,
+): WatchAtMostReturn
+export declare function watchAtMost<
   T extends Readonly<MultiWatchSources>,
   Immediate extends Readonly<boolean> = false,
 >(
   sources: [...T],
   cb: WatchCallback<MapSources<T>, MapOldSources<T, Immediate>>,
-  options: WatchAtMostOptions<Immediate>
+  options: WatchAtMostOptions<Immediate>,
 ): WatchAtMostReturn
-export declare function watchAtMost<T, Immediate extends Readonly<boolean> = false>(
-  sources: WatchSource<T>,
-  cb: WatchCallback<T, Immediate extends true ? T | undefined : T>,
-  options: WatchAtMostOptions<Immediate>
+export declare function watchAtMost<
+  T extends object,
+  Immediate extends Readonly<boolean> = false,
+>(
+  sources: T,
+  cb: WatchCallback<MapSources<T>, MapOldSources<T, Immediate>>,
+  options: WatchAtMostOptions<Immediate>,
 ): WatchAtMostReturn
 ```

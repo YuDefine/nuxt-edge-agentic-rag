@@ -6,23 +6,18 @@ Patterns for modals, slideovers, drawers, and command palettes.
 
 ```vue
 <script setup lang="ts">
-  const isOpen = ref(false)
+const isOpen = ref(false)
 
-  function confirmDelete() {
-    // perform delete
-    isOpen.value = false
-  }
+function confirmDelete() {
+  // perform delete
+  isOpen.value = false
+}
 </script>
 
 <template>
   <UButton label="Delete" color="error" variant="soft" @click="isOpen = true" />
 
-  <UModal
-    v-model:open="isOpen"
-    title="Delete item"
-    description="This action cannot be undone. Are you sure?"
-    :ui="{ footer: 'justify-end' }"
-  >
+  <UModal v-model:open="isOpen" title="Delete item" description="This action cannot be undone. Are you sure?" :ui="{ footer: 'justify-end' }">
     <template #footer="{ close }">
       <UButton label="Cancel" color="neutral" variant="outline" @click="close" />
       <UButton label="Delete" color="error" @click="confirmDelete" />
@@ -37,22 +32,18 @@ Reusable pattern — no template state needed at the call site.
 
 ```vue [components/ConfirmModal.vue]
 <script setup lang="ts">
-  defineProps<{
-    title: string
-    description?: string
-  }>()
+defineProps<{
+  title: string
+  description?: string
+}>()
 
-  const emit = defineEmits<{
-    close: [confirmed: boolean]
-  }>()
+const emit = defineEmits<{
+  close: [confirmed: boolean]
+}>()
 </script>
 
 <template>
-  <UModal
-    :close="{ onClick: () => emit('close', false) }"
-    :title="title"
-    :description="description"
-  >
+  <UModal :close="{ onClick: () => emit('close', false) }" :title="title" :description="description">
     <template #footer>
       <UButton label="Cancel" color="neutral" variant="outline" @click="emit('close', false)" />
       <UButton label="Confirm" color="error" @click="emit('close', true)" />
@@ -69,7 +60,7 @@ const confirm = overlay.create(ConfirmModal)
 async function deleteItem(item) {
   const instance = confirm.open({
     title: 'Delete item',
-    description: `Are you sure you want to delete "${item.name}"?`,
+    description: `Are you sure you want to delete "${item.name}"?`
   })
 
   if (await instance.result) {
@@ -82,22 +73,22 @@ async function deleteItem(item) {
 
 ```vue
 <script setup lang="ts">
-  import * as z from 'zod'
+import * as z from 'zod'
 
-  const isOpen = ref(false)
+const isOpen = ref(false)
 
-  const schema = z.object({
-    name: z.string().min(1),
-    email: z.email(),
-  })
+const schema = z.object({
+  name: z.string().min(1),
+  email: z.email()
+})
 
-  type Schema = z.output<typeof schema>
-  const state = reactive<Partial<Schema>>({})
+type Schema = z.output<typeof schema>
+const state = reactive<Partial<Schema>>({})
 
-  function onSave() {
-    // save user
-    isOpen.value = false
-  }
+function onSave() {
+  // save user
+  isOpen.value = false
+}
 </script>
 
 <template>
@@ -127,53 +118,33 @@ async function deleteItem(item) {
 
 ```vue
 <script setup lang="ts">
-  const isOpen = ref(false)
+const isOpen = ref(false)
 
-  defineShortcuts({
-    meta_k: () => {
-      isOpen.value = true
-    },
-  })
+defineShortcuts({
+  meta_k: () => { isOpen.value = true }
+})
 
-  const groups = [
-    {
-      id: 'actions',
-      label: 'Actions',
-      items: [
-        {
-          label: 'New file',
-          icon: 'i-lucide-file-plus',
-          kbds: ['meta', 'n'],
-          onSelect: () => newFile(),
-        },
-        { label: 'New folder', icon: 'i-lucide-folder-plus', onSelect: () => newFolder() },
-      ],
-    },
-    {
-      id: 'navigation',
-      label: 'Navigation',
-      items: [
-        { label: 'Dashboard', icon: 'i-lucide-house', to: '/dashboard' },
-        { label: 'Settings', icon: 'i-lucide-settings', to: '/settings' },
-      ],
-    },
+const groups = [{
+  id: 'actions',
+  label: 'Actions',
+  items: [
+    { label: 'New file', icon: 'i-lucide-file-plus', kbds: ['meta', 'n'], onSelect: () => newFile() },
+    { label: 'New folder', icon: 'i-lucide-folder-plus', onSelect: () => newFolder() }
   ]
+}, {
+  id: 'navigation',
+  label: 'Navigation',
+  items: [
+    { label: 'Dashboard', icon: 'i-lucide-house', to: '/dashboard' },
+    { label: 'Settings', icon: 'i-lucide-settings', to: '/settings' }
+  ]
+}]
 </script>
 
 <template>
-  <UButton
-    label="Search..."
-    icon="i-lucide-search"
-    color="neutral"
-    variant="outline"
-    @click="isOpen = true"
-  />
+  <UButton label="Search..." icon="i-lucide-search" color="neutral" variant="outline" @click="isOpen = true" />
 
-  <UCommandPalette
-    v-model:open="isOpen"
-    :groups="groups"
-    placeholder="Type a command or search..."
-  />
+  <UCommandPalette v-model:open="isOpen" :groups="groups" placeholder="Type a command or search..." />
 </template>
 ```
 
@@ -181,7 +152,7 @@ async function deleteItem(item) {
 
 ```vue
 <script setup lang="ts">
-  const isOpen = ref(false)
+const isOpen = ref(false)
 </script>
 
 <template>
@@ -199,3 +170,4 @@ async function deleteItem(item) {
   </UDrawer>
 </template>
 ```
+

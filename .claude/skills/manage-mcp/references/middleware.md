@@ -1,368 +1,196 @@
-# Middleware & Handlers Guide
+# Middleware Patterns
 
-Advanced customization of MCP servers with middleware and handlers.
-
-## Middleware Patterns
-
-### Authentication Middleware
+Middleware lives on `defineMcpHandler` — there is **no separate `defineMcpMiddleware`** function. The signature is:
 
 ```typescript
-// server/mcp/middleware.ts
-export default defineMcpMiddleware({
-  handler: async (event, next) => {
-    const token = event.headers.get('authorization')?.replace('Bearer ', '')
+type McpMiddleware = (
+  event: H3Event,
+  next: () => Promise<Response>
+) => Promise<Response | void> | Response | void
+```
 
-    if (!token) {
-      return createError({
-        statusCode: 401,
-        message: 'Authentication required',
-      })
-    }
+If you don't call `next()`, it's called automatically after your middleware returns. Call it explicitly if you need to inspect/modify the response or measure timing.
 
-    try {
-      const user = await verifyToken(token)
-      event.context.user = user
-      return next()
-    }
-    catch (error) {
-      return createError({
-        statusCode: 401,
-        message: 'Invalid token',
-      })
-    }
+## Where to put middleware
+
+| File | Effect |
+| --- | --- |
+| `server/mcp/index.ts` | Override the default `/mcp` handler — middleware runs for every request to the default route. |
+| `server/mcp/handlers/<name>/index.ts` | Folder handler — middleware runs only for `/mcp/<name>`. Tools/resources/prompts in `handlers/<name>/{tools,resources,prompts}/` are auto-attached. |
+
+## Soft Authentication (recommended)
+
+::callout{icon="i-lucide-triangle-alert" color="warning"}
+**Don't `throw createError({ statusCode: 401 })`** from MCP middleware — most clients interpret a `401` on the MCP route as "this server requires OAuth" and start the discovery flow. Instead, set context on success and let per-tool `enabled` guards hide protected tools, or return `403` for hard rejections.
+::
+
+```typescript [server/mcp/index.ts]
+export default defineMcpHandler({
+  middleware: async (event) => {
+    const apiKey = getHeader(event, 'authorization')?.replace('Bearer ', '')
+    if (!apiKey) return
+
+    const user = await verifyApiKey(apiKey).catch(() => null)
+    if (user) event.context.user = user
+    // No throw — unauthenticated requests still see public tools
   },
 })
 ```
 
-### Logging Middleware
-
-```typescript
-// server/mcp/middleware.ts
-export default defineMcpMiddleware({
-  handler: async (event, next) => {
-    const start = Date.now()
-    const method = event.method
-    const path = event.path
-
-    console.log(`[MCP] ${method} ${path}`)
-
-    const result = await next()
-
-    const duration = Date.now() - start
-    console.log(`[MCP] ${method} ${path} - ${duration}ms`)
-
-    return result
-  },
-})
-```
-
-### CORS Middleware
-
-```typescript
-// server/mcp/middleware.ts
-export default defineMcpMiddleware({
-  handler: async (event, next) => {
-    // Set CORS headers
-    event.node.res.setHeader('Access-Control-Allow-Origin', '*')
-    event.node.res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
-    event.node.res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
-
-    // Handle preflight
-    if (event.method === 'OPTIONS') {
-      event.node.res.statusCode = 204
-      event.node.res.end()
-      return
-    }
-
-    return next()
-  },
-})
-```
-
-### Request Validation
-
-```typescript
-// server/mcp/middleware.ts
+```typescript [server/mcp/tools/list-todos.ts]
 import { z } from 'zod'
 
-const mcpRequestSchema = z.object({
-  method: z.string(),
-  params: z.any().optional(),
-})
-
-export default defineMcpMiddleware({
-  handler: async (event, next) => {
-    try {
-      const body = await readBody(event)
-      mcpRequestSchema.parse(body)
-      return next()
-    }
-    catch (error) {
-      return createError({
-        statusCode: 400,
-        message: 'Invalid request format',
-      })
-    }
-  },
-})
-```
-
-## Custom Handlers
-
-### Multiple MCP Endpoints
-
-```typescript
-// server/mcp/handlers/public.ts
-export default defineMcpHandler({
-  name: 'public-mcp',
-  route: '/mcp/public',
-  handler: async (event) => {
-    return {
-      tools: await loadPublicTools(),
-      resources: [],
-      prompts: [],
-    }
-  },
-})
-
-// server/mcp/handlers/admin.ts
-export default defineMcpHandler({
-  name: 'admin-mcp',
-  route: '/mcp/admin',
-  middleware: [checkAdminAuth],
-  handler: async (event) => {
-    return {
-      tools: await loadAdminTools(),
-      resources: [],
-      prompts: [],
-    }
-  },
-})
-```
-
-### Dynamic Tool Loading
-
-```typescript
-// server/mcp/handlers/dynamic.ts
-export default defineMcpHandler({
-  name: 'dynamic-mcp',
-  handler: async (event) => {
-    const user = event.context.user
-
-    // Load tools based on user permissions
-    const tools = await loadToolsForUser(user)
-
-    return {
-      tools,
-      resources: [],
-      prompts: [],
-    }
-  },
-})
-```
-
-### Tool Filtering
-
-```typescript
-// server/mcp/handlers/filtered.ts
-export default defineMcpHandler({
-  name: 'filtered-mcp',
-  handler: async (event) => {
-    const tools = await loadAllTools()
-
-    // Filter based on query params
-    const category = event.query.category
-    const filteredTools = category
-      ? tools.filter(t => t.category === category)
-      : tools
-
-    return {
-      tools: filteredTools,
-      resources: [],
-      prompts: [],
-    }
-  },
-})
-```
-
-## Advanced Patterns
-
-### Request Context
-
-```typescript
-// server/mcp/middleware.ts
-export default defineMcpMiddleware({
-  handler: async (event, next) => {
-    // Add custom context
-    event.context.requestId = crypto.randomUUID()
-    event.context.startTime = Date.now()
-    event.context.user = await getCurrentUser(event)
-
-    return next()
-  },
-})
-
-// Use in tools
-// server/mcp/tools/example.ts
 export default defineMcpTool({
-  handler: async (params, { event }) => {
-    const user = event.context.user
-    const requestId = event.context.requestId
-
-    console.log(`[${requestId}] User ${user.id} called tool`)
-
-    return 'Done'
+  description: 'List the current user’s todos',
+  enabled: event => Boolean(event.context.user), // hidden when unauthenticated
+  handler: async () => {
+    const event = useEvent()
+    return listTodos(event.context.user.id)
   },
 })
 ```
 
-### Error Handling
+For a tool that *should* surface to the LLM but can't run, return a friendly message instead of throwing:
 
 ```typescript
-// server/mcp/middleware.ts
-export default defineMcpMiddleware({
-  handler: async (event, next) => {
-    try {
-      return await next()
-    }
-    catch (error) {
-      console.error('MCP Error:', error)
+handler: async () => {
+  const event = useEvent()
+  if (!event.context.user) return 'Sign in first, then re-run this tool.'
+  return listTodos(event.context.user.id)
+}
+```
 
-      // Log to monitoring service
-      await logError(error, {
-        path: event.path,
-        user: event.context.user,
-      })
+## Better Auth API Keys
 
-      return createError({
-        statusCode: 500,
-        message: 'Internal server error',
-      })
+Same pattern with [`better-auth`](https://www.better-auth.com)'s API-key plugin:
+
+```typescript [server/mcp/index.ts]
+import { auth } from '~/lib/auth'
+
+export default defineMcpHandler({
+  middleware: async (event) => {
+    const headers = getRequestHeaders(event)
+    const session = await auth.api.getSession({ headers: new Headers(headers as Record<string, string>) })
+    if (session) {
+      event.context.user = session.user
+      event.context.session = session.session
     }
   },
 })
 ```
 
-### Caching Strategy
+`useMcpLogger()` automatically tags every wide event with `user.id` / `user.email` / `session.id` from `event.context.user` and `event.context.session`.
+
+## Logging Middleware (with `next()` for timing)
+
+Use `extractToolNames` to capture which tools were called from the JSON-RPC body:
 
 ```typescript
-// server/mcp/middleware.ts
-const cache = new Map()
+import { extractToolNames } from '@nuxtjs/mcp-toolkit/server'
 
-export default defineMcpMiddleware({
-  handler: async (event, next) => {
-    const cacheKey = `${event.method}:${event.path}:${JSON.stringify(event.query)}`
+export default defineMcpHandler({
+  middleware: async (event, next) => {
+    const requestId = crypto.randomUUID()
+    event.context.requestId = requestId
 
-    // Check cache
-    if (cache.has(cacheKey)) {
-      const cached = cache.get(cacheKey)
-      if (Date.now() - cached.timestamp < 60000) { // 1 minute
-        return cached.data
-      }
-    }
+    const start = performance.now()
+    const response = await next()
+    const tools = await extractToolNames(event)
 
-    // Execute and cache
-    const result = await next()
-    cache.set(cacheKey, {
-      data: result,
-      timestamp: Date.now(),
-    })
-
-    return result
+    console.log(`[mcp] ${requestId} ${tools.join(',') || 'rpc'} took ${(performance.now() - start).toFixed(1)}ms`)
+    return response
   },
 })
 ```
 
-## Security Best Practices
+For structured wide events on every MCP request, prefer [`useMcpLogger()`](https://mcp-toolkit.nuxt.dev/advanced/logging) — it tags `mcp.tool`, `mcp.session_id`, `mcp.request_id`, `service`, etc. automatically.
 
-### API Key Validation
+## Hard Reject (admin-only handler)
 
-```typescript
-// server/mcp/middleware.ts
-export default defineMcpMiddleware({
-  handler: async (event, next) => {
-    const apiKey = event.headers.get('x-api-key')
+When middleware *must* reject (e.g. an internal admin endpoint that should never be public), return a `403` — not a `401`:
 
-    // Validate format
-    if (!apiKey || !/^[a-zA-Z0-9-]{32,}$/.test(apiKey)) {
-      return createError({
-        statusCode: 401,
-        message: 'Invalid API key format',
-      })
+```typescript [server/mcp/handlers/admin/index.ts]
+export default defineMcpHandler({
+  description: 'Admin tools — IP-allowlisted.',
+  middleware: async (event) => {
+    const ip = getRequestIP(event, { xForwardedFor: true })
+    if (!ALLOWED_IPS.includes(ip)) {
+      throw createError({ statusCode: 403, message: 'Forbidden' })
     }
-
-    // Check against database
-    const isValid = await validateApiKey(apiKey)
-    if (!isValid) {
-      return createError({
-        statusCode: 401,
-        message: 'Invalid API key',
-      })
-    }
-
-    return next()
   },
 })
 ```
 
-### Rate Limiting per User
+## Rate Limiting
+
+Lean on [`nitro-rate-limit`](https://github.com/atinux/nitro-rate-limit) or implement per-user counters using a `useStorage` driver — keep the work outside middleware so other tools' caching keeps working:
 
 ```typescript
-// server/mcp/middleware.ts
-const userLimits = new Map()
+const counters = new Map<string, { count: number, resetAt: number }>()
 
-export default defineMcpMiddleware({
-  handler: async (event, next) => {
-    const userId = event.context.user?.id
-    if (!userId) return next()
-
+export default defineMcpHandler({
+  middleware: async (event) => {
+    const userId = event.context.user?.id ?? getRequestIP(event)
     const now = Date.now()
-    const window = 60000 // 1 minute
+    const window = 60_000
     const limit = 100
 
-    const userRequests = userLimits.get(userId) || []
-    const recentRequests = userRequests.filter(t => now - t < window)
-
-    if (recentRequests.length >= limit) {
-      return createError({
-        statusCode: 429,
-        message: 'Rate limit exceeded',
-        headers: {
-          'X-RateLimit-Limit': limit,
-          'X-RateLimit-Remaining': 0,
-          'X-RateLimit-Reset': Math.ceil((recentRequests[0] + window) / 1000),
-        },
-      })
+    const bucket = counters.get(userId) ?? { count: 0, resetAt: now + window }
+    if (now > bucket.resetAt) {
+      bucket.count = 0
+      bucket.resetAt = now + window
     }
+    bucket.count++
+    counters.set(userId, bucket)
 
-    userLimits.set(userId, [...recentRequests, now])
-    return next()
+    if (bucket.count > limit) {
+      throw createError({ statusCode: 429, message: 'Rate limit exceeded' })
+    }
   },
 })
 ```
 
-### Input Sanitization
+## CORS
+
+Cross-origin browser clients are gated by `mcp.security.allowedOrigins`. Configure it in `nuxt.config.ts` rather than via middleware:
+
+```typescript [nuxt.config.ts]
+export default defineNuxtConfig({
+  mcp: {
+    security: {
+      allowedOrigins: ['https://app.example.com'], // or '*' to disable Origin checks (use with care)
+    },
+  },
+})
+```
+
+## Compose multiple concerns
+
+Middleware is one function, but you can compose helpers:
 
 ```typescript
-// server/mcp/middleware.ts
-export default defineMcpMiddleware({
-  handler: async (event, next) => {
-    const body = await readBody(event)
+async function withAuth(event: H3Event) {
+  const apiKey = getHeader(event, 'authorization')?.replace('Bearer ', '')
+  if (!apiKey) return
+  const user = await verifyApiKey(apiKey).catch(() => null)
+  if (user) event.context.user = user
+}
 
-    // Sanitize inputs
-    if (body.params) {
-      body.params = sanitizeObject(body.params)
-    }
+async function withRequestId(event: H3Event) {
+  event.context.requestId = crypto.randomUUID()
+}
 
-    // Prevent injection attacks
-    if (typeof body.params === 'string' && containsSQLInjection(body.params)) {
-      return createError({
-        statusCode: 400,
-        message: 'Invalid input detected',
-      })
-    }
-
+export default defineMcpHandler({
+  middleware: async (event, next) => {
+    await withAuth(event)
+    await withRequestId(event)
     return next()
   },
 })
 ```
+
+## See also
+
+- [Middleware docs](https://mcp-toolkit.nuxt.dev/advanced/middleware)
+- [Authentication examples](https://mcp-toolkit.nuxt.dev/examples/authentication)
+- [Logging](https://mcp-toolkit.nuxt.dev/advanced/logging) — `useMcpLogger()` and evlog

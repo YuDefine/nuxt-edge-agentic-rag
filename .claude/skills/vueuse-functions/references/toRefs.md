@@ -8,9 +8,6 @@ Extended [`toRefs`](https://vuejs.org/api/reactivity-utilities.html#torefs) that
 
 ## Usage
 
-<!-- eslint-disable array-bracket-spacing -->
-<!-- eslint-disable ts/no-redeclare -->
-
 ```ts
 import { toRefs } from '@vueuse/core'
 import { reactive, ref } from 'vue'
@@ -34,24 +31,24 @@ const [a, b] = toRefs(arr)
 
 ```vue
 <script lang="ts">
-  import { toRefs, useVModel } from '@vueuse/core'
+import { toRefs, useVModel } from '@vueuse/core'
 
-  export default {
-    setup(props) {
-      const refs = toRefs(useVModel(props, 'data'))
+export default {
+  setup(props) {
+    const refs = toRefs(useVModel(props, 'data'))
 
-      console.log(refs.a.value) // props.data.a
-      refs.a.value = 'a' // emit('update:data', { ...props.data, a: 'a' })
+    console.log(refs.a.value) // props.data.a
+    refs.a.value = 'a' // emit('update:data', { ...props.data, a: 'a' })
 
-      return { ...refs }
-    },
+    return { ...refs }
   }
+}
 </script>
 
 <template>
   <div>
-    <input v-model="a" type="text" />
-    <input v-model="b" type="text" />
+    <input v-model="a" type="text">
+    <input v-model="b" type="text">
   </div>
 </template>
 ```
@@ -76,6 +73,6 @@ export interface ToRefsOptions {
  */
 export declare function toRefs<T extends object>(
   objectRef: MaybeRef<T>,
-  options?: ToRefsOptions
+  options?: ToRefsOptions,
 ): ToRefs<T>
 ```

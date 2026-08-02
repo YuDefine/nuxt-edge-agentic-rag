@@ -59,7 +59,6 @@ export default defineNuxtConfig({
 ```
 
 With `pathPrefix: false`:
-
 ```
 components/base/Button.vue → <Button />
 ```
@@ -70,7 +69,7 @@ Prefix with `Lazy` for dynamic imports:
 
 ```vue
 <script setup lang="ts">
-  const showChart = ref(false)
+const showChart = ref(false)
 </script>
 
 <template>
@@ -81,7 +80,6 @@ Prefix with `Lazy` for dynamic imports:
 ```
 
 Benefits:
-
 - Reduces initial bundle size
 - Code-splits component into separate chunk
 - Loads on-demand
@@ -150,7 +148,7 @@ Hydrate on condition:
 
 ```vue
 <script setup lang="ts">
-  const isReady = ref(false)
+const isReady = ref(false)
 </script>
 
 <template>
@@ -176,9 +174,9 @@ Never hydrate (static only):
 </template>
 
 <script setup>
-  function onChartReady() {
-    console.log('Chart is now interactive')
-  }
+function onChartReady() {
+  console.log('Chart is now interactive')
+}
 </script>
 ```
 
@@ -237,9 +235,9 @@ Server version renders during SSR, client version takes over after hydration.
 
 ```vue
 <script setup lang="ts">
-  import { SomeComponent } from '#components'
+import { SomeComponent } from '#components'
 
-  const dynamicComponent = resolveComponent('MyButton')
+const dynamicComponent = resolveComponent('MyButton')
 </script>
 
 <template>
@@ -254,7 +252,7 @@ Bypass auto-imports when needed:
 
 ```vue
 <script setup lang="ts">
-  import { LazyMountainsList, NuxtLink } from '#components'
+import { LazyMountainsList, NuxtLink } from '#components'
 </script>
 ```
 
@@ -323,7 +321,7 @@ export default defineNuxtModule({
 })
 ```
 
-<!--
+<!-- 
 Source references:
 - https://nuxt.com/docs/directory-structure/app/components
 - https://nuxt.com/docs/guide/concepts/auto-imports#auto-imported-components

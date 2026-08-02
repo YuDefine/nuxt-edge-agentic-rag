@@ -30,7 +30,6 @@ Patterns for headers, sidebars, breadcrumbs, and tab navigation.
 ## Sidebar navigation (dashboard)
 
 See [dashboard layout](../layouts/dashboard.md) for the full sidebar pattern with `UDashboardSidebar` + `UNavigationMenu`. Key points:
-
 - Pass `:collapsed="collapsed"` to `UNavigationMenu` inside collapsible sidebars
 - Use `NavigationMenuItem[][]` (nested arrays) for separate nav groups
 - Use `#footer` slot for user menu with `UDropdownMenu`
@@ -39,15 +38,15 @@ See [dashboard layout](../layouts/dashboard.md) for the full sidebar pattern wit
 
 ```vue
 <script setup lang="ts">
-  const route = useRoute()
+const route = useRoute()
 
-  const breadcrumbs = computed(() => {
-    const segments = route.path.split('/').filter(Boolean)
-    return segments.map((segment, index) => ({
-      label: segment.charAt(0).toUpperCase() + segment.slice(1),
-      to: '/' + segments.slice(0, index + 1).join('/'),
-    }))
-  })
+const breadcrumbs = computed(() => {
+  const segments = route.path.split('/').filter(Boolean)
+  return segments.map((segment, index) => ({
+    label: segment.charAt(0).toUpperCase() + segment.slice(1),
+    to: '/' + segments.slice(0, index + 1).join('/')
+  }))
+})
 </script>
 
 <template>
@@ -59,23 +58,19 @@ See [dashboard layout](../layouts/dashboard.md) for the full sidebar pattern wit
 
 ```vue
 <script setup lang="ts">
-  const items = [
-    {
-      label: 'Overview',
-      icon: 'i-lucide-layout-dashboard',
-      slot: 'overview' as const,
-    },
-    {
-      label: 'Activity',
-      icon: 'i-lucide-activity',
-      slot: 'activity' as const,
-    },
-    {
-      label: 'Members',
-      icon: 'i-lucide-users',
-      slot: 'members' as const,
-    },
-  ]
+const items = [{
+  label: 'Overview',
+  icon: 'i-lucide-layout-dashboard',
+  slot: 'overview' as const
+}, {
+  label: 'Activity',
+  icon: 'i-lucide-activity',
+  slot: 'activity' as const
+}, {
+  label: 'Members',
+  icon: 'i-lucide-users',
+  slot: 'members' as const
+}]
 </script>
 
 <template>
@@ -92,3 +87,4 @@ See [dashboard layout](../layouts/dashboard.md) for the full sidebar pattern wit
   </UTabs>
 </template>
 ```
+

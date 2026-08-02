@@ -6,54 +6,47 @@
 
 ```vue [pages/login.vue]
 <script setup lang="ts">
-  import * as z from 'zod'
-  import type { FormSubmitEvent, AuthFormField } from '@nuxt/ui'
+import * as z from 'zod'
+import type { FormSubmitEvent, AuthFormField } from '@nuxt/ui'
 
-  const fields: AuthFormField[] = [
-    {
-      name: 'email',
-      type: 'email',
-      label: 'Email',
-      placeholder: 'Enter your email',
-      required: true,
-    },
-    {
-      name: 'password',
-      label: 'Password',
-      type: 'password',
-      placeholder: 'Enter your password',
-      required: true,
-    },
-    {
-      name: 'remember',
-      label: 'Remember me',
-      type: 'checkbox',
-    },
-  ]
+const fields: AuthFormField[] = [{
+  name: 'email',
+  type: 'email',
+  label: 'Email',
+  placeholder: 'Enter your email',
+  required: true
+}, {
+  name: 'password',
+  label: 'Password',
+  type: 'password',
+  placeholder: 'Enter your password',
+  required: true
+}, {
+  name: 'remember',
+  label: 'Remember me',
+  type: 'checkbox'
+}]
 
-  const providers = [
-    {
-      label: 'Google',
-      icon: 'i-simple-icons-google',
-      onClick: () => navigateTo('/auth/google', { external: true }),
-    },
-    {
-      label: 'GitHub',
-      icon: 'i-simple-icons-github',
-      onClick: () => navigateTo('/auth/github', { external: true }),
-    },
-  ]
+const providers = [{
+  label: 'Google',
+  icon: 'i-simple-icons-google',
+  onClick: () => navigateTo('/auth/google', { external: true })
+}, {
+  label: 'GitHub',
+  icon: 'i-simple-icons-github',
+  onClick: () => navigateTo('/auth/github', { external: true })
+}]
 
-  const schema = z.object({
-    email: z.email('Invalid email'),
-    password: z.string('Password is required').min(8, 'Must be at least 8 characters'),
-  })
+const schema = z.object({
+  email: z.email('Invalid email'),
+  password: z.string('Password is required').min(8, 'Must be at least 8 characters')
+})
 
-  type Schema = z.output<typeof schema>
+type Schema = z.output<typeof schema>
 
-  function onSubmit(payload: FormSubmitEvent<Schema>) {
-    // payload.data contains validated fields
-  }
+function onSubmit(payload: FormSubmitEvent<Schema>) {
+  // payload.data contains validated fields
+}
 </script>
 
 <template>
@@ -72,8 +65,7 @@
           <ULink to="/forgot-password" class="text-primary font-medium">Forgot password?</ULink>
         </template>
         <template #footer>
-          Don't have an account?
-          <ULink to="/signup" class="text-primary font-medium">Sign up</ULink>.
+          Don't have an account? <ULink to="/signup" class="text-primary font-medium">Sign up</ULink>.
         </template>
       </UAuthForm>
     </UPageCard>
@@ -83,24 +75,24 @@
 
 ### UAuthForm key props
 
-| Prop                           | Purpose                                                                         |
-| ------------------------------ | ------------------------------------------------------------------------------- |
-| `title`, `description`, `icon` | Header content                                                                  |
-| `fields`                       | `AuthFormField[]` — each has `name`, `type`, `label`, `placeholder`, `required` |
-| `providers`                    | `ButtonProps[]` — social login buttons shown above/below the form               |
-| `schema`                       | Zod/Valibot schema for validation                                               |
-| `submit`                       | Customize submit button: `{ label: 'Sign in', block: true }`                    |
-| `separator`                    | Text between providers and fields (default: `'or'`)                             |
+| Prop | Purpose |
+|---|---|
+| `title`, `description`, `icon` | Header content |
+| `fields` | `AuthFormField[]` — each has `name`, `type`, `label`, `placeholder`, `required` |
+| `providers` | `ButtonProps[]` — social login buttons shown above/below the form |
+| `schema` | Zod/Valibot schema for validation |
+| `submit` | Customize submit button: `{ label: 'Sign in', block: true }` |
+| `separator` | Text between providers and fields (default: `'or'`) |
 
 ### UAuthForm key slots
 
-| Slot             | Purpose                                       |
-| ---------------- | --------------------------------------------- |
-| `#description`   | Override description (e.g., add sign-up link) |
-| `#password-hint` | "Forgot password?" link on password field     |
-| `#validation`    | Custom error display (e.g., `UAlert`)         |
-| `#footer`        | Terms of service, sign-up link                |
-| `#<field>-field` | Override a specific field's rendering         |
+| Slot | Purpose |
+|---|---|
+| `#description` | Override description (e.g., add sign-up link) |
+| `#password-hint` | "Forgot password?" link on password field |
+| `#validation` | Custom error display (e.g., `UAlert`) |
+| `#footer` | Terms of service, sign-up link |
+| `#<field>-field` | Override a specific field's rendering |
 
 ## Custom auth layout
 
@@ -108,20 +100,20 @@ For layouts where `UAuthForm` is too opinionated, use `UCard` + `UForm` + `UForm
 
 ```vue [pages/login.vue]
 <script setup lang="ts">
-  import * as z from 'zod'
-  import type { FormSubmitEvent } from '@nuxt/ui'
+import * as z from 'zod'
+import type { FormSubmitEvent } from '@nuxt/ui'
 
-  const schema = z.object({
-    email: z.email('Invalid email'),
-    password: z.string().min(1, 'Password is required'),
-  })
+const schema = z.object({
+  email: z.email('Invalid email'),
+  password: z.string().min(1, 'Password is required')
+})
 
-  type Schema = z.output<typeof schema>
-  const state = reactive<Partial<Schema>>({ email: '', password: '' })
+type Schema = z.output<typeof schema>
+const state = reactive<Partial<Schema>>({ email: '', password: '' })
 
-  async function onSubmit(event: FormSubmitEvent<Schema>) {
-    // event.data contains validated fields
-  }
+async function onSubmit(event: FormSubmitEvent<Schema>) {
+  // event.data contains validated fields
+}
 </script>
 
 <template>
