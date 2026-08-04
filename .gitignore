@@ -69,6 +69,7 @@ openspec/.vector-search.db*
 
 # Mutation testing artifacts
 reports/mutation/
+reports/stryker-incremental.json
 .stryker-tmp/
 
 # Codex 投影層（sync-to-codex.ts 從 .claude/ 產生，可重生 → 不進版控）
