@@ -12,6 +12,19 @@
 // `workaround` / `mitigated` stay open.
 export const CLOSED_TD_STATUSES = new Set(['done', 'resolved', 'closed', 'wontfix', 'superseded'])
 
+// 第三態：規約 / 工具已經落地（所以 entry 帶著 `### Resolution`），但**驗收未跑**，
+// 所以 Status 不能是 done —— 改 done 就是過早宣告完成。
+//
+// 為什麼需要一個 canonical token 而不是寫成 `open — 已落地`：後綴是自由散文，audit
+// 只能靠字串啟發式認它，而「已實作待驗」「已 ship 待 smoke」這類同義寫法會一路漏。
+// token 走既有的 `-qualifier` grammar（同 `resolved-clade-scope`），`parseTechDebtStatus`
+// 的 `[A-Za-z][\w-]*` 直接吃得下，`isClosedStatus` 取 `split('-')[0]` 自動判成非 closed。
+//
+// **這不是 closed class**：它仍要計 Invariant 4 的 60d SLA（驗收本身會拖，那正是需要
+// SLA 的形狀），只是免除 Invariant 5 的「open 不該有 Resolution」與 Invariant 6 的
+// done-hint 誤判。判準見 `.claude/rules/local/tech-debt-hygiene.md § Invariant 5`。
+export const LANDED_PENDING_TD_STATUSES = new Set(['landed'])
+
 // TD metadata 欄位的共用行首前綴：部分 entry 把整個 metadata 區塊寫成 bullet list
 // （`- **Status**: done`）。少了它，`^` 錨點只吃裸欄位行。
 //
@@ -41,6 +54,14 @@ export function parseTechDebtStatus(body) {
 export function isClosedStatus(status) {
   if (status === null || status === undefined) return false
   return CLOSED_TD_STATUSES.has(status.split('-')[0])
+}
+
+// True when a status token is the「已落地、待驗收」third state
+// (`landed-pending-verification`). Null-safe. Deliberately NOT part of
+// isClosedStatus — landed entries stay in the open pool for SLA purposes.
+export function isLandedPendingVerification(status) {
+  if (status === null || status === undefined) return false
+  return LANDED_PENDING_TD_STATUSES.has(status.split('-')[0])
 }
 
 // Extract the `**Status**:` of a single TD entry from a full tech-debt.md
