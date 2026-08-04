@@ -53,7 +53,9 @@
       "WebFetch(domain:pinia-colada.esm.dev)"
     ]
   },
-  "enabledMcpjsonServers": ["chrome-devtools-mcp"],
+  "enabledMcpjsonServers": [
+    "chrome-devtools-mcp"
+  ],
   "hooks": {
     "PreToolUse": [
       {
