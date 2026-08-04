@@ -10,7 +10,7 @@
     "rules/audit-pattern.md": "f4911bd34782a73c",
     "rules/auth-data-path-consistency.md": "2361439d17bdfd4c",
     "rules/checker-contract.md": "a5fc2ba9ad40d9f2",
-    "rules/checker-subagent.md": "07846b87a82a935f",
+    "rules/checker-subagent.md": "24f24a0c448e2c62",
     "rules/cloudflare-workers.md": "15821bfed20b0632",
     "rules/code-style.md": "44cc7b15c08a4683",
     "rules/code-style.toolchain.md": "126792545577b4ce",
