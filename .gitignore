@@ -67,5 +67,9 @@ openspec/.vector-search.db*
 .clade/vendor/ledger/*.jsonl
 .clade/vendor/ledger/*.jsonl.lock
 
+# Mutation testing artifacts
+reports/mutation/
+.stryker-tmp/
+
 # Codex 投影層（sync-to-codex.ts 從 .claude/ 產生，可重生 → 不進版控）
 .agents/
