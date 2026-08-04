@@ -1,12 +1,13 @@
 {
   "schema_version": "1",
-  "generated_at": "2026-08-04T09:31:54.798Z",
-  "commit_sha": "db0e40ffc2569a8d6704cf5fcb3e1a85c6cc5eaa",
+  "generated_at": "2026-08-04T09:48:18.634Z",
+  "commit_sha": "172035ac915ba66f487feae8521a9ba11ed2dc55",
   "scope": [
     "server/utils/rate-limiter.ts",
     "server/utils/mcp-rate-limit.ts"
   ],
   "mutation_score": 75.3,
+  "mutation_score_covered": 75.3,
   "totals": {
     "killed": 61,
     "survived": 20,
