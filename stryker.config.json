@@ -16,5 +16,6 @@
   },
   "timeoutMS": 60000,
   "plugins": ["@stryker-mutator/vitest-runner"],
-  "inPlace": true
+  "inPlace": true,
+  "concurrency": 1
 }
