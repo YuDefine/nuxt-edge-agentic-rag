@@ -17,6 +17,7 @@
     "rules/commit.md": "a4a791bf84807e5f",
     "rules/commit.trunk-gates.md": "7162dee4d04fe5e3",
     "rules/consumer-meta.md": "a7bd4b9c3e159a45",
+    "rules/coupling-cohesion.md": "88ad27b2c4a9d4c7",
     "rules/db-preview-env.md": "322bbad930236ee4",
     "rules/dev-port-allocation.md": "7da40f4ec3915dc0",
     "rules/dev-tunnel-convention.md": "75fcb9b4dbd2e80d",
@@ -148,7 +149,7 @@
     "agents/code-review.md": "1d65cf8896c87114",
     "agents/codex-fallback.md": "3e934c4522b01f2b",
     "agents/db-backup.md": "6cb8d7d93e01642d",
-    "agents/references/clade-review-rules.md": "08753e004d734e3b",
+    "agents/references/clade-review-rules.md": "80bfef7846a518cc",
     "agents/screenshot-review.md": "268858448f6b4d71"
   }
 }
