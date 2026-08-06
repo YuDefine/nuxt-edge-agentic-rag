@@ -685,6 +685,42 @@ function runAuditScript(scriptPath, extraArgs = []) {
   }
 }
 
+// consumer `tasks/lessons.md` 是自治區短期 working memory，clade 不對它設 audit signal
+// （per rules/core/session-tasks.operations.md）。缺口是「跨 consumer 適用的 lesson 躺在單一
+// repo 裡沒人發現」——本 detector 把 lessons-scan.ts 的詞彙重疊叢集接進候選管道。
+//
+// 候選的建議行動固定是「走 /bp record mode」，**不是**直接改 rules/core/：叢集是詞彙統計，
+// 判不出兩條 lesson 是不是同一件事。digest 不自動改標準層，這條也不例外。
+function detectFromLessons() {
+  const script = join(cladeRoot, 'scripts', 'lessons-scan.ts')
+  if (!existsSync(script)) return []
+  const report = runAuditScript(script, ['--json'])
+  if (!report?.clusters?.length) return []
+  // 只取前 5 個叢集：候選管道的價值在「少而準」，把 15 個詞彙叢集全倒進 digest
+  // 會讓真正需要人判的條目沉在噪音裡。
+  return report.clusters.slice(0, 5).map((cl) => ({
+    id: digHash(['lessons-cross-consumer', cl.term]),
+    kind: 'lessons-cross-consumer',
+    severity: 'P2',
+    title: `\`tasks/lessons.md\` 詞彙「${cl.term}」在 ${cl.consumers.length} 個 consumer 出現（${cl.consumers.join(', ')}）— 可能是跨 consumer pattern`,
+    consumers: cl.consumers,
+    evidence_predicate: {
+      target_paths: cl.consumers.map((c) => `<${c}>/tasks/lessons.md`),
+      target_symbols: [],
+      expected_state: [
+        {
+          kind: 'lesson-triaged',
+          description:
+            '這幾條 lesson SHALL 由人判定是否為同一 pattern；是 → 走 `/bp` record mode 判 clade 落點並等確認；否 → 留在各 consumer 不動',
+        },
+      ],
+      validation_commands: ['node scripts/lessons-scan.ts'],
+      related_keywords: ['lessons', 'cross-consumer', 'bp', cl.term],
+    },
+    lesson_entries: cl.entries,
+  }))
+}
+
 function detectFromScreenshotStaleness() {
   const script = join(cladeRoot, 'vendor', 'scripts', 'audit-screenshot-staleness.ts')
   if (!existsSync(script)) return []
@@ -1327,6 +1363,7 @@ export async function runDigest({ dryRun = false } = {}) {
     ...detectFromTechDebt(td),
     ...detectFromSignals(signals, registry),
     ...detectFromStaleWorktrees(),
+    ...detectFromLessons(),
     ...detectFromScreenshotStaleness(),
     ...detectFromClaudeAnalyzedDrift(),
   ]
