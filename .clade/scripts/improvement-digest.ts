@@ -17,7 +17,15 @@
 
 import { execFileSync, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { mkdirSync, readFileSync, readdirSync, statSync, writeFileSync, existsSync } from 'node:fs'
+import {
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  realpathSync,
+  statSync,
+  writeFileSync,
+  existsSync,
+} from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -1533,7 +1541,20 @@ export async function runDigest({ dryRun = false } = {}) {
   return { output, candidates: deduped, metrics, outPath }
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {
+// CLI 進入判定：兩邊都 realpath。node 預設把 import.meta.url realpath 化、
+// process.argv[1] 則原樣保留，經 symlink 叫進去兩者不相等 → 整個 CLI 區塊被靜默
+// 跳過且 exit 0，長相與「一切正常」無法區分（TD-460）。
+function invokedAsCli() {
+  const entry = process.argv[1]
+  if (!entry) return false
+  try {
+    return realpathSync(entry) === realpathSync(fileURLToPath(import.meta.url))
+  } catch {
+    return entry === fileURLToPath(import.meta.url)
+  }
+}
+
+if (invokedAsCli()) {
   const dryRun = process.argv.includes('--dry-run')
   runDigest({ dryRun }).catch((err) => {
     console.error(err)
