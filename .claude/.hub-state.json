@@ -4,7 +4,7 @@
   "checksums": {
     "rules/agent-routing.codex-input-intercept.md": "278ff1ea1fbac8eb",
     "rules/agent-routing.codex-watch-protocol.md": "3b19dfe4b288c27b",
-    "rules/agent-routing.md": "bfa55ba65699b049",
+    "rules/agent-routing.md": "29a448db017abac1",
     "rules/agent-self-verification.md": "7104dec7f471d194",
     "rules/agent-self-verification.screenshot-evidence.md": "9b99fb0b65d04c03",
     "rules/audit-pattern.md": "69856e1bb2377882",
@@ -53,7 +53,7 @@
     "rules/prod-mcp-safety.md": "3f169d62f5211eee",
     "rules/review-gui-surface.md": "1bce2b78408b501d",
     "rules/review-tiers.md": "e8e99b34ee96763b",
-    "rules/rule-authoring.md": "3a4cfb988b029d0c",
+    "rules/rule-authoring.md": "7f7046d78794e778",
     "rules/scope-discipline.md": "c47f736e5775f7a7",
     "rules/screenshot-strategy.md": "9fbbe5b66b60a29b",
     "rules/self-hosted-runner.md": "eb6cbd5ae8492c53",
