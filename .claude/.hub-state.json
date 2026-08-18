@@ -3,9 +3,9 @@
   "rulesProjection": "symlink",
   "checksums": {
     "rules/agent-routing.codex-input-intercept.md": "5dcb18970e360299",
-    "rules/agent-routing.codex-watch-protocol.md": "933a6bb26617ffd2",
-    "rules/agent-routing.md": "1fb59021f5fb73dc",
-    "rules/agent-self-verification.md": "f488da811115dc55",
+    "rules/agent-routing.codex-watch-protocol.md": "f5251df98eb57cc9",
+    "rules/agent-routing.md": "b52e000dcf0b2cf0",
+    "rules/agent-self-verification.md": "4934b9ad03d4fbe1",
     "rules/agent-self-verification.screenshot-evidence.md": "9b99fb0b65d04c03",
     "rules/audit-pattern.md": "69856e1bb2377882",
     "rules/auth-data-path-consistency.md": "dd75ee65fb259165",
@@ -150,13 +150,11 @@
     "skills/work-loop/reference/run-modes.md": "e6d6aafa1f79f0d7",
     "skills/work-loop/reference/simple-buckets.md": "7c9602ad26214282",
     "skills/work-loop/reference/skill-relations.md": "cf42bd2c0445320e",
-    "skills/work-loop/runner.sh": "785d0275629f75ed",
+    "skills/work-loop/runner.sh": "60488096fd55dc2c",
     "commands/db-migration.md": "c65b8e21970857a5",
     "commands/doc-sync.md": "89eed1c6673549dc",
-    "agents/check-runner.md": "7f595e0e648cc3b9",
     "agents/code-review.md": "1d65cf8896c87114",
-    "agents/codex-fallback.md": "b9e36fc7cda98787",
-    "agents/db-backup.md": "6cb8d7d93e01642d",
+    "agents/codex-fallback.md": "28b9c1a589abb1a7",
     "agents/references/clade-review-rules.md": "80bfef7846a518cc",
     "agents/screenshot-review.md": "9e85be6c4b34798a"
   }
