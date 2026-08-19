@@ -63,13 +63,26 @@ Tier A = `HANDOFF.md`、`tasks/*.md`、`docs/tech-debt.md`。本輪 `git diff <r
 | --- | --- | --- |
 | rotate 3 條 TD 進 archive，一條都沒關 | **非生產** | entropy 過濾把減量全部歸零，P1 不成立；沒有交付物、沒關 TD、沒 packaging |
 | 把一條 TD 的 `**Status**:` 改成 `done`，無 `### 自驗` 實跑輸出、無 `decisions` 條目、無 wontfix 理由 | **非生產** | P3 憑證三選一皆缺 → **不計 P3，也不計 P1**（那是改標籤不是關閉） |
-| 就地把一條 TD 關對（Status 轉 closed-class ＋ 補 `### 自驗` 實跑輸出），主檔行數因 evidence 落盤淨增 | **生產** | P3 成立。P3 不看 heading 是否消失——rotate 由 `closedBloatThreshold` 批次化，關閉那一輪本來就不會有 heading 消失。P1 在此輪不成立（淨增），但 P1–P4 是 OR，不需要 P1 接住 |
+| 就地把一條 TD 關對（Status token 轉 closed-class ＋ 補 `### 自驗` 實跑輸出），主檔行數因 evidence 落盤淨增 | **生產** | P3 成立。P3 不看 heading 是否消失——rotate 由 `closedBloatThreshold` 批次化，關閉那一輪本來就不會有 heading 消失。P1 在此輪不成立（淨增），但 P1–P4 是 OR，不需要 P1 接住 |
 | 上一項那條 TD 於數輪後 rotate 進 archive | **非生產**（就這條而言） | 同一條 TD 只在轉 closed-class 那一輪計一次 P3；rotate 是搬運，由 entropy 過濾在 P1 側歸零 |
 | 一輪 package 三條決策 | 生產（**只計一次**） | P4 單輪至多貢獻一次；三條 packaging 不等於三輪份的生產 |
 | 純收割輪：`inFlight` 的 agent 回報，改動落在 `vendor/` 並過了 scope-verify | 生產 | P2 成立 |
 | 只改 `.clade/**`（state、scan 產物） | **非生產** | P2 明確排除 `.clade/`——那是 loop 自己的 bookkeeping，不是交付 |
 | 修好一條 audit red，改動落在 `scripts/` | 生產 | P2 成立 |
 | 本輪只做 Step 2.7 清算（attended，答完 2 題） | 看有沒有落地 | 答案落 `decisions` 且據以關掉 TD → P3；只答不做 → 非生產（合法的過渡輪，N=2 才停） |
+
+## P3 的 status token 對照（SoT 在 audit script，本表只是導引）
+
+`scripts/audit-tech-debt-hygiene.ts` 的 `statusToken()` 取 `**Status**:` 行的第一個 token，分類由 `STRICT_DONE_RE` / `SOFT_CLOSE_RE` 決定：
+
+| class | token | 常見完整寫法 |
+| --- | --- | --- |
+| open | `open` / `pending` / `landed` / `blocked` | `open`、`landed-pending-verification`、`blocked-attended-only` |
+| closed | `done` / `resolved` / `wontfix` / `deferred` / `mitigated` / `closed` | `done`、`wontfix-until-signal`、`deferred（conditional …）` |
+
+⚠️ `deferred` 與 `wontfix-until-signal` 在 token 層都是 **closed-class** —— 它們仍可能被解凍，但解凍走的是「重新開一條或改回 open」，那一輪的 P3 由該次轉換自己成立，**NEVER** 追溯扣掉先前那次。
+
+**NEVER** 在本檔或 SKILL.md 複製一份 token 清單當判準來源——改了 audit script 卻沒改這裡時，兩份會無聲分歧。本表過期就刪，不要修。
 
 ## 為什麼 N=2
 
