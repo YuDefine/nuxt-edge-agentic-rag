@@ -3,7 +3,7 @@
   "rulesProjection": "symlink",
   "checksums": {
     "rules/agent-routing.codex-input-intercept.md": "5dcb18970e360299",
-    "rules/agent-routing.codex-watch-protocol.md": "bb614808eed3b55d",
+    "rules/agent-routing.codex-watch-protocol.md": "f784a37116f334c8",
     "rules/agent-routing.md": "34b03a161509f014",
     "rules/agent-self-verification.md": "ea08e8ccee0b6fff",
     "rules/agent-self-verification.screenshot-evidence.md": "9b99fb0b65d04c03",
