@@ -582,7 +582,7 @@ If there is no AskUserQuestion tool available, present options as plain text and
    1. 從 `proposal.md` 頂部抓 ticket `page_id`，從 consumer-meta `notion.dataSourceId` 抓 data source。
    2. `notion-fetch collection://<dataSourceId>` 重撈 schema 校對 property key（中文 + 全形空格 + `>=`，憑記憶必錯）。
    3. 確認該 change 有 active claim（per [[work-claims]]）。
-   4. ticket 狀態若停在 `未開始` / `需確認` → 依 `~/.claude/skills/_notion-tdms-board/REFERENCE.md §3` 授權表推 `→ 進行中`；已是 `進行中` / `驗收中` → no-op。
+   4. ticket 狀態若停在 `未開始` / `需確認` → 依 `~/.claude/skills/_notion-<consumer-b>-board/REFERENCE.md §3` 授權表推 `→ 進行中`；已是 `進行中` / `驗收中` → no-op。
 
    - **NEVER** 在此推 `驗收中`（需 git tag，archive → `/commit` 發版後才有；見 spectra-archive Step 8 + [[spectra-notion-coupling]]）。
    - **NEVER** 碰客戶側轉移（`驗收中→完成` 等）或 `發布日期` / `驗收日期` / `名稱` / `驗收完成` 欄位。
