@@ -4,8 +4,8 @@
   "checksums": {
     "rules/agent-routing.codex-input-intercept.md": "5dcb18970e360299",
     "rules/agent-routing.codex-watch-protocol.md": "503a7cd50c765b1d",
-    "rules/agent-routing.md": "f42c2c40707246c3",
-    "rules/agent-self-verification.md": "4934b9ad03d4fbe1",
+    "rules/agent-routing.md": "4d1a56e2135780ca",
+    "rules/agent-self-verification.md": "57ea1cf411ba06ac",
     "rules/agent-self-verification.screenshot-evidence.md": "9b99fb0b65d04c03",
     "rules/audit-pattern.md": "69856e1bb2377882",
     "rules/auth-data-path-consistency.md": "dd75ee65fb259165",
@@ -61,7 +61,7 @@
     "rules/screenshot-strategy.md": "9fbbe5b66b60a29b",
     "rules/self-hosted-runner.md": "eb6cbd5ae8492c53",
     "rules/session-claims.md": "6af96ed2eb9efc60",
-    "rules/session-tasks.md": "4f5b682ae4437827",
+    "rules/session-tasks.md": "476d379063c2acb0",
     "rules/session-tasks.operations.md": "c48034e7f84f877f",
     "rules/skill-management.md": "23dbc9b9f4826f69",
     "rules/spectra-notion-coupling.md": "1ac5de2a6daadb7c",
@@ -155,8 +155,8 @@
     "commands/db-migration.md": "c65b8e21970857a5",
     "commands/doc-sync.md": "89eed1c6673549dc",
     "agents/code-review.md": "1d65cf8896c87114",
-    "agents/codex-fallback.md": "42d30be40760cfad",
+    "agents/codex-fallback.md": "3a24b12c214f62d1",
     "agents/references/clade-review-rules.md": "80bfef7846a518cc",
-    "agents/screenshot-review.md": "a87b19ae019a61c2"
+    "agents/screenshot-review.md": "3b0e39ed877f7266"
   }
 }
