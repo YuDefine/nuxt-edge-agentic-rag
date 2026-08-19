@@ -4,7 +4,7 @@
   "checksums": {
     "rules/agent-routing.codex-input-intercept.md": "5dcb18970e360299",
     "rules/agent-routing.codex-watch-protocol.md": "e5c615801bf4fe48",
-    "rules/agent-routing.md": "ce592b3c4774b70e",
+    "rules/agent-routing.md": "5455a1594f6b6913",
     "rules/agent-self-verification.md": "ea08e8ccee0b6fff",
     "rules/agent-self-verification.screenshot-evidence.md": "9b99fb0b65d04c03",
     "rules/audit-pattern.md": "69856e1bb2377882",
@@ -112,7 +112,7 @@
     "scripts/commit-lock.mjs": "f81c79df484ce5db",
     "scripts/gh-ci-watch.sh": "cadefda0d1a39986",
     "skills/commit/SKILL.md": "162f5cd44d4005d8",
-    "skills/commit/gates.md": "f91cf1b69d32cdd6",
+    "skills/commit/gates.md": "48bbbfece6fe0779",
     "skills/commit/handoff-steps.md": "3c45c24a3fe8e272",
     "skills/commit/schema-sync.md": "3fce665a60e04d0f",
     "skills/spectra/SKILL.md": "530eaa7278fd399b",
