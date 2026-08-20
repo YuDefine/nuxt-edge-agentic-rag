@@ -635,7 +635,7 @@ If there is no AskUserQuestion tool available, present options as plain text and
 
 8a.6. **Pre-Manual-Review Self-Analysis** (clade fork addition — Layer E.1 of pre-handoff quality gates; not in upstream spectra)
 
-   The user must not be the **first** to discover trivial UX/data defects in the GUI. <consumer-g> `app-status-badge-extraction`（2026-05-24）handed 9 fabricated `(verified-ui:)` annotations + an all-「-」員工 column straight to the user because nothing between Step 8a and the GUI re-checked the change. Step 8a.6 is that re-check.
+   The user must not be the **first** to discover trivial UX/data defects in the GUI. <consumer-h> `app-status-badge-extraction`（2026-05-24）handed 9 fabricated `(verified-ui:)` annotations + an all-「-」員工 column straight to the user because nothing between Step 8a and the GUI re-checked the change. Step 8a.6 is that re-check.
 
    **Model allocation**（收集與判定是兩個角色，各自一個檔位；**NEVER** 合寫成一句）：
 

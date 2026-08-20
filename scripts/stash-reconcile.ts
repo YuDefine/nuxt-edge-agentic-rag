@@ -13,7 +13,7 @@ const pad2 = (n) => String(n).padStart(2, '0')
  *     applied content is also pinned as `refs/wt-baseline/<slug>/<ISO>`, so
  *     stash entries with a matching ref are safe to drop)
  *   - `cross-session-block-*` — legacy ad-hoc prefix from the pre-atomic
- *     pain era (<consumer-g> 2026-05-17 session); included for migration coverage
+ *     pain era (<consumer-h> 2026-05-17 session); included for migration coverage
  *   - `clade-propagate-v<ver>-<ts>` — auto-stash from `propagate.ts` dirty
  *     consumer flow when stash pop fails post-write (scripts/propagate.ts)
  *   - `clade-publish: <free-form>` — manual stash from clade-publish skill
@@ -179,7 +179,7 @@ function parseNamespace(message) {
   if (baseline) {
     return { kind: 'wt-baseline', slug: baseline[1], session_id: null, iso: baseline[2] }
   }
-  // cross-session-block-<slug>[-suffix]  (legacy from <consumer-g> 2026-05-17)
+  // cross-session-block-<slug>[-suffix]  (legacy from <consumer-h> 2026-05-17)
   const csMatch = message.match(/cross-session-block-(.+)$/)
   if (csMatch) {
     return { kind: 'cross-session-block', slug: csMatch[1], iso: null }
