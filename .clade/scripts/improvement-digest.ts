@@ -219,7 +219,7 @@ function hasToolingSignature(c) {
   if (paths.some((p) => TOOLING_PATH_CLADE_RE.test(p))) return true
   // 模糊路徑（scripts/、*.sh）需要來源佐證：只有候選完全出自 clade 自己時才採信。
   // 少了這道 gate，consumer 自家的 scripts/ 會被歸成 Class A 標準層 issue——實證
-  // DIG-d7c0a4931ca4：<consumer-g> 的 scripts/v1-migration/reconciliation.test.mjs 被判成
+  // DIG-d7c0a4931ca4：<consumer-h> 的 scripts/v1-migration/reconciliation.test.mjs 被判成
   // clade 工具鏈問題，實際與 clade scripts/ 毫無關係。
   const consumers = [...(c.consumers ?? [])]
   const cladeOnly = consumers.length > 0 && consumers.every((x) => x === 'clade')

@@ -387,7 +387,7 @@ function readWorktreeDevPorts(consumerRoot, wtPath) {
  * Smallest offset N in 1..DEV_PORT_BAND for which every declared port P maps to
  * P+N satisfying all three:
  *   - inside [base, base+DEV_PORT_BAND] — never reaches the next consumer's base
- *   - not equal to another declared port — <consumer-g> declares 3040 + 3045, so N=5
+ *   - not equal to another declared port — <consumer-h> declares 3040 + 3045, so N=5
  *     would map `<client-a>` straight onto `shared`
  *   - not already held by a sibling worktree
  * Returns null when the band is exhausted (consumer has too many live worktrees).
@@ -608,7 +608,7 @@ function runOxfmtStdin(text, filePath, cwd) {
 // auto-repairs). That leaves every worktree permanently showing ` M .npmrc`,
 // which the pre-flight then reports as user WIP and refuses to merge-back on
 // — i.e. wt-helper's own bootstrap blocks wt-helper's own landing path
-// (<consumer-g> TD-252, hit by all 4 lanes on 2026-07-26).
+// (<consumer-h> TD-252, hit by all 4 lanes on 2026-07-26).
 //
 // It must NOT go through the auto-commit branch either: committing it would
 // carry `install` into main, silently flipping main's pnpm behaviour. Since
@@ -1811,7 +1811,7 @@ export function classifyUnmergedSafety(consumerRoot, conflicted) {
 // those paths and restores the prior index afterward. Crucially the bare
 // `git commit -m` previously used here committed the WHOLE index, so any
 // OTHER-session WIP already pre-staged in main's index got folded into the
-// pre-fork baseline commit (<consumer-g> per-client-module-isolation hit this: main's
+// pre-fork baseline commit (<consumer-h> per-client-module-isolation hit this: main's
 // index had badge-wt salary/overtime staged). `--only` isolates exactly
 // scopePaths, aligning with rules/core/commit.md «Ad-hoc commit 必走
 // git commit --only». Used by pre-fork baseline guard's `commit` strategy.
@@ -2576,7 +2576,7 @@ async function cmdCleanup(slug, opts) {
   // merge-back breaks in half: cmdMergeBack squashes successfully, then calls cmdCleanup,
   // which still counts `.npmrc` as uncommitted and refuses. Result is
   // "absorbed into main (cleanup skipped/failed)" on **every** lane, each needing a manual
-  // --force-discard-uncommitted to finish (<consumer-g>'s 4 lanes, 2026-07-26).
+  // --force-discard-uncommitted to finish (<consumer-h>'s 4 lanes, 2026-07-26).
   //
   // Only `modified` is filtered: isToolManagedDrift compares against HEAD, which an
   // untracked file has no version of.

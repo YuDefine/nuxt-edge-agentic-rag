@@ -15,7 +15,7 @@
  *
  * 但 plugin rule 的 callback 參數 **MUST** 各自帶 inline 結構型別：本檔會落在 consumer
  * repo root，凡是 `noImplicitAny` 涵蓋 root `.ts` 的 consumer，未標註的解構參數會直接
- * 報 TS7031 讓對方的 typecheck 紅燈（<consumer-g> 2026-07-31 實證）。clade 自己沒有 typecheck
+ * 報 TS7031 讓對方的 typecheck 紅燈（<consumer-h> 2026-07-31 實證）。clade 自己沒有 typecheck
  * script，所以這類缺陷在中央倉測不出來，只會在散播後於 consumer 端炸。
  */
 export default {

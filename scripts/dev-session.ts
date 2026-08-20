@@ -5,7 +5,7 @@
  * 為什麼存在（root cause）：
  *   agent（Claude Code / Codex）的 harness 會在 tool-call 生命週期結束時回收
  *   Bash 衍生的整個 process tree —— **連 `spawn(detached:true)+unref()` / setsid /
- *   nohup 都逃不掉**（實測 2026-06-01 <consumer-g>：run_in_background 與 setsid 起的 nuxt
+ *   nohup 都逃不掉**（實測 2026-06-01 <consumer-h>：run_in_background 與 setsid 起的 nuxt
  *   dev 都被 reap，唯獨掛在 multiplexer server daemon 下的存活）。dev-singleton.ts
  *   的 `spawn(detached:true)` 同樣會被回收。
  *
@@ -388,12 +388,12 @@ function resolveConsumerId(o, meta) {
   // **MUST 解析 main worktree 的名字，不是當前 worktree 的目錄名。**
   //
   // `git rev-parse --show-toplevel` 在 linked worktree 內回的是**該 worktree 的路徑**
-  // （例：.../<consumer-g>-wt/td-279-280-submit-chain），basename 就變成 slug 而不是 consumer 名。
+  // （例：.../<consumer-h>-wt/td-279-280-submit-chain），basename 就變成 slug 而不是 consumer 名。
   // 後果：lease 檔路徑算成 /tmp/<slug>-verification-lease.json —— 跟 main 用的
   // /tmp/<consumer>-verification-lease.json 是**不同檔案**。於是從 worktree 跑、又沒帶
   // --consumer-meta 的指令會靜默操作錯的 lease：release 釋放不到、conflict 偵測不到，
-  // 跨 worktree 的 lease 隔離形同虛設（2026-07-26 <consumer-g> 實證：worktree 內 `stop` 後
-  // /tmp/<consumer-g>-verification-lease.json 原封不動殘留）。 fixed-temp-path-exempt: 2026-07-26 事故的現場路徑，改寫等於竄改事故紀錄
+  // 跨 worktree 的 lease 隔離形同虛設（2026-07-26 <consumer-h> 實證：worktree 內 `stop` 後
+  // /tmp/<consumer-h>-verification-lease.json 原封不動殘留）。 fixed-temp-path-exempt: 2026-07-26 事故的現場路徑，改寫等於竄改事故紀錄
   //
   // `--git-common-dir` 在 main 回 `<repo>/.git`、在 linked worktree 回
   // `<main-repo>/.git/worktrees/<slug>`；兩者的 dirname 往上找到 `.git` 的父層即 main worktree。
@@ -652,7 +652,7 @@ function killSession(name) {
  * Lease 檔名的 identity。**per (consumer, port)，不是 per consumer。**
  *
  * 為什麼不能只用 consumerId：一個 consumer 可以同時有多台合法、互不相干的 dev server ——
- * <consumer-g> 的 `dev:<client-a>`(3040) 與 `dev:shared`(3045) 是兩個不同的 app；再加上為了「一邊開發
+ * <consumer-h> 的 `dev:<client-a>`(3040) 與 `dev:shared`(3045) 是兩個不同的 app；再加上為了「一邊開發
  * 一邊人工檢查」而開的 review slot，就有三台。它們共用一個 lease 檔時，第二台一律被判成
  * 衝突（strict → refuse），於是平行變成不可能——而那個衝突是假的：它們根本沒有共用 port。
  *
@@ -767,7 +767,7 @@ function releaseLease(o, id) {
 }
 
 // cwd 比對 MUST 正規化後再比。lease 內的 cwd 是寫入當下的 `o.cwd`，而 `--cwd` 由 caller 傳，
-// 可能是相對路徑（`.` / `../<consumer-g>`）、帶結尾斜線、或走 symlink 的等價路徑。裸字串比對把這些
+// 可能是相對路徑（`.` / `../<consumer-h>`）、帶結尾斜線、或走 symlink 的等價路徑。裸字串比對把這些
 // 等價形式判成「不同 worktree」，兩個方向都會出錯：strict 模式對自己那台 refuse（擋掉合法
 // 操作），或 --takeover 誤殺自己剛起的 dev server。
 function canonicalCwd(p) {
