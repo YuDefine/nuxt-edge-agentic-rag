@@ -200,7 +200,7 @@ message 的投遞繞過 permission-class hold，且 Linux 連已退出的 child 
 
 ## 工具健檢為什麼要實跑（Step 2.5 的兩段實證）
 
-**為什麼是實跑**：2026-08-05 <consumer-h> 實證——`scripts/lib/detect-runtime.ts` 從未被散播，四支入口
+**為什麼是實跑**：2026-08-05 <consumer-i> 實證——`scripts/lib/detect-runtime.ts` 從未被散播，四支入口
 （`dev-session` / `dev-singleton` / `db-lease` / `claims-lib`）全部 `ERR_MODULE_NOT_FOUND`。
 **那四支檔案本身都在**，`[ -f ]` 一路綠燈；死的是它們 import 的東西。該輪因此白派了一個 worktree
 agent 出去，回來才知道 dev-port 組整組不可用。

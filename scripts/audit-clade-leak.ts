@@ -10,8 +10,8 @@
  * 零層防護一路綠燈 push 上公開 GitHub。
  *
  * 用途：clade 中央倉的 rule /
- * skill / commands / agents 內含 consumer 名稱（<consumer-h> / <consumer-b> / edge-rag /
- * <consumer-k> / nuxt-edge-agentic-rag）、personal path (`~/`)、
+ * skill / commands / agents 內含 consumer 名稱（<consumer-i> / <consumer-b> / edge-rag /
+ * <consumer-l> / nuxt-edge-agentic-rag）、personal path (`~/`)、
  * personal email (`<maintainer-email>`)、客戶名 (<client-a> / fongchen)、
  * 以及未該對外曝光的 maintainer skill (`oops` / `improvement-loop` / `review-rules`)。
  *
@@ -89,8 +89,8 @@ const execFileAsync = promisify(execFile)
 // 該 repo 會對自己的短名報 violation，那是同一個類別錯誤換個名字回來。
 const FLEET_ALIAS_GROUPS = [
   ['nuxt-edge-agentic-rag', 'edge-rag'],
-  ['<consumer-k>'],
-  ['<consumer-h>'],
+  ['<consumer-l>'],
+  ['<consumer-i>'],
   ['<consumer-b>'],
   ['<client-a>'],
   ['fongchen'],
@@ -365,7 +365,7 @@ async function auditOneRoot(repoRoot, selfFlags = []) {
       // symlink 模式的 consumer（`.claude/rules/*.md` → `.clade/runtime/rules/`）：
       // git 裡存的是 mode 120000 的 53-byte 路徑字串，**target 未 tracked**，所以那些
       // 內容根本沒有被公開。readFile 會跟隨 symlink 讀到本機檔案，於是把「本機有」
-      // 誤報成「已洩漏」——2026-07-26 實測讓 agentic-rag 虛報 39 處 <consumer-h> / 32 處
+      // 誤報成「已洩漏」——2026-07-26 實測讓 agentic-rag 虛報 39 處 <consumer-i> / 32 處
       // <consumer-b> / 5 處 <client-a>，全部來自未 tracked 的 symlink target。
       // 公開洩漏的判準是「git 裡有什麼」，不是「檔案系統上有什麼」。
       let stats
