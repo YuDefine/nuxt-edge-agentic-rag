@@ -3,7 +3,7 @@
   "rulesProjection": "symlink",
   "checksums": {
     "rules/agent-routing.keepalive-wake.md": "4fbdafb2861d121b",
-    "rules/agent-routing.md": "e832f65ef539470a",
+    "rules/agent-routing.md": "14f99e202460d6d3",
     "rules/agent-routing.pi-input-intercept.md": "3ce83c14bad33d06",
     "rules/agent-routing.pi-watch-protocol.md": "cbf477d7d94d797a",
     "rules/agent-self-verification.md": "607d4652da997bf0",
