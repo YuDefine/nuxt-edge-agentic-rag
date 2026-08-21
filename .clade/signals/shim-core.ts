@@ -1,3 +1,4 @@
+// 🔒 LOCKED — managed by clade · Source: vendor/signals/shim-core.ts · 改這裡無效，下次 propagate 會覆寫；請改 $CLADE_HOME/vendor/signals/shim-core.ts
 // clade improvement-loop shim core
 //
 // Shared implementation for same-name PATH shims (bin/vp, bin/clade-gate, future

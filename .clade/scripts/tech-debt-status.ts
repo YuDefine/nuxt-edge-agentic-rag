@@ -1,3 +1,4 @@
+// 🔒 LOCKED — managed by clade · Source: vendor/scripts/tech-debt-status.ts · 改這裡無效，下次 propagate 會覆寫；請改 $CLADE_HOME/vendor/scripts/tech-debt-status.ts
 // clade improvement-loop: shared tech-debt `**Status**:` parsing.
 //
 // Single source of truth for "is this TD closed?" so the emission path
