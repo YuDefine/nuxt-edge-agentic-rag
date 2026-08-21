@@ -76,3 +76,5 @@ reports/stryker-incremental.json
 
 .spectra/*
 !.spectra/evidence/
+
+.spectra/evidence/*.bak*
