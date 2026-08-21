@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// 🔒 LOCKED — managed by clade · Source: vendor/scripts/improvement-digest.ts · 改這裡無效，下次 propagate 會覆寫；請改 $CLADE_HOME/vendor/scripts/improvement-digest.ts
 // clade improvement-loop digest
 //
 // Reads structured signal sources (tech-debt, archived spectra changes, audit outputs,

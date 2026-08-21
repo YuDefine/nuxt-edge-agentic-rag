@@ -1,3 +1,4 @@
+// 🔒 LOCKED — managed by clade · Source: vendor/scripts/closure-scanner.ts · 改這裡無效，下次 propagate 會覆寫；請改 $CLADE_HOME/vendor/scripts/closure-scanner.ts
 // clade improvement-loop: four-layer closure scanner.
 //
 // Reads candidates (DIG-<hash> records emitted by improvement-digest.ts) and

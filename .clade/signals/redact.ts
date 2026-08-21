@@ -1,3 +1,4 @@
+// 🔒 LOCKED — managed by clade · Source: vendor/signals/redact.ts · 改這裡無效，下次 propagate 會覆寫；請改 $CLADE_HOME/vendor/signals/redact.ts
 // clade improvement-loop redaction validator
 //
 // Enforces "redaction is non-bypassable":

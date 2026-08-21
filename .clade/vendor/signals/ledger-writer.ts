@@ -1,3 +1,4 @@
+// 🔒 LOCKED — managed by clade · Source: vendor/signals/ledger-writer.ts · 改這裡無效，下次 propagate 會覆寫；請改 $CLADE_HOME/vendor/signals/ledger-writer.ts
 // clade improvement-loop ledger writer
 //
 // Single-writer guarantee via OS-level advisory lock (atomic lockfile create).

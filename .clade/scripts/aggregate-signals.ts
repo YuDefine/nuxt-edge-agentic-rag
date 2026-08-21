@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// 🔒 LOCKED — managed by clade · Source: vendor/scripts/aggregate-signals.ts · 改這裡無效，下次 propagate 會覆寫；請改 $CLADE_HOME/vendor/scripts/aggregate-signals.ts
 // clade improvement-loop: aggregate consumer-local signal ledgers into clade home.
 //
 // Root cause (TD-189): `vendor/signals/ledger-writer.mjs` resolves
