@@ -77,7 +77,7 @@ class UsageError extends Error {}
 
 // 本檔會落在 consumer repo 的 `vendor/` 下，被對方的 `noImplicitAny` typecheck 涵蓋。
 // 參數與資料結構 **MUST** 各自帶 inline 結構型別，否則散播後直接讓 consumer 的
-// typecheck 紅燈（<consumer-h> 2026-07-31 實證，同 commitlint.config.ts 的既有註記）。
+// typecheck 紅燈（<consumer-i> 2026-07-31 實證，同 commitlint.config.ts 的既有註記）。
 // clade 中央倉自己沒有 typecheck script，這類缺陷只會在 consumer 端才炸。
 type Rule = {
   id: string
@@ -566,7 +566,7 @@ function main() {
   // 用 execFile / `| jq` 讀 `--json`）Node 的寫入是非同步的 —— 大輸出會在中途被砍斷，留下一段
   // 語法不完整的 JSON。設 `exitCode` 讓 event loop 自然收尾，行為等價但輸出完整。
   //
-  // 實證（2026-08-06 work-loop round 30）：<consumer-b> 573 筆違規 / <consumer-h> 同級的 `--json` 經 execFile
+  // 實證（2026-08-06 work-loop round 30）：<consumer-b> 573 筆違規 / <consumer-i> 同級的 `--json` 經 execFile
   // 讀回來恆為 108KB 出頭並 `Unterminated string`，而違規數小的 consumer 全部正常 —— 失敗與否
   // 只取決於輸出大小，所以它在小 repo 上永遠測不出來。
   if (ratchetResult) {
