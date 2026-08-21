@@ -1,1 +1,0 @@
-../../.clade/runtime/rules/agent-routing.codex-input-intercept.md
