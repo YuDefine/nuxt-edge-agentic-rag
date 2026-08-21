@@ -52,7 +52,6 @@ coverage/
 
 # Spectra cache
 .spectra/spectra.db
-.spectra/
 openspec/.vector-search.db*
 
 # Claude Code harness runtime state
@@ -74,3 +73,6 @@ reports/stryker-incremental.json
 
 # Codex 投影層（sync-to-codex.ts 從 .claude/ 產生，可重生 → 不進版控）
 .agents/
+
+.spectra/*
+!.spectra/evidence/
