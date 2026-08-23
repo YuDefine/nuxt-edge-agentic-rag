@@ -60,7 +60,8 @@ function gitSafe(args, cwd) {
   }
 }
 
-function detectConsumer(cwd) {
+/** Exported so the flow spine resolves consumer identity the same way signals do. */
+export function detectConsumer(cwd) {
   try {
     const registryPath = join(CLADE_ROOT, 'registry', 'consumers.json')
     if (!existsSync(registryPath)) return { consumer_id: 'unknown', repo_id: 'unknown/unknown' }

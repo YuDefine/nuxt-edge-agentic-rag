@@ -111,6 +111,20 @@ export function redactString(input) {
   return out
 }
 
+// Redaction recurses into nested objects and arrays. Signal records are flat, so this is a
+// no-op for them; flow envelopes carry a free-form `payload` object, and a top-level-only
+// sweep would let a secret ride inside it untouched.
+function redactDeep(value) {
+  if (typeof value === 'string') return redactString(value)
+  if (Array.isArray(value)) return value.map(redactDeep)
+  if (value !== null && typeof value === 'object') {
+    const out: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(value)) out[k] = redactDeep(v)
+    return out
+  }
+  return value
+}
+
 export function redactPayload<T extends Record<string, unknown>>(
   record: T,
 ): Omit<T, 'redaction_applied'> & { redaction_applied: true } {
@@ -119,7 +133,7 @@ export function redactPayload<T extends Record<string, unknown>>(
   }
   const out: Record<string, unknown> = {}
   for (const [key, value] of Object.entries(record)) {
-    out[key] = typeof value === 'string' ? redactString(value) : value
+    out[key] = redactDeep(value)
   }
   out.redaction_applied = true
   return out as Omit<T, 'redaction_applied'> & { redaction_applied: true }
@@ -127,20 +141,28 @@ export function redactPayload<T extends Record<string, unknown>>(
 
 export function findLeaks(record) {
   const leaks = []
-  for (const [field, value] of Object.entries(record)) {
-    if (typeof value !== 'string') continue
-    for (const { id, pattern } of SECRET_PATTERNS) {
-      pattern.lastIndex = 0
-      if (pattern.test(value)) {
-        leaks.push({ field, pattern_id: id })
+  const walk = (value, path) => {
+    if (typeof value === 'string') {
+      for (const { id, pattern } of SECRET_PATTERNS) {
+        pattern.lastIndex = 0
+        if (pattern.test(value)) leaks.push({ field: path, pattern_id: id })
       }
+      return
+    }
+    if (Array.isArray(value)) {
+      value.forEach((v, i) => walk(v, `${path}[${i}]`))
+      return
+    }
+    if (value !== null && typeof value === 'object') {
+      for (const [k, v] of Object.entries(value)) walk(v, path ? `${path}.${k}` : k)
     }
   }
+  for (const [field, value] of Object.entries(record)) walk(value, field)
   return leaks
 }
 
 let cachedSchema = null
-let cachedValidator = null
+const cachedValidators = new Map()
 
 function loadSchema() {
   if (cachedSchema) return cachedSchema
@@ -149,12 +171,21 @@ function loadSchema() {
   return cachedSchema
 }
 
-function compileStructuralValidator() {
-  if (cachedValidator) return cachedValidator
-  const schema = loadSchema()
+/**
+ * Compile the hand-rolled structural validator for one record shape in schema.json.
+ * `defName` selects a shape under `$defs` (e.g. 'flow_envelope'); null is the top-level
+ * signal record. Both shapes go through this one function so the flow spine cannot drift
+ * into a validator of its own.
+ */
+function compileStructuralValidator(defName = null) {
+  const cacheKey = defName ?? '__root__'
+  if (cachedValidators.has(cacheKey)) return cachedValidators.get(cacheKey)
+  const root = loadSchema()
+  const schema = defName ? root.$defs?.[defName] : root
+  if (!schema) throw new Error(`schema.json has no $defs.${defName}`)
   const required = schema.required ?? []
   const props = schema.properties ?? {}
-  cachedValidator = (record) => {
+  const validator = (record) => {
     const errors = []
     if (record === null || typeof record !== 'object') {
       errors.push({ code: 'not-object', message: 'record must be an object' })
@@ -194,16 +225,25 @@ function compileStructuralValidator() {
       if (def.type === 'string' && typeof value !== 'string') {
         errors.push({ code: 'type-mismatch', field: key, expected: 'string' })
       }
+      if (
+        def.type === 'object' &&
+        (value === null || typeof value !== 'object' || Array.isArray(value))
+      ) {
+        errors.push({ code: 'type-mismatch', field: key, expected: 'object' })
+      }
+      if (Array.isArray(def.type) && !def.type.includes(value === null ? 'null' : typeof value)) {
+        errors.push({ code: 'type-mismatch', field: key, expected: def.type.join('|') })
+      }
     }
     return errors
   }
-  return cachedValidator
+  cachedValidators.set(cacheKey, validator)
+  return validator
 }
 
-export function validateRecord(record) {
+function validateAgainst(record, defName) {
   const errors = []
-  const structural = compileStructuralValidator()(record)
-  errors.push(...structural)
+  errors.push(...compileStructuralValidator(defName)(record))
 
   if (record && typeof record === 'object') {
     if (record.redaction_applied !== true) {
@@ -219,4 +259,13 @@ export function validateRecord(record) {
   }
 
   return { ok: errors.length === 0, errors }
+}
+
+export function validateRecord(record) {
+  return validateAgainst(record, null)
+}
+
+/** Same validator, same redaction enforcement, applied to $defs.flow_envelope. */
+export function validateFlowEvent(record) {
+  return validateAgainst(record, 'flow_envelope')
 }
