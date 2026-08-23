@@ -42,10 +42,25 @@ export const BLOCKED_ATTENDED_ONLY_TD_STATUSES = new Set(['blocked'])
 // TD metadata 欄位的共用行首前綴：部分 entry 把整個 metadata 區塊寫成 bullet list
 // （`- **Status**: done`）。少了它，`^` 錨點只吃裸欄位行。
 //
-// 集中在這裡而不是各自寫一份：同型 bug 已發生三次（Status 2026-05、Class 與
-// Discovered/Location 2026-08-02），失敗形態都是「一個欄位認得 bullet、另一個不認，
-// 同一條 TD 半邊解析成功」。**NEVER** 在個別 regex 內重寫這段前綴。
+// 集中在這裡而不是各自寫一份：同型 bug 已發生四次（Status 2026-05、Class 與
+// Discovered/Location 2026-08-02，值前面的粗體 2026-08-23）。前三次漏的是**欄位名
+// 前面**的修飾，失敗形態是「一個欄位認得 bullet、另一個不認，同一條 TD 半邊解析
+// 成功」；第四次（[[TD-597]]）漏的是**值前面**的修飾（`**Status**: **resolved**`），
+// 失敗形態是整條 regex 不匹配 → 回 null → 已結案 TD 被三條鏈一致當成 open。
+//
+// **修飾可以出現在兩個位置，各自需要一個共用常數**：欄位名前面走 TD_FIELD_PREFIX，
+// 值前面走 TD_VALUE_WRAPPER。**NEVER** 在個別 regex 內重寫任一段。
 export const TD_FIELD_PREFIX = '(?:[-*+]\\s+)?'
+
+// 值前面的 markdown 強調包裹（`**resolved**` / `` `resolved` `` / `~~resolved~~`）。
+// 只剝開頭：收尾的包裹符號由 `[\\w-]*` 自己停住，因為 `*` / `` ` `` / `~` 都不是
+// word char。
+//
+// **`_` 刻意不在集合裡**：它是 word char，剝掉開頭的 `_` 之後 `[\\w-]*` 會把收尾那個
+// 一起吃進 token（`_resolved_` → `resolved_`），`isClosedStatus` 的 `split('-')[0]`
+// 仍判不出 closed —— 等於換一個地方失敗。要支援 `_` 強調就得同時改捕獲字元集，
+// 那是另一個決策，**NEVER** 只把 `_` 加進本常數。
+export const TD_VALUE_WRAPPER = '(?:[*`~]+\\s*)?'
 
 // Parse the `**Status**:` field value (first token) from a TD body. Returns
 // lowercased status word (e.g. 'done', 'resolved', 'open', 'wontfix') or null.
@@ -56,9 +71,18 @@ export const TD_FIELD_PREFIX = '(?:[-*+]\\s+)?'
 // TD entries use (`- **Status**: done`) — without it the `^` anchor only
 // matched bare `**Status**:` lines, so bullet-style closed TDs parsed as null
 // → treated as open → falsely re-emitted as digest candidates every run.
+//
+// `TD_VALUE_WRAPPER` strips markdown emphasis wrapping the **value**
+// (`**Status**: **resolved**`): the token is taken from inside the wrapper, so
+// `isClosedStatus`'s `split('-')[0]` still sees a bare `resolved`. **NEVER**
+// widen the capture to `[^\s]+` instead — that swallows the asterisks into the
+// token and moves the failure downstream rather than fixing it.
 export function parseTechDebtStatus(body) {
   const m = body.match(
-    new RegExp(`^${TD_FIELD_PREFIX}\\*\\*Status\\*\\*:\\s*([A-Za-z][\\w-]*)`, 'm'),
+    new RegExp(
+      `^${TD_FIELD_PREFIX}\\*\\*Status\\*\\*:\\s*${TD_VALUE_WRAPPER}([A-Za-z][\\w-]*)`,
+      'm',
+    ),
   )
   return m ? m[1].toLowerCase() : null
 }
