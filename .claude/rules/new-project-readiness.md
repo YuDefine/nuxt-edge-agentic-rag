@@ -1,0 +1,1 @@
+../../.clade/runtime/rules/new-project-readiness.md
