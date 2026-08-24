@@ -287,6 +287,30 @@ function digHash(parts) {
 // Returns Map<DIG-id, count>. Used to flag candidates unresolved across multiple digests —
 // i.e. same fingerprint emitted but never converged (no tech-debt close / no rule landing).
 // `_bootstrap-*.md` files are excluded; today's digest is excluded by `currentDate`.
+/**
+ * 過去 N 期的 strict_realization_rate，**新到舊**。TD-633 的趨勢判定用。
+ *
+ * 讀的是 digest header 那行印出來的值，不是重算——重算需要當期 outcome ledger 快照，
+ * 而那份資料只在產出當下存在。header 行的格式由本檔同一支 script 寫出，兩邊同源。
+ */
+function scanPriorStrictRates({ digestsRoot, currentDate, lookback = 5 }) {
+  const dir = join(digestsRoot, 'docs', 'digests')
+  if (!existsSync(dir)) return []
+  const files = readdirSync(dir)
+    .filter((f) => f.endsWith('.md') && !f.startsWith('_bootstrap') && f !== `${currentDate}.md`)
+    .toSorted()
+    .toReversed()
+    .slice(0, lookback)
+  const rates = []
+  for (const f of files) {
+    const m = readFileSync(join(dir, f), 'utf8').match(/strict_realization_rate[^:]*:\s*([0-9.]+)/)
+    // 沒有該行的舊 digest（2026-07-08 之前）直接跳過，NEVER 補 0——那會讓「還沒有這個 metric」
+    // 讀起來像「rate 是 0」，恰好會誤觸發凍結
+    if (m) rates.push(m[1])
+  }
+  return rates
+}
+
 function scanPriorDigestsForIds({ digestsRoot, currentDate, lookback = 5 }) {
   const dir = join(digestsRoot, 'docs', 'digests')
   if (!existsSync(dir)) return new Map()
@@ -1346,12 +1370,47 @@ function persistOutcomes(outcomes) {
 // 以下就會重新出現。
 export const EMIT_FREEZE_THRESHOLD = 10
 
-export function applyEmitFreeze(candidates, unresolvedCount, threshold = EMIT_FREEZE_THRESHOLD) {
-  const frozen = unresolvedCount >= threshold
+// TD-633（2026-08-24）：上面那段的存在理由引用的是 strict_realization_rate 0.07，但觸發條件
+// 只讀 unresolved——**兩者不是同一個量**。unresolved 可以靠把候選判成 closed 來降低，而 closed
+// 約 94% 走 diff-keyword 弱推斷，所以煞車踏板接在一個**可被 closure 判定自我稀釋**的訊號上。
+// 實測：strict_realization_rate 四期打平（07-08 0.06 / 07-25 0.07 / 08-01 0.07 / 08-18 0.06），
+// 而 08-18 的 unresolved=7 < 10 → 未凍結，照常發 73 條新候選。
+//
+// 修法是**趨勢**而不是絕對值：四期都在 0.06–0.07，任何 ≥0.10 的絕對門檻等於永久凍結。
+// 連續 N 期未上升 = 消化端沒有改善跡象，此時再發新候選只是把積壓推高；一旦開始回升就自動解凍。
+export const STRICT_RATE_STALL_PERIODS = 2
+
+/**
+ * 連續 STRICT_RATE_STALL_PERIODS 期未上升 → stalled。
+ *
+ * 「未上升」取 `<=`（NEVER 取 `<`）：0.07 → 0.07 → 0.07 是最典型的停滯形狀，用嚴格小於會
+ * 完全漏掉它，而那正是本條要抓的東西。
+ *
+ * 期數不足（新 repo / digest 少於 N 期）**MUST 回 false**——資料不足時 fail-open，NEVER 讓
+ * 「量不到」長得像「停滯」。這與 metric 側 `insufficient data` 的處置一致。
+ */
+export function isStrictRateStalled(currentRate, priorRates, periods = STRICT_RATE_STALL_PERIODS) {
+  const cur = Number(currentRate)
+  if (!Number.isFinite(cur)) return false
+  const recent = priorRates.slice(0, periods).map(Number).filter(Number.isFinite)
+  if (recent.length < periods) return false
+  return recent.every((r) => cur <= r)
+}
+
+export function applyEmitFreeze(
+  candidates,
+  unresolvedCount,
+  { threshold = EMIT_FREEZE_THRESHOLD, rateStalled = false } = {},
+) {
+  const byBacklog = unresolvedCount >= threshold
+  const frozen = byBacklog || rateStalled
   const emitted = frozen
     ? candidates.filter((c) => (c.unresolved_across?.count ?? 0) > 0)
     : candidates
-  return { frozen, emitted, suppressedCount: candidates.length - emitted.length }
+  // reason 是 header 要印的東西：兩個量同時作用時，NEVER 讓讀者猜是哪一個觸發的
+  const reason =
+    byBacklog && rateStalled ? 'both' : byBacklog ? 'backlog' : rateStalled ? 'rate' : null
+  return { frozen, reason, emitted, suppressedCount: candidates.length - emitted.length }
 }
 
 export async function runDigest({ dryRun = false } = {}) {
@@ -1444,7 +1503,18 @@ export async function runDigest({ dryRun = false } = {}) {
     (c) => (c.unresolved_across?.count ?? 0) >= 2 && !c.recently_reviewed,
   ).length
 
-  const { frozen: emitFrozen, emitted, suppressedCount } = applyEmitFreeze(deduped, unresolvedCount)
+  const priorStrictRates = scanPriorStrictRates({
+    digestsRoot: cladeRoot,
+    currentDate: today,
+    lookback: UNRESOLVED_LOOKBACK,
+  })
+  const rateStalled = isStrictRateStalled(strictRealizationRate, priorStrictRates)
+  const {
+    frozen: emitFrozen,
+    reason: freezeReason,
+    emitted,
+    suppressedCount,
+  } = applyEmitFreeze(deduped, unresolvedCount, { rateStalled })
 
   const signalSource =
     signals.length < 10 ? 'bootstrap-only' : signals.length < 100 ? 'partial' : 'steady-state'
@@ -1480,7 +1550,7 @@ export async function runDigest({ dryRun = false } = {}) {
     `- candidates emitted: ${emitted.length}`,
     ...(emitFrozen
       ? [
-          `- ⏸ **emit frozen** — unresolved ${unresolvedCount} ≥ ${EMIT_FREEZE_THRESHOLD}：本輪只 re-emit 積壓候選，新候選 ${suppressedCount} 條暫不發。先關既有的，unresolved 降到 ${EMIT_FREEZE_THRESHOLD} 以下自動解凍`,
+          `- ⏸ **emit frozen**（觸發：${{ backlog: `unresolved ${unresolvedCount} ≥ ${EMIT_FREEZE_THRESHOLD}`, rate: `strict_realization_rate ${strictRealizationRate} 連續 ${STRICT_RATE_STALL_PERIODS} 期未上升（前值 ${priorStrictRates.slice(0, STRICT_RATE_STALL_PERIODS).join(' / ')}）`, both: `unresolved ${unresolvedCount} ≥ ${EMIT_FREEZE_THRESHOLD} ＋ strict_realization_rate ${strictRealizationRate} 連續 ${STRICT_RATE_STALL_PERIODS} 期未上升` }[freezeReason]}）：本輪只 re-emit 積壓候選，新候選 ${suppressedCount} 條暫不發。先關既有的，兩個觸發條件都解除才自動解凍`,
         ]
       : []),
     '',
