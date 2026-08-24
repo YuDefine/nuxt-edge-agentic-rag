@@ -19,6 +19,7 @@
     "eval": "node scripts/run-eval-with-exit.mjs",
     "eval:report": "evalite run --outputPath .evalite/mcp-tool-selection.json test/evals/mcp-tool-selection.eval.ts",
     "eval:watch": "evalite watch test/evals/mcp-tool-selection.eval.ts",
+    "flow": "node .clade/vendor/scripts/flow/flow.ts",
     "format": "vp fmt --write --ignore-path .oxfmtignore",
     "format:check": "vp fmt --check --ignore-path .oxfmtignore",
     "hub:bootstrap": "node ${CLADE_HOME:-$HOME/offline/clade}/scripts/bootstrap-hub.ts",

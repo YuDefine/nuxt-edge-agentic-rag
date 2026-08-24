@@ -1,0 +1,77 @@
+{
+  "$comment": "Node library v1 registry. `baseline` is the line P1a draws: every .mjs already in .clade/work-loop/ on that date is grandfathered, and anything created after it is what audit-flow-nodes.ts reports. `nodes` is the library; `coverage` records how many of the 88 baseline scripts each node was derived from, which is the evidence the selection was empirical rather than assumed.",
+  "baseline": {
+    "date": "2026-08-24",
+    "mjs_count": 88,
+    "note": "88 ad-hoc .mjs in .clade/work-loop/ at the moment P1a landed. The P1 acceptance criterion is five consecutive loop rounds adding zero new ones."
+  },
+  "nodes": [
+    { "name": "td-rotate", "coverage": 7, "cluster": "TD entries moved to archive, byte-exact" },
+    {
+      "name": "td-inject",
+      "coverage": 2,
+      "cluster": "idempotent block insertion inside one TD entry"
+    },
+    {
+      "name": "td-register-scan",
+      "coverage": 6,
+      "cluster": "structured filter over docs/tech-debt.md"
+    },
+    {
+      "name": "state-patch-write",
+      "coverage": 16,
+      "cluster": "state.json read-merge-write-verify"
+    },
+    { "name": "json-inspect", "coverage": 20, "cluster": "drill a key path, tally, list outliers" },
+    {
+      "name": "audit-assert",
+      "coverage": 8,
+      "cluster": "run an audit script, compare a field to a baseline"
+    },
+    {
+      "name": "git-provenance",
+      "coverage": 4,
+      "cluster": "did it land / is it an ancestor / what changed since"
+    },
+    {
+      "name": "transcript-scan",
+      "coverage": 6,
+      "cluster": "walk session jsonl with cutoff + regex"
+    },
+    { "name": "scan-orchestrate", "coverage": 3, "cluster": "wrapper around handoff-scan.ts" },
+    {
+      "name": "commit-only",
+      "coverage": 0,
+      "cluster": "git commit --only plus the three verify layers"
+    },
+    {
+      "name": "worktree-open",
+      "coverage": 0,
+      "cluster": "worktree start predicate as a precondition"
+    },
+    {
+      "name": "worktree-close",
+      "coverage": 0,
+      "cluster": "five-column lifecycle gate as a postcondition"
+    },
+    { "name": "vp-check", "coverage": 0, "cluster": "vp check as a gate node" },
+    {
+      "name": "publish",
+      "coverage": 0,
+      "cluster": "publish with the runner-child guard as a blocked state (§11.2)"
+    },
+    {
+      "name": "propagate",
+      "coverage": 0,
+      "cluster": "propagate with the runner-child guard as a blocked state (§11.2)"
+    },
+    {
+      "name": "cmd",
+      "coverage": 0,
+      "cluster": "consumer-facing: any project command, with --each fan-out over a git pathspec",
+      "$comment": "coverage 0 on purpose and it is NOT a gap in the empirical selection: the 88 .mjs corpus is clade's own loop, and this node exists for the consumer cookbook specs P3 ships, where every step is a project command (pnpm gen:types, supabase db push) that no clade-discipline node covers."
+    }
+  ],
+  "exempt": [],
+  "$exempt_comment": "Filenames here are excused from the new-.mjs signal. Add one only with a reason a reader can check; an exemption without a stated cause is how a warn-only signal becomes decoration."
+}
