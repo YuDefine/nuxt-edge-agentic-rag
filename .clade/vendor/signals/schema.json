@@ -188,6 +188,7 @@
             "claude-code",
             "git",
             "ci",
+            "propagate",
             "manual"
           ],
           "description": "Execution substrate the span ran on. New substrates are added here, never by widening a payload field."

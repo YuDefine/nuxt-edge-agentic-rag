@@ -1,0 +1,41 @@
+{
+  "name": "round-scan",
+  "$comment": "The read-only half of a loop round: what is ready, how big is the register, is HEAD landed. Every step here is a node that replaced a cluster of hand-written .mjs — this file is what those rounds should have been. Nothing in it writes, so it is also the spec to run when demonstrating the engine.",
+  "steps": [
+    {
+      "node": "td-register-scan",
+      "label": "ready-items",
+      "args": { "filter": "ready", "fields": "id,status,title", "max": 10 }
+    },
+    {
+      "parallel": [
+        {
+          "node": "td-register-scan",
+          "label": "blocked-by-publish",
+          "args": { "filter": "blocked-by-publish", "max": 10 }
+        },
+        {
+          "node": "td-register-scan",
+          "label": "no-evidence",
+          "args": { "filter": "no-evidence", "max": 10 }
+        }
+      ],
+      "onFail": "continue"
+    },
+    {
+      "node": "json-inspect",
+      "label": "node-library-size",
+      "args": {
+        "file": "vendor/scripts/flow/nodes/registry.json",
+        "path": "nodes",
+        "tally": "name"
+      }
+    },
+    {
+      "node": "git-provenance",
+      "label": "head-landed",
+      "args": { "question": "ancestor", "commit": "HEAD", "of": "origin/main" },
+      "onFail": "continue"
+    }
+  ]
+}

@@ -1,0 +1,398 @@
+// 🔒 LOCKED — managed by clade · Source: vendor/scripts/flow/emit.ts · 改這裡無效，下次 propagate 會覆寫；請改 $CLADE_HOME/vendor/scripts/flow/emit.ts
+// clade flow spine — emit library
+//
+// One append-only JSONL per repo: .clade/flow/events.jsonl. Every record is a
+// $defs.flow_envelope from vendor/signals/schema.json, redacted and validated by
+// vendor/signals/redact.ts. There is no second schema and no second validator: the spine
+// reuses the signals governance so redaction stays non-bypassable.
+//
+// Fail-open, like the signals ledger: a spine write NEVER changes the exit code, stdout, or
+// stderr semantics of the work it observes. A dispatch that cannot be recorded still runs.
+//
+// Env contract (read by adapters, so a child process joins its parent's trace):
+//   CLADE_WORK_ID           work item this process belongs to; absent -> orphan work id
+//   CLADE_FLOW_PARENT_SPAN  span that spawned this process; absent -> root span
+//   CLADE_FLOW_EVENTS       override the events.jsonl path (tests, scoped runs)
+//   CLADE_FLOW_OFF=1        disable capture entirely
+//   CLADE_CONSUMER_ID       override registry-resolved consumer id
+
+import { execFileSync } from 'node:child_process'
+import { randomBytes, randomUUID } from 'node:crypto'
+import { existsSync, mkdirSync, readFileSync } from 'node:fs'
+import { dirname, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+import { redactPayload, validateFlowEvent } from '../../signals/redact.ts'
+import { appendRaw } from '../../signals/ledger-writer.ts'
+import { detectConsumer } from '../../signals/shim-core.ts'
+
+const __dirname = dirname(fileURLToPath(import.meta.url))
+const CLADE_ROOT = resolve(__dirname, '..', '..', '..')
+
+export const SCHEMA_VERSION = '1'
+
+export function flowDisabled() {
+  return process.env.CLADE_FLOW_OFF === '1'
+}
+
+function gitTopLevel(cwd) {
+  try {
+    return execFileSync('git', ['rev-parse', '--show-toplevel'], {
+      cwd,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim()
+  } catch {
+    return ''
+  }
+}
+
+/** Repo-local spine path. Explicit override wins so tests never touch a real repo's stream. */
+export function eventsPath(cwd = process.cwd()) {
+  if (process.env.CLADE_FLOW_EVENTS) return resolve(process.env.CLADE_FLOW_EVENTS)
+  const root = gitTopLevel(cwd) || CLADE_ROOT
+  return join(root, '.clade', 'flow', 'events.jsonl')
+}
+
+export function newSpanId() {
+  return randomBytes(8).toString('hex')
+}
+
+function utcDate(now = new Date()) {
+  return now.toISOString().slice(0, 10)
+}
+
+const SLUG_OK = /^[a-z0-9][a-z0-9-]*$/
+
+/** W-<YYYY-MM-DD>-<slug>. Throws on a slug the envelope pattern would reject. */
+export function mintWorkId(slug, now = new Date()) {
+  const normalized = String(slug)
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+  if (!SLUG_OK.test(normalized)) throw new Error(`unusable work slug: ${slug}`)
+  return `W-${utcDate(now)}-${normalized}`
+}
+
+/**
+ * The work id this process belongs to. With no ambient CLADE_WORK_ID an orphan id is minted
+ * rather than dropping the event: an unattributed span still belongs on the spine, and the
+ * `orphan-` prefix makes the attribution gap countable instead of invisible.
+ */
+export function resolveWorkId(hint = null) {
+  const explicit = hint ?? process.env.CLADE_WORK_ID ?? null
+  if (explicit) return explicit
+  return mintWorkId(`orphan-${randomBytes(3).toString('hex')}`)
+}
+
+function identity(cwd) {
+  const consumer = detectConsumer(cwd) ?? {}
+  return {
+    consumer_id: process.env.CLADE_CONSUMER_ID ?? consumer.consumer_id ?? 'unknown',
+    repo_id: consumer.repo_id ?? 'unknown/unknown',
+  }
+}
+
+/**
+ * Build + persist one envelope. Returns { written, record } and never throws: callers are
+ * dispatchers and gates whose own contract outranks telemetry.
+ */
+export interface FlowEventInput {
+  work_id: string
+  span_id: string
+  parent_span?: string | null
+  phase: 'start' | 'end' | 'point'
+  kind: string
+  actor: string
+  substrate: string
+  session_id?: string | null
+  payload?: Record<string, unknown>
+  outcome?: string | null
+  ts_utc?: string
+  cwd?: string
+}
+
+export interface OpenWorkInput {
+  slug: string
+  actor?: string
+  session_id?: string | null
+  payload?: Record<string, unknown>
+  cwd?: string
+}
+
+export interface StartSpanInput {
+  work_id?: string | null
+  /**
+   * Pre-generated span id. A dispatcher that must hand CLADE_FLOW_PARENT_SPAN to a child process
+   * before the child exists needs the id in hand earlier than the start event can be emitted;
+   * minting it here would force either a second id or an event emitted too late to survive a crash.
+   */
+  span_id?: string
+  kind: string
+  actor: string
+  substrate: string
+  session_id?: string | null
+  parent_span?: string | null
+  payload?: Record<string, unknown>
+  cwd?: string
+}
+
+export interface SpanHandle {
+  work_id: string
+  span_id: string
+  parent_span: string | null
+  started_at: string
+  kind: string
+  actor: string
+  substrate: string
+  session_id: string | null
+}
+
+export function emitEvent({
+  work_id,
+  span_id,
+  parent_span = null,
+  phase,
+  kind,
+  actor,
+  substrate,
+  session_id,
+  payload = {},
+  outcome = null,
+  ts_utc = new Date().toISOString(),
+  cwd = process.cwd(),
+}: FlowEventInput) {
+  if (flowDisabled()) return { written: false, skipped: 'CLADE_FLOW_OFF' }
+  try {
+    const { consumer_id, repo_id } = identity(cwd)
+    const record = redactPayload({
+      schema_version: SCHEMA_VERSION,
+      event_id: randomUUID(),
+      work_id,
+      span_id,
+      parent_span,
+      phase,
+      kind,
+      actor,
+      substrate,
+      ts_utc,
+      consumer_id,
+      repo_id,
+      session_id: session_id ?? String(process.pid),
+      payload,
+      outcome,
+      redaction_applied: true,
+    })
+    const { ok, errors } = validateFlowEvent(record)
+    if (!ok) {
+      process.stderr.write(`[clade flow] event rejected (${errors.map((e) => e.code).join(',')})\n`)
+      return { written: false, errors }
+    }
+    const path = eventsPath(cwd)
+    const dir = dirname(path)
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+    // appendRaw gives the single-writer advisory lock; validation already ran above.
+    const res = appendRaw(record, { ledgerPath: path })
+    return { written: res.written === true, record }
+  } catch (e) {
+    process.stderr.write(`[clade flow] emit failed (fail-open): ${e.message}\n`)
+    return { written: false, errors: [{ code: 'emit-failed', message: e.message }] }
+  }
+}
+
+/** Open a work item: one point event that names the work id for everything downstream. */
+export function openWork({
+  slug,
+  actor = 'unknown',
+  session_id = null,
+  payload = {},
+  cwd,
+}: OpenWorkInput) {
+  const work_id = mintWorkId(slug)
+  const span_id = newSpanId()
+  emitEvent({
+    work_id,
+    span_id,
+    parent_span: null,
+    phase: 'point',
+    kind: 'work.open',
+    actor,
+    substrate: 'manual',
+    session_id,
+    payload: { slug, ...payload },
+    outcome: 'ok',
+    cwd,
+  })
+  return { work_id, span_id }
+}
+
+/**
+ * Emit the start half of a span and return the handle its end half needs. An unmatched start
+ * is a legible in-flight/stalled span, so adapters emit it BEFORE the work runs — not after,
+ * where a crash would erase the fact that anything was attempted.
+ */
+export function startSpan({
+  work_id,
+  span_id: spanIdHint,
+  kind,
+  actor,
+  substrate,
+  session_id = null,
+  parent_span = process.env.CLADE_FLOW_PARENT_SPAN ?? null,
+  payload = {},
+  cwd,
+}: StartSpanInput): SpanHandle {
+  const resolved = resolveWorkId(work_id)
+  const span_id = spanIdHint ?? newSpanId()
+  const started_at = new Date().toISOString()
+  emitEvent({
+    work_id: resolved,
+    span_id,
+    parent_span,
+    phase: 'start',
+    kind,
+    actor,
+    substrate,
+    session_id,
+    payload,
+    outcome: null,
+    ts_utc: started_at,
+    cwd,
+  })
+  return { work_id: resolved, span_id, parent_span, started_at, kind, actor, substrate, session_id }
+}
+
+export function endSpan(
+  handle: SpanHandle | null,
+  {
+    outcome = 'ok',
+    payload = {},
+    cwd,
+  }: { outcome?: string; payload?: Record<string, unknown>; cwd?: string } = {},
+) {
+  if (!handle) return { written: false, errors: [{ code: 'no-span-handle' }] }
+  const ended_at = new Date().toISOString()
+  const duration_ms = Math.max(0, Date.parse(ended_at) - Date.parse(handle.started_at))
+  return emitEvent({
+    work_id: handle.work_id,
+    span_id: handle.span_id,
+    parent_span: handle.parent_span ?? null,
+    phase: 'end',
+    kind: handle.kind,
+    actor: handle.actor,
+    substrate: handle.substrate,
+    session_id: handle.session_id,
+    payload: { started_at: handle.started_at, duration_ms, ...payload },
+    outcome,
+    ts_utc: ended_at,
+    cwd,
+  })
+}
+
+/**
+ * Has this span already been closed on the spine?
+ *
+ * The spine itself is the authority, not any adapter's own bookkeeping: a span is opened and closed
+ * by different processes, and the closers cannot see each other. Asking the stream directly is what
+ * makes closing idempotent no matter which of them gets there first.
+ *
+ * Fail-open answers `false` — "cannot prove it is closed". A duplicate end merely lets the later
+ * one win when spans are folded; a missing end is a permanent false stall in every `--stalled`
+ * style query, which is the worse of the two.
+ */
+export function spanIsClosed(spanId: string, cwd = process.cwd()) {
+  try {
+    return readEvents(cwd).some((e) => e.span_id === spanId && e.phase === 'end')
+  } catch {
+    return false
+  }
+}
+
+/** Read the spine back. Malformed lines are skipped, never thrown on. */
+export function readEvents(cwd = process.cwd()) {
+  const path = eventsPath(cwd)
+  if (!existsSync(path)) return []
+  return readFileSync(path, 'utf8')
+    .split('\n')
+    .filter(Boolean)
+    .map((line) => {
+      try {
+        return JSON.parse(line)
+      } catch {
+        return null
+      }
+    })
+    .filter(Boolean)
+}
+
+/**
+ * Merge externally produced envelopes into this repo's spine.
+ *
+ * The one place where records arrive that this process did not build: a CI job's events.jsonl
+ * downloaded back from an artifact (the ephemeral runner's copy dies with the job), or a harness
+ * `Workflow` journal converted after the fact (§5). Both are the same problem — events that
+ * happened elsewhere — so they get one door, not one door each.
+ *
+ * Three properties the door must have:
+ *   - **dedupe by `event_id`**: re-ingesting the same artifact is how anyone will actually use
+ *     this (download again, run again), so it MUST be a no-op rather than a doubled timeline.
+ *   - **re-redact**: the source is outside this repo's governance. Redaction is not opt-out here
+ *     any more than it is on emit.
+ *   - **validate每筆**: a malformed record is skipped and counted, never appended. One bad line
+ *     in an artifact NEVER poisons the stream.
+ */
+export function ingestEvents(records: unknown[], { cwd = process.cwd() } = {}) {
+  if (flowDisabled()) return { ingested: 0, duplicates: 0, rejected: 0, skipped: 'CLADE_FLOW_OFF' }
+  const seen = new Set(readEvents(cwd).map((e) => e.event_id))
+  let ingested = 0
+  let duplicates = 0
+  let rejected = 0
+  const path = eventsPath(cwd)
+  const dir = dirname(path)
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+  for (const raw of records) {
+    if (!raw || typeof raw !== 'object') {
+      rejected++
+      continue
+    }
+    const record = redactPayload({
+      ...(raw as Record<string, unknown>),
+      redaction_applied: true,
+    }) as Record<string, unknown> & { event_id?: string }
+    const eventId = record.event_id
+    if (!eventId) {
+      rejected++
+      continue
+    }
+    if (seen.has(eventId)) {
+      duplicates++
+      continue
+    }
+    const { ok } = validateFlowEvent(record)
+    if (!ok) {
+      rejected++
+      continue
+    }
+    const res = appendRaw(record, { ledgerPath: path })
+    if (res.written === true) {
+      seen.add(eventId)
+      ingested++
+    } else rejected++
+  }
+  return { ingested, duplicates, rejected }
+}
+
+/** Parse a JSONL blob into candidate records. Malformed lines count as rejects, not throws. */
+export function parseEventLines(text: string) {
+  const records = []
+  let malformed = 0
+  for (const line of text.split('\n')) {
+    if (!line.trim()) continue
+    try {
+      records.push(JSON.parse(line))
+    } catch {
+      malformed++
+    }
+  }
+  return { records, malformed }
+}
