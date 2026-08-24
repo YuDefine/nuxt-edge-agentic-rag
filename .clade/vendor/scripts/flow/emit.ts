@@ -47,11 +47,21 @@ function gitTopLevel(cwd) {
   }
 }
 
+/**
+ * The spine path of one repo root, with no environment override.
+ *
+ * The fleet reader needs exactly this: `CLADE_FLOW_EVENTS` points at ONE file, so resolving 14
+ * repo roots through `eventsPath()` would collapse all fourteen onto that file — every consumer
+ * would appear to hold clade's stream, and the aggregate would be confidently wrong.
+ */
+export function spinePathIn(root: string) {
+  return join(root, '.clade', 'flow', 'events.jsonl')
+}
+
 /** Repo-local spine path. Explicit override wins so tests never touch a real repo's stream. */
 export function eventsPath(cwd = process.cwd()) {
   if (process.env.CLADE_FLOW_EVENTS) return resolve(process.env.CLADE_FLOW_EVENTS)
-  const root = gitTopLevel(cwd) || CLADE_ROOT
-  return join(root, '.clade', 'flow', 'events.jsonl')
+  return spinePathIn(gitTopLevel(cwd) || CLADE_ROOT)
 }
 
 export function newSpanId() {
@@ -308,9 +318,13 @@ export function spanIsClosed(spanId: string, cwd = process.cwd()) {
   }
 }
 
-/** Read the spine back. Malformed lines are skipped, never thrown on. */
-export function readEvents(cwd = process.cwd()) {
-  const path = eventsPath(cwd)
+/**
+ * Read one spine file. Malformed lines are skipped, never thrown on.
+ *
+ * Split out from `readEvents` so the fleet reader parses events the same way this one does —
+ * two parsers would be two answers to "what counts as an event".
+ */
+export function readEventsFile(path: string) {
   if (!existsSync(path)) return []
   return readFileSync(path, 'utf8')
     .split('\n')
@@ -323,6 +337,11 @@ export function readEvents(cwd = process.cwd()) {
       }
     })
     .filter(Boolean)
+}
+
+/** Read this repo's spine back. */
+export function readEvents(cwd = process.cwd()) {
+  return readEventsFile(eventsPath(cwd))
 }
 
 /**
