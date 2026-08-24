@@ -221,7 +221,11 @@ const PAGE = `<!doctype html>
 <script>
 // ── 詞彙：脊椎存的是 OTel 形狀的英文，這裡是唯一把它翻成人話的地方 ──────────────
 var WHO = {
-  pi: 'Pi 派工', codex: 'Codex', herdr: 'Herdr pane', 'work-loop': 'flow 流程',
+  pi: 'Pi 派工',
+  // Historical pi-dispatch spans recorded openai-codex seats as substrate 'codex'.
+  // That word on the page reads as Codex CLI. Both are Pi CLI; keep it off the page.
+  codex: 'Pi 派工',
+  herdr: 'Herdr pane', 'work-loop': 'flow 流程',
   'harness-workflow': 'Workflow 工具', 'claude-code': 'Claude Code', git: 'Git',
   ci: 'CI', manual: '人工'
 };
