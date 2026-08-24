@@ -12,6 +12,7 @@
 //   flow run <spec.json>                execute a spec through the dumb engine
 //   flow step <node> [--flags]          run one node from the library, recorded as a span
 //   flow serve [--port] [--host]        localhost viewer over the same projection
+//   flow serve --all / status --all     every repo on the roster, read where it lies
 //   flow viz timeline [<work_id>]       span waterfall for one work item (default: latest)
 //   flow viz --md [<work_id>]           persist docs/flow/<work_id>.md (mermaid graph + gantt)
 //   flow viz --fleet                    persist docs/flow/fleet.md from the propagate ledger
@@ -35,6 +36,7 @@ import {
   readEvents,
   resolveWorkId,
 } from './emit.ts'
+import { buildFleetSnapshot, renderFleetStatus } from './fleet.ts'
 import { loadSpec, runCommand, runNode, runSpec } from './run.ts'
 import { DEFAULT_PORT, startServer } from './serve.ts'
 import { buildWorkItems, foldSpans, indexById, latestWorkId, spanDepth } from './spine.ts'
@@ -53,6 +55,7 @@ const { values: args, positionals } = parseArgs({
     json: { type: 'boolean', default: false },
     help: { type: 'boolean', default: false },
     stalled: { type: 'boolean', default: false },
+    all: { type: 'boolean', default: false },
     md: { type: 'boolean', default: false },
     fleet: { type: 'boolean', default: false },
     out: { type: 'string' },
@@ -86,6 +89,8 @@ const USAGE = `Usage: flow <open|emit|ingest|run|step|serve|viz|status> [args]
   step <node> [--flags]           run one node from the library, recorded as a span
   step [<label>] -- <cmd>...      wrap any command in a span (use when no node fits)
   serve [--port N] [--host H]     localhost viewer (default 127.0.0.1:${DEFAULT_PORT}, read-only)
+  serve --all / status --all      read every repo on consumers.local, not just this one.
+                                  (viz --fleet is a different view: propagate asset lineage)
   viz timeline [<work_id>]        span waterfall for a work item (default: most recent)
   viz --md [<work_id>] [--out P]  write docs/flow/<work_id>.md (mermaid graph + gantt)
   viz --fleet [--waves N]         write docs/flow/fleet.md from the propagate ledger
@@ -262,6 +267,7 @@ if (cmd === 'step') {
     'help',
     'actor',
     'stalled',
+    'all',
     'md',
     'fleet',
     'out',
@@ -291,9 +297,12 @@ if (cmd === 'serve') {
   const port = numberFlag(args.port, DEFAULT_PORT)
   const host = typeof args.host === 'string' ? args.host : '127.0.0.1'
   const stallMinutes = numberFlag(args['stall-minutes'], DEFAULT_STALL_MINUTES)
-  const started = await startServer({ port, host, stallMinutes })
+  const fleet = args.all === true
+  const cladeRoot = repoRoot()
+  const started = await startServer({ port, host, stallMinutes, fleet, cladeRoot })
   process.stdout.write(
-    `flow serve  http://${started.host}:${started.port}\nspine: ${eventsPath()}\n` +
+    `flow serve  http://${started.host}:${started.port}\n` +
+      `${fleet ? `roster: ${join(cladeRoot, 'consumers.local')}` : `spine: ${eventsPath()}`}\n` +
       `read-only; polls every 2s. Ctrl-C to stop.\n`,
   )
   // Deliberately no exit: the process is the server.
@@ -378,6 +387,37 @@ if (cmd === 'serve') {
       `${state} ${bar} ${dur.padStart(10)}  ${label} (${s.actor}) ${s.span_id.slice(0, 8)}\n`,
     )
   }
+  process.exit(0)
+}
+
+if (cmd === 'status' && args.all) {
+  // The one-site view: clade plus every consumer, each read where it lies. Events are NEVER
+  // copied here — this opens 14 files and folds each one separately.
+  const cladeRoot = repoRoot()
+  const snapshot = buildFleetSnapshot({
+    cladeRoot,
+    stallMinutes: numberFlag(args['stall-minutes'], DEFAULT_STALL_MINUTES),
+  })
+  if (!snapshot) {
+    process.stderr.write(
+      `flow: no roster at ${join(cladeRoot, 'consumers.local')} — --all only works in the clade repo\n`,
+    )
+    process.exit(2)
+  }
+  if (args.stalled) {
+    process.stdout.write(
+      args.json
+        ? `${JSON.stringify({ stalls: snapshot.stalls, unreadable: snapshot.unreadable }, null, 2)}\n`
+        : `${renderStalls(snapshot.stalls.map((s) => ({ ...s, work_id: `${s.repo}/${s.work_id}` })))}` +
+            (snapshot.unreadable.length > 0
+              ? `\n讀不到（${snapshot.unreadable.length}）:\n${snapshot.unreadable.map((r) => `    ${r.name}  ${r.why}`).join('\n')}\n`
+              : ''),
+    )
+    process.exit(snapshot.stalls.length > 0 ? 3 : 0)
+  }
+  process.stdout.write(
+    args.json ? `${JSON.stringify(snapshot, null, 2)}\n` : renderFleetStatus(snapshot),
+  )
   process.exit(0)
 }
 

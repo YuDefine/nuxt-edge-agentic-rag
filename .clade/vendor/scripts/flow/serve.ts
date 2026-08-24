@@ -15,8 +15,10 @@
 // being a projection of what happened. Everything on this page is derived from events.jsonl.
 
 import { createServer, type Server } from 'node:http'
+import { basename } from 'node:path'
 
 import { eventsPath, readEvents } from './emit.ts'
+import { buildFleetSnapshot } from './fleet.ts'
 import { buildWorkItems, foldSpans } from './spine.ts'
 import { DEFAULT_STALL_MINUTES, findStalls } from './stall.ts'
 
@@ -25,22 +27,72 @@ export interface ServeOptions {
   host?: string
   cwd?: string
   stallMinutes?: number
+  /** Read every repo on the roster instead of just this one (`flow serve --all`). */
+  fleet?: boolean
+  /** Where `consumers.local` lives. Only meaningful with `fleet`. */
+  cladeRoot?: string
 }
 
 /** 5180: clear of review-gui (5174) and of the consumer dev-port block (3000–3110). */
 export const DEFAULT_PORT = 5180
 
+/**
+ * One repo's projection.
+ *
+ * It carries `repos` / `unreadable` / a `repo` tag on every row even though there is exactly one
+ * repo here, so that the page has ONE rendering path. Fleet mode is then a snapshot with more
+ * rows, not a second page — and a second page is how two views end up disagreeing about whether
+ * the same work item is in flight.
+ */
 export function buildSnapshot(cwd = process.cwd(), stallMinutes = DEFAULT_STALL_MINUTES) {
   const events = readEvents(cwd)
   const spans = foldSpans(events)
+  const spinePath = eventsPath(cwd)
+  const name = basename(cwd) || 'this repo'
   return {
+    mode: 'repo' as const,
     generated_at: new Date().toISOString(),
-    spine_path: eventsPath(cwd),
+    spine_path: spinePath,
+    repos: [
+      {
+        name,
+        path: cwd,
+        spine_path: spinePath,
+        state: 'ok' as const,
+        events: events.length,
+      },
+    ],
+    unreadable: [],
     events: events.length,
-    work_items: buildWorkItems(spans),
-    spans,
-    stalls: findStalls(spans, { thresholdMinutes: stallMinutes }),
+    work_items: buildWorkItems(spans).map((w) => ({ ...w, repo: name })),
+    spans: spans.map((s) => ({ ...s, repo: name })),
+    stalls: findStalls(spans, { thresholdMinutes: stallMinutes }).map((s) => ({
+      ...s,
+      repo: name,
+    })),
   }
+}
+
+/**
+ * What the endpoint serves. Fleet mode reads every repo on the roster; when the roster is absent
+ * (a consumer checkout, where this file exists because it is propagated) it says so instead of
+ * pretending the fleet is empty.
+ */
+export function buildServeSnapshot({
+  cwd = process.cwd(),
+  stallMinutes = DEFAULT_STALL_MINUTES,
+  fleet = false,
+  cladeRoot = cwd,
+}: ServeOptions = {}) {
+  if (!fleet) return buildSnapshot(cwd, stallMinutes)
+  const snapshot = buildFleetSnapshot({ cladeRoot, stallMinutes })
+  if (!snapshot) {
+    return {
+      ...buildSnapshot(cwd, stallMinutes),
+      fleet_error: `找不到 ${cladeRoot}/consumers.local，只能看這一個 repo`,
+    }
+  }
+  return { mode: 'fleet' as const, spine_path: snapshot.roster_path, ...snapshot }
 }
 
 export function startServer({
@@ -48,6 +100,8 @@ export function startServer({
   host = '127.0.0.1',
   cwd = process.cwd(),
   stallMinutes = DEFAULT_STALL_MINUTES,
+  fleet = false,
+  cladeRoot = cwd,
 }: ServeOptions = {}): Promise<{ server: Server; port: number; host: string }> {
   const server = createServer((req, res) => {
     const url = (req.url ?? '/').split('?')[0]
@@ -57,7 +111,7 @@ export function startServer({
       return
     }
     if (url === '/api/spine') {
-      const body = JSON.stringify(buildSnapshot(cwd, stallMinutes))
+      const body = JSON.stringify(buildServeSnapshot({ cwd, stallMinutes, fleet, cladeRoot }))
       res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' })
       res.end(body)
       return
@@ -143,6 +197,10 @@ const PAGE = `<!doctype html>
   .m-ok { color: var(--ok); } .m-fail { color: var(--fail); }
   .m-wait { color: var(--wait); } .m-skip { color: var(--skip); } .m-live { color: var(--live); }
   .empty { color: var(--dim); padding: 30px 0; }
+  .repo { display: inline-block; font-size: 11px; color: var(--dim); border: 1px solid var(--line);
+          border-radius: 4px; padding: 0 5px; margin-right: 6px; vertical-align: 1px; }
+  .miss { color: var(--dim); font-size: 12.5px; }
+  .miss b { color: var(--text); font-weight: 600; }
   .legend { color: var(--dim); font-size: 12px; padding: 10px 20px; border-top: 1px solid var(--line); }
 </style>
 </head>
@@ -158,6 +216,7 @@ const PAGE = `<!doctype html>
 </main>
 <div class="legend">
   這一頁是事件流的投影，每 2 秒重讀一次。它只讀不寫，關掉它不影響任何正在跑的工作。
+  看多個 repo 時，事件仍然留在各自的 repo 裡，這裡只是同時讀它們。
 </div>
 <script>
 // ── 詞彙：脊椎存的是 OTel 形狀的英文，這裡是唯一把它翻成人話的地方 ──────────────
@@ -293,19 +352,34 @@ var selected = null, snapshot = null, showFolded = false;
  * （orphan-），而且它已經結束了。進行中或卡住的東西永遠不摺疊，不論有沒有名字。
  */
 function isFolded(w) {
-  return !w.slug && w.state !== 'in-flight' && !stalledIds()[w.work_id];
+  return !w.slug && w.state !== 'in-flight' && !stalledIds()[keyOf(w)];
 }
 var _stalled = null;
 function stalledIds() {
   if (_stalled) return _stalled;
   _stalled = {};
-  (snapshot.stalls || []).forEach(function (s) { _stalled[s.work_id] = true; });
+  (snapshot.stalls || []).forEach(function (s) { _stalled[keyOf(s)] = true; });
   return _stalled;
+}
+
+/**
+ * 工作項目的身分是 repo ＋ work_id，不是 work_id。
+ * 每一家收到上一次散播的 consumer 都有一個 W-<date>-propagate —— 只用 work_id 當鍵，
+ * 十幾家不相干的工作會在畫面上疊成一件。
+ */
+function keyOf(x) { return x.repo + '//' + x.work_id; }
+function multiRepo() { return (snapshot.repos || []).length > 1; }
+function repoTag(x) {
+  return multiRepo() && x.repo ? '<span class="repo">' + esc(x.repo) + '</span>' : '';
+}
+
+function spansOf(key) {
+  return snapshot.spans.filter(function (s) { return keyOf(s) === key; });
 }
 
 function titleOf(w) {
   if (w.slug) return w.slug;
-  var spans = snapshot.spans.filter(function (s) { return s.work_id === w.work_id; });
+  var spans = spansOf(keyOf(w));
   var named = spans.map(nameOf).filter(Boolean)[0];
   if (named) return named + '（未命名工作）';
   return '未命名工作';
@@ -325,11 +399,9 @@ function renderBand() {
   html += '<h2>現在在跑（' + live.length + '）</h2>';
   if (!live.length) html += '<div class="why" style="color:var(--dim)">目前沒有正在跑的工作。</div>';
   live.forEach(function (w) {
-    var open = snapshot.spans.filter(function (s) {
-      return s.work_id === w.work_id && !s.end_ts;
-    });
+    var open = spansOf(keyOf(w)).filter(function (s) { return !s.end_ts; });
     var one = open[open.length - 1];
-    html += '<div class="card live"><div class="head">' + esc(titleOf(w)) + '</div>' +
+    html += '<div class="card live"><div class="head">' + repoTag(w) + esc(titleOf(w)) + '</div>' +
       '<div class="why">' + esc(one ? sentence(one) : summaryOf(w)) + '</div></div>';
   });
 
@@ -339,7 +411,7 @@ function renderBand() {
     var why = s.shape === 'unharvested' ? '有人回報完成了，但沒人把 pane 收回來'
       : s.shape === 'in-flight-overdue' ? '開始之後就再也沒有下文'
       : '失敗或停下來之後，這件工作沒有再跑任何一步';
-    html += '<div class="card wait"><div class="head">' +
+    html += '<div class="card wait"><div class="head">' + repoTag(s) +
       esc((WHO[s.substrate] || s.substrate) + (s.label ? '「' + s.label + '」' : '')) +
       ' — 停了 ' + (s.age_minutes / 60).toFixed(1) + ' 小時</div>' +
       '<div class="why">' + esc(why) + '</div>' +
@@ -347,6 +419,19 @@ function renderBand() {
   });
   if (stalls.length > 8) {
     html += '<div class="why">另外還有 ' + (stalls.length - 8) + ' 件，在左邊清單裡。</div>';
+  }
+
+  // 讀不到的 repo 一定要逐家列名。少了三家卻看起來完整的 fleet 視圖，比沒有視圖更危險。
+  var miss = snapshot.unreadable || [];
+  if (snapshot.fleet_error) {
+    html += '<h2 style="margin-top:14px">讀不到的 repo</h2><div class="miss">' +
+      esc(snapshot.fleet_error) + '</div>';
+  } else if (multiRepo() || miss.length) {
+    html += '<h2 style="margin-top:14px">讀不到的 repo（' + miss.length + '）</h2>';
+    if (!miss.length) html += '<div class="miss">全部 ' + snapshot.repos.length + ' 家都讀到了。</div>';
+    miss.forEach(function (r) {
+      html += '<div class="miss"><b>' + esc(r.name) + '</b> — ' + esc(r.why) + '</div>';
+    });
   }
   document.getElementById('band').innerHTML = html;
 }
@@ -361,11 +446,11 @@ function renderList() {
   var st = stalledIds();
 
   var html = shown.map(function (w) {
-    var cls = w.state === 'in-flight' ? 'd-live' : st[w.work_id] ? 'd-wait'
+    var cls = w.state === 'in-flight' ? 'd-live' : st[keyOf(w)] ? 'd-wait'
       : w.failed ? 'd-fail' : 'd-done';
-    return '<div class="item' + (w.work_id === selected ? ' sel' : '') + '" data-id="' +
-      esc(w.work_id) + '"><span class="t"><span class="dot ' + cls + '"></span>' +
-      esc(titleOf(w)) + '</span><span class="s">' + esc(summaryOf(w)) + '　' +
+    return '<div class="item' + (keyOf(w) === selected ? ' sel' : '') + '" data-id="' +
+      esc(keyOf(w)) + '"><span class="t"><span class="dot ' + cls + '"></span>' +
+      esc(titleOf(w)) + '</span><span class="s">' + repoTag(w) + esc(summaryOf(w)) + '　' +
       clock(w.last_ts) + '</span></div>';
   }).join('');
 
@@ -374,9 +459,9 @@ function renderList() {
       ' 未命名而且已經結束的零散紀錄（' + folded.length + ' 筆）</div>';
     if (showFolded) {
       html += folded.map(function (w) {
-        return '<div class="item' + (w.work_id === selected ? ' sel' : '') + '" data-id="' +
-          esc(w.work_id) + '"><span class="t"><span class="dot d-done"></span>' +
-          esc(titleOf(w)) + '</span><span class="s">' + esc(summaryOf(w)) + '　' +
+        return '<div class="item' + (keyOf(w) === selected ? ' sel' : '') + '" data-id="' +
+          esc(keyOf(w)) + '"><span class="t"><span class="dot d-done"></span>' +
+          esc(titleOf(w)) + '</span><span class="s">' + repoTag(w) + esc(summaryOf(w)) + '　' +
           clock(w.last_ts) + '</span></div>';
       }).join('');
     }
@@ -399,7 +484,7 @@ function renderDetail() {
   var el = document.getElementById('detail');
   if (!selected) { el.className = 'empty'; el.textContent = '左邊選一件工作'; return; }
   el.className = '';
-  var spans = snapshot.spans.filter(function (s) { return s.work_id === selected; });
+  var spans = spansOf(selected);
   if (!spans.length) { el.textContent = '這件工作沒有任何紀錄。'; return; }
 
   var html = '<h3 class="sec">流程圖　（框＝一個步驟，線＝誰起了誰；虛線框＝還在跑）</h3>' +
@@ -419,12 +504,15 @@ function tick() {
     snapshot = j;
     _stalled = null;
     var live = j.work_items.filter(function (w) { return w.state === 'in-flight'; }).length;
+    var repos = j.repos || [];
+    var readable = repos.filter(function (r) { return r.state === 'ok'; }).length;
+    var scope = repos.length > 1 ? '涵蓋 ' + readable + '/' + repos.length + ' 個 repo　' : '';
     document.getElementById('meta').textContent =
-      j.events + ' 筆事件　現在在跑 ' + live + ' 件　卡住 ' + j.stalls.length +
+      scope + j.events + ' 筆事件　現在在跑 ' + live + ' 件　卡住 ' + j.stalls.length +
       ' 件　共 ' + j.work_items.length + ' 件工作';
     if (!selected) {
       var first = j.work_items.filter(function (w) { return w.state === 'in-flight'; });
-      if (first.length) selected = first[first.length - 1].work_id;
+      if (first.length) selected = keyOf(first[first.length - 1]);
     }
     renderBand();
     renderList();
