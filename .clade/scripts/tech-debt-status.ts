@@ -26,17 +26,17 @@ export const CLOSED_TD_STATUSES = new Set(['done', 'resolved', 'closed', 'wontfi
 // done-hint 誤判。判準見 `.claude/rules/local/tech-debt-hygiene.md § Invariant 5`。
 export const LANDED_PENDING_TD_STATUSES = new Set(['landed'])
 
-// 第四態：內容已知該怎麼做，但**動作被機制擋住**——harness sensitive-file gate
-// （`.claude/**` attended-only）、`WORK_LOOP_RUNNER_CHILD` guard（publish / propagate）、
-// `permissions.deny`、chmod 444、不可逆的人類 gate。
+// @deprecated (TD-490) — `blocked-attended-only` 作為 Status token 已停用。
+// 出口可達性現在由 `**Blocker**:` 欄位的存在與否獨立承載，與 Status 正交。
+// 任何 open/pending/landed entry 只要有 `**Blocker**:` 欄且指向已知 gate，
+// 就不計入 actionableOpen。不再需要獨立的 status token。
 //
-// **這不是 closed class，也不是「不必維護」**：它照計 Invariant 4 的 SLA、照吃所有
-// hygiene invariant。它退出的只有 `actionableOpen` 這個分子——work-loop 的停止條件讀
-// 那個數字，而 open 總數含這一批時**在設計上就不可能歸零**，等於宣告迴圈永不收斂。
+// 保留常數與 isBlockedAttendedOnly() 供 handoff-scan.ts backward compat（TD-504
+// scope 內會遷移到 blocker-field-based 判準）。遷移完成後可移除。
 //
 // 防濫用在 Invariant 12（`**Blocker**:` MUST 指得出擋在哪一行）：這一格是 actionableOpen
-// 的單一攻擊面，改 N 條 status 就能讓停止條件假成立。**NEVER** 把「需要人判斷」「風險高」
-// 「還沒空」當 blocker —— 那些是優先序，不是 gate。
+// 的單一攻擊面，加 N 條 `**Blocker**:` 就能讓停止條件假成立。**NEVER** 把「需要人判斷」
+// 「風險高」「還沒空」當 blocker —— 那些是優先序，不是 gate。
 export const BLOCKED_ATTENDED_ONLY_TD_STATUSES = new Set(['blocked'])
 
 // TD metadata 欄位的共用行首前綴：部分 entry 把整個 metadata 區塊寫成 bullet list
@@ -102,12 +102,22 @@ export function isLandedPendingVerification(status) {
   return LANDED_PENDING_TD_STATUSES.has(status.split('-')[0])
 }
 
-// True when a status token is the 第四態 `blocked-attended-only`. Null-safe.
-// Deliberately NOT part of isClosedStatus — blocked entries stay in the open
-// pool for every hygiene invariant; they leave only the actionableOpen numerator.
+// @deprecated (TD-490) — 出口可達性現在由 `**Blocker**:` 欄位獨立承載。
+// 新 code path 用 `hasBlockerGate(entry.blocker)` 判斷是否被 gate 擋住，
+// 不再依賴 status token。保留供 handoff-scan.ts backward compat。
 export function isBlockedAttendedOnly(status) {
   if (status === null || status === undefined) return false
   return BLOCKED_ATTENDED_ONLY_TD_STATUSES.has(status.split('-')[0])
+}
+
+// (TD-490) 判斷 `**Blocker**:` 欄位是否指向已知 gate。
+// 與 status token 正交——任何 open/pending/landed entry 只要 blocker 指向已知 gate，
+// 就從 actionableOpen 扣除。gate 名冊與 audit-tech-debt-hygiene.ts 的 KNOWN_GATE_RE
+// 同源；呼叫端傳入的 gateRe 應是那個 regex。
+// 回 false 而非 throw：blocker 為 null 只代表該 entry 沒有 Blocker 欄位。
+export function hasBlockerGate(blocker, gateRe) {
+  if (!blocker) return false
+  return gateRe.test(blocker)
 }
 
 // Extract the `**Status**:` of a single TD entry from a full tech-debt.md
