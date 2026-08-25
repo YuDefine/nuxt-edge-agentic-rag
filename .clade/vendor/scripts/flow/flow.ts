@@ -42,7 +42,7 @@ import { buildFleetSnapshot, renderFleetStatus } from './fleet.ts'
 import { DEFAULT_OTLP_ENDPOINT, countSpans, postOtlp, toOtlpPayload } from './otlp-export.ts'
 import { loadSpec, runCommand, runNode, runSpec } from './run.ts'
 import { buildWorkItems, foldSpans, indexById, latestWorkId, spanDepth } from './spine.ts'
-import { DEFAULT_STALL_MINUTES, findStalls, renderStalls } from './stall.ts'
+import { DEFAULT_STALL_MINUTES, findOwnershipStalls, findStalls, renderStalls } from './stall.ts'
 import { readWaves, renderFleetMarkdown, renderWorkMarkdown } from './viz-md.ts'
 import { buildWhoRows, renderWho } from './who.ts'
 
@@ -433,7 +433,10 @@ if (cmd === 'status' && args.all) {
 
 if (cmd === 'status') {
   const events = readEvents()
-  if (events.length === 0) {
+  // Ownership stalls do not live on the spine, so an empty spine MUST NOT suppress them:
+  // a repo with no events can still have a dead holder pinning a file and a stash nobody
+  // will come back for, and those are exactly the states `--stalled` exists to surface.
+  if (events.length === 0 && !args.stalled) {
     process.stderr.write(`flow: no events on the spine (${eventsPath()})\n`)
     process.exit(2)
   }
@@ -442,9 +445,16 @@ if (cmd === 'status') {
   if (args.stalled) {
     // Same question herdr-patrol asks, asked of the spine so it covers every substrate at once.
     // Exit 3 on any stall matches patrol's convention; see stall.ts for what patrol still owns.
-    const stalls = findStalls(spans, {
-      thresholdMinutes: numberFlag(args['stall-minutes'], DEFAULT_STALL_MINUTES),
-    })
+    const stalls = [
+      ...findStalls(spans, {
+        thresholdMinutes: numberFlag(args['stall-minutes'], DEFAULT_STALL_MINUTES),
+      }),
+      // Working-tree ownership stalls are not on the spine — they are derived from git status ×
+      // the provenance journal (see stall.ts). Deliberately repo-local: `--all` above folds each
+      // consumer's events.jsonl, and a fleet-wide answer would have to walk 14 working trees on
+      // disk, which is a different question with a different cost.
+      ...findOwnershipStalls(buildWhoRows(findConsumerRoot() ?? repoRoot())),
+    ]
     process.stdout.write(args.json ? `${JSON.stringify(stalls, null, 2)}\n` : renderStalls(stalls))
     process.exit(stalls.length > 0 ? 3 : 0)
   }
