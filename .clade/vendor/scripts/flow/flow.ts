@@ -16,6 +16,8 @@
 //   flow viz --md [<work_id>]           persist docs/flow/<work_id>.md (mermaid graph + gantt)
 //   flow viz --fleet                    persist docs/flow/fleet.md from the propagate ledger
 //   flow status [--json] [--stalled]    one line per work item; --stalled is the stall query
+//   flow otlp [<work_id>] [--out P]     export spans as OTLP/HTTP JSON (deep query lives in a
+//                                       real trace UI, not in review-gui)
 //
 // Exit codes: 0 ok, 1 usage error, 2 nothing to show, 3 stalls found (`--stalled`, the same
 // convention as herdr-patrol so a hook or a work-loop round can branch on it).
@@ -37,6 +39,7 @@ import {
   resolveWorkId,
 } from './emit.ts'
 import { buildFleetSnapshot, renderFleetStatus } from './fleet.ts'
+import { DEFAULT_OTLP_ENDPOINT, countSpans, postOtlp, toOtlpPayload } from './otlp-export.ts'
 import { loadSpec, runCommand, runNode, runSpec } from './run.ts'
 import { buildWorkItems, foldSpans, indexById, latestWorkId, spanDepth } from './spine.ts'
 import { DEFAULT_STALL_MINUTES, findStalls, renderStalls } from './stall.ts'
@@ -72,6 +75,7 @@ const { values: args, positionals } = parseArgs({
     outcome: { type: 'string' },
     payload: { type: 'string' },
     'work-id': { type: 'string' },
+    endpoint: { type: 'string' },
     'parent-span': { type: 'string' },
     session: { type: 'string' },
   },
@@ -80,7 +84,7 @@ const { values: args, positionals } = parseArgs({
   strict: false,
 })
 
-const USAGE = `Usage: flow <open|emit|ingest|run|step|viz|status|who> [args]
+const USAGE = `Usage: flow <open|emit|ingest|run|step|viz|status|who|otlp> [args]
 
   open <slug> [--actor <actor>]   mint a work id and emit its work.open event
   emit --kind K --actor A         append one point event (CI action, hooks, any shell)
@@ -100,6 +104,10 @@ const USAGE = `Usage: flow <open|emit|ingest|run|step|viz|status|who> [args]
   status [--json]                 summarize every work item on the spine
   status --stalled [--json]       stall query; exits 3 when anything is stalled
                                   [--stall-minutes N] grace period (default ${DEFAULT_STALL_MINUTES})
+  otlp [<work_id>] [--out P]      render the spine as OTLP/HTTP JSON. Without --out it POSTs to
+       [--endpoint URL]           ${DEFAULT_OTLP_ENDPOINT}
+                                  (self-host Arize Phoenix: one container, native gen_ai semconv).
+                                  Deep span query belongs there, NEVER in review-gui.
 
 Spine: ${eventsPath()}
 `
@@ -465,6 +473,41 @@ if (cmd === 'who') {
   // Exit 3 on anything held by someone else or unattributable — same convention `status
   // --stalled` and herdr-patrol use, so a caller can gate on it without parsing output.
   process.exit(rows.some((r) => r.verdict !== 'mine') ? 3 : 0)
+}
+
+if (cmd === 'otlp') {
+  const events = readEvents()
+  if (events.length === 0) {
+    process.stderr.write(`flow: no events on ${eventsPath()}\n`)
+    process.exit(2)
+  }
+  const workId = positionals[1] ?? strFlag(args['work-id']) ?? null
+  const payload = toOtlpPayload(events, { workId })
+  const total = countSpans(payload)
+  if (total === 0) {
+    process.stderr.write(`flow: no spans for ${workId ?? 'this spine'}\n`)
+    process.exit(2)
+  }
+
+  const out = strFlag(args.out)
+  if (out) {
+    writeFileSync(out, `${JSON.stringify(payload, null, 2)}\n`)
+    process.stdout.write(`flow: wrote ${total} span(s) to ${out}\n`)
+    process.exit(0)
+  }
+
+  const endpoint =
+    strFlag(args.endpoint) ?? process.env.OTEL_EXPORTER_OTLP_ENDPOINT ?? DEFAULT_OTLP_ENDPOINT
+  try {
+    await postOtlp(payload, endpoint)
+  } catch (err) {
+    // Loud on purpose: an export is something a human asked for just now, so a silent no-op
+    // (the right default for `emitEvent`) would be the wrong contract here.
+    process.stderr.write(`flow: ${(err as Error).message}\n`)
+    process.exit(1)
+  }
+  process.stdout.write(`flow: exported ${total} span(s) to ${endpoint}\n`)
+  process.exit(0)
 }
 
 fail(`unknown subcommand: ${cmd}`)
