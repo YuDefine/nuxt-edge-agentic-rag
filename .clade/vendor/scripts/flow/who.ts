@@ -21,7 +21,12 @@
 
 import { execFileSync } from 'node:child_process'
 import { readActiveClaims } from '../claim-helper.ts'
-import { isWriterAlive, lastWriterByPath, readJournal } from '../ownership-journal.ts'
+import {
+  lastWriterByPath,
+  liveSessionIds,
+  readJournal,
+  writerLiveness,
+} from '../ownership-journal.ts'
 
 export type WhoVerdict = 'mine' | 'other-live' | 'orphan' | 'unknown' | 'locked' | 'claimed'
 
@@ -73,10 +78,22 @@ export function dirtyPaths(consumerRoot: string): string[] {
  */
 export function buildWhoRows(
   consumerRoot: string,
-  { selfSessionId = null }: { selfSessionId?: string | null } = {},
+  {
+    selfSessionId = null,
+    liveSessions,
+  }: { selfSessionId?: string | null; liveSessions?: Set<string> | null } = {},
 ): WhoRow[] {
   const rows: WhoRow[] = []
   const byPath = lastWriterByPath(readJournal(consumerRoot), { tree: consumerRoot })
+  // One probe for every row — see claim-helper.ts for why this is hoisted.
+  let sessions = liveSessions
+  if (sessions === undefined) {
+    try {
+      sessions = liveSessionIds()
+    } catch {
+      sessions = null
+    }
+  }
   let claims: ReturnType<typeof readActiveClaims>
   try {
     claims = readActiveClaims(consumerRoot)
@@ -113,13 +130,15 @@ export function buildWhoRows(
       })
       continue
     }
-    let alive: boolean | null
-    try {
-      alive = isWriterAlive(writer)
-    } catch {
-      alive = null
-    }
-    if (alive === true) {
+    const liveness = writerLiveness(writer, { sessions })
+    // A Bash write is attributed by an mtime window, so a concurrent writer inside that window
+    // reads as this session. Say so on the row rather than in a doc the reader would have to
+    // already know to go find.
+    const weak =
+      writer.attribution === 'mtime-diff'
+        ? ' (attributed by mtime window — a concurrent write in that window can land on the wrong session)'
+        : ''
+    if (liveness.verdict === 'alive') {
       rows.push({
         kind: 'dirty-path',
         resource: path,
@@ -128,12 +147,12 @@ export function buildWhoRows(
         pane_id: writer.pane_id,
         written_at: writer.ts,
         action: writer.pane_id
-          ? `held by a live session — talk to it first: herdr agent prompt ${writer.pane_id} "<who I am / what I am blocked on / what I plan / handoff>"`
+          ? `held by a live session${weak} — talk to it first: herdr agent prompt ${writer.pane_id} "<who I am / what I am blocked on / what I plan / handoff>"`
           : `held by a live session (${writer.session_id}) with no pane — wait or negotiate; NEVER stash or commit on its behalf`,
       })
       continue
     }
-    if (alive === false) {
+    if (liveness.verdict === 'dead') {
       rows.push({
         kind: 'dirty-path',
         resource: path,
@@ -141,7 +160,7 @@ export function buildWhoRows(
         session_id: writer.session_id,
         pane_id: writer.pane_id,
         written_at: writer.ts,
-        action: `writer process is gone (last write ${writer.ts}) — adjudicate: land it yourself with git commit --only -- ${path}, or stash it. NEVER wait on it.`,
+        action: `writer process is gone (last write ${writer.ts})${weak} — adjudicate: land it yourself with git commit --only -- ${path}, or stash it. NEVER wait on it.`,
       })
       continue
     }
@@ -152,7 +171,7 @@ export function buildWhoRows(
       session_id: writer.session_id,
       pane_id: writer.pane_id,
       written_at: writer.ts,
-      action: `writer ${writer.session_id} recorded, liveness not verifiable — treat as held; NEVER sweep`,
+      action: `writer ${writer.session_id} recorded${weak}, ${liveness.why} — treat as held; NEVER sweep`,
     })
   }
 
@@ -172,20 +191,27 @@ export function buildWhoRows(
     })
   }
 
-  const stashes = git(consumerRoot, ['stash', 'list']).split('\n').filter(Boolean)
+  // `%ct` is the stash commit's own timestamp — real evidence, unlike the ISO string some
+  // stash *names* happen to carry. A name is written by whoever made the stash and can be
+  // absent, stale, or copied; the commit time cannot.
+  const stashes = git(consumerRoot, ['stash', 'list', '--format=%gd|%ct|%gs'])
+    .split('\n')
+    .filter(Boolean)
   for (const line of stashes) {
-    const ref = line.split(':')[0]
+    const [ref, epoch, ...rest] = line.split('|')
+    const seconds = Number(epoch)
+    const at = Number.isFinite(seconds) ? new Date(seconds * 1000).toISOString() : null
     rows.push({
       kind: 'stash',
       resource: ref,
       verdict: 'unknown',
       session_id: null,
       pane_id: null,
-      written_at: null,
+      written_at: at,
       // Stash entries carry no session identity at all — that is exactly why the
       // "30 minutes old means residue" rule had to be written as prose. Retiring that
       // prose rule needs stash provenance, which is TD-664 Phase 3, not this one.
-      action: `${line} — stashes carry no session identity; check its ISO timestamp against clade-role-and-todo-discipline § 30 分鐘殘骸`,
+      action: `${rest.join('|')} — stashes carry no session identity; ${at ? `created ${at}` : 'creation time unreadable'}, judge against clade-role-and-todo-discipline § 30 分鐘殘骸`,
     })
   }
 

@@ -25,8 +25,14 @@
 // store, no bookkeeping file, and nothing to keep in sync.
 
 import type { Span } from './spine.ts'
+import type { WhoRow } from './who.ts'
 
-export type StallShape = 'in-flight-overdue' | 'unharvested' | 'failed-open'
+export type StallShape =
+  | 'in-flight-overdue'
+  | 'unharvested'
+  | 'failed-open'
+  | 'dead-holder'
+  | 'stash-residue'
 
 export interface Stall {
   shape: StallShape
@@ -193,7 +199,7 @@ export function findStalls(
 }
 
 export function renderStalls(stalls: Stall[]): string {
-  if (stalls.length === 0) return 'no stalls on the spine\n'
+  if (stalls.length === 0) return 'no stalls\n'
   const lines = [`STALLED (${stalls.length}):`, '']
   for (const s of stalls) {
     const hours = (s.age_minutes / 60).toFixed(1)
@@ -203,4 +209,69 @@ export function renderStalls(stalls: Stall[]): string {
     lines.push(`    → ${s.action}`)
   }
   return `${lines.join('\n')}\n`
+}
+
+/**
+ * Ownership stalls — contended working-tree state that nobody is coming back for.
+ *
+ * These are NOT spine events, which is why they are a separate function rather than two more
+ * branches in `findStalls`. A spine event records that something happened; a dirty file whose
+ * writer died records that something *stopped* happening, and there is no event for that. The
+ * evidence is `git status` × the provenance journal, folded by `buildWhoRows`.
+ *
+ * Both shapes report state the prose rules already describe, so the point of mechanising them is
+ * that a stall query now *asks* — the prose only helped a reader who already knew to go look.
+ */
+export const STASH_RESIDUE_MINUTES = 30
+
+export function findOwnershipStalls(
+  rows: WhoRow[],
+  {
+    now = Date.now(),
+    stashResidueMinutes = STASH_RESIDUE_MINUTES,
+  }: { now?: number; stashResidueMinutes?: number } = {},
+): Stall[] {
+  const stalls: Stall[] = []
+  for (const row of rows) {
+    if (row.kind === 'dirty-path' && row.verdict === 'orphan') {
+      // `orphan` already means two independent signals agreed the writer is gone, so the one
+      // thing this must never say is "wait". Waiting on a dead holder is the exact 2026-08-26
+      // failure: a gate blind-waited on a session that had already committed and exited.
+      const age = ageMinutes(row.written_at, now)
+      stalls.push({
+        shape: 'dead-holder',
+        span_id: `ownership:${row.resource}`,
+        work_id: row.resource,
+        substrate: 'git',
+        kind: 'dirty-path',
+        actor: row.session_id ?? 'unknown',
+        age_minutes: age ?? 0,
+        since: row.written_at ?? '',
+        label: row.session_id,
+        action: `dirty and its writer is gone (two signals agree) — NEVER 盲等. Adjudicate now: git commit --only -- ${row.resource}, or stash it`,
+      })
+      continue
+    }
+    if (row.kind === 'stash') {
+      const age = ageMinutes(row.written_at, now)
+      if (age === null || age < stashResidueMinutes) continue
+      stalls.push({
+        shape: 'stash-residue',
+        span_id: `ownership:${row.resource}`,
+        work_id: row.resource,
+        substrate: 'git',
+        kind: 'stash',
+        actor: 'unknown',
+        age_minutes: age,
+        since: row.written_at as string,
+        label: row.resource,
+        // A live publish holds its stash for minutes, not half an hour. Past that the stash is
+        // residue and reading it as "a publish is in flight" blocks a gate on nothing —
+        // clade-role-and-todo-discipline § Commit 前 MUST 先確認別人的 publish 沒在飛 says the
+        // same thing in prose; this is the surface that asks the question unprompted.
+        action: `stash older than ${stashResidueMinutes}min — treat as residue, NEVER as "a publish is in flight": node vendor/scripts/stash-reconcile.ts --include-all, then drop or apply it`,
+      })
+    }
+  }
+  return stalls.toSorted((a, b) => b.age_minutes - a.age_minutes)
 }
