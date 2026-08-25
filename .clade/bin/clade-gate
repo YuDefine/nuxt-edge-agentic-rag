@@ -23,6 +23,7 @@ import { fileURLToPath } from 'node:url'
 import { createHash, randomUUID } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
+import { cpus, loadavg, uptime as osUptime } from 'node:os'
 import { dirname, join } from 'node:path'
 
 let appendRecord = () => {}
@@ -41,6 +42,57 @@ try {
 const SHIM_PATH = resolve(fileURLToPath(import.meta.url))
 const CLADE_ROOT = resolve(dirname(SHIM_PATH), '..')
 const STDERR_CAPTURE_BYTES = 2048
+
+// ── Node runtime crash 的判讀分離（TD-667）─────────────────────────────────
+// 高負載下 node --test 的子行程會在 event loop 收尾階段撞上 node 自身的 assert
+// （`Assertion failed: (env_->execution_async_id()) == (0)`）。子測試全部 ✔、整檔仍報
+// fail、exit 非零 —— 表象與真 assertion 失敗完全相同，差別只在要往回捲兩千行才看得到
+// native stack。這裡在串流階段就認出它，收尾時與真失敗分開報，讓判讀者不必自己去量 load。
+//
+// NEVER 改成 retry 該檔：真失敗與本現象在 summary 層無法區分，retry 會把真失敗一起吞掉
+// （docs/tech-debt.md TD-667 § 已排除第一條）。本段只加判讀，不改 exit code。
+const NATIVE_CRASH_RE = /Native stack trace|node::Assert/
+const CRASH_SCAN_CARRY = 64
+
+// 串流掃描（不是掃 capture buffer）—— native stack 出現在輸出中段，而 capture 只留頭
+// STDERR_CAPTURE_BYTES bytes，掃 buffer 必然漏掉。carry 保留跨 chunk 邊界的尾巴。
+function makeCrashScanner() {
+  let carry = ''
+  let hit = false
+  return {
+    feed(chunk) {
+      if (hit) return
+      const text = carry + chunk.toString('utf8')
+      if (NATIVE_CRASH_RE.test(text)) hit = true
+      carry = text.slice(-CRASH_SCAN_CARRY)
+    },
+    get detected() {
+      return hit
+    },
+  }
+}
+
+function reportEnvironmentCrash(label, exitCode) {
+  let load = 'n/a'
+  let nproc = 'n/a'
+  let up = 'n/a'
+  try {
+    load = loadavg()
+      .map((n) => n.toFixed(2))
+      .join(' ')
+    nproc = String(cpus().length)
+    up = `${(osUptime() / 3600).toFixed(1)}h`
+  } catch {
+    // os 讀不到就照樣報，判讀比量測重要
+  }
+  const w = (line) => process.stderr.write(`[clade-gate] ${line}\n`)
+  w(`environment: node runtime crash (load=${load} / nproc=${nproc})`)
+  w(`  gate=${label} exit=${exitCode} —— 輸出含 native stack，node runtime 自己在 event loop`)
+  w('  收尾階段 abort。子測試可能全部 ✔ 而整檔仍報 fail。')
+  w('  這不是 assertion 失敗：NEVER 據此推論剛才的改動壞了測試。')
+  w(`  uptime=${up}；復現條件是 load > 4×nproc（多個 session 同時跑測試）。`)
+  w('  判讀：低負載環境重跑。詳見 docs/tech-debt.md TD-667。')
+}
 
 function usage(msg) {
   if (msg) process.stderr.write(`[clade-gate] ${msg}\n`)
@@ -127,6 +179,9 @@ if (HEAVY_GATES.includes(gateLabel) && process.env.CLADE_GATE_SLOT_HELD !== '1')
 }
 
 if (process.env.CLADE_IMPROVEMENT_LOOP_OFF === '1' || !signalsAvailable) {
+  // passthrough 模式維持 stdio inherit（保住 inner command 的 TTY），因此沒有串流可掃 ——
+  // TD-667 的判讀分離只在下方 instrumented 分支生效。clade home 與所有 registry consumer
+  // 都有 vendor/signals，走的是下面那條。
   const c = spawn(execArgv[0], execArgv.slice(1), { stdio: 'inherit' })
   c.on('exit', (code, sig) => process.exit(code ?? (sig ? 128 : 0)))
 } else {
@@ -134,9 +189,11 @@ if (process.env.CLADE_IMPROVEMENT_LOOP_OFF === '1' || !signalsAvailable) {
   let stderrLen = 0
   const stdoutChunks = []
   let stdoutLen = 0
+  const crashScan = makeCrashScanner()
   const child = spawn(execArgv[0], execArgv.slice(1), { stdio: ['inherit', 'pipe', 'pipe'] })
   child.stdout.on('data', (chunk) => {
     process.stdout.write(chunk)
+    crashScan.feed(chunk)
     if (stdoutLen < STDERR_CAPTURE_BYTES) {
       const room = STDERR_CAPTURE_BYTES - stdoutLen
       stdoutChunks.push(chunk.slice(0, room))
@@ -145,6 +202,7 @@ if (process.env.CLADE_IMPROVEMENT_LOOP_OFF === '1' || !signalsAvailable) {
   })
   child.stderr.on('data', (chunk) => {
     process.stderr.write(chunk)
+    crashScan.feed(chunk)
     if (stderrLen < STDERR_CAPTURE_BYTES) {
       const room = STDERR_CAPTURE_BYTES - stderrLen
       stderrChunks.push(chunk.slice(0, room))
@@ -153,6 +211,7 @@ if (process.env.CLADE_IMPROVEMENT_LOOP_OFF === '1' || !signalsAvailable) {
   })
   child.on('exit', (code, sig) => {
     const exitCode = code ?? (sig ? 128 : 0)
+    if (exitCode !== 0 && crashScan.detected) reportEnvironmentCrash(gateLabel, exitCode)
     // exit 75 = gate-slot 等不到 slot（EX_TEMPFAIL），不是 gate 本身失敗 → 不記訊號。
     const shouldLog =
       exitCode !== SLOT_BUSY_EXIT &&
