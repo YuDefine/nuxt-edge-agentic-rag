@@ -29,6 +29,7 @@
 | `td-rotate` | TD 條目 byte-exact 搬進 archive | 7 |
 | `td-inject` | 條目內 idempotent 插入區塊 | 2 |
 | `td-register-scan` | `docs/tech-debt.md` 的結構化過濾 | 6 |
+| `td-open` | 跨 live register ＋ 全部 archive 鑄下一個 TD 號 | — |
 | `state-patch-write` | `state.json` 的 read-merge-write-verify | 16 |
 | `json-inspect` | 鑽 key path、tally、列 outlier | 20 |
 | `audit-assert` | 跑 audit script 比對欄位對基線 | 8 |

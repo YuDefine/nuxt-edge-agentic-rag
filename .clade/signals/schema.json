@@ -168,9 +168,10 @@
             "plan",
             "session_transport",
             "gate",
+            "decision.request",
             "other"
           ],
-          "description": "OTel GenAI semconv gen_ai.operation.name vocabulary, plus work.open for the work-item lifecycle point event."
+          "description": "OTel GenAI semconv gen_ai.operation.name vocabulary, plus work.open for the work-item lifecycle point event and decision.request for the human-decision queue. decision.request is a SPAN, not a point: phase=start is the question, phase=end is the answer, so an unanswered decision is an unclosed span and every in-flight / stalled query already covers it. There is deliberately no separate decision.resolve kind — it would be dead vocabulary that nothing reads, and the resolved-ness already lives in phase. Not OTel vocabulary; dotted like work.open to mark it as clade's own lifecycle, so an OTLP exporter maps it to a span event and NEVER to gen_ai.operation.name. It exists because the spine records what happened while nothing recorded what is waiting on a human — the \\my contract states outright that pending decisions 'mostly exist only in the conversation', which no downstream can query."
         },
         "actor": {
           "type": "string",
