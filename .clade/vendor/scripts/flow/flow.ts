@@ -11,8 +11,7 @@
 //   flow ingest <file|dir>              merge events produced elsewhere (CI artifact, journal)
 //   flow run <spec.json>                execute a spec through the dumb engine
 //   flow step <node> [--flags]          run one node from the library, recorded as a span
-//   flow serve [--port] [--host]        localhost viewer over the same projection
-//   flow serve --all / status --all     every repo on the roster, read where it lies
+//   flow status --all                   every repo on the roster, read where it lies
 //   flow viz timeline [<work_id>]       span waterfall for one work item (default: latest)
 //   flow viz --md [<work_id>]           persist docs/flow/<work_id>.md (mermaid graph + gantt)
 //   flow viz --fleet                    persist docs/flow/fleet.md from the propagate ledger
@@ -38,7 +37,6 @@ import {
 } from './emit.ts'
 import { buildFleetSnapshot, renderFleetStatus } from './fleet.ts'
 import { loadSpec, runCommand, runNode, runSpec } from './run.ts'
-import { DEFAULT_PORT, startServer } from './serve.ts'
 import { buildWorkItems, foldSpans, indexById, latestWorkId, spanDepth } from './spine.ts'
 import { DEFAULT_STALL_MINUTES, findStalls, renderStalls } from './stall.ts'
 import { readWaves, renderFleetMarkdown, renderWorkMarkdown } from './viz-md.ts'
@@ -79,7 +77,7 @@ const { values: args, positionals } = parseArgs({
   strict: false,
 })
 
-const USAGE = `Usage: flow <open|emit|ingest|run|step|serve|viz|status> [args]
+const USAGE = `Usage: flow <open|emit|ingest|run|step|viz|status> [args]
 
   open <slug> [--actor <actor>]   mint a work id and emit its work.open event
   emit --kind K --actor A         append one point event (CI action, hooks, any shell)
@@ -88,8 +86,7 @@ const USAGE = `Usage: flow <open|emit|ingest|run|step|serve|viz|status> [args]
   run <spec.json>                 execute a spec (serial / parallel / retry / on-fail only)
   step <node> [--flags]           run one node from the library, recorded as a span
   step [<label>] -- <cmd>...      wrap any command in a span (use when no node fits)
-  serve [--port N] [--host H]     localhost viewer (default 127.0.0.1:${DEFAULT_PORT}, read-only)
-  serve --all / status --all      read every repo on consumers.local, not just this one.
+  status --all                    read every repo on consumers.local, not just this one.
                                   (viz --fleet is a different view: propagate asset lineage)
   viz timeline [<work_id>]        span waterfall for a work item (default: most recent)
   viz --md [<work_id>] [--out P]  write docs/flow/<work_id>.md (mermaid graph + gantt)
@@ -293,19 +290,18 @@ if (cmd === 'step') {
   process.exit(result.exitCode)
 }
 
+// `flow serve` 已退場（2026-08-25 Phase 3）—— viewer 是 review-gui 的 `/flow` 頁。
+// 保留成一條會說話的分支而不是直接刪掉：照舊 runbook 打過來的人會拿到 usage error，
+// 那讀起來像「打錯字」，而不是「這條路已經收掉了、去哪裡看」。
 if (cmd === 'serve') {
-  const port = numberFlag(args.port, DEFAULT_PORT)
-  const host = typeof args.host === 'string' ? args.host : '127.0.0.1'
-  const stallMinutes = numberFlag(args['stall-minutes'], DEFAULT_STALL_MINUTES)
-  const fleet = args.all === true
-  const cladeRoot = repoRoot()
-  const started = await startServer({ port, host, stallMinutes, fleet, cladeRoot })
-  process.stdout.write(
-    `flow serve  http://${started.host}:${started.port}\n` +
-      `${fleet ? `roster: ${join(cladeRoot, 'consumers.local')}` : `spine: ${eventsPath()}`}\n` +
-      `read-only; polls every 2s. Ctrl-C to stop.\n`,
+  process.stderr.write(
+    `flow serve 已退場（2026-08-25）。流程檢視在 review-gui 裡：\n` +
+      `  https://review-gui.<maintainer-domain>/flow\n` +
+      `  http://127.0.0.1:5174/flow        （本機；systemctl status review-gui.service）\n` +
+      `資料同源：該頁走 /api/flow/spine，折的是同一份 ${eventsPath()}。\n` +
+      `純文字摘要仍在 CLI：flow status [--all] [--stalled] [--json]\n`,
   )
-  // Deliberately no exit: the process is the server.
+  process.exit(1)
 } else if (cmd === 'viz' && args.fleet) {
   const ledger =
     typeof args.ledger === 'string'
@@ -452,6 +448,4 @@ if (cmd === 'status') {
   process.exit(0)
 }
 
-// Every other subcommand exits inside its own block. `serve` deliberately does not — the process
-// IS the server — so reaching here with it would kill the server the line above just started.
-if (cmd !== 'serve') fail(`unknown subcommand: ${cmd}`)
+fail(`unknown subcommand: ${cmd}`)
