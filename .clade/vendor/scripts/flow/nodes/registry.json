@@ -18,6 +18,12 @@
       "cluster": "structured filter over docs/tech-debt.md"
     },
     {
+      "name": "td-open",
+      "coverage": 0,
+      "cluster": "mint the next TD number across the live register and every archive",
+      "$comment": "coverage 0 on purpose and NOT a gap in the empirical selection: the 88 .mjs corpus is what the loop hand-rolled, and nobody hand-rolls a minter — they read the live register's highest number and add one, which is why TD-660 was opened as a duplicate. The node exists to remove that failure rather than to replace an existing script; td-register-scan's max_td is single-file by design and MUST NOT be used to mint."
+    },
+    {
       "name": "state-patch-write",
       "coverage": 16,
       "cluster": "state.json read-merge-write-verify"

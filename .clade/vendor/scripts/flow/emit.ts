@@ -415,3 +415,137 @@ export function parseEventLines(text: string) {
   }
   return { records, malformed }
 }
+
+/**
+ * The `\my` first bucket — decisions waiting on a human — as spine events.
+ *
+ * Modelled as a SPAN, not a pair of point events: `phase: 'start'` is the question and
+ * `phase: 'end'` is the answer, so an unanswered decision is simply an unclosed span. Every
+ * query that already exists — in-flight rendering, `spanIsClosed`, `--stalled` — covers the
+ * decision queue for free, and a question left open for three days shows up as a stall because
+ * that is exactly what it is. A separate `decision.resolve` kind was deliberately NOT added:
+ * the resolved-ness lives in `phase`, so a second kind would be vocabulary nothing reads.
+ *
+ * The failure this closes is stated in the `\my` contract itself — pending decisions "mostly
+ * exist only in the conversation", invisible to all four registered sources. A decision that is
+ * never emitted stays invisible; **emit at the moment the question forms**, not when it is
+ * answered.
+ */
+export interface RequestDecisionInput {
+  /** The question, in the language the human will read it in. */
+  question: string
+  /** Ordered options; put the recommended one first, matching the `\my` output contract. */
+  options?: string[]
+  recommended?: string | null
+  /** `\my` bucket: which of the four categories this belongs to. */
+  category?: 'ruling' | 'other-repo' | 'irreversible' | 'loop-structural'
+  /** Where the answer must land once given — a TD id, HANDOFF section, or tasks/ path. */
+  carrier?: string | null
+  work_id?: string | null
+  actor?: string
+  substrate?: string
+  session_id?: string | null
+  payload?: Record<string, unknown>
+  cwd?: string
+}
+
+export function requestDecision({
+  question,
+  options = [],
+  recommended = null,
+  category = 'ruling',
+  carrier = null,
+  work_id = null,
+  actor = 'unknown',
+  substrate = 'claude-code',
+  session_id = null,
+  payload = {},
+  cwd,
+}: RequestDecisionInput): SpanHandle {
+  return startSpan({
+    work_id,
+    kind: 'decision.request',
+    actor,
+    substrate,
+    session_id,
+    payload: { question, options, recommended, category, carrier, ...payload },
+    cwd,
+  })
+}
+
+/**
+ * Rebuild a span handle from the spine so a *different process* can close it.
+ *
+ * `endSpan` needs the handle the opener held, but a decision is answered somewhere else entirely
+ * — Charles on his phone, hours later, via the projector. Without this the answer would have to
+ * invent a fresh span, and the question would stay open forever next to it.
+ *
+ * Returns null when the start event is not on the spine; the caller decides whether that is a
+ * fatal condition. It is deliberately NOT an error here: fail-open matches the rest of this lib.
+ */
+export function spanHandleFromSpine(spanId: string, cwd = process.cwd()): SpanHandle | null {
+  const start = readEvents(cwd).find((e) => e.span_id === spanId && e.phase === 'start') as
+    | Record<string, unknown>
+    | undefined
+  if (!start) return null
+  return {
+    work_id: String(start.work_id),
+    span_id: String(start.span_id),
+    parent_span: (start.parent_span as string | null) ?? null,
+    started_at: String(start.ts_utc),
+    kind: String(start.kind),
+    actor: String(start.actor),
+    substrate: String(start.substrate),
+    session_id: (start.session_id as string | null) ?? null,
+  }
+}
+
+/**
+ * Close a decision span with the human's answer.
+ *
+ * Idempotent by asking the spine, not by local bookkeeping (same reasoning as `spanIsClosed`):
+ * the projector may see the same filled-in row on two consecutive polls, and a second `end`
+ * would make the same question look answered twice.
+ */
+export function resolveDecision(
+  spanId: string,
+  {
+    answer,
+    answeredBy = 'human',
+    payload = {},
+    cwd = process.cwd(),
+  }: { answer: string; answeredBy?: string; payload?: Record<string, unknown>; cwd?: string },
+) {
+  if (spanIsClosed(spanId, cwd)) {
+    return { written: false, errors: [{ code: 'already-resolved' }] }
+  }
+  const handle = spanHandleFromSpine(spanId, cwd)
+  if (!handle) return { written: false, errors: [{ code: 'no-such-decision' }] }
+  return endSpan(handle, {
+    outcome: 'ok',
+    payload: { answer, answered_by: answeredBy, ...payload },
+    cwd,
+  })
+}
+
+/**
+ * Decisions still waiting on a human: `decision.request` spans with no `end`.
+ *
+ * This is what `\my` bucket 1 becomes — one query instead of a hand-assembled sweep over five
+ * sources, the fifth of which (the live conversation) no tool could read at all.
+ */
+export function pendingDecisions(cwd = process.cwd()) {
+  const events = readEvents(cwd)
+  const closed = new Set(events.filter((e) => e.phase === 'end').map((e) => e.span_id as string))
+  return events
+    .filter((e) => e.kind === 'decision.request' && e.phase === 'start')
+    .filter((e) => !closed.has(e.span_id as string))
+    .map((e) => ({
+      span_id: e.span_id as string,
+      work_id: e.work_id as string,
+      asked_at: e.ts_utc as string,
+      actor: e.actor as string,
+      repo_id: e.repo_id as string,
+      ...(e.payload as Record<string, unknown>),
+    }))
+}

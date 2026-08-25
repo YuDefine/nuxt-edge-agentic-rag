@@ -73,8 +73,25 @@ function reclaimedSpanIds(spans: Span[]): Set<string> {
   return out
 }
 
-/** The latest start timestamp per work item, so "nothing happened after this failure" is checkable. */
-function lastStartByWork(spans: Span[]): Map<string, string> {
+/**
+ * The one sentence for a blocked span that nothing followed.
+ *
+ * Exported because the decision queue shows the same state and must not word it a second way:
+ * two phrasings of one state read as two states.
+ */
+export const AWAITING_ATTENDED_ACTION =
+  'blocked and nothing followed — this is the awaiting-attended state; an attended session has to pick it up'
+
+/**
+ * The latest start timestamp per work item, so "nothing happened after this failure" is checkable.
+ *
+ * Exported for the decision queue, which needs the same oracle without the stall classification:
+ * a blocked pane that was also never reclaimed is reported here as `unharvested` (that branch
+ * returns first), and a queue that read only `failed-open` would drop exactly the live case it
+ * exists for. Sharing the oracle instead of copying it keeps the two surfaces from disagreeing
+ * about whether anything followed.
+ */
+export function lastStartByWork(spans: Span[]): Map<string, string> {
   const out = new Map<string, string>()
   for (const s of spans) {
     if (!s.start_ts) continue
@@ -166,7 +183,7 @@ export function findStalls(
         since: span.end_ts,
         action:
           span.outcome === 'blocked'
-            ? `blocked and nothing followed — this is the awaiting-attended state; an attended session has to pick it up`
+            ? AWAITING_ATTENDED_ACTION
             : `failed and nothing followed in this work item; either retry it or record why it was dropped`,
       })
     }
