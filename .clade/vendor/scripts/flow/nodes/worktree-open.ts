@@ -21,13 +21,16 @@ const WT_HELPER = resolve(SCRIPT_DIR, '../../wt-helper.ts')
 
 defineNode({
   name: 'worktree-open',
-  usage: `usage: worktree-open --slug <name> --files-expected <n> [--will-publish <true|false>] [--repo <path>] [--dry-run]
+  usage: `usage: worktree-open --slug <name> --task-summary <text> --files-expected <n> [--will-publish <true|false>] [--repo <path>] [--dry-run]
 
 Precondition: files-expected >= 2 OR will-publish=true -> delegates to wt-helper.ts add.
+--task-summary is REQUIRED (TD-664 Phase 4): it lands in the claim and is the only
+signal another session has for "what is this tree doing".
 Otherwise: NEVER opens a worktree, exits 2 (nothing-to-show) with the single-file guidance.
 `,
   options: {
     slug: { type: 'string' },
+    'task-summary': { type: 'string' },
     repo: { type: 'string', default: '.' },
     'files-expected': { type: 'string' },
     'will-publish': { type: 'string', default: 'false' },
@@ -59,6 +62,9 @@ Otherwise: NEVER opens a worktree, exits 2 (nothing-to-show) with the single-fil
       )
     }
 
+    // 只在真的要開樹時才要求 —— 不開樹的探測路徑（exit 2）不該被這個必填擋住。
+    const taskSummary = requireArg(args, 'task-summary')
+
     if (dryRun) {
       return {
         summary: `[dry-run] would open worktree "${slug}" via wt-helper.ts add (${reason})`,
@@ -66,10 +72,14 @@ Otherwise: NEVER opens a worktree, exits 2 (nothing-to-show) with the single-fil
       }
     }
 
-    const r = spawnSync('node', ['--experimental-strip-types', WT_HELPER, 'add', slug], {
-      cwd: repo,
-      encoding: 'utf8',
-    })
+    const r = spawnSync(
+      'node',
+      ['--experimental-strip-types', WT_HELPER, 'add', slug, '--task-summary', taskSummary],
+      {
+        cwd: repo,
+        encoding: 'utf8',
+      },
+    )
     if (r.error) fatal(`failed to spawn wt-helper.ts: ${r.error.message}`)
     if (r.status !== 0)
       fatal(

@@ -16,10 +16,12 @@
 
 import { basename } from 'node:path'
 
+import { findConsumerRoot } from '../claim-helper.ts'
 import { eventsPath, readEvents } from './emit.ts'
 import { buildFleetSnapshot } from './fleet.ts'
 import { buildWorkItems, foldSpans } from './spine.ts'
-import { DEFAULT_STALL_MINUTES, findStalls } from './stall.ts'
+import { DEFAULT_STALL_MINUTES, findOwnershipStalls, findStalls } from './stall.ts'
+import { buildWhoRows } from './who.ts'
 
 export interface ServeOptions {
   port?: number
@@ -43,11 +45,28 @@ export const DEFAULT_PORT = 5180
  * rows, not a second page — and a second page is how two views end up disagreeing about whether
  * the same work item is in flight.
  */
+/**
+ * 所有權投影 —— 逐字就是 `flow who` 給 agent 的那一份。
+ *
+ * Phase 3 的整個要點是**人看的與 agent 查的是同一份 JSON**：TD-664 § Problem 的死結，
+ * 成因是每個參與者手上的「誰持有這個檔」都不一樣，而每一份在自己的資訊條件下都說得通。
+ * 所以這裡 NEVER 重新推導、NEVER 過濾、NEVER 改寫 `action` 字串 —— 呼叫同一個
+ * `buildWhoRows`，原樣端出去。頁面要換句話說的時候，改的是 who.ts，不是這裡。
+ *
+ * 所有權是 main working tree 的性質，所以 `findConsumerRoot` 把任何 worktree 內的 cwd
+ * 解析回同一個 root（`flow.ts` 的 `who` 分支同一個理由）。
+ */
+function buildOwnership(cwd: string) {
+  const root = findConsumerRoot(cwd) ?? cwd
+  return { root, rows: buildWhoRows(root) }
+}
+
 export function buildSnapshot(cwd = process.cwd(), stallMinutes = DEFAULT_STALL_MINUTES) {
   const events = readEvents(cwd)
   const spans = foldSpans(events)
   const spinePath = eventsPath(cwd)
   const name = basename(cwd) || 'this repo'
+  const ownership = buildOwnership(cwd)
   return {
     mode: 'repo' as const,
     generated_at: new Date().toISOString(),
@@ -65,7 +84,14 @@ export function buildSnapshot(cwd = process.cwd(), stallMinutes = DEFAULT_STALL_
     events: events.length,
     work_items: buildWorkItems(spans).map((w) => ({ ...w, repo: name })),
     spans: spans.map((s) => ({ ...s, repo: name })),
-    stalls: findStalls(spans, { thresholdMinutes: stallMinutes }).map((s) => ({
+    ownership: { ...ownership, scope: 'this-repo' as const },
+    // Ownership stalls 併進**同一個** stalls 陣列，不另開第二個清單 —— `flow status --stalled`
+    // 已經是這個形狀（flow.ts 的 status 分支），而兩份「卡住了」清單就是兩份會互相不同意
+    // 的現況。頁面既有的那一段因此零改動就顯示 dead-holder / stash-residue。
+    stalls: [
+      ...findStalls(spans, { thresholdMinutes: stallMinutes }),
+      ...findOwnershipStalls(ownership.rows),
+    ].map((s) => ({
       ...s,
       repo: name,
     })),
@@ -91,5 +117,14 @@ export function buildServeSnapshot({
       fleet_error: `找不到 ${cladeRoot}/consumers.local，只能看這一個 repo`,
     }
   }
-  return { mode: 'fleet' as const, spine_path: snapshot.roster_path, ...snapshot }
+  return {
+    mode: 'fleet' as const,
+    spine_path: snapshot.roster_path,
+    ...snapshot,
+    // Fleet 模式只帶 clade 自己這一棵的所有權，且**明說**只有這一棵。所有權要走 14 棵
+    // working tree 才答得出來，那是另一個問題、另一個成本（flow.ts 的 status 分支同一個
+    // 判斷）。但「省略」與「沒有爭用」在畫面上長得一樣、意思相反 —— 所以標 scope，
+    // NEVER 靜默把這個欄位拿掉。
+    ownership: { ...buildOwnership(cladeRoot), scope: 'this-repo-only' as const },
+  }
 }
