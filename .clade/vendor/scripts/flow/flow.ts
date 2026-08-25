@@ -25,6 +25,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSy
 import { dirname, join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 
+import { findConsumerRoot } from '../claim-helper.ts'
 import {
   emitEvent,
   eventsPath,
@@ -40,6 +41,7 @@ import { loadSpec, runCommand, runNode, runSpec } from './run.ts'
 import { buildWorkItems, foldSpans, indexById, latestWorkId, spanDepth } from './spine.ts'
 import { DEFAULT_STALL_MINUTES, findStalls, renderStalls } from './stall.ts'
 import { readWaves, renderFleetMarkdown, renderWorkMarkdown } from './viz-md.ts'
+import { buildWhoRows, renderWho } from './who.ts'
 
 // parseArgs folds everything after `--` into positionals, losing the boundary, so the split has
 // to come from raw argv. `flow step <label> -- <cmd>` needs to know where the command starts.
@@ -71,13 +73,14 @@ const { values: args, positionals } = parseArgs({
     payload: { type: 'string' },
     'work-id': { type: 'string' },
     'parent-span': { type: 'string' },
+    session: { type: 'string' },
   },
   // `flow step <node> --whatever` forwards unknown flags to the node, so parseArgs must not
   // reject them here. The node's own parser is the one that validates them.
   strict: false,
 })
 
-const USAGE = `Usage: flow <open|emit|ingest|run|step|viz|status> [args]
+const USAGE = `Usage: flow <open|emit|ingest|run|step|viz|status|who> [args]
 
   open <slug> [--actor <actor>]   mint a work id and emit its work.open event
   emit --kind K --actor A         append one point event (CI action, hooks, any shell)
@@ -91,6 +94,9 @@ const USAGE = `Usage: flow <open|emit|ingest|run|step|viz|status> [args]
   viz timeline [<work_id>]        span waterfall for a work item (default: most recent)
   viz --md [<work_id>] [--out P]  write docs/flow/<work_id>.md (mermaid graph + gantt)
   viz --fleet [--waves N]         write docs/flow/fleet.md from the propagate ledger
+  who [--json]                    one line per contended resource (dirty path / worktree /
+                                  stash) with an owner verdict + a named action. Reads
+                                  write-time evidence, not declared fields (TD-664).
   status [--json]                 summarize every work item on the spine
   status --stalled [--json]       stall query; exits 3 when anything is stalled
                                   [--stall-minutes N] grace period (default ${DEFAULT_STALL_MINUTES})
@@ -446,6 +452,19 @@ if (cmd === 'status') {
     }
   }
   process.exit(0)
+}
+
+if (cmd === 'who') {
+  // Ownership is a property of the consumer's shared main tree, so every worktree asks the
+  // same root — otherwise two sessions in two worktrees would each see a different answer to
+  // "who holds this file" and both would be right about their own tree and wrong about the
+  // contention. findConsumerRoot resolves any cwd inside the repo to that single root.
+  const consumerRoot = findConsumerRoot() ?? repoRoot()
+  const rows = buildWhoRows(consumerRoot, { selfSessionId: strFlag(args.session) })
+  process.stdout.write(args.json ? `${JSON.stringify(rows, null, 2)}\n` : renderWho(rows))
+  // Exit 3 on anything held by someone else or unattributable — same convention `status
+  // --stalled` and herdr-patrol use, so a caller can gate on it without parsing output.
+  process.exit(rows.some((r) => r.verdict !== 'mine') ? 3 : 0)
 }
 
 fail(`unknown subcommand: ${cmd}`)
