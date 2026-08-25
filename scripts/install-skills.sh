@@ -26,7 +26,7 @@ echo ""
 # onmax/nuxt-skills@vueuse 已於上游下架（2026-08-02 實測 npx skills add 列不到），
 # 故從清單移除。VueUse 的 composable 參考仍由 antfu/skills@vueuse-functions 提供。
 echo "📦 Onmax Nuxt Skills..."
-for skill in nuxthub reka-ui motion nuxt-better-auth; do
+for skill in nuxthub reka-ui motion; do
   npx skills add onmax/nuxt-skills@$skill $COPY_FLAGS
 done
 echo "  ✓ Onmax Nuxt Skills 完成"
@@ -38,10 +38,38 @@ npx skills add nuxt/ui $COPY_FLAGS
 echo "  ✓ 官方 Skills 完成"
 echo ""
 
+# Better Auth 官方 Skills
+echo "📦 Better Auth 官方 Skills..."
+npx skills add better-auth/skills@better-auth-best-practices $COPY_FLAGS
+npx skills add better-auth/skills@better-auth-security-best-practices $COPY_FLAGS
+echo "  ✓ Better Auth 官方 Skills 完成"
+echo ""
+
+# Cloudflare Skills
+echo "📦 Cloudflare Skills..."
+npx skills add cloudflare/skills@wrangler $COPY_FLAGS
+npx skills add cloudflare/skills@workers-best-practices $COPY_FLAGS
+npx skills add cloudflare/skills@durable-objects $COPY_FLAGS
+npx skills add cloudflare/skills@agents-sdk $COPY_FLAGS
+echo "  ✓ Cloudflare Skills 完成"
+echo ""
+
 # TDD
 echo "📦 TDD Skill..."
 npx skills add obra/superpowers@test-driven-development $COPY_FLAGS
 echo "  ✓ TDD Skill 完成"
+echo ""
+
+# Playwright
+echo "📦 Playwright 最佳實踐 Skill..."
+npx skills add currents-dev/playwright-best-practices-skill $COPY_FLAGS
+echo "  ✓ Playwright 最佳實踐 Skill 完成"
+echo ""
+
+# Zod
+echo "📦 Zod Skill..."
+npx skills add pproenca/dot-skills@zod $COPY_FLAGS
+echo "  ✓ Zod Skill 完成"
 echo ""
 
 # Evlog
@@ -50,14 +78,13 @@ npx skills add https://www.evlog.dev $COPY_FLAGS
 echo "  ✓ Evlog Skills 完成"
 echo ""
 
-# Impeccable Design Skill（pbakaus/impeccable — 單一 skill 含 23 sub-command；版本鎖定見 clade
-# plugins/hub-core/skills/design/SKILL.md § Prerequisites，目前 v4.0.4）
+# Impeccable Design Skill（pbakaus/impeccable — 單一 skill 含 23 sub-command；目前 v4.1.1）
 echo "📦 Impeccable Design Skill..."
 npx skills add pbakaus/impeccable $COPY_FLAGS
 echo "  ✓ Impeccable Design Skill 完成"
 echo ""
 
-# 清理 v2.x deprecated sub-skill 目錄（v3 已把所有 sub-command 合併入單一 skill）
+# 清理 v2.x deprecated sub-skill 目錄（v4 已把所有 sub-command 合併入單一 skill）
 DEPRECATED_DIR="$(pwd)/.claude/skills"
 for legacy in adapt animate arrange audit bolder clarify colorize critique delight distill extract frontend-design harden layout normalize onboard optimize overdrive polish quieter shape teach-impeccable typeset; do
   if [ -d "$DEPRECATED_DIR/$legacy" ] && grep -qi impeccable "$DEPRECATED_DIR/$legacy/SKILL.md" 2>/dev/null; then
