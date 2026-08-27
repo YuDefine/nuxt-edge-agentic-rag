@@ -126,6 +126,14 @@ export interface OpenWorkInput {
   slug: string
   actor?: string
   session_id?: string | null
+  /**
+   * `<scheme>:<id>` naming where this work item was born — `notion:<uuid>`, `td:TD-NNN`,
+   * `tasks:<path>`, `handoff:<section>`, `im:<one line>`. Optional on purpose: minting is
+   * fail-open everywhere, and a work item with no stated origin is still worth having a name.
+   */
+  origin?: string | null
+  /** One human line naming the problem, so a reader recognises it without opening anything. */
+  title?: string | null
   payload?: Record<string, unknown>
   cwd?: string
 }
@@ -158,6 +166,51 @@ export interface SpanHandle {
   session_id: string | null
 }
 
+/**
+ * Payload a kind cannot be written without.
+ *
+ * The rest of this library is fail-open — a spine write NEVER changes the outcome of the work it
+ * observes — and these three are the deliberate exception, checked before anything else so the
+ * refusal does not depend on capture being switched on.
+ *
+ * `work.done` is the load-bearing one. Every other kind records something that happened; `work.done`
+ * records a CLAIM about it, and a claim with no evidence attached is worse than silence: the whole
+ * point of the terminal states is that acceptance rests on the verification, so a done that may be
+ * empty makes "has this been accepted" rest on a fabricated "is this finished". `work.accept` and
+ * `work.drop` hold the bar `flow close --reason` already holds — a closure with no stated basis is
+ * indistinguishable from quietly deleting the evidence.
+ *
+ * Refused, not thrown: callers are dispatchers and gates whose own contract outranks telemetry, and
+ * the same `{ written: false, errors }` shape every other rejection uses is what the CLI turns into
+ * a non-zero exit. The gate lives HERE rather than in the helpers below because `flow emit --kind
+ * work.done` is a door too, and a gate only one door honours is not a gate.
+ */
+const REQUIRED_PAYLOAD: Record<string, { field: string; code: string; why: string }> = {
+  'work.done': {
+    field: 'verification',
+    code: 'verification-required',
+    why: "work.done needs payload.verification — how it was verified, in one line. A done nobody can check is what makes 'accepted' meaningless",
+  },
+  'work.accept': {
+    field: 'reason',
+    code: 'reason-required',
+    why: 'work.accept needs payload.reason — an acceptance with no stated basis is a silent close',
+  },
+  'work.drop': {
+    field: 'reason',
+    code: 'reason-required',
+    why: 'work.drop needs payload.reason — a drop with no stated basis is a silent delete',
+  },
+}
+
+function requiredPayloadError(kind: string, payload: Record<string, unknown>) {
+  const rule = REQUIRED_PAYLOAD[kind]
+  if (!rule) return null
+  const value = payload?.[rule.field]
+  if (typeof value === 'string' && value.trim().length > 0) return null
+  return { code: rule.code, message: rule.why }
+}
+
 export function emitEvent({
   work_id,
   span_id,
@@ -172,6 +225,13 @@ export function emitEvent({
   ts_utc = new Date().toISOString(),
   cwd = process.cwd(),
 }: FlowEventInput) {
+  // Before the CLADE_FLOW_OFF check on purpose: refusing an unsupported claim is not telemetry,
+  // and it must not become conditional on telemetry being enabled.
+  const required = requiredPayloadError(kind, payload)
+  if (required) {
+    process.stderr.write(`[clade flow] ${required.message}\n`)
+    return { written: false, errors: [required] }
+  }
   if (flowDisabled()) return { written: false, skipped: 'CLADE_FLOW_OFF' }
   try {
     const { consumer_id, repo_id } = identity(cwd)
@@ -215,11 +275,17 @@ export function openWork({
   slug,
   actor = 'unknown',
   session_id = null,
+  origin = null,
+  title = null,
   payload = {},
   cwd,
 }: OpenWorkInput) {
   const work_id = mintWorkId(slug)
   const span_id = newSpanId()
+  // origin_kind is derived from origin_ref rather than passed separately: two fields that must
+  // agree are two fields that can disagree, and the scheme is already the first half of the ref.
+  const origin_ref = typeof origin === 'string' && origin.trim() ? origin.trim() : null
+  const origin_kind = origin_ref ? (origin_ref.split(':')[0] ?? null) : null
   emitEvent({
     work_id,
     span_id,
@@ -229,7 +295,12 @@ export function openWork({
     actor,
     substrate: 'manual',
     session_id,
-    payload: { slug, ...payload },
+    payload: {
+      slug,
+      ...(origin_ref ? { origin_ref, origin_kind } : {}),
+      ...(typeof title === 'string' && title.trim() ? { title: title.trim() } : {}),
+      ...payload,
+    },
     outcome: 'ok',
     cwd,
   })
@@ -449,6 +520,17 @@ export interface RequestDecisionInput {
   cwd?: string
 }
 
+/**
+ * 剝掉呼叫端自己寫進選項文字的字母前綴（`A. ` / `B、`）。
+ *
+ * 字母是**渲染層**的東西：`/decisions` 依索引自己編號，卡片才不會因為刪掉一題就跳號。
+ * 呼叫端連字母一起寫進來時兩層會疊成 `A. A. 改，…`。剝在這裡而不是各呼叫端，是因為
+ * `ask` CLI、`decision-sync`、`herdr-session-handoff` 三個入口都經過這個函式。
+ */
+function stripOptionLetter(text: string): string {
+  return text.replace(/^[A-Za-z][.、)）]\s*/, '')
+}
+
 export function requestDecision({
   question,
   options = [],
@@ -462,13 +544,24 @@ export function requestDecision({
   payload = {},
   cwd,
 }: RequestDecisionInput): SpanHandle {
+  const cleanOptions = options.map(stripOptionLetter)
+  // `recommended` 要跟著剝，否則正規化後的選項比對不回它，推薦標記會整個消失。
+  const cleanRecommended = recommended === null ? null : stripOptionLetter(recommended)
+
   return startSpan({
     work_id,
     kind: 'decision.request',
     actor,
     substrate,
     session_id,
-    payload: { question, options, recommended, category, carrier, ...payload },
+    payload: {
+      question,
+      options: cleanOptions,
+      recommended: cleanRecommended,
+      category,
+      carrier,
+      ...payload,
+    },
     cwd,
   })
 }
@@ -537,6 +630,9 @@ export function resolveDecision(
 export function pendingDecisions(cwd = process.cwd()) {
   const events = readEvents(cwd)
   const closed = new Set(events.filter((e) => e.phase === 'end').map((e) => e.span_id as string))
+  // Folded here, not at each call site: a caller that read the raw start payload would see the
+  // options a since-fixed parser wrote, and act on a question the page no longer shows.
+  const amendments = latestAmendments(events as unknown as Record<string, unknown>[])
   return events
     .filter((e) => e.kind === 'decision.request' && e.phase === 'start')
     .filter((e) => !closed.has(e.span_id as string))
@@ -546,7 +642,7 @@ export function pendingDecisions(cwd = process.cwd()) {
       asked_at: e.ts_utc as string,
       actor: e.actor as string,
       repo_id: e.repo_id as string,
-      ...(e.payload as Record<string, unknown>),
+      ...applyAmendment(e.payload as Record<string, unknown>, amendments.get(e.span_id as string)),
     }))
 }
 
@@ -611,4 +707,548 @@ export function requestClarification(input: ClarifyInput) {
 /** The agent side supplies what was missing. Also does NOT close the span — the human still answers. */
 export function answerClarification(input: ClarifyInput) {
   return emitClarify('response', input)
+}
+
+/**
+ * A human says a decision span no longer needs anyone — `blocked`, or asked-but-never-a-question.
+ *
+ * The name says `Gated` for history only; it retires either shape and NEVER only the gated one.
+ *
+ * The gated bucket has no other exit. A blocked span is *already ended* — nothing can close it a
+ * second time, and `lastStartByWork` only stops reporting it if new work happens to start in the
+ * same work id. The 2026-08-27 case that forced this: a blocked pane asked an A/B question, the
+ * underlying TD was ruled on two days later through an entirely different session, and the card
+ * stayed on `/decisions` forever because nothing on the spine could say "that question evaporated".
+ *
+ * `asked` normally closes by being answered, and that stays the rule while the question is still
+ * a question. It stops being the rule when the row turns out never to have been one: the same day
+ * retired the `跨 repo` intake, whose 15 open spans quote sections saying `本 repo 不修` /
+ * `已移交` / `不用再開`. Nobody can rule on those — there is no ruling — and the scanner no longer
+ * emits them, so without this exit they would sit unanswered on the spine forever. NEVER retire
+ * such a row by filtering it out at render time instead: a row that vanishes with nothing written
+ * down is indistinguishable from one that was never scanned, and `--stalled` would still report
+ * it. A dismissal is a point event with a required reason, so the write-off stays auditable.
+ *
+ * A point event, never an `end`: the span already has one, and overwriting it would rewrite what
+ * actually happened (blocked) with what someone later decided about it.
+ */
+export interface DismissInput {
+  spanId: string
+  /** Why it no longer needs anyone. Required — a dismissal with no reason is indistinguishable
+   * from someone tidying the queue, which is the one thing this must not become. */
+  reason: string
+  dismissedBy?: string
+  cwd?: string
+}
+
+export function dismissGated({ spanId, reason, dismissedBy = 'human', cwd }: DismissInput) {
+  if (!reason.trim()) return { written: false, errors: [{ code: 'reason-required' }] }
+  const handle = spanHandleFromSpine(spanId, cwd ?? process.cwd())
+  if (!handle) return { written: false, errors: [{ code: 'no-such-span' }] }
+  return emitEvent({
+    work_id: handle.work_id,
+    span_id: newSpanId(),
+    parent_span: spanId,
+    phase: 'point',
+    kind: 'decision.dismiss',
+    actor: dismissedBy,
+    substrate: handle.substrate,
+    payload: { reason: reason.trim(), dismissed_by: dismissedBy },
+    outcome: 'ok',
+    cwd,
+  })
+}
+
+/**
+ * A human changes an answer they already gave.
+ *
+ * A point event for the same reason `dismissGated` is one: the decision span already has an `end`
+ * carrying what was decided at the time, and overwriting it would erase exactly what the spine
+ * exists to keep. So the span stays closed and the correction hangs underneath it — which also
+ * means every reader that wants "what is the answer now" has to fold, and `effectiveAnswer` below
+ * is that fold. NEVER read the `end` payload alone once revisions exist.
+ *
+ * `revision` is computed from the spine (count the existing revise events + 1) rather than stored
+ * anywhere: a counter kept beside the stream is a second copy of a fact the stream already has.
+ */
+export interface ReviseInput {
+  spanId: string
+  answer: string
+  revisedBy?: string
+  cwd?: string
+  payload?: Record<string, unknown>
+}
+
+export function reviseDecisionEvent({
+  spanId,
+  answer,
+  revisedBy = 'human',
+  cwd,
+  payload = {},
+}: ReviseInput) {
+  if (!answer.trim()) return { written: false, errors: [{ code: 'answer-required' }] }
+  const root = cwd ?? process.cwd()
+  const handle = spanHandleFromSpine(spanId, root)
+  if (!handle) return { written: false, errors: [{ code: 'no-such-decision' }] }
+  if (handle.kind !== 'decision.request') {
+    return { written: false, errors: [{ code: 'not-a-decision' }] }
+  }
+  const history = decisionAnswerHistory(spanId, root)
+  if (!history.answered) return { written: false, errors: [{ code: 'not-answered' }] }
+  return emitEvent({
+    work_id: handle.work_id,
+    span_id: newSpanId(),
+    parent_span: spanId,
+    phase: 'point',
+    kind: 'decision.revise',
+    actor: revisedBy,
+    substrate: handle.substrate,
+    payload: {
+      answer: answer.trim(),
+      previous_answer: history.answer,
+      revision: history.revisions + 1,
+      revised_by: revisedBy,
+      ...payload,
+    },
+    outcome: 'ok',
+    cwd,
+  })
+}
+
+/**
+ * Refresh what an OPEN question shows, without closing it and without asking it again.
+ *
+ * THE REASON THIS EXISTS: the spine is append-only, and a question's options live in the payload
+ * of its `start` event. So when the thing that PRODUCED that payload is fixed — a parser that
+ * could not read the bold shape the fleet actually writes — every question already on the queue
+ * keeps the payload the broken parser wrote, forever. Measured 2026-08-27: <consumer-i>'s `TD-585` shows
+ * zero options on `/decisions` while `HANDOFF.md` carries a clean A/B two feet away.
+ *
+ * The obvious repair is the forbidden one. `source_id` dedup is a DELIBERATE CONTRACT — a
+ * question whose wording is edited is the same question, and re-asking it would buzz a phone for
+ * something already answered — so the fix MUST NEVER be "let it be scanned again". Amending is
+ * the other half of that contract: identity is fixed by `source_id`, and everything downstream of
+ * identity (what the options are, how they are worded) is allowed to be corrected in place.
+ *
+ * NEVER amend an ANSWERED question. An answer was given against the options that were on screen;
+ * swapping them underneath it would silently restate what the human chose. Those get
+ * `decision.revise` — which requires an answer to exist — or nothing at all.
+ */
+export function amendDecision({
+  spanId,
+  options,
+  recommended = null,
+  question = null,
+  detail = null,
+  lint = null,
+  fingerprint = null,
+  reason,
+  actor = 'source-scan',
+  cwd,
+}: {
+  spanId: string
+  options: string[]
+  recommended?: string | null
+  question?: string | null
+  detail?: string | null
+  lint?: string[] | null
+  fingerprint?: string | null
+  reason: string
+  actor?: string
+  cwd?: string
+}) {
+  const root = cwd ?? process.cwd()
+  const handle = spanHandleFromSpine(spanId, root)
+  if (!handle) return { written: false, errors: [{ code: 'no-such-decision' }] }
+  if (handle.kind !== 'decision.request') {
+    return { written: false, errors: [{ code: 'not-a-decision' }] }
+  }
+  // An answered question is out of scope by construction — see the doc comment.
+  if (decisionAnswerHistory(spanId, root).answered) {
+    return { written: false, errors: [{ code: 'already-answered' }] }
+  }
+  if (!reason.trim()) return { written: false, errors: [{ code: 'reason-required' }] }
+  return emitEvent({
+    work_id: handle.work_id,
+    span_id: newSpanId(),
+    parent_span: spanId,
+    phase: 'point',
+    kind: 'decision.amend',
+    actor,
+    substrate: handle.substrate,
+    payload: {
+      options,
+      recommended,
+      ...(question === null ? {} : { question }),
+      ...(detail === null ? {} : { detail }),
+      ...(lint === null ? {} : { lint }),
+      ...(fingerprint === null ? {} : { source_fingerprint: fingerprint }),
+      reason: reason.trim(),
+      amended_by: actor,
+    },
+    outcome: 'ok',
+    cwd,
+  })
+}
+
+/**
+ * The amendment in force for each open decision, newest wins.
+ *
+ * Exported because two readers need the same fold: `pendingDecisions` here, and the queue builder
+ * in `decisions.ts`. Two folds would be two answers to "what does this question ask", and the
+ * page and the scanner would disagree the first time one of them was updated alone.
+ */
+export function latestAmendments(
+  events: Record<string, unknown>[],
+): Map<string, Record<string, unknown>> {
+  const byParent = new Map<string, { ts: string; payload: Record<string, unknown> }>()
+  for (const event of events) {
+    if (event.kind !== 'decision.amend') continue
+    const parent = typeof event.parent_span === 'string' ? event.parent_span : null
+    if (!parent) continue
+    const ts = String(event.ts_utc ?? '')
+    const held = byParent.get(parent)
+    if (held && held.ts > ts) continue
+    byParent.set(parent, { ts, payload: (event.payload ?? {}) as Record<string, unknown> })
+  }
+  return new Map([...byParent].map(([parent, held]) => [parent, held.payload]))
+}
+
+/** The subset of an amendment payload that overrides the question's own payload. */
+export function applyAmendment(
+  payload: Record<string, unknown>,
+  amendment: Record<string, unknown> | undefined,
+): Record<string, unknown> {
+  if (!amendment) return payload
+  const merged = { ...payload }
+  if (Array.isArray(amendment.options)) merged.options = amendment.options
+  if ('recommended' in amendment) merged.recommended = amendment.recommended
+  if (typeof amendment.question === 'string') merged.question = amendment.question
+  if (typeof amendment.detail === 'string') merged.detail = amendment.detail
+  if (Array.isArray(amendment.lint)) merged.lint = amendment.lint
+  if (
+    typeof amendment.source_fingerprint === 'string' &&
+    merged.source &&
+    typeof merged.source === 'object'
+  ) {
+    merged.source = {
+      ...(merged.source as Record<string, unknown>),
+      fingerprint: amendment.source_fingerprint,
+    }
+  }
+  return merged
+}
+
+/**
+ * An agent declares it has read an answer and is acting on it.
+ *
+ * This is the only HARD evidence that revising an answer is now unsafe. The alternative — infer
+ * pickup from a later span in the same work item — is structurally blind to the common case: an
+ * agent that reads the answer in a fresh process gets an unrelated orphan work id from
+ * `resolveWorkId`, so nothing connects its work to the question it answered. Inference can
+ * therefore only ever be the soft lock; this is the one a surface may refuse an edit on outright.
+ */
+export function pickupDecision({
+  spanId,
+  actor = 'unknown',
+  substrate,
+  note = null,
+  cwd,
+}: {
+  spanId: string
+  actor?: string
+  substrate?: string
+  note?: string | null
+  cwd?: string
+}) {
+  const handle = spanHandleFromSpine(spanId, cwd ?? process.cwd())
+  if (!handle) return { written: false, errors: [{ code: 'no-such-decision' }] }
+  if (handle.kind !== 'decision.request') {
+    return { written: false, errors: [{ code: 'not-a-decision' }] }
+  }
+  return emitEvent({
+    work_id: handle.work_id,
+    span_id: newSpanId(),
+    parent_span: spanId,
+    phase: 'point',
+    kind: 'decision.pickup',
+    actor,
+    substrate: substrate ?? handle.substrate,
+    payload: { picked_by: actor, ...(note ? { note } : {}) },
+    outcome: 'ok',
+    cwd,
+  })
+}
+
+/**
+ * What one decision's answer is right now, folded over the end event and every revision.
+ *
+ * Lives here rather than in each caller because "the answer" stopped being a single field the
+ * moment revisions existed, and two readers folding it differently is how a queue starts showing
+ * one answer while the file on disk carries another.
+ */
+export function decisionAnswerHistory(spanId: string, cwd = process.cwd()) {
+  const events = readEvents(cwd) as unknown as Record<string, unknown>[]
+  let answered = false
+  let answer = ''
+  let answeredBy = ''
+  let answeredAt = ''
+  let retracted = false
+  const revisions: Record<string, unknown>[] = []
+  for (const event of events) {
+    const payload = (event.payload ?? {}) as Record<string, unknown>
+    if (event.span_id === spanId && event.phase === 'end') {
+      answered = true
+      answer = typeof payload.answer === 'string' ? payload.answer : ''
+      answeredBy = typeof payload.answered_by === 'string' ? payload.answered_by : ''
+      answeredAt = String(event.ts_utc ?? '')
+      retracted = payload.retracted === true
+    }
+    if (event.kind === 'decision.revise' && event.parent_span === spanId) revisions.push(event)
+  }
+  revisions.sort((a, b) => String(a.ts_utc ?? '').localeCompare(String(b.ts_utc ?? '')))
+  const last = revisions.at(-1)
+  if (last) {
+    const payload = (last.payload ?? {}) as Record<string, unknown>
+    if (typeof payload.answer === 'string') answer = payload.answer
+    answeredBy = typeof payload.revised_by === 'string' ? payload.revised_by : answeredBy
+  }
+  return {
+    answered,
+    retracted,
+    answer,
+    answeredBy,
+    answeredAt,
+    revisions: revisions.length,
+    lastRevisedAt: last ? String(last.ts_utc ?? '') : null,
+  }
+}
+
+/**
+ * Whether an answer is still safe to change, and on what evidence.
+ *
+ * ONE rule, two adapters. `answer.ts` feeds it raw events (single repo, about to write) and
+ * `decisions.ts` feeds it folded spans (fleet-wide, about to render). A second copy of "has this
+ * been picked up" would let the page offer an edit that the writer then refuses, which is worse
+ * than either answer alone.
+ *
+ * `pickup` is an agent saying so. `follow-up` is the inference: real work started in the same work
+ * item after the answer. The inference EXCLUDES point events and the whole `decision.` family on
+ * purpose — a clarification, a dismissal, a revision, or the 60-second source scan opening another
+ * question are all conversation ABOUT the decision, not somebody executing it. Without those two
+ * exclusions the queue's own reconciliation would lock every answer it walked past.
+ */
+export interface LockCandidate {
+  kind: string
+  work_id: string
+  at: string
+  is_point: boolean
+  actor: string
+  parent_span: string | null
+}
+
+export interface DecisionLock {
+  by: 'pickup' | 'follow-up'
+  at: string
+  actor: string
+}
+
+export function computeDecisionLock(
+  spanId: string,
+  workId: string,
+  answeredAt: string,
+  candidates: LockCandidate[],
+): DecisionLock | null {
+  let followUp: DecisionLock | null = null
+  for (const c of candidates) {
+    if (c.kind === 'decision.pickup' && c.parent_span === spanId) {
+      return { by: 'pickup', at: c.at, actor: c.actor }
+    }
+    if (c.is_point || !c.at || !answeredAt) continue
+    if (c.work_id !== workId || c.kind.startsWith('decision.')) continue
+    if (c.at <= answeredAt) continue
+    if (!followUp || c.at < followUp.at) followUp = { by: 'follow-up', at: c.at, actor: c.actor }
+  }
+  return followUp
+}
+
+/**
+ * The work-item terminal vocabulary: done → accept | drop, plus park for "stopped at a carrier".
+ *
+ * All four are POINT events carried on the work id with no `parent_span`. They are facts about the
+ * WORK, not about any one dispatch that touched it, and hanging them off a span would make a work
+ * item's finishedness depend on which pane happened to be last — precisely the confusion the work
+ * layer exists to remove. `settled` is NOT retired by any of them: it stays as "nobody is moving and
+ * nobody claimed completion", which is the state that answers "is this actually finished?" honestly.
+ *
+ * Who may write which is a real distinction, kept in the kinds rather than in a permission field:
+ * `work.done` is the doing agent's claim, `work.accept` / `work.drop` are the human's verdict.
+ */
+export interface MarkWorkDoneInput {
+  work_id: string
+  /** How it was verified, in one line. Required — see REQUIRED_PAYLOAD. */
+  verification: string
+  verifiedBy?: string
+  actor?: string
+  substrate?: string
+  session_id?: string | null
+  payload?: Record<string, unknown>
+  cwd?: string
+}
+
+function workPoint(
+  kind: string,
+  {
+    work_id,
+    actor,
+    substrate = 'manual',
+    session_id = null,
+    payload,
+    cwd,
+  }: {
+    work_id: string
+    actor: string
+    substrate?: string
+    session_id?: string | null
+    payload: Record<string, unknown>
+    cwd?: string
+  },
+) {
+  return emitEvent({
+    work_id,
+    span_id: newSpanId(),
+    parent_span: null,
+    phase: 'point',
+    kind,
+    actor,
+    substrate,
+    session_id,
+    payload,
+    outcome: 'ok',
+    cwd,
+  })
+}
+
+/** The doing side claims completion. Refused without `verification` — the one fail-closed write. */
+export function markWorkDone({
+  work_id,
+  verification,
+  verifiedBy = 'unknown',
+  actor = 'unknown',
+  substrate = 'manual',
+  session_id = null,
+  payload = {},
+  cwd,
+}: MarkWorkDoneInput) {
+  return workPoint('work.done', {
+    work_id,
+    actor,
+    substrate,
+    session_id,
+    payload: {
+      verification: String(verification ?? '').trim(),
+      verified_by: verifiedBy,
+      ...payload,
+    },
+    cwd,
+  })
+}
+
+export interface WorkVerdictInput {
+  work_id: string
+  /** Why it was accepted / dropped. Required, on the same basis `flow close --reason` requires one. */
+  reason: string
+  by?: string
+  actor?: string
+  substrate?: string
+  session_id?: string | null
+  payload?: Record<string, unknown>
+  cwd?: string
+}
+
+/** A human accepts the work: the terminal state everything else is measured against. */
+export function acceptWork({
+  work_id,
+  reason,
+  by = 'human',
+  actor,
+  substrate = 'manual',
+  session_id = null,
+  payload = {},
+  cwd,
+}: WorkVerdictInput) {
+  return workPoint('work.accept', {
+    work_id,
+    actor: actor ?? by,
+    substrate,
+    session_id,
+    payload: { reason: String(reason ?? '').trim(), accepted_by: by, ...payload },
+    cwd,
+  })
+}
+
+/** A human writes the work off. Terminal like accept — dropped work is finished, not unfinished. */
+export function dropWork({
+  work_id,
+  reason,
+  by = 'human',
+  actor,
+  substrate = 'manual',
+  session_id = null,
+  payload = {},
+  cwd,
+}: WorkVerdictInput) {
+  return workPoint('work.drop', {
+    work_id,
+    actor: actor ?? by,
+    substrate,
+    session_id,
+    payload: { reason: String(reason ?? '').trim(), dropped_by: by, ...payload },
+    cwd,
+  })
+}
+
+export interface ParkWorkInput {
+  work_id: string
+  /** Where the remaining work landed: `handoff:<section>`, `td:TD-NNN`, `tasks:<path>`. */
+  carrier: string
+  note?: string | null
+  actor?: string
+  substrate?: string
+  session_id?: string | null
+  cwd?: string
+}
+
+/**
+ * The work stopped at a prose carrier and is waiting for whoever picks that carrier up.
+ *
+ * Without it, `/handoff park` is the one exit that leaves no structured trace at all: the work item
+ * simply goes quiet, and quiet is indistinguishable from abandoned. Parked is NOT terminal — the
+ * successor is expected — so it deliberately does not enter the state machine; it is the note that
+ * says where to look.
+ */
+export function parkWork({
+  work_id,
+  carrier,
+  note = null,
+  actor = 'unknown',
+  substrate = 'manual',
+  session_id = null,
+  cwd,
+}: ParkWorkInput) {
+  const trimmed = String(carrier ?? '').trim()
+  if (!trimmed) return { written: false, errors: [{ code: 'carrier-required' }] }
+  return workPoint('work.park', {
+    work_id,
+    actor,
+    substrate,
+    session_id,
+    payload: { carrier: trimmed, ...(note ? { note } : {}) },
+    cwd,
+  })
+}
+
+/** Every work id the spine has ever seen. `flow done` on an unknown id would file a phantom. */
+export function knownWorkIds(cwd = process.cwd()): Set<string> {
+  return new Set(readEvents(cwd).map((e) => String(e.work_id)))
 }

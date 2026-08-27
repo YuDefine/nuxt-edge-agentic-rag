@@ -28,7 +28,14 @@ import { spawnSync } from 'node:child_process'
 import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 
-import { readEvents, resolveDecision } from './emit.ts'
+import type { DecisionLock, LockCandidate } from './emit.ts'
+import {
+  computeDecisionLock,
+  decisionAnswerHistory,
+  readEvents,
+  resolveDecision,
+  reviseDecisionEvent,
+} from './emit.ts'
 
 /** The register whose invariants an append can break. Only clade has it. */
 const TD_REGISTER = 'docs/tech-debt.md'
@@ -49,6 +56,14 @@ export type AnswerFailure =
   | 'td-hygiene-regression'
   /** `CLADE_FLOW_EVENTS` pins every repo onto one file; writing would land in the wrong spine. */
   | 'spine-override'
+  /** Asked to revise something nobody has answered yet. */
+  | 'not-answered'
+  /** An agent already picked this answer up; changing it now would desync work already underway. */
+  | 'picked-up'
+  /** The landed block is not on the carrier any more — nothing to rewrite in place. */
+  | 'landed-block-missing'
+  /** The span id appears more than once on the carrier; refused rather than guessing which. */
+  | 'landed-block-ambiguous'
 
 export interface AnswerDecisionInput {
   spanId: string
@@ -75,6 +90,10 @@ export interface AnswerDecisionResult {
   block: string
   reason: AnswerFailure | null
   detail: string | null
+  /** Why this answer can no longer be changed, when it cannot. Null while it is still editable. */
+  locked?: DecisionLock | null
+  /** How many times this answer has been revised, including the revision just written. */
+  revisions?: number
 }
 
 export interface DecisionLookup {
@@ -112,27 +131,73 @@ export function lookupDecision(spanId: string, repoRoot: string): DecisionLookup
 }
 
 /**
- * Where an answer has to be written down so it survives this process.
+ * The one scheme vocabulary shared by a decision's `carrier` and a work item's `origin_ref`.
  *
- * A bare `TD-<n>` means the shared register, not a file of its own. Everything else is a repo
- * -relative path, and the containment check is load-bearing: `carrier` reaches here from a
+ * They point in the same direction (structured stream → the prose world) and differ only in what
+ * they name: origin is where a work item was born, carrier is where a decision's answer has to
+ * land. One vocabulary means one resolver — two would drift, and a reader holding a `td:` ref
+ * would have to know which half of the spine produced it before it could follow it.
+ *
+ * `im:` is the deliberate odd one: a message from a customer has no addressable location, so it
+ * resolves to nothing. That is a fact worth recording rather than a gap to be filled — it is the
+ * one origin with no mechanical backstop possible.
+ */
+export const REF_SCHEMES = ['notion', 'im', 'td', 'tasks', 'handoff'] as const
+export type RefScheme = (typeof REF_SCHEMES)[number]
+
+const SCHEME_RE = new RegExp(`^(${REF_SCHEMES.join('|')}):(.+)$`, 'u')
+
+/** Split `<scheme>:<id>`. A bare value (no known scheme) keeps its historical meaning: a path. */
+export function parseRef(ref: string | null): { scheme: RefScheme | null; id: string } | null {
+  if (!ref) return null
+  const trimmed = ref.trim()
+  if (!trimmed) return null
+  const m = SCHEME_RE.exec(trimmed)
+  if (!m) return { scheme: null, id: trimmed }
+  return { scheme: m[1] as RefScheme, id: m[2].trim() }
+}
+
+/**
+ * Where an answer has to be written down so it survives this process — and, for the same reason
+ * and through the same rules, where a work item's origin can be read.
+ *
+ * A bare `TD-<n>` (or `td:TD-<n>`) means the shared register, not a file of its own. `notion:`
+ * and `im:` live outside this repo and resolve to null by design. Everything else is a repo
+ * -relative path, and the containment check is load-bearing: the value reaches here from a
  * payload, and a payload is not a trusted path source. Outside the repo → null, never followed.
  */
 export function carrierPath(carrier: string | null, repoRoot: string): string | null {
-  if (!carrier) return null
-  const trimmed = carrier.trim()
+  const parsed = parseRef(carrier)
+  if (!parsed) return null
+  // Off-repo by definition: a Notion page and a chat message have no path, and inventing one
+  // here would hand a caller a repo-relative path built from a customer-controlled string.
+  if (parsed.scheme === 'notion' || parsed.scheme === 'im') return null
+  const trimmed = parsed.id
   if (/^TD-\d+$/u.test(trimmed)) return join(repoRoot, TD_REGISTER)
   const root = resolve(repoRoot)
   const p = resolve(root, trimmed.split('#')[0])
   return p === root || p.startsWith(`${root}/`) ? p : null
 }
 
+/**
+ * The one formatter for a landed answer — revisions rewrite through this same function.
+ *
+ * A revision could have written its own shape ("**更正**：…" appended below the original), and
+ * that would have been easier. It would also have split the register into two block shapes, and
+ * the next rewrite has to find and replace whichever one it happens to meet. One shape, one
+ * anchor, one parser.
+ *
+ * `revisions` prints a line the downstream reader needs and cannot get anywhere else: an answer
+ * that changed after somebody may already have acted on it is the one case where the file alone
+ * is not enough, and this line is the only thing on the carrier that says to go look at the spine.
+ */
 export function landingBlock(
   question: string,
   answer: string,
   spanId: string,
   via: string,
   now = new Date(),
+  revisions = 0,
 ): string {
   const stamp = now.toISOString().slice(0, 10)
   return [
@@ -141,9 +206,46 @@ export function landingBlock(
     '',
     `**答案**：${answer}`,
     '',
+    ...(revisions > 0
+      ? [`已修訂 ${revisions} 次（最後 ${stamp}）；每一版的原文在 flow spine 上。`, '']
+      : []),
     `來源：flow spine \`decision.request\` span \`${spanId}\`（${via}）。`,
     '',
   ].join('\n')
+}
+
+/** The block's heading marker. The anchor is the span id; this is only where the block STARTS. */
+const BLOCK_HEADING = '### 決策紀錄 '
+
+/**
+ * Replace a previously landed block in place.
+ *
+ * The anchor is the `` `<spanId>` `` the block already carries — 16 hex, unique by construction.
+ * NEVER a new marker comment: existing landed blocks predate anything we add today, so a new
+ * marker would only ever cover blocks written from now on and every rewrite would still need this
+ * path as a fallback. Two locating strategies is one more than can be kept correct.
+ *
+ * Fail closed on anything but exactly one hit. Zero means the block was moved, archived, or the
+ * carrier was rewritten; more than one means somebody copied it. Both are recoverable by a human
+ * in ten seconds and unrecoverable if this function guesses a range and replaces it — the carriers
+ * are `HANDOFF.md` and `docs/tech-debt.md`, shared registers other sessions are writing to.
+ */
+function findLandedBlock(
+  text: string,
+  spanId: string,
+): { start: number; end: number } | 'missing' | 'ambiguous' {
+  const needle = `\`${spanId}\``
+  const first = text.indexOf(needle)
+  if (first === -1) return 'missing'
+  if (text.indexOf(needle, first + needle.length) !== -1) return 'ambiguous'
+
+  const headingStart = text.lastIndexOf(`\n${BLOCK_HEADING}`, first)
+  if (headingStart === -1) return 'missing'
+  const lineEnd = text.indexOf('\n', first)
+  const end = lineEnd === -1 ? text.length : lineEnd + 1
+  // The block was written with a leading blank line; take it back so repeated rewrites do not
+  // accumulate blank lines around the same section.
+  return { start: headingStart, end }
 }
 
 /** The audit's findings, as a comparable set. Its metrics section moves every run; findings do not. */
@@ -223,6 +325,205 @@ function landOnCarrier(
     reason: 'td-hygiene-regression',
     detail: `寫進 ${TD_REGISTER} 會新增 ${introduced.length} 條 hygiene findings，已還原。答案仍在 spine 上，請人工放進對應 TD entry。第一條：${introduced[0]?.slice(0, 160)}`,
   }
+}
+
+/**
+ * Rewrite the landed block in place, under the same hygiene guard the append runs under.
+ *
+ * A rewrite can break `docs/tech-debt.md`'s invariants exactly like an append can — it is the same
+ * free-form edit to the same shared register — so it measures the same audit before and after and
+ * rolls back on NEW findings only, for the reason `landOnCarrier` documents: the register is
+ * routinely red on somebody else's entry, and an exit-code gate would refuse every rewrite forever
+ * while reporting it as your fault.
+ */
+function replaceOnCarrier(
+  carrier: string | null,
+  path: string | null,
+  spanId: string,
+  block: string,
+  repoRoot: string,
+  dryRun: boolean,
+): { landed: boolean; reason: AnswerFailure | null; detail: string | null } {
+  if (!carrier) {
+    return {
+      landed: false,
+      reason: 'no-carrier',
+      detail: '這題沒有指定落點，修訂只會留在 flow spine 上',
+    }
+  }
+  if (!path) {
+    return {
+      landed: false,
+      reason: 'carrier-outside-repo',
+      detail: `落點 ${carrier} 解析到 repo 之外，拒絕寫入`,
+    }
+  }
+  if (!existsSync(path)) {
+    return { landed: false, reason: 'carrier-missing', detail: `落點 ${carrier} 對應的檔案不存在` }
+  }
+
+  const before = readFileSync(path, 'utf8')
+  const found = findLandedBlock(before, spanId)
+  if (found === 'missing') {
+    return {
+      landed: false,
+      reason: 'landed-block-missing',
+      detail: `${carrier} 上找不到 span ${spanId} 的決策紀錄段落（可能被搬走或歸檔了）。修訂已記在 spine 上，請人工更新該段`,
+    }
+  }
+  if (found === 'ambiguous') {
+    return {
+      landed: false,
+      reason: 'landed-block-ambiguous',
+      detail: `${carrier} 上有多處提到 span ${spanId}，無法判斷要改哪一段，拒絕猜。修訂已記在 spine 上，請人工更新`,
+    }
+  }
+  if (dryRun) return { landed: true, reason: null, detail: null }
+
+  const isRegister = path === join(repoRoot, TD_REGISTER)
+  const baseline = isRegister ? runTdAudit(repoRoot) : null
+  writeFileSync(path, `${before.slice(0, found.start)}${block}${before.slice(found.end)}`)
+  if (!baseline) return { landed: true, reason: null, detail: null }
+
+  const after = runTdAudit(repoRoot)
+  const introduced = [...(after ?? [])].filter((f) => !baseline.has(f))
+  if (introduced.length === 0) return { landed: true, reason: null, detail: null }
+
+  writeFileSync(path, before)
+  return {
+    landed: false,
+    reason: 'td-hygiene-regression',
+    detail: `改寫 ${TD_REGISTER} 會新增 ${introduced.length} 條 hygiene findings，已還原。修訂仍在 spine 上，請人工更新該段。第一條：${introduced[0]?.slice(0, 160)}`,
+  }
+}
+
+/**
+ * Whether this answer has been picked up, read off this repo's own spine.
+ *
+ * The rule itself is `computeDecisionLock` in `emit.ts` — this only adapts raw events into what it
+ * takes. The projection in `decisions.ts` adapts folded spans into the same shape, so the page and
+ * the writer are answering from one rule; the alternative is a page that offers an edit the writer
+ * then refuses.
+ */
+export function decisionLockFor(
+  spanId: string,
+  workId: string,
+  answeredAt: string,
+  repoRoot: string,
+): DecisionLock | null {
+  const candidates: LockCandidate[] = (readEvents(repoRoot) as unknown as Record<string, unknown>[])
+    .filter((e) => e.phase === 'start' || e.phase === 'point')
+    .map((e) => ({
+      kind: String(e.kind ?? ''),
+      work_id: String(e.work_id ?? ''),
+      at: String(e.ts_utc ?? ''),
+      is_point: e.phase === 'point',
+      actor: String(e.actor ?? 'unknown'),
+      parent_span: (e.parent_span as string | null) ?? null,
+    }))
+  return computeDecisionLock(spanId, workId, answeredAt, candidates)
+}
+
+/**
+ * Change an answer that was already given, and rewrite it where it landed.
+ *
+ * Same order as `answerDecision`, and for the same reason: spine first, carrier second. The worst
+ * case stays "recorded but not filed" — visible and recoverable — rather than a file claiming one
+ * answer next to a spine holding another, where nothing can say which is stale.
+ *
+ * The lock is recomputed HERE rather than trusted from the caller. `/decisions` polls every 15
+ * seconds, so its idea of "still editable" is up to 15 seconds old, and the whole point of the
+ * lock is the moment an agent starts acting on the answer.
+ */
+export function reviseDecision({
+  spanId,
+  answer,
+  revisedBy,
+  via,
+  repoRoot,
+  force = false,
+  dryRun = false,
+}: {
+  spanId: string
+  answer: string
+  revisedBy: string
+  via: string
+  repoRoot: string
+  /** Override a `follow-up` (inferred) lock. NEVER overrides a `pickup` — that one is a statement. */
+  force?: boolean
+  dryRun?: boolean
+}): AnswerDecisionResult {
+  const base = { resolved: false, landed: false, carrier: null, carrierPath: null, block: '' }
+
+  if (spineOverrideBlocks(repoRoot)) {
+    return {
+      ...base,
+      ok: false,
+      reason: 'spine-override',
+      detail: `CLADE_FLOW_EVENTS 指向 ${process.env.CLADE_FLOW_EVENTS}，不在 ${repoRoot} 內；寫入會落到別的 spine`,
+    }
+  }
+
+  const decision = lookupDecision(spanId, repoRoot)
+  if (!decision) {
+    return {
+      ...base,
+      ok: false,
+      reason: 'no-such-decision',
+      detail: `${repoRoot} 的 spine 上沒有 span ${spanId} 的 decision.request`,
+    }
+  }
+
+  const history = decisionAnswerHistory(spanId, repoRoot)
+  if (!history.answered) {
+    return {
+      ...base,
+      ok: false,
+      reason: 'not-answered',
+      detail: '這題還沒有人回答過，要走作答不是修訂',
+    }
+  }
+
+  const lock = decisionLockFor(spanId, decision.workId, history.answeredAt, repoRoot)
+  if (lock && (lock.by === 'pickup' || !force)) {
+    return {
+      ...base,
+      ok: false,
+      reason: 'picked-up',
+      locked: lock,
+      detail:
+        lock.by === 'pickup'
+          ? `${lock.actor} 已於 ${lock.at} 宣告接手這個答案，不能再改`
+          : `答案之後同一件工作（${decision.workId}）在 ${lock.at} 又開了新的 span，看起來已經有人在執行`,
+    }
+  }
+
+  const path = carrierPath(decision.carrier, repoRoot)
+  const revisions = history.revisions + 1
+  const block = landingBlock(decision.question, answer, spanId, via, new Date(), revisions)
+  const preview = { carrier: decision.carrier, carrierPath: path, block }
+
+  if (dryRun) {
+    const r = replaceOnCarrier(decision.carrier, path, spanId, block, repoRoot, true)
+    return { ...preview, ok: true, resolved: false, ...r, locked: null, revisions }
+  }
+
+  const written = reviseDecisionEvent({ spanId, answer, revisedBy, cwd: repoRoot })
+  if (!written.written) {
+    return {
+      ...preview,
+      ok: false,
+      resolved: false,
+      landed: false,
+      reason: 'no-such-decision',
+      detail: `修訂寫不進 spine：${written.errors?.map((e) => e.code).join(',') ?? 'unknown'}`,
+    }
+  }
+
+  const r = replaceOnCarrier(decision.carrier, path, spanId, block, repoRoot, false)
+  // Same contract as answering: the revision is recorded either way, so this is `ok` even when the
+  // carrier could not be rewritten. `landed:false` + `reason` says what still needs a human.
+  return { ...preview, ok: true, resolved: true, ...r, locked: null, revisions }
 }
 
 /**

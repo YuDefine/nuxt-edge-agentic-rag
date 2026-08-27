@@ -100,6 +100,39 @@ export function repoName(root: string, cladeRoot: string): string {
   return base || root
 }
 
+/**
+ * Queue `repo` name → checkout root. **Every write path resolves the target repo through this
+ * one function**, whichever surface it came from (`/decisions` endpoints, `flow answer`, the
+ * Notion projector).
+ *
+ * Why it lives here rather than in the web server's utils, where it started: a second
+ * implementation of this does not degrade gracefully. It does not mean "one surface is broken" —
+ * it means **an answer lands on another repo's spine and edits that repo's file**, for a span
+ * that repo has never heard of. The chat surface used to hand-resolve the root by eye, which is
+ * exactly that second implementation, made of a guess and carrying no roster check at all.
+ *
+ * NEVER fall back to clade when the name does not resolve. Silently writing a consumer's answer
+ * into clade's spine and clade's files is worse than a visible failure: the span does not exist
+ * there, and the file has already been changed.
+ *
+ * Both spellings are accepted because the queue has two modes: fleet mode names clade itself
+ * `clade` via `repoName()`, while a missing roster makes `buildSnapshot` fall back to a single
+ * repo keyed by `basename(cwd)`. Accepting only the former would make the whole page inoperable
+ * the moment the roster is absent — precisely when there is one repo left and operating on it
+ * matters most.
+ */
+export function resolveRepoRootByName(repo: string | null, cladeRoot: string): string | null {
+  const root = resolve(cladeRoot)
+  if (!repo) return root
+  const roster = resolveFleetRoots(root)
+  const candidates = roster ? [...new Set([root, ...roster.roots])] : [root]
+  return candidates.find((r) => repoName(r, root) === repo || basename(r) === repo) ?? null
+}
+
+/** The one sentence every surface says when the name does not resolve. */
+export const REPO_NOT_ON_ROSTER = (repo: string | null): string =>
+  `roster 上找不到 repo「${repo}」——不寫入，請確認這一題屬於哪個 checkout`
+
 function stateOf(root: string, spinePath: string): { state: RepoState; events: FlowEvent[] } {
   if (!existsSync(root)) return { state: 'missing-checkout', events: [] }
   if (!existsSync(dirname(spinePath))) return { state: 'no-projection', events: [] }
