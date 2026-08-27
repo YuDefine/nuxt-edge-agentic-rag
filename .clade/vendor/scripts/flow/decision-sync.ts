@@ -53,6 +53,7 @@ import {
   requestClarification,
   requestDecision,
   resolveDecision,
+  workIdFromIdentity,
 } from './emit.ts'
 
 export interface SyncAction {
@@ -367,6 +368,12 @@ export function syncDecisions({
         recommended: item.recommended,
         category: item.category,
         carrier: item.carrier,
+        // A scanned question is its own work item, and `source_id` is already its stable
+        // identity (file + title) — the same key the dedup above is keyed on. Leaving this
+        // null let `resolveWorkId` mint an orphan on every hook-driven scan, because a hook
+        // has no ambient CLADE_WORK_ID: measured 2026-08-28, this was the only entry point
+        // still minting orphans after the dispatch adapters were fixed (TD-684).
+        work_id: workIdFromIdentity(item.source_id),
         actor,
         substrate: 'file-scan',
         payload: {
