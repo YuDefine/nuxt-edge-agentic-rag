@@ -39,6 +39,23 @@ export interface AskedDecision {
   category: string
   /** Where the answer has to land: a TD id, a HANDOFF section, a `tasks/` path. */
   carrier: string | null
+  /** The back-and-forth on this question, oldest first. Empty for the common case. */
+  clarifications: ClarificationNote[]
+  /**
+   * True when the last note is a `request` — the ball is on the agent side.
+   *
+   * Read the LAST note, never "is there a request anywhere". A question can be clarified, then
+   * clarified again; keying on presence would leave every answered clarification looking
+   * permanently unanswered, and the surface would fill with work nobody has to do.
+   */
+  awaiting_clarification: boolean
+}
+
+export interface ClarificationNote {
+  direction: 'request' | 'response'
+  text: string
+  actor: string
+  at: string
 }
 
 export interface GatedWork {
@@ -96,6 +113,32 @@ function groupByRepo(spans: (Span & { repo?: string })[]): Map<string | null, Sp
   return byRepo
 }
 
+/**
+ * The clarification notes hanging off each decision, keyed by the decision span id.
+ *
+ * Built once per repo rather than re-scanned per decision: the queue is fleet-wide and a nested
+ * scan would be O(spans x decisions) over fourteen streams to render a page that is usually empty.
+ */
+function clarificationsBySpan(spans: Span[]): Map<string, ClarificationNote[]> {
+  const out = new Map<string, ClarificationNote[]>()
+  for (const span of spans) {
+    if (span.kind !== 'decision.clarify' || !span.parent_span) continue
+    const payload = span.payload ?? {}
+    const direction = payload.direction === 'response' ? 'response' : 'request'
+    const bucket = out.get(span.parent_span)
+    const note: ClarificationNote = {
+      direction,
+      text: str(payload.text),
+      actor: span.actor,
+      at: span.start_ts ?? '',
+    }
+    if (bucket) bucket.push(note)
+    else out.set(span.parent_span, [note])
+  }
+  for (const notes of out.values()) notes.sort((a, b) => a.at.localeCompare(b.at))
+  return out
+}
+
 export function buildDecisionQueue(
   spans: (Span & { repo?: string })[],
   { now = Date.now() }: { now?: number } = {},
@@ -104,9 +147,11 @@ export function buildDecisionQueue(
   const gated: GatedWork[] = []
 
   for (const [repo, repoSpans] of groupByRepo(spans)) {
+    const clarifications = clarificationsBySpan(repoSpans)
     for (const span of repoSpans) {
       if (span.kind !== 'decision.request' || span.end_ts) continue
       const payload = span.payload ?? {}
+      const notes = clarifications.get(span.span_id) ?? []
       asked.push({
         span_id: span.span_id,
         work_id: span.work_id,
@@ -120,6 +165,8 @@ export function buildDecisionQueue(
         recommended: typeof payload.recommended === 'string' ? payload.recommended : null,
         category: str(payload.category, 'ruling'),
         carrier: typeof payload.carrier === 'string' ? payload.carrier : null,
+        clarifications: notes,
+        awaiting_clarification: notes.at(-1)?.direction === 'request',
       })
     }
 

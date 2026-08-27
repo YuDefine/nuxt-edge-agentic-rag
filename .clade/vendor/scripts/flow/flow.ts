@@ -8,6 +8,8 @@
 //
 //   flow open <slug> [--actor <a>]      mint W-<date>-<slug>, emit the work.open point event
 //   flow emit --kind K --actor A        one point event from any shell (the CI action's door)
+//   flow ask --question Q [--options ...]   put a question on the decision queue
+//   flow clarify <span_id> --text T     answer a "this question needs more detail" request
 //   flow ingest <file|dir>              merge events produced elsewhere (CI artifact, journal)
 //   flow run <spec.json>                execute a spec through the dumb engine
 //   flow step <node> [--flags]          run one node from the library, recorded as a span
@@ -29,14 +31,19 @@ import { parseArgs } from 'node:util'
 
 import { findConsumerRoot } from '../claim-helper.ts'
 import {
+  answerClarification,
   emitEvent,
+  endSpan,
   eventsPath,
   ingestEvents,
   newSpanId,
   openWork,
   parseEventLines,
   readEvents,
+  requestDecision,
   resolveWorkId,
+  spanHandleFromSpine,
+  spanIsClosed,
 } from './emit.ts'
 import { buildFleetSnapshot, renderFleetStatus } from './fleet.ts'
 import { DEFAULT_OTLP_ENDPOINT, countSpans, postOtlp, toOtlpPayload } from './otlp-export.ts'
@@ -78,17 +85,32 @@ const { values: args, positionals } = parseArgs({
     endpoint: { type: 'string' },
     'parent-span': { type: 'string' },
     session: { type: 'string' },
+    reason: { type: 'string' },
+    // `ask` / `clarify` flags — 同上一段註解的理由，未宣告會變成 true 並把值推進 positionals。
+    question: { type: 'string' },
+    options: { type: 'string' },
+    recommended: { type: 'string' },
+    category: { type: 'string' },
+    carrier: { type: 'string' },
+    text: { type: 'string' },
   },
   // `flow step <node> --whatever` forwards unknown flags to the node, so parseArgs must not
   // reject them here. The node's own parser is the one that validates them.
   strict: false,
 })
 
-const USAGE = `Usage: flow <open|emit|ingest|run|step|viz|status|who|otlp> [args]
+const USAGE = `Usage: flow <open|ask|clarify|emit|close|ingest|run|step|viz|status|who|otlp> [args]
 
   open <slug> [--actor <actor>]   mint a work id and emit its work.open event
+  ask --question Q                put a question on the decision queue (/decisions renders it)
+      [--options 'A,B'] [--recommended R] [--carrier PATH] [--category C] [--actor A]
+  clarify <span_id> --text T      answer a "this question needs more detail" request. What
+                                  \`status --stalled\` tells you to run for clarification-requested.
   emit --kind K --actor A         append one point event (CI action, hooks, any shell)
        [--substrate S] [--outcome O] [--payload '<json>'] [--work-id W]
+  close <span_id> --outcome O     close an in-flight span nobody will ever close itself
+        --reason '<why>'          (dead pi run, killed process). Herdr dispatches and decision
+                                  requests have their own closers and are refused here.
   ingest <file|dir>               merge externally produced events (CI artifact, journal)
   run <spec.json>                 execute a spec (serial / parallel / retry / on-fail only)
   step <node> [--flags]           run one node from the library, recorded as a span
@@ -204,6 +226,102 @@ if (cmd === 'emit') {
   // a caller that asked for a fact to be recorded deserves to know it was not.
   process.stdout.write(`${JSON.stringify({ written: res.written === true })}\n`)
   process.exit(0)
+}
+
+if (cmd === 'ask') {
+  // The CLI door to `requestDecision`. Before this existed the only way to put a question on the
+  // queue was to import the lib from inside a process that happened to be running, which meant
+  // shells, hooks and one-off scripts had no way to ask anything at all.
+  const question = strFlag(args.question)
+  if (!question) fail('ask needs --question')
+  const rawOptions = strFlag(args.options)
+  const handle = requestDecision({
+    question,
+    options: rawOptions
+      ? rawOptions
+          .split(',')
+          .map((o) => o.trim())
+          .filter(Boolean)
+      : [],
+    recommended: strFlag(args.recommended) ?? null,
+    category: (strFlag(args.category) ?? 'ruling') as 'ruling',
+    carrier: strFlag(args.carrier) ?? null,
+    actor: strFlag(args.actor) ?? 'unknown',
+    work_id: strFlag(args['work-id']) ?? null,
+  })
+  process.stdout.write(`${JSON.stringify({ span_id: handle.span_id, work_id: handle.work_id })}\n`)
+  process.exit(0)
+}
+
+if (cmd === 'clarify') {
+  // The other half of what `--stalled` prints for `clarification-requested`. Without this the
+  // stall line names a state with no way out of it, which is worse than not reporting it: a
+  // surface that only ever accumulates teaches people to stop reading it.
+  const spanId = positionals[1]
+  const text = strFlag(args.text)
+  if (!spanId || !text) fail('clarify needs <span_id> and --text')
+  const res = answerClarification({
+    spanId,
+    text,
+    actor: strFlag(args.actor) ?? 'unknown',
+  })
+  if (!res.written) {
+    process.stderr.write(`${res.errors?.map((e) => e.code).join(',') ?? 'not written'}\n`)
+    process.exit(1)
+  }
+  process.stdout.write(`${JSON.stringify({ written: true, span_id: spanId })}\n`)
+  process.exit(0)
+}
+
+const CLOSE_OUTCOMES = ['ok', 'fail', 'skipped', 'blocked']
+
+if (cmd === 'close') {
+  // `in-flight-overdue` used to be reportable and nothing else: a span with no `end` can only be
+  // closed by an `end` event, and `emit` writes points. So a pi run whose process died sat on the
+  // stall list forever, and a queue nobody can ever drain trains its readers to skip it (TD-673).
+  //
+  // This is the generic door, for substrates with no closer of their own. It is NOT a second way
+  // to close the two that do have one — see the refusals below.
+  const spanId = positionals[1]
+  if (!spanId) fail('close needs a span id')
+  const outcome = strFlag(args.outcome)
+  if (!outcome || !CLOSE_OUTCOMES.includes(outcome)) {
+    fail(`close needs --outcome (${CLOSE_OUTCOMES.join(' | ')})`)
+  }
+  const reason = strFlag(args.reason)
+  // Same bar `--adjudicate` holds third-party closure to: a closure with no stated basis is
+  // indistinguishable from quietly deleting the evidence that something stalled.
+  if (!reason) fail('close needs --reason; a closure with no stated basis is a silent delete')
+
+  const handle = spanHandleFromSpine(spanId)
+  if (!handle) fail(`no span on the spine starts with id ${spanId}`)
+  if (spanIsClosed(spanId)) fail(`span ${spanId} is already closed`)
+
+  // Both refusals name the right door rather than just saying no. Without them this becomes a way
+  // to launder the two closures that carry accountability: an adjudication is signed by a named
+  // session, and an answer lands on the carrier the question named. Closing either from here would
+  // clear the stall and destroy exactly the record that made it answerable.
+  if (handle.substrate === 'herdr') {
+    fail(
+      `span ${spanId} is a herdr dispatch; close it out with a signed adjudication:\n` +
+        `  node vendor/scripts/herdr-session-handoff.ts --adjudicate <dispatch-id> --disposition <landed|obsolete|dropped|harvested-absent> --reason '<why>'`,
+    )
+  }
+  if (handle.kind === 'decision.request') {
+    fail(
+      `span ${spanId} is a question waiting on a human; answering it is what closes it.\n` +
+        `  answer it in review-gui /decisions, which lands the answer on the carrier the question named`,
+    )
+  }
+
+  const res = endSpan(handle, {
+    outcome,
+    payload: { closed_by: 'third-party', reason },
+  })
+  process.stdout.write(
+    `${JSON.stringify({ written: res.written === true, span_id: spanId, outcome })}\n`,
+  )
+  process.exit(res.written === true ? 0 : 1)
 }
 
 if (cmd === 'ingest') {
