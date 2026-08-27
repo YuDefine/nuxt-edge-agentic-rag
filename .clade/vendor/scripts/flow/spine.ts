@@ -296,6 +296,32 @@ export interface OrphanRatio {
   ratio: number
   over_threshold: boolean
   threshold: number
+  /** Minted orphans bucketed by the entry point that minted them, biggest first. */
+  by_entry: OrphanEntry[]
+}
+
+/**
+ * One minting entry point's share of the window.
+ *
+ * The warning's whole ask is "which entry point regressed", and the answer is derivable from the
+ * stream the warning already reads: an orphan id is minted by whatever emitted its FIRST event,
+ * and every later event under that id is a descendant of that one mint. Leaving it out made every
+ * reader re-derive it by hand — measured 2026-08-28, that is a `python3` pass over the JSONL and
+ * about twenty minutes, per reader, for a fact the counter had in front of it.
+ *
+ * `newest_mint` is what separates "this entry is regressing right now" from "this entry was fixed
+ * and its pre-fix mints have not aged out of the window yet". Without it the two are the same
+ * number: the window is 7 days, so a fix lands with a week of its own backlog still inside.
+ */
+export interface OrphanEntry {
+  /** `<kind>|<actor>|<substrate>` of the first event under each id this entry minted. */
+  entry: string
+  /** Distinct orphan work ids minted here inside the window. */
+  ids: number
+  /** Events carried by those ids inside the window — the bloodline, not just the mint. */
+  events: number
+  /** `ts_utc` of the most recent mint here. */
+  newest_mint: string
 }
 
 export function orphanRatio(
@@ -315,16 +341,44 @@ export function orphanRatio(
     const prev = firstSeen.get(e.work_id)
     if (prev === undefined || e.ts_utc < prev) firstSeen.set(e.work_id, e.ts_utc)
   }
+  // The event that OPENED each id — the mint site. Taken over the whole stream for the same
+  // reason `firstSeen` is: an id whose first event predates the window was not minted here.
+  const mintEvent = new Map<string, FlowEvent>()
+  for (const e of events) {
+    if (!e.work_id || !e.ts_utc) continue
+    const held = mintEvent.get(e.work_id)
+    if (held === undefined || e.ts_utc < held.ts_utc) mintEvent.set(e.work_id, e)
+  }
   let total = 0
   let minted = 0
   let inherited = 0
+  const buckets = new Map<string, { ids: Set<string>; events: number; newest_mint: string }>()
   for (const e of events) {
     if (!e.ts_utc || e.ts_utc < cutoff) continue
     total += 1
     if (!isOrphanWorkId(e.work_id)) continue
-    if ((firstSeen.get(e.work_id as string) ?? e.ts_utc) < cutoff) inherited += 1
-    else minted += 1
+    if ((firstSeen.get(e.work_id as string) ?? e.ts_utc) < cutoff) {
+      inherited += 1
+      continue
+    }
+    minted += 1
+    const mint = mintEvent.get(e.work_id)
+    if (!mint) continue
+    const entry = `${mint.kind}|${mint.actor}|${mint.substrate}`
+    const held = buckets.get(entry) ?? { ids: new Set<string>(), events: 0, newest_mint: '' }
+    held.ids.add(e.work_id)
+    held.events += 1
+    if (mint.ts_utc > held.newest_mint) held.newest_mint = mint.ts_utc
+    buckets.set(entry, held)
   }
+  const by_entry: OrphanEntry[] = [...buckets]
+    .map(([entry, held]) => ({
+      entry,
+      ids: held.ids.size,
+      events: held.events,
+      newest_mint: held.newest_mint,
+    }))
+    .toSorted((a, b) => b.events - a.events || a.entry.localeCompare(b.entry))
   const orphan = minted + inherited
   const ratio = total > 0 ? minted / total : 0
   // An empty window is not a clean window. With nothing to measure the honest answer is "no
@@ -338,5 +392,6 @@ export function orphanRatio(
     ratio,
     threshold,
     over_threshold: total > 0 && ratio > threshold,
+    by_entry,
   }
 }

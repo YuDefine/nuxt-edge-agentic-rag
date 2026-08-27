@@ -85,6 +85,40 @@ export function mintWorkId(slug, now = new Date()) {
 }
 
 /**
+ * Ambient work id first, a caller-supplied stable identity second, orphan last (TD-684).
+ *
+ * The order is the same one `herdr-session-handoff.ts` and `pi-dispatch.ts` each carry a copy of,
+ * and it MUST stay that way: `resolveWorkId(hint)` is `hint ?? env ?? orphan`, so handing the
+ * identity in as a hint would SHADOW an ambient CLADE_WORK_ID and split one named piece of work
+ * into unrelated per-item traces.
+ *
+ * `identity` is free text (a `source_id`, a dispatch label). `mintWorkId` throws on a slug its
+ * envelope pattern rejects and a fully CJK string normalises to empty, so an unusable identity
+ * degrades to an orphan id rather than taking its caller down: emit's contract is fail-open
+ * everywhere, and a telemetry mint MUST NEVER outrank the thing being instrumented.
+ *
+ * The two dispatch adapters predate this and still hold their own copies — see [[TD-684]].
+ */
+export function workIdFromIdentity(sourceIdentity: string | null | undefined): string {
+  const ambient = process.env.CLADE_WORK_ID?.trim()
+  if (ambient) return ambient
+  const slug = String(sourceIdentity ?? '')
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 48)
+    .replace(/-+$/, '')
+  if (slug) {
+    try {
+      return mintWorkId(slug)
+    } catch {
+      // Unusable slug — fall through to the orphan mint below.
+    }
+  }
+  return resolveWorkId(null)
+}
+
+/**
  * The work id this process belongs to. With no ambient CLADE_WORK_ID an orphan id is minted
  * rather than dropping the event: an unattributed span still belongs on the spine, and the
  * `orphan-` prefix makes the attribution gap countable instead of invisible.

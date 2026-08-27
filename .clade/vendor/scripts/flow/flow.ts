@@ -1090,8 +1090,17 @@ if (cmd === 'status') {
           `\n⚠ 歸因: 近 ${orphans.window_days} 天 ${orphans.minted}/${orphans.total} 筆事件（${pct}%）由本窗口內「新鑄」的 orphan work id 承載，` +
             `門檻 ${(orphans.threshold * 100).toFixed(0)}%。\n` +
             `    另有 ${orphans.inherited} 筆繼承自窗口之前就存在的 orphan id（pre-fix 血脈，等那些 pane 退場才會消，不計入門檻）。\n` +
-            `    這是「說不出這些事件屬於哪件工作」，不是某件事卡住。判一題：最近哪個入口鑄名退化了\n` +
-            `    （wt-helper add / handoff relay / notion triage / 建 tasks 檔）。判得出來當場修，判不出來登一條 TD。\n`,
+            `    這是「說不出這些事件屬於哪件工作」，不是某件事卡住。判一題：哪個入口鑄名退化了。\n` +
+            `    下面已經替你分好桶（第一個事件的 kind|actor|substrate = 鑄名的那個入口）。\n` +
+            `    最後鑄名時間離現在遠 = 那個入口已經修好、只是 pre-fix 事件還沒滾出 ${orphans.window_days} 天窗口，NEVER 讀成退化中；\n` +
+            `    離現在近 = 現在還在鑄，那就是要修的那一個。判得出來當場修，判不出來登一條 TD。\n` +
+            orphans.by_entry
+              .slice(0, 5)
+              .map(
+                (b) =>
+                  `      ${String(b.events).padStart(4)} 事件 / ${String(b.ids).padStart(3)} id  最後鑄名 ${b.newest_mint.slice(0, 16).replace('T', ' ')}Z  ${b.entry}\n`,
+              )
+              .join(''),
         )
       }
     }
