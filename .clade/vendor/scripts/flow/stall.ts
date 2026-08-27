@@ -33,6 +33,7 @@ export type StallShape =
   | 'failed-open'
   | 'dead-holder'
   | 'stash-residue'
+  | 'clarification-requested'
 
 export interface Stall {
   shape: StallShape
@@ -63,9 +64,21 @@ function ageMinutes(ts: string | null, now: number): number | null {
   return Math.floor((now - parsed) / 60000)
 }
 
+/** Longest label a CLI line or a `/flow` card carries before it stops being scannable. */
+const LABEL_MAX = 60
+
 function labelOf(span: Span): string | null {
   const label = span.payload?.label ?? span.payload?.slug ?? span.payload?.node
-  return typeof label === 'string' ? label : null
+  if (typeof label === 'string') return label
+  // A decision span carries none of those fields, and its identity *is* the question it asked —
+  // `buildDecisionQueue` reads `payload.question` for exactly that reason. Without this fallback
+  // two pending decisions render as one repeated line ("Claude Code, 28.9h" twice, measured
+  // 2026-08-27) and a reader who is told "answering it is what closes it" cannot tell which `it`.
+  const question = span.payload?.question
+  if (typeof question === 'string' && question.length > 0) {
+    return question.length > LABEL_MAX ? `${question.slice(0, LABEL_MAX - 1)}\u2026` : question
+  }
+  return null
 }
 
 /** Point events emitted by a reclaim, keyed by the dispatch span they close out. */
@@ -85,6 +98,17 @@ function reclaimedSpanIds(spans: Span[]): Set<string> {
  * Exported because the decision queue shows the same state and must not word it a second way:
  * two phrasings of one state read as two states.
  */
+/**
+ * A human said the question is not answerable as written, and nobody has answered that yet.
+ *
+ * Named as one exported constant for the same reason as `AWAITING_ATTENDED_ACTION`: patrol, the
+ * stall list and any future surface must print one phrasing, or two wordings of one state read as
+ * two states. It carries the command that closes the loop — a stall a reader cannot act on from
+ * the line itself is a notification, not a stall.
+ */
+export const CLARIFICATION_REQUESTED_ACTION =
+  '有人要求補充說明，答案不在他手上：node vendor/scripts/flow/flow.ts clarify <span_id> --text "<說明>"'
+
 export const AWAITING_ATTENDED_ACTION =
   'blocked and nothing followed — this is the awaiting-attended state; an attended session has to pick it up'
 
@@ -107,6 +131,32 @@ export function lastStartByWork(spans: Span[]): Map<string, string> {
   return out
 }
 
+/**
+ * Per decision span: which way the last clarification note pointed, and how long it has sat there.
+ *
+ * Deliberately not imported from `decisions.ts`: that module builds a full render-ready queue
+ * (four buckets, repo grouping, human strings) and this needs one boolean per span. Depending on
+ * it would make the stall query pay for a page it never draws — and would invert the dependency,
+ * since the decision queue already imports this file.
+ */
+function clarifyState(spans: Span[], now: number) {
+  const lastClarify = new Map<string, 'request' | 'response'>()
+  const clarifySince = new Map<string, string>()
+  const clarifyAge = new Map<string, number>()
+  for (const span of spans) {
+    if (span.kind !== 'decision.clarify' || !span.parent_span) continue
+    const at = span.start_ts ?? ''
+    if ((clarifySince.get(span.parent_span) ?? '') > at) continue
+    lastClarify.set(
+      span.parent_span,
+      span.payload?.direction === 'response' ? 'response' : 'request',
+    )
+    clarifySince.set(span.parent_span, at)
+    clarifyAge.set(span.parent_span, ageMinutes(at, now) ?? 0)
+  }
+  return { lastClarify, clarifyAge, clarifySince }
+}
+
 export function findStalls(
   spans: Span[],
   {
@@ -116,6 +166,7 @@ export function findStalls(
 ): Stall[] {
   const reclaimed = reclaimedSpanIds(spans)
   const lastStart = lastStartByWork(spans)
+  const { lastClarify, clarifyAge, clarifySince } = clarifyState(spans, now)
   const stalls: Stall[] = []
 
   for (const span of spans) {
@@ -131,6 +182,24 @@ export function findStalls(
     }
 
     if (!span.end_ts) {
+      // Checked before the overdue branch on purpose: an unanswered decision is ALSO an unclosed
+      // span, so both shapes would fire for it. One span reports as one stall, and the specific,
+      // actionable shape has to be the one that survives — `in-flight-overdue` would bury the only
+      // line that says what to actually do.
+      //
+      // No grace period, unlike everything else here. A grace period exists because a young span
+      // with no outcome is a race; a clarification request is a *reported* state — it is waiting
+      // the moment it is written, and holding it an hour removes the point of the surface.
+      if (span.kind === 'decision.request' && lastClarify.get(span.span_id) === 'request') {
+        stalls.push({
+          ...base,
+          shape: 'clarification-requested',
+          age_minutes: clarifyAge.get(span.span_id) ?? 0,
+          since: clarifySince.get(span.span_id) ?? (span.start_ts as string),
+          action: CLARIFICATION_REQUESTED_ACTION,
+        })
+        continue
+      }
       const age = ageMinutes(span.start_ts, now)
       if (age !== null && age >= thresholdMinutes) {
         stalls.push({
@@ -141,7 +210,9 @@ export function findStalls(
           action:
             span.substrate === 'herdr'
               ? `pane never reported an outcome; read its scrollback, then redispatch or close it out with \`herdr-session-handoff.ts --adjudicate\``
-              : `span opened and never closed — the process died or is still running; confirm which before assuming the work landed`,
+              : span.kind === 'decision.request'
+                ? `a question waiting on a human — answering it is what closes it; answer it in review-gui /decisions, which lands the answer on the carrier the question named`
+                : `span opened and never closed — the process died or is still running; confirm which first, then close it out: node vendor/scripts/flow/flow.ts close ${span.span_id} --outcome <ok|fail|skipped> --reason '<why>'`,
         })
       }
       continue
@@ -169,7 +240,10 @@ export function findStalls(
         // Only the dispatching session may reclaim. If it is gone the reclaim refuses, and
         // `herdr-patrol` is the surface that can tell you so — hence the pointer rather than a
         // promise that this one command will work.
-        action: `outcome reported, pane not reclaimed: node vendor/scripts/herdr-session-handoff.ts --reclaim ${paneId} --verified${dispatchId ? `  (dispatch ${dispatchId})` : ''} — if that refuses, the dispatching session is gone: check \`herdr-patrol\``,
+        // Two commands, because there are two states behind one line. The reclaim is the honest
+        // first try; when the pane is gone it refuses, and before TD-673 the trail ended there —
+        // the entry could never be cleared by anyone. The second names the door that opened.
+        action: `outcome reported, pane not reclaimed: node vendor/scripts/herdr-session-handoff.ts --reclaim ${paneId} --verified${dispatchId ? `  (dispatch ${dispatchId})` : ''} — if that refuses the pane is gone; record the harvest instead: node vendor/scripts/herdr-session-handoff.ts --adjudicate ${dispatchId || '<dispatch-id>'} --disposition harvested-absent --reason '<why>'`,
       })
       continue
     }

@@ -549,3 +549,66 @@ export function pendingDecisions(cwd = process.cwd()) {
       ...(e.payload as Record<string, unknown>),
     }))
 }
+
+/**
+ * The back-and-forth on a question that was asked too tersely to answer.
+ *
+ * Modelled as POINT EVENTS hanging off the decision span (`parent_span` = the decision), never as
+ * a second span. A clarification is part of *this* question, not another piece of work, so the one
+ * thing the span means — "not closed = not answered yet" — has to keep meaning exactly that.
+ * Every existing query (`spanIsClosed`, in-flight rendering, `--stalled`) stays correct untouched.
+ *
+ * The failure this closes: a question the human cannot answer has, until now, exactly two exits —
+ * answer it anyway, or open an attended session to go ask. Both lose the queue. This gives the
+ * "I need more information" a place to live where the asking side will actually see it.
+ *
+ * `direction` is on the payload rather than in two event kinds because both halves are the same
+ * fact ("someone said something about this question") and every reader wants them in one ordered
+ * list. Two kinds would make the common query a union of two filters, and a reader that forgot
+ * one half would silently render half a conversation.
+ */
+export type ClarifyDirection = 'request' | 'response'
+
+export interface ClarifyInput {
+  spanId: string
+  text: string
+  actor?: string
+  substrate?: string
+  cwd?: string
+}
+
+function emitClarify(
+  direction: ClarifyDirection,
+  { spanId, text, actor, substrate, cwd }: ClarifyInput,
+) {
+  // The work id has to come off the decision itself. Minting a fresh one would put the
+  // clarification in a work item of its own, where every per-work query would stop associating it
+  // with the question it belongs to.
+  const handle = spanHandleFromSpine(spanId, cwd ?? process.cwd())
+  if (!handle) return { written: false, errors: [{ code: 'no-such-decision' }] }
+  if (handle.kind !== 'decision.request') {
+    return { written: false, errors: [{ code: 'not-a-decision' }] }
+  }
+  return emitEvent({
+    work_id: handle.work_id,
+    span_id: newSpanId(),
+    parent_span: spanId,
+    phase: 'point',
+    kind: 'decision.clarify',
+    actor: actor ?? 'unknown',
+    substrate: substrate ?? handle.substrate,
+    payload: { direction, text },
+    outcome: 'ok',
+    cwd,
+  })
+}
+
+/** A human says the question is not answerable as written. Does NOT close the span. */
+export function requestClarification(input: ClarifyInput) {
+  return emitClarify('request', input)
+}
+
+/** The agent side supplies what was missing. Also does NOT close the span — the human still answers. */
+export function answerClarification(input: ClarifyInput) {
+  return emitClarify('response', input)
+}

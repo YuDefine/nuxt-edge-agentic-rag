@@ -1,0 +1,1 @@
+../../.clade/runtime/rules/shared-file-concurrent-write.md
