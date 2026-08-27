@@ -43,7 +43,17 @@ export interface Span {
   payload: Record<string, unknown>
 }
 
-export type WorkState = 'in-flight' | 'failed' | 'settled'
+/**
+ * Six states, in the priority the fold applies them: a human verdict outranks an agent's claim,
+ * which outranks anything still moving.
+ *
+ * `settled` is deliberately kept and is deliberately NOT a synonym for `done`. It means "no span is
+ * running and nobody claimed completion" — the ambiguous state that the four questions this layer
+ * exists to answer (progress / blocked / finished / accepted) keep landing on. Collapsing it into
+ * `done` would answer "is it finished?" with "nothing is running", which is the wrong answer given
+ * confidently.
+ */
+export type WorkState = 'in-flight' | 'failed' | 'settled' | 'done' | 'accepted' | 'dropped'
 
 export interface WorkItem {
   work_id: string
@@ -55,6 +65,26 @@ export interface WorkItem {
   state: WorkState
   /** Slug from the `work.open` point event, when the work item was opened through `flow open`. */
   slug: string | null
+  /**
+   * Where this work item was born, as `<scheme>:<id>` — the join key back to the prose world
+   * (a Notion page, a TD entry, a `tasks/` file). Null for anything opened without one, which
+   * includes every work item minted before origins existed: absent is not a defect here.
+   */
+  origin_ref: string | null
+  /** Scheme half of `origin_ref`, split once at the fold so no reader has to re-parse it. */
+  origin_kind: string | null
+  /** One human line naming the problem. Views prefer it over the slug when both are present. */
+  title: string | null
+  /** When completion was claimed, and with what evidence — the row a human accepts or rejects. */
+  done_ts: string | null
+  verification: string | null
+  verified_by: string | null
+  /** The human verdict, once given. Terminal: nothing after it changes the state. */
+  terminal: 'accepted' | 'dropped' | null
+  terminal_ts: string | null
+  terminal_reason: string | null
+  /** Prose carrier this work stopped at (`/handoff park`), when it did. Not a state — a pointer. */
+  parked_at: string | null
 }
 
 /**
@@ -129,9 +159,22 @@ export function rootsOf(spans: Span[]): Span[] {
   return spans.filter((s) => !s.parent_span || !ids.has(s.parent_span))
 }
 
+function str(value: unknown): string | null {
+  return typeof value === 'string' && value.length > 0 ? value : null
+}
+
 /** One row per work item. `state` is derived, never stored: the stream is the only authority. */
 export function buildWorkItems(spans: Span[]): WorkItem[] {
   const byWork = new Map<string, WorkItem>()
+  // Latest real (non-point) span start per work item. A `done` claim is invalidated by work that
+  // starts AFTER it — that is how "sent back for rework" is expressed, with no reopen event to
+  // forget to emit. Points are excluded on purpose: a park note or a second verdict is not rework.
+  const lastRealStart = new Map<string, string>()
+  for (const s of spans) {
+    if (s.is_point || !s.start_ts) continue
+    if ((lastRealStart.get(s.work_id) ?? '') < s.start_ts) lastRealStart.set(s.work_id, s.start_ts)
+  }
+
   for (const s of spans) {
     const cur: WorkItem = byWork.get(s.work_id) ?? {
       work_id: s.work_id,
@@ -142,18 +185,158 @@ export function buildWorkItems(spans: Span[]): WorkItem[] {
       last_ts: '',
       state: 'settled',
       slug: null,
+      origin_ref: null,
+      origin_kind: null,
+      title: null,
+      done_ts: null,
+      verification: null,
+      verified_by: null,
+      terminal: null,
+      terminal_ts: null,
+      terminal_reason: null,
+      parked_at: null,
     }
     cur.spans += 1
     if (!s.end_ts) cur.in_flight += 1
     if (s.outcome === 'fail') cur.failed += 1
-    if (s.kind === 'work.open' && typeof s.payload?.slug === 'string') cur.slug = s.payload.slug
+    if (s.kind === 'work.open') {
+      if (typeof s.payload?.slug === 'string') cur.slug = s.payload.slug
+      // First origin wins. A work item is born once; a later `work.open` on the same id is a
+      // collision or a replay, and letting it rewrite the origin would silently re-parent the
+      // history of everything already folded under it.
+      if (cur.origin_ref === null && typeof s.payload?.origin_ref === 'string') {
+        cur.origin_ref = s.payload.origin_ref
+        cur.origin_kind =
+          typeof s.payload?.origin_kind === 'string'
+            ? s.payload.origin_kind
+            : (s.payload.origin_ref.split(':')[0] ?? null)
+      }
+      if (cur.title === null && typeof s.payload?.title === 'string') cur.title = s.payload.title
+    }
+    const at = s.start_ts ?? ''
+    // Last write wins on each of these: re-doing a work item after rework, or a human overriding
+    // their own earlier verdict, both read naturally as "the most recent one is the one that holds".
+    if (s.kind === 'work.done' && at >= (cur.done_ts ?? '')) {
+      cur.done_ts = at
+      cur.verification = str(s.payload?.verification)
+      cur.verified_by = str(s.payload?.verified_by)
+    }
+    if ((s.kind === 'work.accept' || s.kind === 'work.drop') && at >= (cur.terminal_ts ?? '')) {
+      cur.terminal = s.kind === 'work.accept' ? 'accepted' : 'dropped'
+      cur.terminal_ts = at
+      cur.terminal_reason = str(s.payload?.reason)
+    }
+    if (s.kind === 'work.park' && typeof s.payload?.carrier === 'string') {
+      cur.parked_at = s.payload.carrier
+    }
     const ts = s.end_ts ?? s.start_ts ?? ''
     if (ts > cur.last_ts) cur.last_ts = ts
     if (s.start_ts && (!cur.first_ts || s.start_ts < cur.first_ts)) cur.first_ts = s.start_ts
     byWork.set(s.work_id, cur)
   }
   for (const item of byWork.values()) {
-    item.state = item.in_flight > 0 ? 'in-flight' : item.failed > 0 ? 'failed' : 'settled'
+    // A claim of completion that real work outlived is no longer a claim about the current state.
+    // `done_ts` and `verification` stay on the row regardless: they record that the claim WAS made,
+    // which is exactly what a reviewer needs to see when asking why the work came back.
+    const claimStands =
+      item.done_ts !== null && (lastRealStart.get(item.work_id) ?? '') <= item.done_ts
+    item.state = item.terminal
+      ? item.terminal
+      : claimStands
+        ? 'done'
+        : item.in_flight > 0
+          ? 'in-flight'
+          : item.failed > 0
+            ? 'failed'
+            : 'settled'
   }
   return [...byWork.values()].toSorted((a, b) => a.last_ts.localeCompare(b.last_ts))
+}
+
+/** Exactly what `resolveWorkId` mints with no ambient id: `W-<date>-orphan-<6 hex>`. */
+const ORPHAN_WORK_ID = /^W-\d{4}-\d{2}-\d{2}-orphan-[0-9a-f]{6}$/
+
+/** True only for a minted orphan id. A named work whose slug contains the word is not one. */
+export function isOrphanWorkId(workId: string | null | undefined): boolean {
+  return ORPHAN_WORK_ID.test(String(workId ?? ''))
+}
+
+/**
+ * How much of the recent stream cannot say which work item it belongs to.
+ *
+ * The `orphan-` prefix exists so an unattributed span stays countable instead of invisible, and
+ * this is the thing that counts it. Only RECENT events are measured: the backlog is not
+ * retroactively fixable, and folding it in would keep the ratio pinned high long after the
+ * entry points were fixed — a number that cannot move is a number nobody acts on.
+ *
+ * Deliberately a ratio and not a count: the fleet emits more events every week, so a count
+ * crosses any fixed threshold eventually through growth alone.
+ *
+ * Recent events are NOT the same as recently minted work ids, and only the second one answers
+ * the question this signal is asked (TD-684, measured 2026-08-27). `workIdFromLabel` is
+ * ambient-first by design, so a pane holding an orphan id passes that same id to every pane it
+ * dispatches: one work id minted at 01:38 rode four dispatches under four different labels to
+ * 07:30. A bloodline like that does not heal — it ends when those pre-fix panes retire — so
+ * folding it into the warned number reproduces exactly the pinned-high ratio the window was
+ * added to avoid. `minted` counts only events whose work id was first seen INSIDE the window;
+ * that is the one that moves when an entry point regresses, and it is the one thresholded.
+ *
+ * The predicate is anchored (`isOrphanWorkId`), not a substring: a named work whose label
+ * happens to contain the word — `W-2026-08-27-td-684-orphan-work-id`, the work item that
+ * investigated this very signal — matched `includes('orphan-')` and was counted against itself.
+ */
+export interface OrphanRatio {
+  window_days: number
+  total: number
+  orphan: number
+  /** Orphan events whose work id was first seen inside the window — the entry-point signal. */
+  minted: number
+  /** Orphan events inheriting a work id minted before the window — pre-existing bloodlines. */
+  inherited: number
+  ratio: number
+  over_threshold: boolean
+  threshold: number
+}
+
+export function orphanRatio(
+  events: FlowEvent[],
+  {
+    days = 7,
+    threshold = 0.25,
+    now = new Date(),
+  }: { days?: number; threshold?: number; now?: Date } = {},
+): OrphanRatio {
+  const cutoff = new Date(now.getTime() - days * 86_400_000).toISOString()
+  // First sighting is taken over the WHOLE stream, not the window: an id first seen at the
+  // window's edge is only distinguishable from a pre-fix bloodline by what came before it.
+  const firstSeen = new Map<string, string>()
+  for (const e of events) {
+    if (!e.work_id || !e.ts_utc) continue
+    const prev = firstSeen.get(e.work_id)
+    if (prev === undefined || e.ts_utc < prev) firstSeen.set(e.work_id, e.ts_utc)
+  }
+  let total = 0
+  let minted = 0
+  let inherited = 0
+  for (const e of events) {
+    if (!e.ts_utc || e.ts_utc < cutoff) continue
+    total += 1
+    if (!isOrphanWorkId(e.work_id)) continue
+    if ((firstSeen.get(e.work_id as string) ?? e.ts_utc) < cutoff) inherited += 1
+    else minted += 1
+  }
+  const orphan = minted + inherited
+  const ratio = total > 0 ? minted / total : 0
+  // An empty window is not a clean window. With nothing to measure the honest answer is "no
+  // signal", and reporting that as 0% would read as a passing grade nobody earned.
+  return {
+    window_days: days,
+    total,
+    orphan,
+    minted,
+    inherited,
+    ratio,
+    threshold,
+    over_threshold: total > 0 && ratio > threshold,
+  }
 }

@@ -9,6 +9,9 @@
 //   flow open <slug> [--actor <a>]      mint W-<date>-<slug>, emit the work.open point event
 //   flow emit --kind K --actor A        one point event from any shell (the CI action's door)
 //   flow ask --question Q [--options ...]   put a question on the decision queue
+//   flow pending [--json] [--repo-only]  the decision queue as `\my` renders it in chat
+//   flow sources [--apply] [--all]     read HANDOFF / TD / state.json / tasks into the queue
+//   flow ask-options <span_id>          hand a ruling back: it arrived with no options
 //   flow clarify <span_id> --text T     answer a "this question needs more detail" request
 //   flow ingest <file|dir>              merge events produced elsewhere (CI artifact, journal)
 //   flow run <spec.json>                execute a spec through the dumb engine
@@ -30,25 +33,50 @@ import { dirname, join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 
 import { findConsumerRoot } from '../claim-helper.ts'
+import { fleetRoots, syncDecisions, syncFleet } from './decision-sync.ts'
 import {
+  acceptWork,
   answerClarification,
+  dismissGated,
+  dropWork,
   emitEvent,
   endSpan,
   eventsPath,
   ingestEvents,
+  knownWorkIds,
+  markWorkDone,
   newSpanId,
   openWork,
+  parkWork,
   parseEventLines,
+  pickupDecision,
   readEvents,
+  requestClarification,
   requestDecision,
   resolveWorkId,
   spanHandleFromSpine,
   spanIsClosed,
 } from './emit.ts'
-import { buildFleetSnapshot, renderFleetStatus } from './fleet.ts'
+import { REF_SCHEMES, answerDecision, parseRef } from './answer.ts'
+import { LINT_NOTES, OPTIONS_REQUEST_TEXT, buildDecisionQueue } from './decisions.ts'
+import {
+  REPO_NOT_ON_ROSTER,
+  buildFleetSnapshot,
+  renderFleetStatus,
+  resolveRepoRootByName,
+} from './fleet.ts'
+import { measureRepo, measurementLine } from './measure.ts'
 import { DEFAULT_OTLP_ENDPOINT, countSpans, postOtlp, toOtlpPayload } from './otlp-export.ts'
 import { loadSpec, runCommand, runNode, runSpec } from './run.ts'
-import { buildWorkItems, foldSpans, indexById, latestWorkId, spanDepth } from './spine.ts'
+import { buildServeSnapshot } from './serve.ts'
+import {
+  buildWorkItems,
+  foldSpans,
+  indexById,
+  latestWorkId,
+  orphanRatio,
+  spanDepth,
+} from './spine.ts'
 import { DEFAULT_STALL_MINUTES, findOwnershipStalls, findStalls, renderStalls } from './stall.ts'
 import { readWaves, renderFleetMarkdown, renderWorkMarkdown } from './viz-md.ts'
 import { buildWhoRows, renderWho } from './who.ts'
@@ -86,6 +114,11 @@ const { values: args, positionals } = parseArgs({
     'parent-span': { type: 'string' },
     session: { type: 'string' },
     reason: { type: 'string' },
+    // `done` / `park` flags — declared for the same reason as `emit`'s: strict:false turns an
+    // undeclared long option into `true` with its value stranded in positionals.
+    verification: { type: 'string' },
+    'verified-by': { type: 'string' },
+    note: { type: 'string' },
     // `ask` / `clarify` flags — 同上一段註解的理由，未宣告會變成 true 並把值推進 positionals。
     question: { type: 'string' },
     options: { type: 'string' },
@@ -93,17 +126,65 @@ const { values: args, positionals } = parseArgs({
     category: { type: 'string' },
     carrier: { type: 'string' },
     text: { type: 'string' },
+    // `answers` flag. Boolean, but declared for the same reason as the rest: it is the difference
+    // between reading answers and freezing them, and that is not a distinction to leave to
+    // strict:false's guesswork.
+    claim: { type: 'boolean', default: false },
+    // `open` flags — same reason again: undeclared, `--origin notion:<uuid>` becomes
+    // origin=true with the uuid stranded in positionals, and the work item opens with no origin
+    // while the caller sees a success line.
+    origin: { type: 'string' },
+    title: { type: 'string' },
+    // `sources` flag. Boolean, so strict:false would already yield `true` — declared anyway so
+    // the option list stays the one place that says what this CLI accepts.
+    apply: { type: 'boolean', default: false },
+    // `pending` flag. Fleet is the default there (a question in a consumer repo is still a
+    // question for the same human), so the flag has to be the one that NARROWS.
+    'repo-only': { type: 'boolean', default: false },
+    // `answer` flags — 同 `emit` 那段的理由。這裡漏宣告的代價特別高：`--answer <text>` 變成
+    // true 之後答案本文會落進 positionals，而 span_id 也在 positionals 裡。
+    answer: { type: 'string' },
+    repo: { type: 'string' },
+    via: { type: 'string' },
+    'dry-run': { type: 'boolean', default: false },
   },
   // `flow step <node> --whatever` forwards unknown flags to the node, so parseArgs must not
   // reject them here. The node's own parser is the one that validates them.
   strict: false,
 })
 
-const USAGE = `Usage: flow <open|ask|clarify|emit|close|ingest|run|step|viz|status|who|otlp> [args]
+const USAGE = `Usage: flow <open|done|accept|drop|park|ask|pending|answer|answers|sources|ask-options|clarify|dismiss|emit|close|ingest|run|step|viz|status|who|otlp> [args]
 
   open <slug> [--actor <actor>]   mint a work id and emit its work.open event
+  done <work_id>                  claim the work item is finished. --verification is REQUIRED and
+       --verification '<how>'     is refused when empty: a done nobody can check is what makes
+       [--verified-by W]          "accepted" meaningless. Any span started later reverts it.
+  accept <work_id> --reason R     the human verdict: this work item is finished and accepted
+  drop <work_id> --reason R       the human verdict: this work item is written off
+  park <work_id> --carrier C      the work stopped at a prose carrier awaiting a successor
+       [--note N]                 (handoff:<section> | td:TD-NNN | tasks:<path>)
   ask --question Q                put a question on the decision queue (/decisions renders it)
       [--options 'A,B'] [--recommended R] [--carrier PATH] [--category C] [--actor A]
+  pending [--json]                the decision queue, rendered the way \`\\my\` reads it in chat:
+          [--repo-only]           only \`ruling\` gets a Qn, the other buckets are bullets, and the
+                                  現況量測 line is measured live. Fleet by default. exit 2 = empty.
+  answer <span_id>                answer one pending decision the way /decisions does — same
+         --answer '<text>'        function, same repo resolution, same carrier landing. This is
+         [--repo <name>]          what \`\\my\` runs when Charles replies in chat; NEVER hand-write
+         [--via <text>] [--dry-run]  an inline import of answerDecision instead.
+  answers [--claim] [--json]      list this repo's recently answered decisions. --claim emits a
+                                  decision.pickup on each still-editable one: it says an agent has
+                                  read the answer and is acting on it, which is what stops
+                                  /decisions from offering to change it underneath you
+  sources [--apply] [--all]       reconcile the four FILE sources of \`\\my\` (work-loop state,
+          [--json]                HANDOFF.md, docs/tech-debt.md, openspec tasks) against the
+                                  queue. Without --apply it only reports what it would do.
+  dismiss <span_id> --reason R    write off a decision span that no longer needs anyone — blocked
+                                  and settled another way, or asked but never really a question.
+                                  Clears it from /decisions and --stalled.
+  ask-options <span_id>           hand a ruling back because it arrived with no options. The
+                                  wording is fixed (\`OPTIONS_REQUEST_TEXT\`) so it costs one
+                                  command, not a paragraph typed on a phone.
   clarify <span_id> --text T      answer a "this question needs more detail" request. What
                                   \`status --stalled\` tells you to run for clarification-requested.
   emit --kind K --actor A         append one point event (CI action, hooks, any shell)
@@ -123,7 +204,8 @@ const USAGE = `Usage: flow <open|ask|clarify|emit|close|ingest|run|step|viz|stat
   who [--json]                    one line per contended resource (dirty path / worktree /
                                   stash) with an owner verdict + a named action. Reads
                                   write-time evidence, not declared fields (TD-664).
-  status [--json]                 summarize every work item on the spine
+  status [--json]                 summarize every work item on the spine, then the done-not-yet-
+                                  accepted queue (what \`\\my\` has to sweep for otherwise)
   status --stalled [--json]       stall query; exits 3 when anything is stalled
                                   [--stall-minutes N] grace period (default ${DEFAULT_STALL_MINUTES})
   otlp [<work_id>] [--out P]      render the spine as OTLP/HTTP JSON. Without --out it POSTs to
@@ -174,6 +256,19 @@ function strFlag(value: unknown): string | null {
   return typeof value === 'string' && value.length > 0 ? value : null
 }
 
+/** Report one write and exit on its result. Spine writes are fail-open; the CLI still tells you. */
+function report(
+  res: { written?: boolean; errors?: { code: string; message?: string }[] },
+  extra: Record<string, unknown>,
+): never {
+  const ok = res.written === true
+  if (!ok && res.errors) {
+    process.stderr.write(`flow: ${res.errors.map((e) => e.message ?? e.code).join('; ')}\n`)
+  }
+  process.stdout.write(`${JSON.stringify({ written: ok, ...extra })}\n`)
+  process.exit(ok ? 0 : 1)
+}
+
 function numberFlag(value: unknown, fallback: number) {
   const n = typeof value === 'string' ? Number(value) : Number.NaN
   return Number.isFinite(n) ? n : fallback
@@ -186,10 +281,86 @@ if (cmd === 'open') {
   // string | boolean, so narrow rather than assert — a bare `??` lets `--actor` with no value
   // through as `true`.
   const actor = typeof args.actor === 'string' ? args.actor : 'unknown'
-  const { work_id, span_id } = openWork({ slug, actor })
+  const origin = strFlag(args.origin)
+  const title = strFlag(args.title)
+  // Rejected at the CLI rather than swallowed: `--origin` is something a caller typed on purpose,
+  // and a typo'd scheme would fold into a work item whose origin can never be joined against
+  // anything. Omitting the flag stays free — this refuses a WRONG origin, never a missing one.
+  if (origin) {
+    const parsed = parseRef(origin)
+    if (!parsed?.scheme) {
+      fail(
+        `open --origin must be <scheme>:<id> with scheme one of ${REF_SCHEMES.join(' | ')} (got: ${origin})`,
+      )
+    }
+  }
+  const { work_id, span_id } = openWork({ slug, actor, origin, title })
   process.stdout.write(`${JSON.stringify({ work_id, span_id })}\n`)
   process.stderr.write(`export CLADE_WORK_ID=${work_id}\n`)
   process.exit(0)
+}
+
+/**
+ * The terminal half of the work lifecycle: an agent claims `done`, a human answers `accept` / `drop`.
+ *
+ * Split across three verbs rather than one `flow close-work --state`, because who may write which is
+ * the whole point: the claim and the verdict come from different parties, and a single verb with a
+ * state flag invites the doing side to type its own acceptance.
+ */
+const WORK_VERBS = new Set(['done', 'accept', 'drop', 'park'])
+
+if (WORK_VERBS.has(cmd)) {
+  const workId = positionals[1] ?? strFlag(args['work-id'])
+  if (!workId) fail(`${cmd} needs a work id (or --work-id)`)
+  // An unknown work id would file a claim against a work item that does not exist — countable
+  // nowhere, visible nowhere, and indistinguishable from a typo in the id you meant to finish.
+  if (!knownWorkIds().has(workId)) {
+    fail(`no work item ${workId} on this spine (${eventsPath()}); \`flow open <slug>\` mints one`)
+  }
+  const actor = strFlag(args.actor) ?? 'unknown'
+
+  if (cmd === 'done') {
+    const verification = strFlag(args.verification)
+    // Refused here AND in emitEvent. Not redundancy: this one gives the person a usage message,
+    // the one in the library covers every other door into the same kind.
+    if (!verification) {
+      fail(
+        "done needs --verification '<how it was verified>'; an unverifiable done is what makes acceptance meaningless",
+      )
+    }
+    const res = markWorkDone({
+      work_id: workId,
+      verification,
+      verifiedBy: strFlag(args['verified-by']) ?? actor,
+      actor,
+      substrate: strFlag(args.substrate) ?? 'claude-code',
+    })
+    report(res, { work_id: workId, state: 'done' })
+  }
+
+  if (cmd === 'accept' || cmd === 'drop') {
+    const reason = strFlag(args.reason)
+    if (!reason) fail(`${cmd} needs --reason; a verdict with no stated basis is a silent close`)
+    const by = strFlag(args['verified-by']) ?? strFlag(args.actor) ?? 'human'
+    const res = (cmd === 'accept' ? acceptWork : dropWork)({
+      work_id: workId,
+      reason,
+      by,
+      substrate: strFlag(args.substrate) ?? 'manual',
+    })
+    report(res, { work_id: workId, state: cmd === 'accept' ? 'accepted' : 'dropped' })
+  }
+
+  const carrier = strFlag(args.carrier)
+  if (!carrier) fail('park needs --carrier (handoff:<section> | td:TD-NNN | tasks:<path>)')
+  const res = parkWork({
+    work_id: workId,
+    carrier,
+    note: strFlag(args.note),
+    actor,
+    substrate: strFlag(args.substrate) ?? 'claude-code',
+  })
+  report(res, { work_id: workId, parked_at: carrier })
 }
 
 if (cmd === 'emit') {
@@ -253,6 +424,237 @@ if (cmd === 'ask') {
   process.exit(0)
 }
 
+if (cmd === 'pending') {
+  // `\my` 的 CLI 門 —— 對話端要看的那份佇列。
+  //
+  // 讀的是 `/decisions` 那個畫面用的同一組函式（`buildServeSnapshot` → `buildDecisionQueue`
+  // → `measureRepo`，見 `vendor/review-gui-web/server/api/decisions.get.ts`）。同源是刻意的：
+  // 2026-08-27 的決策是「`\my` 是 `/decisions` 的 chat 互動版本」，兩邊各掃各的會讓同一個
+  // 待拍板事項在手機上與對話裡長得不一樣，而人會以為那是兩件事。
+  //
+  // Fleet 是預設：consumer repo 裡的問題照樣是同一個人要回的，只看 clade 會讓它們永遠不出現。
+  const root = process.env.CLADE_HOME ?? repoRoot()
+  const fleet = args['repo-only'] !== true
+  const snapshot = buildServeSnapshot({ cwd: root, cladeRoot: root, fleet })
+  // 分桶不再吃 fleet 旗標：`跨 repo` 那幾節在 `categoryOfHeading` 就被擋掉，兩邊看到的是
+  // 同一份佇列。`\my` 與 `/decisions` 的漂移由那裡收斂，不在這裡。
+  const queue = buildDecisionQueue(snapshot.spans)
+
+  // 現況量測**當下實跑**，NEVER 快取：`\my` 契約逐字要求它不得引用寫死的數字，而過期的
+  // dirty 數與新鮮的長得一模一樣。
+  const measurements = fleet ? fleetRoots(root).map(measureRepo) : [measureRepo(root)]
+
+  if (args.json === true) {
+    const fleetError = 'fleet_error' in snapshot ? { fleet_error: snapshot.fleet_error } : {}
+    process.stdout.write(`${JSON.stringify({ ...queue, measurements, ...fleetError }, null, 2)}\n`)
+    process.exit(queue.asked.length + queue.gated.length === 0 ? 2 : 0)
+  }
+
+  const lines: string[] = []
+  if ('fleet_error' in snapshot && snapshot.fleet_error) lines.push(`⚠ ${snapshot.fleet_error}`, '')
+
+  // 只有 ruling 編 Qn。其餘三類照 QnX 協定一律 bullet —— 編了號的東西讀起來就像回一個字母
+  // 就能結案，而 other-repo / irreversible / loop-structural 三類回不掉。
+  const ruling = queue.asked.filter((d) => d.category === 'ruling')
+  const rest = queue.asked.filter((d) => d.category !== 'ruling')
+
+  const hours = (m: number) => (m >= 60 ? `${(m / 60).toFixed(1)}h` : `${m}m`)
+  const where = (d: { repo: string | null }) => (d.repo ? `[${d.repo}] ` : '')
+
+  // 同 `pages/decisions.vue` 的 `optionText()`：`recommended` 欄是推薦的唯一來源，文字裡再寫
+  // 一個「（推薦）」就會渲染成兩個。requestDecision 從 2026-08-27 起會剝掉新寫入的，但脊椎是
+  // append-only，既有的 span 只能在渲染這一端容忍。
+  const optionText = (option: string) => option.replace(/\s*（推薦）\s*$/u, '')
+
+  // 問題原文可以是好幾行（從 HANDOFF 段落搬過來的那些就是）。一題一行才數得出有幾題。
+  const oneLine = (text: string, max = 78) => {
+    const flat = text.replace(/\s+/gu, ' ').trim()
+    return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat
+  }
+
+  if (ruling.length > 0) {
+    lines.push(`要我拍板（${ruling.length}）`, '')
+    ruling.forEach((d, i) => {
+      lines.push(`Q${i + 1}  ${where(d)}${oneLine(d.question)}  ${hours(d.age_minutes)}`)
+      d.options.forEach((option, oi) => {
+        const star =
+          d.recommended !== null && optionText(d.recommended) === optionText(option)
+            ? '（推薦）'
+            : ''
+        lines.push(`      ${String.fromCodePoint(65 + oi)}. ${optionText(option)}${star}`)
+      })
+      // NEVER 把「沒有選項」印成「這題要給值」——`\my` 契約要的是二擇一：附選項，**或**明說
+      // 要給值並逐項列出要填什麼。兩者都沒有的題目是沒寫完，把它渲染成第二種等於幫違規蓋章，
+      // 而讀的人會以為球在自己手上（2026-08-27 實測 38 題有 37 題落在這一格）。
+      if (d.needs_options) {
+        lines.push('      ⚠ 沒給選項也沒說要填什麼——這題現在答不了')
+        lines.push(`      要選項：node vendor/scripts/flow/flow.ts ask-options ${d.span_id}`)
+      }
+      // 寫法警示，印在題目下面而不是彙總在結尾：讀的人有兩種，而它們對這行的用途不同——
+      // 回答的人要知道「這題長成這樣不是我看錯」，下一個編那份檔的 agent 要知道「這一條是我
+      // 造成的、該去修哪」。彙總區塊只服務前者，第二種讀者不會往下捲。
+      //
+      // NEVER 升級成錯誤或擋下任何東西：HANDOFF 是高頻活文件，把寫法卡在寫入路徑上換到的是
+      // 一個 bypass flag，不是更好的 bullet。
+      if (d.lint.includes('near-miss-option-line')) {
+        lines.push(`      ✎ ${LINT_NOTES['near-miss-option-line']}`)
+      }
+      if (d.carrier) lines.push(`      答案落到：${d.carrier}`)
+      if (d.awaiting_clarification) {
+        lines.push(
+          `      ⚠ 你問了「${oneLine(d.clarifications.at(-1)?.text ?? '', 40)}」，還沒有人回`,
+        )
+      }
+      lines.push(`      span ${d.span_id}`)
+      lines.push('')
+    })
+  }
+
+  const BUCKET: Record<string, string> = {
+    'other-repo': '不在本 repo',
+    irreversible: '不可逆／人類 gate',
+    'loop-structural': 'loop 結構性推不動',
+  }
+  for (const [category, title] of Object.entries(BUCKET)) {
+    const rows = rest.filter((d) => d.category === category)
+    if (rows.length === 0) continue
+    lines.push(`${title}（${rows.length}）`, '')
+    for (const d of rows) {
+      lines.push(`  - ${where(d)}${oneLine(d.question)}  ${hours(d.age_minutes)}`)
+      if (d.lint.includes('near-miss-option-line')) {
+        lines.push(`    ✎ ${LINT_NOTES['near-miss-option-line']}`)
+      }
+    }
+    lines.push('')
+  }
+
+  const unknown = rest.filter((d) => !(d.category in BUCKET))
+  if (unknown.length > 0) {
+    lines.push(`未分類（${unknown.length}）`, '')
+    for (const d of unknown)
+      lines.push(`  - ${where(d)}${oneLine(d.question)}  ${hours(d.age_minutes)}`)
+    lines.push('')
+  }
+
+  if (queue.gated.length > 0) {
+    lines.push(`卡住、等人動手（${queue.gated.length}）`, '')
+    for (const g of queue.gated) {
+      lines.push(`  - ${where(g)}${g.label ?? g.kind}  ${hours(g.age_minutes)}`)
+      lines.push(`    → ${g.action}`)
+    }
+    lines.push('')
+  }
+
+  if (queue.asked.length + queue.gated.length === 0) lines.push('佇列是空的。', '')
+
+  const measured = measurementLine(measurements)
+  if (measured) lines.push(measured)
+
+  process.stdout.write(`${lines.join('\n')}\n`)
+  process.exit(queue.asked.length + queue.gated.length === 0 ? 2 : 0)
+}
+
+if (cmd === 'sources') {
+  // The file half of `\my`. `ask` is how an agent puts a question on the queue deliberately;
+  // this is how the questions that were only ever written into a file get there too.
+  //
+  // DRY BY DEFAULT. Applying is a write to every repo on the roster, and the failure mode of
+  // getting the dedup key wrong is a queue that grows without bound — so the safe invocation has
+  // to be the short one, and `--apply` has to be typed on purpose.
+  const apply = args.apply === true
+  const results =
+    args.all === true
+      ? syncFleet({ cladeRoot: process.env.CLADE_HOME ?? repoRoot(), dryRun: !apply })
+      : [syncDecisions({ repoRoot: findConsumerRoot(process.cwd()) ?? repoRoot(), dryRun: !apply })]
+
+  if (args.json === true) {
+    process.stdout.write(`${JSON.stringify({ applied: apply, results }, null, 2)}\n`)
+    process.exit(0)
+  }
+
+  let opened = 0
+  let retracted = 0
+  let amended = 0
+  let suppressed = 0
+  for (const result of results) {
+    suppressed += result.suppressed
+    const opens = result.actions.filter((a) => a.type === 'open')
+    const retracts = result.actions.filter((a) => a.type === 'retract')
+    const amends = result.actions.filter((a) => a.type === 'amend')
+    opened += opens.length
+    retracted += retracts.length
+    amended += amends.length
+    if (result.skipped) {
+      process.stdout.write(`${result.repo}\n  skipped: ${result.skipped}\n`)
+      continue
+    }
+    if (opens.length === 0 && retracts.length === 0 && amends.length === 0) continue
+    process.stdout.write(
+      `${result.repo}  (掃到 ${result.scanned} 件，已在佇列 ${result.tracked} 件)\n`,
+    )
+    for (const action of opens) {
+      process.stdout.write(`  + ${action.category.padEnd(15)} ${action.question.slice(0, 88)}\n`)
+    }
+    for (const action of retracts) {
+      process.stdout.write(`  - 撤回（來源已消失） ${action.source_id}\n`)
+    }
+    // Distinguished from `+` on purpose: an amend does NOT add a row to anybody's queue, it
+    // corrects one that is already there. Printing them alike would make a parser fix reaching
+    // the backlog look like a flood of new questions.
+    for (const action of amends) {
+      process.stdout.write(`  ~ 更新既有題目 ${action.question.slice(0, 78)}\n`)
+    }
+  }
+
+  const verb = apply ? '已' : '將會'
+  // `suppressed` is printed even when it is the only non-zero number: it is the count of items
+  // deliberately NOT re-asked because a human already ruled on them, and a silent suppression is
+  // indistinguishable from a scanner that stopped seeing the file at all.
+  if (suppressed > 0) process.stdout.write(`\n已答過、不再重問：${suppressed} 題\n`)
+  process.stdout.write(
+    `\n${verb}開 ${opened} 題、${verb}撤回 ${retracted} 題、${verb}更新 ${amended} 題`,
+  )
+  process.stdout.write(apply ? '\n' : '（加 --apply 才會真的寫入）\n')
+  // 2 = nothing to show, the same convention `status` uses.
+  process.exit(opened + retracted + amended === 0 ? 2 : 0)
+}
+
+if (cmd === 'dismiss') {
+  // The gated bucket's only exit. `answer` closes a question and `clarify` re-opens one, but a
+  // blocked span already ended — nothing can close it twice — so before this the only thing that
+  // ever cleared a gated card was unrelated work starting in the same work id. A question settled
+  // through a different route therefore sat on `/decisions` forever, and a queue that cannot be
+  // emptied is a queue that stops being read.
+  const spanId = positionals[1]
+  const reason = strFlag(args.reason)
+  if (!spanId || !reason) fail('dismiss needs <span_id> and --reason')
+  const res = dismissGated({ spanId, reason, dismissedBy: strFlag(args.actor) ?? 'human' })
+  if (!res.written) {
+    process.stderr.write(`${res.errors?.map((e) => e.code).join(',') ?? 'not written'}\n`)
+    process.exit(1)
+  }
+  process.stdout.write(`${JSON.stringify({ written: true, span_id: spanId })}\n`)
+  process.exit(0)
+}
+
+if (cmd === 'ask-options') {
+  // `\my` 端的那顆按鈕。文字不由人打，SoT 是 `OPTIONS_REQUEST_TEXT`——同一句話手抄 N 次不會
+  // 發生，而不發生的結果就是題目一直停在不可回答的狀態。
+  const spanId = positionals[1]
+  if (!spanId) fail('ask-options needs <span_id>')
+  const res = requestClarification({
+    spanId,
+    text: OPTIONS_REQUEST_TEXT,
+    actor: strFlag(args.actor) ?? 'charles',
+  })
+  if (!res.written) {
+    process.stderr.write(`${res.errors?.map((e) => e.code).join(',') ?? 'not written'}\n`)
+    process.exit(1)
+  }
+  process.stdout.write(`${JSON.stringify({ written: true, span_id: spanId })}\n`)
+  process.exit(0)
+}
+
 if (cmd === 'clarify') {
   // The other half of what `--stalled` prints for `clarification-requested`. Without this the
   // stall line names a state with no way out of it, which is worse than not reporting it: a
@@ -270,6 +672,93 @@ if (cmd === 'clarify') {
     process.exit(1)
   }
   process.stdout.write(`${JSON.stringify({ written: true, span_id: spanId })}\n`)
+  process.exit(0)
+}
+
+if (cmd === 'answer') {
+  // The chat surface's write path, and deliberately the SAME one the page uses.
+  //
+  // Before this existed, `\my` answered by hand-writing an inline `import { answerDecision }`
+  // and passing a `repoRoot` resolved by eye. That is a second implementation of repo resolution
+  // whose failure mode is not "one surface is broken" — it is an answer landing on another
+  // repo's spine and editing that repo's file, for a span that repo has never heard of.
+  // per rules/core/review-gui-surface.md § 待拍板佇列 MUST（寫入端共用同一組函式）.
+  const spanId = positionals[1]
+  const answerText = strFlag(args.answer)
+  if (!spanId || !answerText) fail("answer needs <span_id> and --answer '<text>'")
+  const home = process.env.CLADE_HOME ?? repoRoot()
+  const target = resolveRepoRootByName(strFlag(args.repo), home)
+  if (!target) {
+    // NEVER fall back to `home`: writing a consumer's answer into clade is the failure this
+    // whole path exists to prevent, and it would look like a success.
+    process.stderr.write(`flow: ${REPO_NOT_ON_ROSTER(strFlag(args.repo))}\n`)
+    process.exit(1)
+  }
+  const res = answerDecision({
+    spanId,
+    answer: answerText,
+    answeredBy: 'flow-cli',
+    via: strFlag(args.via) ?? 'Charles 在 chat 回答，由主線代填',
+    repoRoot: target,
+    dryRun: args['dry-run'] === true,
+  })
+  process.stdout.write(`${JSON.stringify(res)}\n`)
+  // `ok:false` is a real failure (no such decision / already resolved). `landed:false` is not:
+  // the span is closed and the answer is on the spine, only the carrier append did not happen —
+  // exit 0 with the reason printed, so a wrapper does not retry a write that already took.
+  process.exit(res.ok ? 0 : 1)
+}
+
+if (cmd === 'answers') {
+  // The entry point for reading answers, and the ONLY thing that can produce a hard lock.
+  //
+  // Until now an answer had no reader: it landed on a carrier and whoever happened to open that
+  // file next found it. That is why `/decisions` can offer to edit an answer at all — nothing on
+  // the spine ever said anybody had taken it. `--claim` is that missing half, and it is a claim in
+  // the literal sense: whoever runs it is saying "I have read these and I am acting on them", after
+  // which the surface stops offering the edit.
+  //
+  // Scoped to this repo on purpose. Claiming answers fleet-wide from one cwd would let a session
+  // freeze questions belonging to work it has never seen.
+  const answersRoot = process.cwd()
+  const queue = buildDecisionQueue(foldSpans(readEvents(answersRoot)), {})
+  const items = queue.answered.filter((item) => !item.locked)
+  const claim = args.claim === true
+
+  if (args.json === true) {
+    process.stdout.write(
+      `${JSON.stringify({ answered: queue.answered, claimed: claim }, null, 2)}\n`,
+    )
+  } else if (queue.answered.length === 0) {
+    process.stdout.write('近七天沒有已回答的待拍板。\n')
+  } else {
+    for (const item of queue.answered) {
+      const lock = item.locked ? `　🔒 ${item.locked.by} ${item.locked.actor}` : ''
+      const revised = item.revision_count > 0 ? `　（已修訂 ${item.revision_count} 次）` : ''
+      process.stdout.write(
+        `${item.span_id}  ${item.question}\n  → ${item.answer}${revised}${lock}\n`,
+      )
+    }
+  }
+
+  if (!claim) process.exit(0)
+  let claimed = 0
+  for (const item of items) {
+    const res = pickupDecision({
+      spanId: item.span_id,
+      actor: strFlag(args.actor) ?? 'agent',
+      note: strFlag(args.note) ?? null,
+      cwd: answersRoot,
+    })
+    if (res.written) claimed += 1
+    // Never fatal: a claim that could not be written must not stop the caller from reading the
+    // answers it came for. It only means the lock stays soft for that one.
+    else
+      process.stderr.write(
+        `claim 失敗 ${item.span_id}：${res.errors?.map((e) => e.code).join(',')}\n`,
+      )
+  }
+  process.stdout.write(`claimed ${claimed}/${items.length}\n`)
   process.exit(0)
 }
 
@@ -571,19 +1060,79 @@ if (cmd === 'status') {
       // the provenance journal (see stall.ts). Deliberately repo-local: `--all` above folds each
       // consumer's events.jsonl, and a fleet-wide answer would have to walk 14 working trees on
       // disk, which is a different question with a different cost.
-      ...findOwnershipStalls(buildWhoRows(findConsumerRoot() ?? repoRoot())),
+      //
+      // Skipped when `CLADE_FLOW_EVENTS` names a spine, because that env means "this run reads
+      // the events I point at" and a working tree is the one input it cannot redirect. Without
+      // the skip, a caller that supplied its own events still gets stalls derived from whatever
+      // the real checkout happens to look like right now — so the answer depends on the machine,
+      // not on the input, and `--stalled` can exit 3 on a spine that has nothing wrong with it.
+      //
+      // That is not hypothetical: it kept `flow status --stalled` red for every publish on any
+      // machine with a stray stash, and the two tests that assert the clean case were green on a
+      // fresh checkout and red on every real one. NEVER fix that shape by tidying the working
+      // tree — the environment dependency is the defect, and a green run bought by deleting a
+      // stash carries no information about the logic under test.
+      ...(process.env.CLADE_FLOW_EVENTS
+        ? []
+        : findOwnershipStalls(buildWhoRows(findConsumerRoot() ?? repoRoot()))),
     ]
-    process.stdout.write(args.json ? `${JSON.stringify(stalls, null, 2)}\n` : renderStalls(stalls))
-    process.exit(stalls.length > 0 ? 3 : 0)
+    // Attribution health rides along with the stall list because it shares the one consumer that
+    // actually reads this command unprompted: the SessionStart hook. A ratio printed anywhere
+    // else is a number nobody opens — the same failure the stall list itself was built to end.
+    const orphans = orphanRatio(events)
+    if (args.json) {
+      process.stdout.write(`${JSON.stringify({ stalls, orphan_ratio: orphans }, null, 2)}\n`)
+    } else {
+      process.stdout.write(renderStalls(stalls))
+      if (orphans.over_threshold) {
+        const pct = (orphans.ratio * 100).toFixed(0)
+        process.stdout.write(
+          `\n⚠ 歸因: 近 ${orphans.window_days} 天 ${orphans.minted}/${orphans.total} 筆事件（${pct}%）由本窗口內「新鑄」的 orphan work id 承載，` +
+            `門檻 ${(orphans.threshold * 100).toFixed(0)}%。\n` +
+            `    另有 ${orphans.inherited} 筆繼承自窗口之前就存在的 orphan id（pre-fix 血脈，等那些 pane 退場才會消，不計入門檻）。\n` +
+            `    這是「說不出這些事件屬於哪件工作」，不是某件事卡住。判一題：最近哪個入口鑄名退化了\n` +
+            `    （wt-helper add / handoff relay / notion triage / 建 tasks 檔）。判得出來當場修，判不出來登一條 TD。\n`,
+        )
+      }
+    }
+    // Exit 3 covers the orphan warning too. Gating it on stalls alone would make this print only
+    // on the days something else was already wrong — the hook stays silent at exit 0, so a
+    // warning that does not move the code is a warning nobody ever sees.
+    process.exit(stalls.length > 0 || orphans.over_threshold ? 3 : 0)
   }
 
   const rows = buildWorkItems(spans)
   if (args.json) {
-    process.stdout.write(`${JSON.stringify(rows, null, 2)}\n`)
-  } else {
-    for (const r of rows) {
+    // An object, not the bare array this printed before P2. `awaiting_acceptance` is the answer to
+    // a different question than "what is on the spine" — it is the queue a person has to drain —
+    // and a top-level array has nowhere to put it that JSON.stringify would actually serialize.
+    process.stdout.write(
+      `${JSON.stringify(
+        { work_items: rows, awaiting_acceptance: rows.filter((r) => r.state === 'done') },
+        null,
+        2,
+      )}\n`,
+    )
+    process.exit(0)
+  }
+
+  for (const r of rows) {
+    process.stdout.write(
+      `${r.work_id}  ${r.state.padEnd(9)} spans=${r.spans} in-flight=${r.in_flight} failed=${r.failed}  ${r.last_ts}${r.parked_at ? `  parked@${r.parked_at}` : ''}\n`,
+    )
+  }
+
+  // The done-not-yet-accepted queue, printed second and separately because it is the one bucket
+  // that needs a person: everything else on this list is either moving or already finished, while
+  // these are finished-as-claimed and waiting on a verdict nobody is prompted for otherwise.
+  const awaiting = rows.filter((r) => r.state === 'done')
+  if (awaiting.length > 0) {
+    process.stdout.write(`\n宣告完成、等驗收（${awaiting.length}）:\n`)
+    for (const r of awaiting) {
+      process.stdout.write(`    ${r.slug ?? r.work_id}  ${r.done_ts}\n`)
+      process.stdout.write(`      驗證: ${r.verification ?? '(none)'}\n`)
       process.stdout.write(
-        `${r.work_id}  spans=${r.spans} in-flight=${r.in_flight} failed=${r.failed}  ${r.last_ts}\n`,
+        `      node vendor/scripts/flow/flow.ts accept ${r.work_id} --reason '<why>'   (或 drop)\n`,
       )
     }
   }

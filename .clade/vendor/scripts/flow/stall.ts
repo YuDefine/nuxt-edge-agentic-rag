@@ -81,6 +81,39 @@ function labelOf(span: Span): string | null {
   return null
 }
 
+/**
+ * Blocked spans a human wrote off, keyed by the span the dismissal hangs from.
+ *
+ * Mirrors the decision queue's filter for the same reason `lastStartByWork` is shared: two copies
+ * of "is this one still waiting" let `/flow` and `/decisions` disagree about the same span, and a
+ * dismissal that clears the card but not the stall line teaches the reader that dismissing does
+ * nothing.
+ */
+function dismissedSpanIds(spans: Span[]): Set<string> {
+  const out = new Set<string>()
+  for (const s of spans) {
+    if (s.kind === 'decision.dismiss' && s.parent_span) out.add(s.parent_span)
+  }
+  return out
+}
+
+/**
+ * Work items a human has already ruled on (`work.accept` / `work.drop`).
+ *
+ * A failure inside a work item that was subsequently accepted or written off is history, not a
+ * stall: the verdict IS the answer to "either retry it or record why it was dropped", and a list
+ * that keeps demanding an action already taken is the kind of list people stop reading. Only
+ * `failed-open` is filtered by it — an unclosed span and an unharvested pane are facts about a
+ * process or a pane, and those do not stop being true because the work was written off.
+ */
+function ruledWorkIds(spans: Span[]): Set<string> {
+  const out = new Set<string>()
+  for (const s of spans) {
+    if (s.kind === 'work.accept' || s.kind === 'work.drop') out.add(s.work_id)
+  }
+  return out
+}
+
 /** Point events emitted by a reclaim, keyed by the dispatch span they close out. */
 function reclaimedSpanIds(spans: Span[]): Set<string> {
   const out = new Set<string>()
@@ -110,7 +143,7 @@ export const CLARIFICATION_REQUESTED_ACTION =
   '有人要求補充說明，答案不在他手上：node vendor/scripts/flow/flow.ts clarify <span_id> --text "<說明>"'
 
 export const AWAITING_ATTENDED_ACTION =
-  'blocked and nothing followed — this is the awaiting-attended state; an attended session has to pick it up'
+  "blocked and nothing followed — this is the awaiting-attended state; an attended session has to pick it up. If it was already settled another way, say so instead of leaving it here: node vendor/scripts/flow/flow.ts dismiss <span_id> --reason '<why it no longer needs anyone>'"
 
 /**
  * The latest start timestamp per work item, so "nothing happened after this failure" is checkable.
@@ -165,7 +198,9 @@ export function findStalls(
   }: { now?: number; thresholdMinutes?: number } = {},
 ): Stall[] {
   const reclaimed = reclaimedSpanIds(spans)
+  const dismissed = dismissedSpanIds(spans)
   const lastStart = lastStartByWork(spans)
+  const ruled = ruledWorkIds(spans)
   const { lastClarify, clarifyAge, clarifySince } = clarifyState(spans, now)
   const stalls: Stall[] = []
 
@@ -182,6 +217,19 @@ export function findStalls(
     }
 
     if (!span.end_ts) {
+      // A dismissed question is not stalled. `dismissed` is consulted here as well as in the
+      // ended-span branches below because an ASKED span never ends — `decision.dismiss` is its
+      // only exit once the question turns out never to have been one (see `buildDecisionQueue`).
+      // Without this the write-off would clear `/decisions` and leave the stall line standing,
+      // which is the split-brain the comment at `dismissedSpanIds` warns about, one branch over.
+      //
+      // Scoped to `decision.` on purpose, and NEVER widen it to every un-ended span. Dismissal is
+      // not closure: a `run` span that is still open is still open, and letting a dismissal
+      // silence it here would build the exact escape hatch this file exists to deny — the span
+      // would vanish from `--stalled` while remaining open forever, with no surface left that
+      // shows it. For work spans the exit stays `flow close`.
+      if (span.kind.startsWith('decision.') && dismissed.has(span.span_id)) continue
+
       // Checked before the overdue branch on purpose: an unanswered decision is ALSO an unclosed
       // span, so both shapes would fire for it. One span reports as one stall, and the specific,
       // actionable shape has to be the one that survives — `in-flight-overdue` would bury the only
@@ -254,7 +302,9 @@ export function findStalls(
     if (
       (span.outcome === 'fail' || span.outcome === 'blocked') &&
       endAge >= thresholdMinutes &&
-      (lastStart.get(span.work_id) ?? '') <= span.end_ts
+      (lastStart.get(span.work_id) ?? '') <= span.end_ts &&
+      !dismissed.has(span.span_id) &&
+      !ruled.has(span.work_id)
     ) {
       stalls.push({
         ...base,
