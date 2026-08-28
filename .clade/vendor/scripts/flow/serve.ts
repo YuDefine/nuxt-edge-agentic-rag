@@ -58,6 +58,9 @@ export const DEFAULT_PORT = 5180
  */
 function buildOwnership(cwd: string) {
   const root = findConsumerRoot(cwd) ?? cwd
+  // NEVER 在這裡打開 `transcriptEvidence`：這條路徑跑在 review-gui 的單一 event loop 上，
+  // 而那個掃描是全 corpus 的（2026-08-28 實測 1:42，期間整個 GUI 每一條路由都不回應）。
+  // 取證是 `flow who` 的事；該列的 action 字串會告訴讀者去哪裡拿。
   return { root, rows: buildWhoRows(root) }
 }
 

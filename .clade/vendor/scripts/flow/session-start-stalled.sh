@@ -3,7 +3,7 @@
 #
 # clade — SessionStart: 把 flow 的停滯清單印進 session 開頭。
 #
-# 為什麼是 hook 而不是「記得去看 /flow」：`flow status --stalled` 早就 exit 3、早就端出可直接
+# 為什麼是 hook 而不是「記得去看 /board」：`flow status --stalled` 早就 exit 3、早就端出可直接
 # 跑的 action，缺的從來不是判準，是**消費端** —— 沒有任何本來就會被 invoke 的入口順路讀到它。
 # 2026-08-27 實測：/flow 上掛著 67.3 小時與 33.6 小時的 unharvested pane、兩條 28.9 小時的待
 # 拍板，全部附了正確指令，全部沒人動。停滯的存活時間等於「下一次有人想到要開那一頁」。
@@ -93,7 +93,7 @@ STATUS=$?
 # 只在有東西要人動的時候出聲，否則這行本身就變成下一個被學會跳過的區塊。
 if [ "$STATUS" -eq 3 ]; then
   printf '\n[clade flow] 這棵樹有停滯，沒人會自動處理：\n\n%s\n' "$OUT" >&2
-  printf '完整畫面與一鍵複製：review-gui /flow　·　待拍板走 /decisions\n\n' >&2
+  printf '完整畫面與一鍵複製：review-gui /board　·　待拍板走 /decisions\n\n' >&2
 fi
 
 # --- board 一行（每次都印，刻意不綁 exit 3） ---------------------------------
