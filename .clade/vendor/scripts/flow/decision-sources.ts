@@ -125,8 +125,13 @@ export interface SourceItem {
 /**
  * `no-options-under-ruling` — a ruling with nothing to choose from. Unanswerable as written.
  * `near-miss-option-line` — lines that ALMOST parsed as options. Somebody meant to write a list.
+ * `belongs-on-review` — a HANDOFF row restating a live change's `## 人工檢查`. See `RESTATES_MANUAL_REVIEW`.
  */
-export type LintCode = 'no-options-under-ruling' | 'near-miss-option-line' | 'missing-evidence'
+export type LintCode =
+  | 'no-options-under-ruling'
+  | 'near-miss-option-line'
+  | 'missing-evidence'
+  | 'belongs-on-review'
 
 /**
  * The three fields a `review` row owes its reader, and the shape that makes them machine-checkable.
@@ -179,6 +184,8 @@ export const LINT_NOTES: Record<LintCode, string> = {
     '來源檔有幾行差一點就是選項——寫法不合，解析器沒收（見 decision-authoring）',
   'missing-evidence':
     '這條等驗收，但沒寫齊「改了什麼 / 證據 / 退回會怎樣」三欄，證據要可點（見 decision-authoring）',
+  'belongs-on-review':
+    '這條把 live change 的 `## 人工檢查` 寫成 HANDOFF 條目——逐條確認是 /review 的職責，不是這裡（見 decision-authoring）',
 }
 
 /**
@@ -801,10 +808,72 @@ function stripContainerPrefix(heading: string): string {
   )
 }
 
+/**
+ * The live change slugs under `openspec/changes/`, archive excluded.
+ *
+ * Archive is excluded for the same reason `scanTasks` excludes it, and the exclusion is what
+ * keeps the `deferred-user-only` route intact: <consumer-i>'s `#5 True-device verification` and
+ * <consumer-g>'s iPad-Safari row both name an ARCHIVED change, and both legitimately belong on
+ * /decisions because /review has no surface for a change that is already closed.
+ */
+function liveChangeNames(repoRoot: string): string[] {
+  const changesDir = join(repoRoot, 'openspec', 'changes')
+  if (!existsSync(changesDir)) return []
+  let entries: string[]
+  try {
+    entries = readdirSync(changesDir)
+  } catch {
+    return []
+  }
+  return entries.filter((name) => {
+    if (name === 'archive') return false
+    /*
+     * Four characters minimum, because the test below is a plain substring search over prose.
+     * A change slug is kebab-cased and multi-word in every measured instance; a two-letter
+     * directory name would match half the register by accident, and a false positive here hands
+     * a real question back to its author instead of asking it.
+     */
+    if (name.length < 4) return false
+    try {
+      return statSync(join(changesDir, name)).isDirectory()
+    } catch {
+      return false
+    }
+  })
+}
+
+/**
+ * Whether a register row is a restatement of a live change's `## 人工檢查`.
+ *
+ * Both halves are required, and neither is sufficient. 「人工檢查」 alone appears in prose all
+ * over these files (rules about it, TD entries about the parser that reads it); a change slug
+ * alone appears in every ordinary progress note. Together they name one thing: somebody wrote
+ * "go tick the manual checks on <live change>" into a register that cannot show them.
+ *
+ * That row is never Charles's to act on, in either state it can be in:
+ *
+ *   - The change IS on the /review inbox → the row is a duplicate of a ticket that already has
+ *     the preview, the evidence and the write-back. Two surfaces asking for the same tick.
+ *   - The change is NOT on the inbox → it is sitting in a bucket `changeBelongsOnReviewInbox`
+ *     refuses (`readyForEvidence`, `applyInProgress`), every one of which means the ball is on
+ *     the AGENT. The row is then a workaround for a gate, and answering it would be answering
+ *     past the gate.
+ *
+ * So the verdict is the same either way and the lint says one thing: fix the change, delete the
+ * row. NEVER weaken this to "flag only when the change is already on the inbox" — the measured
+ * instance (<consumer-g> `product-save-hardening`, 2026-08-28) was the second case, and it is the
+ * second case precisely BECAUSE the author could not get it onto /review.
+ */
+function restatesManualReview(text: string, liveChanges: readonly string[]): boolean {
+  if (!text.includes('人工檢查')) return false
+  return liveChanges.some((name) => text.includes(name))
+}
+
 export function scanHandoff(repoRoot: string): SourceItem[] {
   const rel = 'HANDOFF.md'
   const text = readIfPresent(join(repoRoot, rel))
   if (!text) return []
+  const liveChanges = liveChangeNames(repoRoot)
 
   const out: SourceItem[] = []
   for (const section of splitSections(text)) {
@@ -856,7 +925,12 @@ export function scanHandoff(repoRoot: string): SourceItem[] {
         category,
         carrier: rel,
         fingerprint: fingerprint(item.title, item.body),
-        lint: lintOf(category, options, nearMiss, item.body),
+        lint: [
+          ...lintOf(category, options, nearMiss, item.body),
+          ...(restatesManualReview(`${item.title}\n${item.body}`, liveChanges)
+            ? (['belongs-on-review'] as LintCode[])
+            : []),
+        ],
       })
     }
   }
@@ -886,6 +960,7 @@ export function scanTechDebt(repoRoot: string): SourceItem[] {
   const rel = 'docs/tech-debt.md'
   const text = readIfPresent(join(repoRoot, rel))
   if (!text) return []
+  const liveChanges = liveChangeNames(repoRoot)
 
   const out: SourceItem[] = []
   const lines = text.split(/\r?\n/)
@@ -917,7 +992,10 @@ export function scanTechDebt(repoRoot: string): SourceItem[] {
         category: 'ruling',
         carrier: rel,
         fingerprint: fingerprint(tdId, question, body),
-        lint: lintOf('ruling', options, nearMiss, body),
+        lint: [
+          ...lintOf('ruling', options, nearMiss, body),
+          ...(restatesManualReview(body, liveChanges) ? (['belongs-on-review'] as LintCode[]) : []),
+        ],
       })
       return
     }
@@ -934,7 +1012,13 @@ export function scanTechDebt(repoRoot: string): SourceItem[] {
         category: 'human-action',
         carrier: rel,
         fingerprint: fingerprint(tdId, gate[1], body),
-        lint: [],
+        /*
+         * `### 需要 Charles` in the debt register is the SAME admission path as `## 需要 Charles
+         * 執行` in HANDOFF — one register row asking a human to do something. Covering only the
+         * HANDOFF spelling would leave the identical row admissible one file over, which is the
+         * hole an author finds on the first retry.
+         */
+        lint: restatesManualReview(body, liveChanges) ? (['belongs-on-review'] as LintCode[]) : [],
       })
     }
   }

@@ -44,7 +44,11 @@ import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { scanDecisionSources, type SourceItem } from './decision-sources.ts'
-import { EVIDENCE_REQUEST_TEXT, OPTIONS_REQUEST_TEXT } from './decisions.ts'
+import {
+  EVIDENCE_REQUEST_TEXT,
+  OPTIONS_REQUEST_TEXT,
+  REVIEW_SURFACE_REQUEST_TEXT,
+} from './decisions.ts'
 import {
   amendDecision,
   answerClarification,
@@ -120,6 +124,15 @@ export interface SyncResult {
    * of asking will fix — escalate to the rule, not to more requests.
    */
   evidence_requested: number
+  /**
+   * Rows opened this run that restated a live change's `## 人工檢查`, and were handed straight back.
+   *
+   * Unlike its two siblings this one counts a ROUTING mistake, not a writing one: the row is not
+   * badly written, it is filed on a surface that cannot act on it. A number that stays high means
+   * changes keep failing to reach the /review inbox and authors keep routing around that — so the
+   * thing to fix is the bucket the changes are stuck in, NEVER the wording of the rows.
+   */
+  review_surface_requested: number
   /** Reasons this repo produced nothing, when that is not simply "nothing to do". */
   skipped: string | null
 }
@@ -271,6 +284,7 @@ export function syncDecisions({
     amended: 0,
     options_requested: 0,
     evidence_requested: 0,
+    review_surface_requested: 0,
     skipped: null,
   }
 
@@ -438,6 +452,22 @@ export function syncDecisions({
         })
         if (asked.written) result.evidence_requested += 1
       }
+
+      /*
+       * And for a row that belongs on /review. Keyed on the lint for the same reason as above —
+       * one detector, one verdict — and deliberately NOT gated on category: the restatement is a
+       * routing mistake, and it is the same mistake whether its author filed it as a doing
+       * (`## 需要 Charles 執行`) or as a thing to sign off (`## Ready for review`).
+       */
+      if (item.lint.includes('belongs-on-review')) {
+        const asked = requestClarification({
+          spanId,
+          text: REVIEW_SURFACE_REQUEST_TEXT,
+          actor,
+          cwd: repoRoot,
+        })
+        if (asked.written) result.review_surface_requested += 1
+      }
     }
     result.actions.push({
       type: 'open',
@@ -531,6 +561,7 @@ export function syncFleet({
         amended: 0,
         options_requested: 0,
         evidence_requested: 0,
+        review_surface_requested: 0,
         skipped: error instanceof Error ? error.message : String(error),
       }
     }

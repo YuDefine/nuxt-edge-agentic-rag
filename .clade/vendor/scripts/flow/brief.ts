@@ -104,10 +104,27 @@ function renderOverviewAt(board: Board, limits: Map<BoardLane, number>): string 
     const group = board.groups.find((g) => g.lane === lane)
     if (!group || group.cards.length === 0) continue
     const limit = limits.get(lane) ?? group.cards.length
-    const shown = group.cards.slice(0, Math.max(0, limit))
     out.push('', `${group.label} (${group.cards.length})`)
+
+    // Residue is summarised, never listed. An agent reading this at session start does not need
+    // 21 near-identical unharvested lines to learn there are 21 of them — it needs the count, the
+    // age, and the one command. The named cards below still get their full lines.
+    for (const pile of group.residue) {
+      const shape = pile.shape ?? 'failed-no-stall'
+      out.push(
+        `  ${shape}·${pile.substrate} — ${pile.cards.length} 件無名殘骸 · 最老 ${hours(pile.oldest_minutes)}`,
+      )
+      const first = pile.cards[0]?.action
+      if (first) out.push(`      → ${clamp(first, 110)}`)
+      if (pile.cards.length > 1) {
+        out.push(`      （其餘 ${pile.cards.length - 1} 件同型；逐條指令見 /board 該群組的複製鈕）`)
+      }
+    }
+
+    const listable = group.residue.length > 0 ? group.named : group.cards
+    const shown = listable.slice(0, Math.max(0, limit))
     for (const card of shown) out.push(...cardLines(card, 110))
-    const dropped = group.cards.length - shown.length
+    const dropped = listable.length - shown.length
     if (dropped > 0) out.push(`  …另 ${dropped} 件（${FULL_SET_HINT}）`)
   }
   const parked = board.counts.parked ?? 0

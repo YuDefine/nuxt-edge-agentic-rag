@@ -498,6 +498,31 @@ export const EVIDENCE_REQUEST_TEXT =
   '若這條其實不需要我驗收，就把它從 Ready for review 移走，並說明為什麼。'
 
 /**
+ * The third hand-back, for a register row that restated a live change's `## 人工檢查`.
+ *
+ * It names the measurement to run rather than asserting which of the two states the change is
+ * in, because the author is the one who can see it and the two states need opposite work: a row
+ * duplicating a ticket already on /review is deleted outright, while a row standing in for a
+ * change stuck in a Claude-ball bucket is deleted only AFTER the evidence that gets it onto the
+ * inbox exists. Telling the author "delete this" without that split would trade a visible
+ * workaround for an invisible gap.
+ *
+ * The last line is there because it is the cheapest way to make the row disappear and the one
+ * that destroys what the row was protecting: `agent-self-verification` MUST 8 says a `[x]`
+ * nobody human confirmed is false-green, and a hand-back that quietly rewards ticking would
+ * manufacture exactly those.
+ */
+export const REVIEW_SURFACE_REQUEST_TEXT =
+  '這條把 live change 的 `## 人工檢查` 寫成了登記簿條目，於是它出現在 /decisions——' +
+  '而逐條看證據、勾 `[x]`、寫 `[issue]` 退回是 /review 的職責，/decisions 三樣都做不到。' +
+  '請先實跑 `listPendingChanges(<repo>)` 看那個 change 的 bucket：' +
+  '`changeBelongsOnReviewInbox` 回 true（它已經在 /review 上）→ 這條是重複，直接刪掉；' +
+  '回 false（`readyForEvidence` / `applyInProgress` 這類 Claude 球的桶）→ 球還在你這邊，' +
+  '補齊缺的 evidence 讓它進 inbox，再刪掉這條。' +
+  'NEVER 代勾 `## 人工檢查` 的 checkbox 來讓這條消失——沒有人確認的 `[x]` 一律是 false-green' +
+  '（per `agent-self-verification` MUST 8）。'
+
+/**
  * Whether this question still has to be handed back before anybody can pick an answer.
  *
  * Only `ruling` — the other buckets are states, not questions, and options on them would be an
