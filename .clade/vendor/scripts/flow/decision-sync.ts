@@ -44,7 +44,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { scanDecisionSources, type SourceItem } from './decision-sources.ts'
-import { OPTIONS_REQUEST_TEXT } from './decisions.ts'
+import { EVIDENCE_REQUEST_TEXT, OPTIONS_REQUEST_TEXT } from './decisions.ts'
 import {
   amendDecision,
   answerClarification,
@@ -112,6 +112,14 @@ export interface SyncResult {
    * the contract, which is a writing problem no amount of asking will fix.
    */
   options_requested: number
+  /**
+   * Reviews opened this run that arrived with no openable evidence, and were handed straight back.
+   *
+   * The review-side twin of `options_requested`, and read the same way: a number that stays high
+   * means entries keep being written against the contract, which is a writing problem no amount
+   * of asking will fix — escalate to the rule, not to more requests.
+   */
+  evidence_requested: number
   /** Reasons this repo produced nothing, when that is not simply "nothing to do". */
   skipped: string | null
 }
@@ -262,6 +270,7 @@ export function syncDecisions({
     suppressed: 0,
     amended: 0,
     options_requested: 0,
+    evidence_requested: 0,
     skipped: null,
   }
 
@@ -413,6 +422,22 @@ export function syncDecisions({
         })
         if (asked.written) result.options_requested += 1
       }
+
+      /*
+       * Same move for a review that arrived with nothing to look at.
+       *
+       * Keyed on the LINT the scan already computed, never on a second evidence check here — one
+       * detector, one verdict. `lintOf` is the only thing that decides what "has evidence" means.
+       */
+      if (item.category === 'review' && item.lint.includes('missing-evidence')) {
+        const asked = requestClarification({
+          spanId,
+          text: EVIDENCE_REQUEST_TEXT,
+          actor,
+          cwd: repoRoot,
+        })
+        if (asked.written) result.evidence_requested += 1
+      }
     }
     result.actions.push({
       type: 'open',
@@ -505,6 +530,7 @@ export function syncFleet({
         suppressed: 0,
         amended: 0,
         options_requested: 0,
+        evidence_requested: 0,
         skipped: error instanceof Error ? error.message : String(error),
       }
     }

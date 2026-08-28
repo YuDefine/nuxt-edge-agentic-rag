@@ -1,5 +1,5 @@
 {
-  "version": "1.11.91",
+  "version": "1.11.92",
   "rules_projection": "symlink",
   "consumer_id": "nuxt-edge-agentic-rag",
   "modules": {
@@ -8,7 +8,10 @@
     "db-runtime": "cf-workers",
     "runtime": "cf-workers",
     "framework": "nuxt",
-    "domain": []
+    "domain": [],
+    "capabilities": [
+      "openspec"
+    ]
   },
   "localHooks": [
     "post-migration-gen-types.sh"

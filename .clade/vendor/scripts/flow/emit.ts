@@ -142,7 +142,12 @@ function identity(cwd) {
  * dispatchers and gates whose own contract outranks telemetry.
  */
 export interface FlowEventInput {
-  work_id: string
+  /**
+   * Null only for `kind: 'session_summary'`, and `validateFlowEvent` holds the biconditional in
+   * both directions. Everything else mints an `orphan-` id rather than going without one — see
+   * `resolveWorkId`.
+   */
+  work_id: string | null
   span_id: string
   parent_span?: string | null
   phase: 'start' | 'end' | 'point'
@@ -542,8 +547,14 @@ export interface RequestDecisionInput {
   /** Ordered options; put the recommended one first, matching the `\my` output contract. */
   options?: string[]
   recommended?: string | null
-  /** `\my` bucket: which of the four categories this belongs to. */
-  category?: 'ruling' | 'other-repo' | 'irreversible' | 'loop-structural'
+  /**
+   * `\my` bucket. `ruling` and `review` are the answerable pair; the rest are doings and states.
+   *
+   * `'human-action'` replaced `'irreversible'` on 2026-08-28. The old token is not accepted for
+   * NEW spans — but spans already on the append-only spine carry it, and both render surfaces
+   * group those into the same 要我動手 bucket rather than rewriting history.
+   */
+  category?: 'ruling' | 'review' | 'other-repo' | 'human-action' | 'loop-structural'
   /** Where the answer must land once given — a TD id, HANDOFF section, or tasks/ path. */
   carrier?: string | null
   work_id?: string | null
@@ -562,7 +573,35 @@ export interface RequestDecisionInput {
  * `ask` CLI、`decision-sync`、`herdr-session-handoff` 三個入口都經過這個函式。
  */
 function stripOptionLetter(text: string): string {
-  return text.replace(/^[A-Za-z][.、)）]\s*/, '')
+  return (
+    text
+      // `A. ` / `B、` / `C）`，以及 `A（推薦）…` —— 後者是 [[decision-authoring]] 正向契約裡
+      // 逐字示範的寫法，而字母後面接的是**開**括號，2026-08-28 之前的字元類收不到它，於是
+      // 卡片上會疊成 `A. A（推薦）留 X`。
+      .replace(/^\s*[A-Za-z](?:\s*[.、)）:：]|(?=\s*[（(]))\s*/u, '')
+      // 推薦與否是 `recommended` 欄的事。文字裡再留一個前綴標記，剝完字母就會變成
+      // `A. （推薦）留 X`，而卡片右邊已經有一個「推薦」了。
+      .replace(/^[（(]\s*推薦\s*[)）]\s*/u, '')
+      .trim()
+  )
+}
+
+/**
+ * 整組剝字母，而不是逐條剝。
+ *
+ * 契約寫法是 `A（推薦）第一案` / `B 第二案`——第二種的字母後面只有一個空白，逐條看時
+ * 與正常英文句子（`A better approach …`）無法區分。整組看就可以：**每一條**都以字母開頭、
+ * 且字母**從 A 起連續**時，那是編號不是內容。任一條不符就退回逐條的保守剝法。
+ */
+function stripGroupLetters(options: string[]): string[] {
+  const prefixed = options.map((o) =>
+    /^\s*([A-Za-z])(?:[\s.、)）:：]|[（(])/u.exec(o)?.[1]?.toUpperCase(),
+  )
+  const numbered =
+    options.length >= 2 &&
+    prefixed.every((letter, index) => letter === String.fromCodePoint(65 + index))
+  if (!numbered) return options.map(stripOptionLetter)
+  return options.map((o) => stripOptionLetter(o.replace(/^\s*[A-Za-z]\s+/u, '')))
 }
 
 export function requestDecision({
@@ -578,9 +617,17 @@ export function requestDecision({
   payload = {},
   cwd,
 }: RequestDecisionInput): SpanHandle {
-  const cleanOptions = options.map(stripOptionLetter)
-  // `recommended` 要跟著剝，否則正規化後的選項比對不回它，推薦標記會整個消失。
-  const cleanRecommended = recommended === null ? null : stripOptionLetter(recommended)
+  const cleanOptions = stripGroupLetters(options)
+  // `recommended` 要跟著剝，否則正規化後的選項比對不回它，推薦標記會整個消失。整組同進退：
+  // 呼叫端幾乎都把推薦項的**同一串文字**同時給 options 與 recommended，各剝各的會在整組
+  // 剝法命中時分岔。
+  const recommendedIndex = recommended === null ? -1 : options.indexOf(recommended)
+  const cleanRecommended =
+    recommended === null
+      ? null
+      : recommendedIndex >= 0
+        ? cleanOptions[recommendedIndex]
+        : stripGroupLetters([recommended, ...options])[0]
 
   return startSpan({
     work_id,
@@ -598,6 +645,61 @@ export function requestDecision({
     },
     cwd,
   })
+}
+
+/**
+ * Has a decision carrying this dedupe key ever been asked?
+ *
+ * Asks the spine rather than keeping local bookkeeping, for the same reason `spanIsClosed` does:
+ * the asker is a fresh process on every run (`audit-tech-debt-hygiene` runs per propagate), so
+ * anything it remembers locally is gone by the next run.
+ *
+ * **Deliberately counts closed decisions too.** A recurring probe that fires, gets answered, and
+ * then fires again on the next run is exactly the warning fatigue a fire-once queue exists to
+ * prevent — an answered question is *more* reason not to re-ask it, not less. When the underlying
+ * criterion genuinely changes, the key changes with it (callers derive it from the probe body),
+ * and that is the only intended path back onto the queue.
+ *
+ * Fail-open answers `null` — "cannot prove it was asked". A duplicate question is visible and
+ * dismissable; a swallowed one is invisible, which is the worse of the two.
+ */
+export function findDecisionByDedupeKey(key: string, cwd = process.cwd()): string | null {
+  try {
+    const hit = readEvents(cwd).find(
+      (e) =>
+        e.phase === 'start' &&
+        e.kind === 'decision.request' &&
+        (e.payload as Record<string, unknown> | undefined)?.dedupe_key === key,
+    )
+    return hit ? String(hit.span_id) : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * `requestDecision`, but at most once per `dedupe_key` for the life of the spine.
+ *
+ * For callers that re-evaluate the same condition on a schedule and must not re-ask on every
+ * pass. Returns the pre-existing span id with `asked: false` when the key has been seen before,
+ * so the caller can report "already queued" instead of silently doing nothing.
+ *
+ * Separate from `requestDecision` rather than an extra parameter on it: every existing caller
+ * asks a question that is genuinely new each time, and giving them a dedupe path they do not
+ * want is how a one-off question gets silently swallowed.
+ */
+export function requestDecisionOnce(input: RequestDecisionInput & { dedupe_key: string }): {
+  span_id: string
+  asked: boolean
+} {
+  const { dedupe_key, ...rest } = input
+  const existing = findDecisionByDedupeKey(dedupe_key, input.cwd)
+  if (existing) return { span_id: existing, asked: false }
+  const handle = requestDecision({
+    ...rest,
+    payload: { ...rest.payload, dedupe_key },
+  })
+  return { span_id: handle.span_id, asked: true }
 }
 
 /**
@@ -902,6 +1004,16 @@ export function amendDecision({
     return { written: false, errors: [{ code: 'already-answered' }] }
   }
   if (!reason.trim()) return { written: false, errors: [{ code: 'reason-required' }] }
+  // 同 `requestDecision`：字母是渲染層的東西。amend 走的是另一條寫入路徑，各剝各的就會讓
+  // 同一組選項在「原本就帶」與「事後補上」兩種來源長得不一樣。
+  const cleanOptions = stripGroupLetters(options)
+  const recommendedIndex = recommended === null ? -1 : options.indexOf(recommended)
+  const cleanRecommended =
+    recommended === null
+      ? null
+      : recommendedIndex >= 0
+        ? cleanOptions[recommendedIndex]
+        : stripGroupLetters([recommended, ...options])[0]
   return emitEvent({
     work_id: handle.work_id,
     span_id: newSpanId(),
@@ -911,8 +1023,8 @@ export function amendDecision({
     actor,
     substrate: handle.substrate,
     payload: {
-      options,
-      recommended,
+      options: cleanOptions,
+      recommended: cleanRecommended,
       ...(question === null ? {} : { question }),
       ...(detail === null ? {} : { detail }),
       ...(lint === null ? {} : { lint }),

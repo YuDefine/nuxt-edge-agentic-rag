@@ -8,7 +8,7 @@
 //
 //   flow open <slug> [--actor <a>]      mint W-<date>-<slug>, emit the work.open point event
 //   flow emit --kind K --actor A        one point event from any shell (the CI action's door)
-//   flow ask --question Q [--options ...]   put a question on the decision queue
+//   flow ask --question Q [--option ...]    put a question on the decision queue
 //   flow pending [--json] [--repo-only]  the decision queue as `\my` renders it in chat
 //   flow sources [--apply] [--all]     read HANDOFF / TD / state.json / tasks into the queue
 //   flow ask-options <span_id>          hand a ruling back: it arrived with no options
@@ -39,6 +39,7 @@ import {
   answerClarification,
   dismissGated,
   dropWork,
+  amendDecision,
   emitEvent,
   endSpan,
   eventsPath,
@@ -59,12 +60,33 @@ import {
 } from './emit.ts'
 import { REF_SCHEMES, answerDecision, parseRef } from './answer.ts'
 import { LINT_NOTES, OPTIONS_REQUEST_TEXT, buildDecisionQueue } from './decisions.ts'
+import { isAnswerable } from './decision-sources.ts'
+
+/** `flow ask --category` 的驗收。無效值 fail closed，NEVER 靜默降級成 `ruling`。 */
+const ASK_CATEGORIES = [
+  'ruling',
+  'review',
+  'other-repo',
+  'human-action',
+  'loop-structural',
+] as const
+
+function askCategory(raw: string | null | undefined): (typeof ASK_CATEGORIES)[number] {
+  if (!raw) return 'ruling'
+  const hit = ASK_CATEGORIES.find((c) => c === raw)
+  if (!hit) {
+    throw new Error(`--category 只收 ${ASK_CATEGORIES.join(' / ')}，收到「${raw}」`)
+  }
+  return hit
+}
 import {
   REPO_NOT_ON_ROSTER,
   buildFleetSnapshot,
   renderFleetStatus,
   resolveRepoRootByName,
 } from './fleet.ts'
+import { QUESTION_DIR } from '../review-gui.question-page.ts'
+import { inlineOptionLetters, inlineOptionsRefusal } from './inline-options.ts'
 import { measureRepo, measurementLine } from './measure.ts'
 import { DEFAULT_OTLP_ENDPOINT, countSpans, postOtlp, toOtlpPayload } from './otlp-export.ts'
 import { loadSpec, runCommand, runNode, runSpec } from './run.ts'
@@ -79,6 +101,8 @@ import {
 } from './spine.ts'
 import { DEFAULT_STALL_MINUTES, findOwnershipStalls, findStalls, renderStalls } from './stall.ts'
 import { readWaves, renderFleetMarkdown, renderWorkMarkdown } from './viz-md.ts'
+import { buildBoardLanes } from './board.ts'
+import { buildDossier, dossierJson, overviewJson, renderDossier, renderOverview } from './brief.ts'
 import { buildWhoRows, renderWho } from './who.ts'
 
 // parseArgs folds everything after `--` into positionals, losing the boundary, so the split has
@@ -122,9 +146,16 @@ const { values: args, positionals } = parseArgs({
     // `ask` / `clarify` flags — 同上一段註解的理由，未宣告會變成 true 並把值推進 positionals。
     question: { type: 'string' },
     options: { type: 'string' },
+    // 可重複。`--options 'A,B'` 的逗號切法對「選項本文含逗號」無解，而拍板題的選項是整句
+    // 「這樣做會怎樣」，含逗號是常態。multiple 讓一條選項一個旗標，NEVER 再靠切字串。
+    option: { type: 'string', multiple: true },
     recommended: { type: 'string' },
     category: { type: 'string' },
     carrier: { type: 'string' },
+    // 互動決策頁。同上：未宣告的話 `--question-page .impeccable/questions/x.json` 會變成
+    // question-page=true、路徑落進 positionals，而題目照樣進佇列 —— 只是點開來沒有頁。
+    'question-page': { type: 'string' },
+    'question-page-label': { type: 'string' },
     text: { type: 'string' },
     // `answers` flag. Boolean, but declared for the same reason as the rest: it is the difference
     // between reading answers and freezing them, and that is not a distinction to leave to
@@ -153,7 +184,7 @@ const { values: args, positionals } = parseArgs({
   strict: false,
 })
 
-const USAGE = `Usage: flow <open|done|accept|drop|park|ask|pending|answer|answers|sources|ask-options|clarify|dismiss|emit|close|ingest|run|step|viz|status|who|otlp> [args]
+const USAGE = `Usage: flow <open|done|accept|drop|park|ask|pending|answer|answers|sources|amend-options|ask-options|clarify|dismiss|emit|close|ingest|run|step|viz|status|who|brief|otlp> [args]
 
   open <slug> [--actor <actor>]   mint a work id and emit its work.open event
   done <work_id>                  claim the work item is finished. --verification is REQUIRED and
@@ -164,7 +195,16 @@ const USAGE = `Usage: flow <open|done|accept|drop|park|ask|pending|answer|answer
   park <work_id> --carrier C      the work stopped at a prose carrier awaiting a successor
        [--note N]                 (handoff:<section> | td:TD-NNN | tasks:<path>)
   ask --question Q                put a question on the decision queue (/decisions renders it)
-      [--options 'A,B'] [--recommended R] [--carrier PATH] [--category C] [--actor A]
+      [--question-page P]          the question is answered on an impeccable decision page, not by
+                                   picking an option: P is the payload JSON, repo-relative under
+                                   .impeccable/questions/. /decisions spawns it on open and frames
+                                   it. NEVER pass a port — the server is started when the card is
+                                   opened, which may be hours later.
+      [--question-page-label L]    one line saying what that page is choosing
+      [--option '<一句話>']...     選項一條一個旗標（推薦用這個；--options 'A,B' 仍可用）。
+      [--recommended R]            問句本文自己寫了 (A)/(B) 卻沒帶選項時，ask 會拒絕：那樣
+      [--carrier PATH]             /decisions 只畫得出一個空白輸入框。
+      [--category C] [--actor A]
   pending [--json]                the decision queue, rendered the way \`\\my\` reads it in chat:
           [--repo-only]           only \`ruling\` gets a Qn, the other buckets are bullets, and the
                                   現況量測 line is measured live. Fleet by default. exit 2 = empty.
@@ -182,6 +222,10 @@ const USAGE = `Usage: flow <open|done|accept|drop|park|ask|pending|answer|answer
   dismiss <span_id> --reason R    write off a decision span that no longer needs anyone — blocked
                                   and settled another way, or asked but never really a question.
                                   Clears it from /decisions and --stalled.
+  amend-options <span_id>         supply the options a ruling should have arrived with, without
+      --option '<一句話>'...       re-asking it (a re-ask retracts the answer history). This is
+      [--recommended R]            what \`ask-options\` asks for; NEVER hand-write an inline import
+      --reason '<why>'             of amendDecision instead.
   ask-options <span_id>           hand a ruling back because it arrived with no options. The
                                   wording is fixed (\`OPTIONS_REQUEST_TEXT\`) so it costs one
                                   command, not a paragraph typed on a phone.
@@ -201,6 +245,11 @@ const USAGE = `Usage: flow <open|done|accept|drop|park|ask|pending|answer|answer
   viz timeline [<work_id>]        span waterfall for a work item (default: most recent)
   viz --md [<work_id>] [--out P]  write docs/flow/<work_id>.md (mermaid graph + gantt)
   viz --fleet [--waves N]         write docs/flow/fleet.md from the propagate ledger
+  brief [--json]                  the board: 待你 / 受阻 / 進行中 / 擱置 / 已收, under a hard
+        [--work-id W]             token budget. Without --work-id it is the session-opening
+                                  overview; with one it is that work item's dossier (state, lane,
+                                  origin, last 10 events, pending decisions, dispatch trail,
+                                  session chain, stall + action). Same lane function /board reads.
   who [--json]                    one line per contended resource (dirty path / worktree /
                                   stash) with an owner verdict + a named action. Reads
                                   write-time evidence, not declared fields (TD-664).
@@ -406,16 +455,50 @@ if (cmd === 'ask') {
   const question = strFlag(args.question)
   if (!question) fail('ask needs --question')
   const rawOptions = strFlag(args.options)
+  const options = [
+    ...(Array.isArray(args.option) ? args.option : []).map((o) => String(o).trim()),
+    ...(rawOptions ? rawOptions.split(',').map((o) => o.trim()) : []),
+  ].filter(Boolean)
+  // 問句本文自己列了 (A)/(B)，卻沒有一條選項進 payload —— 那題會以一個空白輸入框出現在手機
+  // 上，看起來可以回答，實際上答的人得自己把字母打回去。拒絕，而不是替它猜：猜錯的選項被點
+  // 下去就是一個沒人想要的答案被落檔（同 [[decision-authoring]] 對散文的 NEVER）。
+  //
+  // 互動決策頁（`--question-page`）的選項是頁面上的卡片，不是 `options[]`。路徑在這裡就驗，
+  // 而不是等到 `/decisions` 點開才發現 —— 那時發問的人已經走了。
+  const questionPagePath = strFlag(args['question-page'])
+  const questionPage = questionPagePath
+    ? {
+        payload_path: questionPagePath,
+        label: strFlag(args['question-page-label']) ?? null,
+      }
+    : null
+  if (questionPage && !questionPage.payload_path.startsWith(`${QUESTION_DIR}/`)) {
+    fail(
+      `--question-page 必須是 ${QUESTION_DIR}/ 底下的 repo-relative 路徑（收到 ${questionPage.payload_path}）`,
+    )
+  }
+
+  // 只擋這一個形狀。「這題要給值」的題本來就沒有選項，本文裡也不會有從 A 起連續的字母。
+  // 帶決策頁的題同樣豁免：它的選項在頁面上，把它們抄成 `--option` 就是把卡片壓成一行字。
+  if (options.length === 0 && !questionPage) {
+    const letters = inlineOptionLetters(question)
+    if (letters.length > 0) {
+      fail(inlineOptionsRefusal(letters, letters.map((l) => `--option '${l} …'`).join(' ')))
+    }
+  }
   const handle = requestDecision({
     question,
-    options: rawOptions
-      ? rawOptions
-          .split(',')
-          .map((o) => o.trim())
-          .filter(Boolean)
-      : [],
+    options,
+    ...(questionPage ? { payload: { question_page: questionPage } } : {}),
     recommended: strFlag(args.recommended) ?? null,
-    category: (strFlag(args.category) ?? 'ruling') as 'ruling',
+    /*
+     * 驗過再送，NEVER 用窄 cast 把任何字串當成 `ruling` 塞進 span。
+     *
+     * 原本寫 `as 'ruling'`，於是 `--category review` 會被型別系統當成 ruling 收下、實際上把
+     * 使用者給的字串原樣寫進 payload——編譯期靜音、執行期靜音，而錯的 category 決定這一列在
+     * 兩個渲染端落在哪一桶、編不編 Qn。詞彙表擴充時這種 cast 不會報錯，這正是它的問題。
+     */
+    category: askCategory(strFlag(args.category)),
     carrier: strFlag(args.carrier) ?? null,
     actor: strFlag(args.actor) ?? 'unknown',
     work_id: strFlag(args['work-id']) ?? null,
@@ -454,9 +537,17 @@ if (cmd === 'pending') {
   if ('fleet_error' in snapshot && snapshot.fleet_error) lines.push(`⚠ ${snapshot.fleet_error}`, '')
 
   // 只有 ruling 編 Qn。其餘三類照 QnX 協定一律 bullet —— 編了號的東西讀起來就像回一個字母
-  // 就能結案，而 other-repo / irreversible / loop-structural 三類回不掉。
-  const ruling = queue.asked.filter((d) => d.category === 'ruling')
-  const rest = queue.asked.filter((d) => d.category !== 'ruling')
+  // 就能結案，而 human-action / other-repo / loop-structural 三類回不掉。
+  //
+  // 分組鍵用 `bucket` 不用 `category`：spine 是 append-only，退役的 `irreversible` 詞彙還留在
+  // 既有 span 上，`bucket` 在 `buildDecisionQueue` 把它摺進 human-action——一次、兩個渲染端共用。
+  //
+  // `ruling` 與 `review` 是可回答的兩類，只有它們編 `Qn`，而且編號**連續**跑過去，
+  // 「回 Q1A Q2通過」才是一個平坦的命名空間。NEVER 在第二組重新從 Q1 起算。
+  const ruling = queue.asked.filter((d) => d.bucket === 'ruling')
+  const review = queue.asked.filter((d) => d.bucket === 'review')
+  const answerable = [...ruling, ...review]
+  const rest = queue.asked.filter((d) => !isAnswerable(d.bucket))
 
   const hours = (m: number) => (m >= 60 ? `${(m / 60).toFixed(1)}h` : `${m}m`)
   const where = (d: { repo: string | null }) => (d.repo ? `[${d.repo}] ` : '')
@@ -472,55 +563,74 @@ if (cmd === 'pending') {
     return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat
   }
 
-  if (ruling.length > 0) {
-    lines.push(`要我拍板（${ruling.length}）`, '')
-    ruling.forEach((d, i) => {
-      lines.push(`Q${i + 1}  ${where(d)}${oneLine(d.question)}  ${hours(d.age_minutes)}`)
-      d.options.forEach((option, oi) => {
-        const star =
-          d.recommended !== null && optionText(d.recommended) === optionText(option)
-            ? '（推薦）'
-            : ''
-        lines.push(`      ${String.fromCodePoint(65 + oi)}. ${optionText(option)}${star}`)
-      })
-      // NEVER 把「沒有選項」印成「這題要給值」——`\my` 契約要的是二擇一：附選項，**或**明說
-      // 要給值並逐項列出要填什麼。兩者都沒有的題目是沒寫完，把它渲染成第二種等於幫違規蓋章，
-      // 而讀的人會以為球在自己手上（2026-08-27 實測 38 題有 37 題落在這一格）。
-      if (d.needs_options) {
-        lines.push('      ⚠ 沒給選項也沒說要填什麼——這題現在答不了')
-        lines.push(`      要選項：node vendor/scripts/flow/flow.ts ask-options ${d.span_id}`)
-      }
-      // 寫法警示，印在題目下面而不是彙總在結尾：讀的人有兩種，而它們對這行的用途不同——
-      // 回答的人要知道「這題長成這樣不是我看錯」，下一個編那份檔的 agent 要知道「這一條是我
-      // 造成的、該去修哪」。彙總區塊只服務前者，第二種讀者不會往下捲。
-      //
-      // NEVER 升級成錯誤或擋下任何東西：HANDOFF 是高頻活文件，把寫法卡在寫入路徑上換到的是
-      // 一個 bypass flag，不是更好的 bullet。
-      if (d.lint.includes('near-miss-option-line')) {
-        lines.push(`      ✎ ${LINT_NOTES['near-miss-option-line']}`)
-      }
-      if (d.carrier) lines.push(`      答案落到：${d.carrier}`)
-      if (d.awaiting_clarification) {
-        lines.push(
-          `      ⚠ 你問了「${oneLine(d.clarifications.at(-1)?.text ?? '', 40)}」，還沒有人回`,
-        )
-      }
-      lines.push(`      span ${d.span_id}`)
-      lines.push('')
-    })
-  }
+  answerable.forEach((d, i) => {
+    // Group heading, emitted at the boundary rather than by slicing the list into two loops:
+    // the `Qn` counter has to keep running across the boundary, and two loops means two counters.
+    if (i === 0 && ruling.length > 0) lines.push(`要我拍板（${ruling.length}）`, '')
+    if (i === ruling.length && review.length > 0) lines.push(`要我驗收（${review.length}）`, '')
 
+    lines.push(`Q${i + 1}  ${where(d)}${oneLine(d.question)}  ${hours(d.age_minutes)}`)
+    d.options.forEach((option, oi) => {
+      const star =
+        d.recommended !== null && optionText(d.recommended) === optionText(option) ? '（推薦）' : ''
+      lines.push(`      ${String.fromCodePoint(65 + oi)}. ${optionText(option)}${star}`)
+    })
+    // NEVER 把「沒有選項」印成「這題要給值」——`\my` 契約要的是二擇一：附選項，**或**明說
+    // 要給值並逐項列出要填什麼。兩者都沒有的題目是沒寫完，把它渲染成第二種等於幫違規蓋章，
+    // 而讀的人會以為球在自己手上（2026-08-27 實測 38 題有 37 題落在這一格）。
+    if (d.needs_options) {
+      lines.push('      ⚠ 沒給選項也沒說要填什麼——這題現在答不了')
+      lines.push(`      要選項：node vendor/scripts/flow/flow.ts ask-options ${d.span_id}`)
+    }
+    // 驗收側的同一件事：選項在（通過／退回永遠都在），但沒有東西可看，所以一樣答不了。
+    // 印在選項下面而不是取代它們——選項還是對的，缺的是判斷依據。
+    if (d.needs_evidence) {
+      lines.push('      ⚠ 沒附「改了什麼 / 證據 / 退回會怎樣」——看不到要看什麼，這題現在驗不了')
+      lines.push('      已自動退回給 agent 補件；補齊後下次掃描就會消失')
+    }
+    // 寫法警示，印在題目下面而不是彙總在結尾：讀的人有兩種，而它們對這行的用途不同——
+    // 回答的人要知道「這題長成這樣不是我看錯」，下一個編那份檔的 agent 要知道「這一條是我
+    // 造成的、該去修哪」。彙總區塊只服務前者，第二種讀者不會往下捲。
+    //
+    // NEVER 升級成錯誤或擋下任何東西：HANDOFF 是高頻活文件，把寫法卡在寫入路徑上換到的是
+    // 一個 bypass flag，不是更好的 bullet。
+    if (d.lint.includes('near-miss-option-line')) {
+      lines.push(`      ✎ ${LINT_NOTES['near-miss-option-line']}`)
+    }
+    if (d.carrier) lines.push(`      答案落到：${d.carrier}`)
+    if (d.awaiting_clarification) {
+      lines.push(
+        `      ⚠ 你問了「${oneLine(d.clarifications.at(-1)?.text ?? '', 40)}」，還沒有人回`,
+      )
+    }
+    lines.push(`      span ${d.span_id}`)
+    lines.push('')
+  })
+
+  // 桶名的動詞承載分類軸（球在誰手上、什麼型態的動作）：「要我動手」是只有人做得到的一次性
+  // 動作，讀者看桶名就知道這一段不是拍板題。舊名「不可逆／人類 gate」被 2026-08-28 退役——
+  // 它描述的是 heading 規則（Blocked 整節倒進來），不是讀者要做什麼，實測 15 列有 ~10 列是
+  // 狀態註記，Charles 的逐字反應是「我看不懂我要幹嘛」。
   const BUCKET: Record<string, string> = {
+    'human-action': '要我動手',
     'other-repo': '不在本 repo',
-    irreversible: '不可逆／人類 gate',
     'loop-structural': 'loop 結構性推不動',
   }
-  for (const [category, title] of Object.entries(BUCKET)) {
-    const rows = rest.filter((d) => d.category === category)
+  for (const [bucket, title] of Object.entries(BUCKET)) {
+    const rows = rest.filter((d) => d.bucket === bucket)
     if (rows.length === 0) continue
     lines.push(`${title}（${rows.length}）`, '')
     for (const d of rows) {
-      lines.push(`  - ${where(d)}${oneLine(d.question)}  ${hours(d.age_minutes)}`)
+      /*
+       * 「登記於 X 前」, NEVER 「等了 X」.
+       *
+       * 這幾桶是狀態與（球不在讀者手上的）動作：把時間印成「等了」，量的是一個不歸任何人關掉
+       * 的延遲。四列 16.6h 印成等待，教會讀者這一頁的數字是雜訊——那個代價會傳染到上面真的
+       * 在等人的 `Qn`。年齡照樣印，因為一週沒動的狀態值得注意；改掉的只是那個「宣稱」。
+       */
+      lines.push(`  - ${where(d)}${oneLine(d.question)}  登記於 ${hours(d.age_minutes)} 前`)
+      // 動作行是這一桶存在的理由：條目標題是「哪件事」，這一行才是「我要幹嘛」。
+      if (d.action) lines.push(`    → ${d.action}`)
       if (d.lint.includes('near-miss-option-line')) {
         lines.push(`    ✎ ${LINT_NOTES['near-miss-option-line']}`)
       }
@@ -528,7 +638,7 @@ if (cmd === 'pending') {
     lines.push('')
   }
 
-  const unknown = rest.filter((d) => !(d.category in BUCKET))
+  const unknown = rest.filter((d) => !(d.bucket in BUCKET))
   if (unknown.length > 0) {
     lines.push(`未分類（${unknown.length}）`, '')
     for (const d of unknown)
@@ -634,6 +744,34 @@ if (cmd === 'dismiss') {
     process.exit(1)
   }
   process.stdout.write(`${JSON.stringify({ written: true, span_id: spanId })}\n`)
+  process.exit(0)
+}
+
+if (cmd === 'amend-options') {
+  // 一題以空白輸入框停在佇列上時，唯一的出路本來是「改寫問句重問」——而那會撤回舊題、
+  // 換一題新的，答題人看到的是它消失又出現。amend 是就地補上選項的那條路，`decision-sync`
+  // 對檔案來源早就這樣做，session-only 的題（`flow ask` / herdr blocked）在 2026-08-28 之前
+  // 沒有對應的門。
+  const spanId = positionals[1]
+  if (!spanId) fail('amend-options needs <span_id>')
+  const options = (Array.isArray(args.option) ? args.option : [])
+    .map((o) => String(o).trim())
+    .filter(Boolean)
+  const reason = strFlag(args.reason)
+  if (options.length < 2) fail('amend-options needs at least two --option')
+  if (!reason) fail('amend-options needs --reason')
+  const res = amendDecision({
+    spanId,
+    options,
+    recommended: strFlag(args.recommended),
+    reason,
+    actor: strFlag(args.actor) ?? 'unknown',
+  })
+  if (!res.written) {
+    process.stderr.write(`${res.errors?.map((e) => e.code).join(',') ?? 'not written'}\n`)
+    process.exit(1)
+  }
+  process.stdout.write(`${JSON.stringify({ written: true, span_id: spanId, options })}\n`)
   process.exit(0)
 }
 
@@ -1145,6 +1283,42 @@ if (cmd === 'status') {
       )
     }
   }
+  process.exit(0)
+}
+
+if (cmd === 'brief') {
+  // The board is a projection of the same three things every other view already folds, which is
+  // why this command builds nothing of its own: same events, same spans, same stalls, same lane
+  // function `/board` will render as columns. A second derivation here would be a second board.
+  const events = readEvents()
+  if (events.length === 0) {
+    process.stderr.write(`flow: no events on the spine (${eventsPath()})\n`)
+    process.exit(2)
+  }
+  const spans = buildSpans(events)
+  // Ownership stalls are deliberately included: a dead holder pinning a file is exactly the kind
+  // of thing an agent opening a session must see, and it is the half that is not on the spine.
+  // Skipped under CLADE_FLOW_EVENTS for the reason `status --stalled` documents at length — a
+  // caller that supplied its own spine cannot redirect the working tree, so leaving it in makes
+  // the answer depend on the machine rather than on the input.
+  const stalls = [
+    ...findStalls(spans, {
+      thresholdMinutes: numberFlag(args['stall-minutes'], DEFAULT_STALL_MINUTES),
+    }),
+    ...(process.env.CLADE_FLOW_EVENTS
+      ? []
+      : findOwnershipStalls(buildWhoRows(findConsumerRoot() ?? repoRoot()))),
+  ]
+  const workItems = buildWorkItems(spans)
+  const board = buildBoardLanes(workItems, stalls, spans)
+
+  const workId = strFlag(args['work-id'])
+  if (workId) {
+    const dossier = buildDossier({ workId, board, workItems, spans, stalls, events })
+    process.stdout.write(args.json ? dossierJson(dossier) : renderDossier(dossier))
+    process.exit(dossier.found ? 0 : 2)
+  }
+  process.stdout.write(args.json ? overviewJson(board) : renderOverview(board))
   process.exit(0)
 }
 

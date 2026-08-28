@@ -265,7 +265,41 @@ export function validateRecord(record) {
   return validateAgainst(record, null)
 }
 
+/**
+ * The one cross-field rule on the spine: `work_id === null` iff `kind === 'session_summary'`.
+ *
+ * It is a biconditional, not a permission. Read one way it says a session summary MUST NOT claim a
+ * work item — a session spans many work items and a work item spans many sessions, so any hard
+ * attribution rule is wrong in both directions and the join belongs on the read side, on
+ * `session_id`. Read the other way it says nothing ELSE may go work-id-less: an unattributed span
+ * mints an `orphan-` id precisely so the attribution gap stays countable, and a second kind allowed
+ * to write null would leave that gap invisible while shrinking the R3 numerator for free.
+ *
+ * It lives in the validator rather than in `emitEvent` because `flow emit --kind session_summary` is
+ * a door too, and a gate only one door honours is not a gate.
+ */
+function flowKindWorkIdError(record) {
+  const isSummary = record?.kind === 'session_summary'
+  const isNull = record?.work_id === null
+  if (isSummary && !isNull) {
+    return {
+      code: 'session-summary-work-id',
+      message: 'kind=session_summary MUST carry work_id null — attribution is a read-side join',
+    }
+  }
+  if (isNull && !isSummary) {
+    return {
+      code: 'null-work-id',
+      message: `work_id null is only legal for kind=session_summary, not ${record?.kind}`,
+    }
+  }
+  return null
+}
+
 /** Same validator, same redaction enforcement, applied to $defs.flow_envelope. */
 export function validateFlowEvent(record) {
-  return validateAgainst(record, 'flow_envelope')
+  const result = validateAgainst(record, 'flow_envelope')
+  const cross = flowKindWorkIdError(record)
+  if (!cross) return result
+  return { ok: false, errors: [...result.errors, cross] }
 }

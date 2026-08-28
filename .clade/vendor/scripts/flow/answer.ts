@@ -28,14 +28,21 @@ import { spawnSync } from 'node:child_process'
 import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 
+import type { QuestionPageRef } from '../review-gui.question-page.ts'
+import { readQuestionPageRef } from '../review-gui.question-page.ts'
+import type { AcceptVerdict } from './decisions.ts'
+import { acceptVerdictOf, parseAcceptSpanId } from './decisions.ts'
 import type { DecisionLock, LockCandidate } from './emit.ts'
 import {
+  acceptWork,
   computeDecisionLock,
   decisionAnswerHistory,
+  dropWork,
   readEvents,
   resolveDecision,
   reviseDecisionEvent,
 } from './emit.ts'
+import { buildWorkItems, foldSpans } from './spine.ts'
 
 /** The register whose invariants an append can break. Only clade has it. */
 const TD_REGISTER = 'docs/tech-debt.md'
@@ -64,6 +71,16 @@ export type AnswerFailure =
   | 'landed-block-missing'
   /** The span id appears more than once on the carrier; refused rather than guessing which. */
   | 'landed-block-ambiguous'
+  /** 驗收合成題：這個 work item 現在不是 `done`，沒有待裁決的判決可下。 */
+  | 'accept-not-pending'
+  /** 驗收合成題：答案讀不出是收、drop 還是還沒。NEVER 猜——那寫下去的是終態。 */
+  | 'accept-unreadable'
+  /** 驗收合成題：人選了「還沒」。什麼都沒寫，這一列留在佇列上。 */
+  | 'accept-deferred'
+  /** 驗收合成題：判決事件沒能落檔（schema 拒絕、spine 不可寫）。 */
+  | 'accept-write-failed'
+  /** 驗收合成題：判決不是可改寫的答案。翻案走下一次判決，不走 revise。 */
+  | 'accept-not-revisable'
 
 export interface AnswerDecisionInput {
   spanId: string
@@ -104,6 +121,14 @@ export interface DecisionLookup {
   recommended: string | null
   category: string
   carrier: string | null
+  /**
+   * 這一題的互動決策頁，沒有就是 null。
+   *
+   * 具名欄位而不是把整包 payload 交出去：`lookupDecision` 的回傳是給**寫入端**用的
+   * （answer / clarify / question-page 的 spawn gate），而 spawn gate 拿到整包 payload 就
+   * 等於讓 request 有機會影響它要跑什麼。給它剛好夠用的那一個欄位。
+   */
+  question_page: QuestionPageRef | null
 }
 
 /**
@@ -127,6 +152,7 @@ export function lookupDecision(spanId: string, repoRoot: string): DecisionLookup
     recommended: typeof payload.recommended === 'string' ? payload.recommended : null,
     category: typeof payload.category === 'string' ? payload.category : 'ruling',
     carrier: typeof payload.carrier === 'string' ? payload.carrier : null,
+    question_page: readQuestionPageRef(payload),
   }
 }
 
@@ -464,6 +490,18 @@ export function reviseDecision({
     }
   }
 
+  // 驗收合成題不走改答案這條路：它沒有 `decision.request` 可改寫，而它的「答案」是 work item
+  // 的終態。要翻案就再下一次判決（`flow accept` / `flow drop` 最後一筆生效），NEVER 讓這裡
+  // 靜靜地掉進下面的 `no-such-decision`——那會把一個不支援的操作說成一題不存在。
+  if (parseAcceptSpanId(spanId)) {
+    return {
+      ...base,
+      ok: false,
+      reason: 'accept-not-revisable',
+      detail: '驗收判決不是可改寫的答案；要翻案請再下一次 accept / drop 判決',
+    }
+  }
+
   const decision = lookupDecision(spanId, repoRoot)
   if (!decision) {
     return {
@@ -540,6 +578,114 @@ function spineOverrideBlocks(repoRoot: string): boolean {
 }
 
 /**
+ * 驗收合成題的寫入端 —— 人回了 A/B/C，這裡把它變成 `work.accept` / `work.drop`。
+ *
+ * **按的仍然是人。** `work.accept` 的硬約束是「NEVER 由 agent 代按」，而這條路徑的每一次寫入
+ * 都以一個人類答案為前提：沒有答案就沒有事件，答案讀不出來就拒絕而不是猜。授權結構與
+ * `/flow` 上那顆按鈕相同，變的只是它出現在人真的會看到的那一面（見 `decisions.ts` 的
+ * `ACCEPT_SPAN_PREFIX` 頭註解）。
+ *
+ * 為什麼不走 `resolveDecision`：合成題**不在脊椎上**，沒有 `decision.request` 可以收。它的
+ * 「答案落點」就是 work item 自己的終態——所以 `landed:false` + `no-carrier`，逐字符合那個
+ * 代碼原本的定義（沒有落檔的地方，答案只活在 spine 上），NEVER 另發明一個看起來像失敗的碼。
+ */
+function answerAcceptGate({
+  workId,
+  spanId,
+  answer,
+  answeredBy,
+  via,
+  repoRoot,
+  dryRun,
+}: {
+  workId: string
+  spanId: string
+  answer: string
+  answeredBy: string
+  via: string
+  repoRoot: string
+  dryRun: boolean
+}): AnswerDecisionResult {
+  const base = { resolved: false, landed: false, carrier: null, carrierPath: null, block: '' }
+  const item = buildWorkItems(foldSpans(readEvents(repoRoot))).find((w) => w.work_id === workId)
+  if (!item) {
+    return {
+      ...base,
+      ok: false,
+      reason: 'no-such-decision',
+      detail: `${repoRoot} 的 spine 上沒有 work item ${workId}`,
+    }
+  }
+  // 不是 `done` 就沒有待裁決的東西：可能別人剛裁決過（`accepted` / `dropped`），也可能它被
+  // 新的 span 打回去重做（`in-flight`）。兩種都不該由這一次點擊蓋掉——`state` 的優先序已經
+  // 是答案，這裡只是不去推翻它。
+  if (item.state !== 'done') {
+    return {
+      ...base,
+      ok: false,
+      reason: 'accept-not-pending',
+      detail: `${workId} 現在是 ${item.state}，不是 done——這題已經不在驗收佇列上了`,
+    }
+  }
+  const verdict: AcceptVerdict | null = acceptVerdictOf(answer)
+  if (verdict === null) {
+    return {
+      ...base,
+      ok: false,
+      reason: 'accept-unreadable',
+      detail: `讀不出「${answer}」是 A（收）、B（drop）還是 C（還沒）——沒有猜，什麼都沒寫`,
+    }
+  }
+
+  const preview =
+    verdict === 'defer'
+      ? `${workId}：留在驗收佇列上，什麼都不寫`
+      : `${workId} → work.${verdict === 'accept' ? 'accept' : 'drop'}
+理由：${answer}
+（${via}）`
+
+  if (dryRun) return { ...base, ok: true, block: preview, reason: null, detail: null }
+
+  // 「還沒」是一個真的答案，而它的內容是「不要寫」。NEVER 為了讓每個答案都留下痕跡而 emit
+  // 一個 point event：那會讓一個人說「我還沒看」變成脊椎上的一筆判決史。
+  if (verdict === 'defer') {
+    return {
+      ...base,
+      ok: true,
+      block: preview,
+      reason: 'accept-deferred',
+      detail: '這一列留在佇列上，下次 `flow pending` 還會問',
+    }
+  }
+
+  const res = (verdict === 'accept' ? acceptWork : dropWork)({
+    work_id: workId,
+    reason: answer,
+    by: answeredBy,
+    substrate: 'manual',
+    payload: { via, gate: spanId },
+    cwd: repoRoot,
+  })
+  if (res.written !== true) {
+    return {
+      ...base,
+      ok: false,
+      block: preview,
+      reason: 'accept-write-failed',
+      detail: `判決沒能落檔：${res.errors?.map((e) => e.code).join(',') ?? 'unknown'}`,
+    }
+  }
+  return {
+    ...base,
+    ok: true,
+    resolved: true,
+    block: preview,
+    reason: 'no-carrier',
+    detail: `已寫入 work.${verdict === 'accept' ? 'accept' : 'drop'}；驗收判決的落點是 work item 自己的終態，沒有 carrier 檔`,
+  }
+}
+
+/**
  * Answer one decision: close its span, then file the answer on its carrier.
  *
  * `dryRun` runs the identical resolution — same carrier, same block, same containment and
@@ -570,6 +716,21 @@ export function answerDecision({
       reason: 'spine-override',
       detail: `CLADE_FLOW_EVENTS 指向 ${process.env.CLADE_FLOW_EVENTS}，不在 ${repoRoot} 內；寫入會落到別的 spine`,
     }
+  }
+
+  // 驗收合成題先分流：它的 id 是 `work_id` 的別名，不是脊椎上的 span，`lookupDecision` 對它
+  // 必然回 null，而那會被報成「沒有這一題」——一個真的在佇列上的東西被說成不存在。
+  const acceptWorkId = parseAcceptSpanId(spanId)
+  if (acceptWorkId) {
+    return answerAcceptGate({
+      workId: acceptWorkId,
+      spanId,
+      answer,
+      answeredBy,
+      via,
+      repoRoot,
+      dryRun,
+    })
   }
 
   const decision = lookupDecision(spanId, repoRoot)
