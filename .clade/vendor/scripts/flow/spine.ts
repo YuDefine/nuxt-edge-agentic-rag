@@ -329,7 +329,27 @@ export interface OrphanEntry {
   events: number
   /** `ts_utc` of the most recent mint here. */
   newest_mint: string
+  /**
+   * Distinct ids this entry minted in the last `RECENT_MINT_HOURS`, out of `ids`.
+   *
+   * `newest_mint` alone cannot separate "regressing now" from "fixed, backlog still in window"
+   * whenever the fix landed INSIDE the window — and a 7-day window means a fix always does, for
+   * its first week. Measured 2026-08-28: `workIdFromLabel` was fixed 2026-08-27T04:04Z, and the
+   * bucket still read 359 events / 49 ids with `newest_mint` 19.5h ago, which reads as active
+   * degradation. 48 of those 49 mints predate the fix; `ids_recent` was 0.
+   *
+   * A rate, not a date, and it needs no knowledge of when anything was fixed: an entry that is
+   * still regressing keeps minting, a fixed one stops. NEVER "fix" a stuck ratio by raising the
+   * threshold or muting a bucket — that hides the entries that ARE regressing, which is the only
+   * thing this signal exists to show.
+   */
+  ids_recent: number
+  /** Hours `ids_recent` looks back — reported so a reader never has to guess the denominator. */
+  recent_hours: number
 }
+
+/** The "is it still happening" window. Short on purpose: it answers rate, not history. */
+const RECENT_MINT_HOURS = 24
 
 export function orphanRatio(
   events: FlowEvent[],
@@ -359,7 +379,11 @@ export function orphanRatio(
   let total = 0
   let minted = 0
   let inherited = 0
-  const buckets = new Map<string, { ids: Set<string>; events: number; newest_mint: string }>()
+  const recentCutoff = new Date(now.getTime() - RECENT_MINT_HOURS * 3_600_000).toISOString()
+  const buckets = new Map<
+    string,
+    { ids: Set<string>; recent: Set<string>; events: number; newest_mint: string }
+  >()
   for (const e of events) {
     if (!e.ts_utc || e.ts_utc < cutoff) continue
     // Out of the DENOMINATOR too, not just the numerator. A `session_summary` has no work id by
@@ -376,8 +400,14 @@ export function orphanRatio(
     const mint = mintEvent.get(e.work_id)
     if (!mint) continue
     const entry = `${mint.kind}|${mint.actor}|${mint.substrate}`
-    const held = buckets.get(entry) ?? { ids: new Set<string>(), events: 0, newest_mint: '' }
+    const held = buckets.get(entry) ?? {
+      ids: new Set<string>(),
+      recent: new Set<string>(),
+      events: 0,
+      newest_mint: '',
+    }
     held.ids.add(e.work_id)
+    if (mint.ts_utc >= recentCutoff) held.recent.add(e.work_id)
     held.events += 1
     if (mint.ts_utc > held.newest_mint) held.newest_mint = mint.ts_utc
     buckets.set(entry, held)
@@ -388,6 +418,8 @@ export function orphanRatio(
       ids: held.ids.size,
       events: held.events,
       newest_mint: held.newest_mint,
+      ids_recent: held.recent.size,
+      recent_hours: RECENT_MINT_HOURS,
     }))
     .toSorted((a, b) => b.events - a.events || a.entry.localeCompare(b.entry))
   const orphan = minted + inherited

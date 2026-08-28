@@ -250,9 +250,12 @@ const USAGE = `Usage: flow <open|done|accept|drop|park|ask|pending|answer|answer
                                   overview; with one it is that work item's dossier (state, lane,
                                   origin, last 10 events, pending decisions, dispatch trail,
                                   session chain, stall + action). Same lane function /board reads.
-  who [--json]                    one line per contended resource (dirty path / worktree /
+  who [--json] [--transcripts]    one line per contended resource (dirty path / worktree /
                                   stash) with an owner verdict + a named action. Reads
                                   write-time evidence, not declared fields (TD-664).
+                                  --transcripts also greps ~/.claude/projects for candidate
+                                  authors of paths the journal has no entry for: minutes, not
+                                  seconds (4.3 GB corpus), so it is off unless asked for.
   status [--json]                 summarize every work item on the spine, then the done-not-yet-
                                   accepted queue (what \`\\my\` has to sweep for otherwise)
   status --stalled [--json]       stall query; exits 3 when anything is stalled
@@ -1224,19 +1227,22 @@ if (cmd === 'status') {
       process.stdout.write(renderStalls(stalls))
       if (orphans.over_threshold) {
         const pct = (orphans.ratio * 100).toFixed(0)
+        const RECENT_MINT_HOURS_LABEL = orphans.by_entry[0]?.recent_hours ?? 24
         process.stdout.write(
           `\n⚠ 歸因: 近 ${orphans.window_days} 天 ${orphans.minted}/${orphans.total} 筆事件（${pct}%）由本窗口內「新鑄」的 orphan work id 承載，` +
             `門檻 ${(orphans.threshold * 100).toFixed(0)}%。\n` +
             `    另有 ${orphans.inherited} 筆繼承自窗口之前就存在的 orphan id（pre-fix 血脈，等那些 pane 退場才會消，不計入門檻）。\n` +
             `    這是「說不出這些事件屬於哪件工作」，不是某件事卡住。判一題：哪個入口鑄名退化了。\n` +
             `    下面已經替你分好桶（第一個事件的 kind|actor|substrate = 鑄名的那個入口）。\n` +
-            `    最後鑄名時間離現在遠 = 那個入口已經修好、只是 pre-fix 事件還沒滾出 ${orphans.window_days} 天窗口，NEVER 讀成退化中；\n` +
-            `    離現在近 = 現在還在鑄，那就是要修的那一個。判得出來當場修，判不出來登一條 TD。\n` +
+            `    判的是「近 N 小時鑄名」那一欄，NEVER 是最後鑄名時間：修法落在 7 天窗口內時，\n` +
+            `    整週的 pre-fix 事件仍在分子裡，最後鑄名也還是近的——兩者都會把已修好的入口讀成退化中。\n` +
+            `    近 ${RECENT_MINT_HOURS_LABEL}h 鑄名 0 = 那個入口已經停鑄，等事件滾出窗口即可；>0 = 現在還在鑄，那就是要修的那一個。\n` +
+            `    判得出來當場修，判不出來登一條 TD。\n` +
             orphans.by_entry
               .slice(0, 5)
               .map(
                 (b) =>
-                  `      ${String(b.events).padStart(4)} 事件 / ${String(b.ids).padStart(3)} id  最後鑄名 ${b.newest_mint.slice(0, 16).replace('T', ' ')}Z  ${b.entry}\n`,
+                  `      ${String(b.events).padStart(4)} 事件 / ${String(b.ids).padStart(3)} id  近 ${b.recent_hours}h 鑄名 ${String(b.ids_recent).padStart(2)}  最後鑄名 ${b.newest_mint.slice(0, 16).replace('T', ' ')}Z  ${b.entry}\n`,
               )
               .join(''),
         )
@@ -1328,7 +1334,13 @@ if (cmd === 'who') {
   // "who holds this file" and both would be right about their own tree and wrong about the
   // contention. findConsumerRoot resolves any cwd inside the repo to that single root.
   const consumerRoot = findConsumerRoot() ?? repoRoot()
-  const rows = buildWhoRows(consumerRoot, { selfSessionId: strFlag(args.session) })
+  // `--transcripts` 是唯一打開 transcript 取證的入口：全 corpus 掃描要人明確要求才付
+  // （見 who.ts 的 buildWhoRows doc）。預設關掉也讓這裡的預設輸出與 review-gui 的
+  // ownership 投影**逐字相同** —— TD-664 Phase 3 的「人看的與 agent 查的是同一份」。
+  const rows = buildWhoRows(consumerRoot, {
+    selfSessionId: strFlag(args.session),
+    transcriptEvidence: args.transcripts === true,
+  })
   process.stdout.write(args.json ? `${JSON.stringify(rows, null, 2)}\n` : renderWho(rows))
   // Exit 3 on anything held by someone else or unattributable — same convention `status
   // --stalled` and herdr-patrol use, so a caller can gate on it without parsing output.

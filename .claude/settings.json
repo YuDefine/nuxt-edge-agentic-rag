@@ -87,6 +87,7 @@
     "hub-db-runtime-cf-workers@clade": true,
     "hub-runtime-cf-workers@clade": true,
     "hub-framework-nuxt@clade": true,
-    "hub-capabilities-openspec@clade": true
+    "hub-capabilities-openspec@clade": true,
+    "hub-ecosystem-node@clade": true
   }
 }
