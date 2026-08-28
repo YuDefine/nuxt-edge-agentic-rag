@@ -23,8 +23,67 @@ import { createHash } from 'node:crypto'
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 
-/** The four `\my` output buckets, in the order the contract fixes them. */
-export type DecisionCategory = 'ruling' | 'other-repo' | 'irreversible' | 'loop-structural'
+/**
+ * The `\my` output buckets, in the order the contract fixes them.
+ *
+ * The axis is WHOSE MOVE IT IS AND WHAT KIND OF MOVE — never importance, which is unmeasurable
+ * and always claims every new entry:
+ *
+ *   `ruling`        one short reply closes it. Gets a `Qn` number.
+ *   `review`        somebody finished something and the verdict IS one short reply (通過／退回).
+ *                   Gets a `Qn` number too — see `ANSWERABLE`.
+ *   `human-action`  a doing whose end is NOT a reply — hold a phone, press a physical button,
+ *                   tick a box somewhere else. A bullet with an action line, never a number.
+ *   `other-repo`    somebody else's checkout (legacy; nothing emits it since 2026-08-27).
+ *   `loop-structural` the loop hit the same wall repeatedly and a human must change structure.
+ *
+ * `'irreversible'` was this vocabulary's old name for `human-action`, retired 2026-08-28: it
+ * described the heading rule (`Blocked` sections poured in whole) rather than what the reader
+ * must DO, and the measured queue was 15 rows of which ~10 were status notes. The spine is
+ * append-only, so spans written with the old token still exist — both render surfaces GROUP
+ * them into the 要我動手 bucket while leaving the stored `category` field verbatim
+ * (`flow-decisions.test.ts` pins the verbatim half).
+ *
+ * `review` was split back OUT of `human-action` the same day, on a second and orthogonal axis:
+ * whether the doing ENDS IN A SHORT REPLY. It is the only member of that set that does — you
+ * open the evidence, then you say 通過 or 退回. Leaving it in meant the reader was told where to
+ * look and given nowhere to record the verdict, which is half of why 7 rows sat 10.8–16.6h.
+ * The other half was that its own bucket printed 「這條是狀態不是問題」 at them.
+ */
+export type DecisionCategory =
+  | 'ruling'
+  | 'review'
+  | 'other-repo'
+  | 'human-action'
+  | 'loop-structural'
+
+/**
+ * The two answers a review can have, synthesised at SCAN time rather than at render time.
+ *
+ * A review's choices are not written in the source file and never will be — 「通過 / 退回」 is a
+ * property of the verb, not of the change under review. Putting them here means the span payload,
+ * `flow pending`, `/decisions` and `\my` all carry the identical pair from one definition; each
+ * renderer inventing its own is the two-surfaces-disagree failure `LINT_NOTES` already exists to
+ * prevent.
+ *
+ * 退回 deliberately carries no reason slot of its own: a rejection needs prose, and the free-text
+ * path every surface already has is where prose goes. NEVER expand this into a menu of rejection
+ * reasons — that is a taxonomy nobody asked for, guessed in advance of the rejection.
+ */
+export const REVIEW_CHOICES: readonly string[] = ['通過', '退回']
+
+/**
+ * The buckets that close on one short reply, and therefore get `Qn` numbers and an input.
+ *
+ * The admission test is the QnX one — 「回一則短訊即可結案」 — NEVER reversibility and NEVER
+ * whether the row feels important. `human-action` fails it not because its rows are weightier
+ * but because holding a phone does not end in a sentence.
+ */
+export const ANSWERABLE: readonly DecisionCategory[] = ['ruling', 'review']
+
+export function isAnswerable(category: string): boolean {
+  return (ANSWERABLE as readonly string[]).includes(category)
+}
 
 export type SourceKind = 'work-loop' | 'handoff' | 'tech-debt' | 'tasks'
 
@@ -67,7 +126,42 @@ export interface SourceItem {
  * `no-options-under-ruling` — a ruling with nothing to choose from. Unanswerable as written.
  * `near-miss-option-line` — lines that ALMOST parsed as options. Somebody meant to write a list.
  */
-export type LintCode = 'no-options-under-ruling' | 'near-miss-option-line'
+export type LintCode = 'no-options-under-ruling' | 'near-miss-option-line' | 'missing-evidence'
+
+/**
+ * The three fields a `review` row owes its reader, and the shape that makes them machine-checkable.
+ *
+ * Prose cannot carry this contract: 「這條寫清楚一點」 is unfalsifiable, and the measured rows
+ * (`employee-backpay-request —— ready-for-review（r118）`) prove a title can name a change slug
+ * and a round number while saying nothing about what it does or what is at stake. Named fields
+ * are the cheapest thing an author can satisfy and the only thing a scanner can verify.
+ *
+ * NEVER relax this to "any one of the three". Each answers a different question the reviewer has
+ * to answer before replying, and the row is unreviewable if any is missing: what changed (do I
+ * care), what do I look at (can I check it in 30 seconds), what happens if I say no (how hard do
+ * I have to look).
+ */
+const REVIEW_FIELDS = {
+  changed: /^[\s>]*[-*]?\s*(?:改了什麼|what changed)\s*[:：]\s*(\S.*)$/imu,
+  evidence: /^[\s>]*[-*]?\s*(?:證據|evidence)\s*[:：]\s*(\S.*)$/imu,
+  stakes: /^[\s>]*[-*]?\s*(?:退回會怎樣|退回)\s*[:：]\s*(\S.*)$/imu,
+} as const
+
+/**
+ * What counts as evidence: something the reviewer can OPEN, not something they must go find.
+ *
+ * A URL, a commit hash, or a repo-relative path with an extension. NEVER accept a bare change
+ * name or a pointer to another document — 「見 HANDOFF」 is what the 15 measured rows already
+ * said, and chasing it is the 20 minutes this whole contract exists to delete.
+ */
+const CLICKABLE = /(?:https?:\/\/\S+|\b[0-9a-f]{7,40}\b|(?:[\w.-]+\/)+[\w.-]+\.\w+)/u
+
+/** Whether a `review` body carries all three fields, with evidence that can actually be opened. */
+export function hasReviewEvidence(body: string): boolean {
+  const evidence = REVIEW_FIELDS.evidence.exec(body)
+  if (!evidence || !CLICKABLE.test(evidence[1] ?? '')) return false
+  return REVIEW_FIELDS.changed.test(body) && REVIEW_FIELDS.stakes.test(body)
+}
 
 /**
  * 每個 lint 碼對讀的人講的那一句話。**兩個渲染端共用這一份**（`flow pending` 的文字模式、
@@ -83,20 +177,35 @@ export const LINT_NOTES: Record<LintCode, string> = {
     '來源檔把這題寫成要拍板的題，卻沒有選項、也沒說要給什麼值（見 decision-authoring）',
   'near-miss-option-line':
     '來源檔有幾行差一點就是選項——寫法不合，解析器沒收（見 decision-authoring）',
+  'missing-evidence':
+    '這條等驗收，但沒寫齊「改了什麼 / 證據 / 退回會怎樣」三欄，證據要可點（見 decision-authoring）',
 }
 
 /**
  * The lint codes one parsed item earns.
  *
- * Only `ruling` can earn `no-options-under-ruling`: the other three buckets are STATES, and
- * options on a state would be an answer sheet for something nobody asked. `near-miss-option-line`
+ * Only `ruling` can earn `no-options-under-ruling`: `review` gets its pair synthesised and the
+ * rest are doings and states, so options on those would be an answer sheet for something nobody
+ * asked. `near-miss-option-line`
  * applies wherever a near miss was seen, because a refused list is a writing problem in any
  * bucket — but it can only be reported when the item has no options, since a group that parsed
  * is not a miss.
  */
-function lintOf(category: DecisionCategory, options: string[], nearMiss: boolean): LintCode[] {
-  if (options.length > 0) return []
+function lintOf(
+  category: DecisionCategory,
+  options: string[],
+  nearMiss: boolean,
+  body: string,
+): LintCode[] {
   const codes: LintCode[] = []
+  /*
+   * Evidence is ORTHOGONAL to options, so it MUST be judged before the short-circuit below.
+   * A review row can carry a cleanly parsed 通過／退回 pair and still be unreviewable because
+   * nothing says what to look at — folding this under `options.length > 0` would silence the
+   * lint on exactly the rows that look most finished.
+   */
+  if (category === 'review' && !hasReviewEvidence(body)) codes.push('missing-evidence')
+  if (options.length > 0) return codes
   if (category === 'ruling') codes.push('no-options-under-ruling')
   if (nearMiss) codes.push('near-miss-option-line')
   return codes
@@ -499,14 +608,56 @@ function splitSections(text: string): Section[] {
  * measured: 15 of 40 rows in the live queue arrived this way, four whole sections' worth
  * (<consumer-i> `跨 repo（clade 規約洞，本 repo 不修）`, <consumer-b> `跨 repo`, <consumer-l> `跨 repo 待處理` and
  * `跨 repo 已登記（不用再開）`), one of which was a section HEADING rendered as a question.
+ *
+ * `Blocked` yields nothing either, since 2026-08-28, for the same shape of reason.
+ *
+ * A Blocked section narrates WHY WORK IS STOPPED — its ball is, by the fleet's own convention,
+ * not in the reader's hand. <consumer-i>'s review heading spells the convention out (`Ready for review
+ *（球在 Charles 手上，非 agent 可推）`); Blocked is the *other* section. Measured 2026-08-28:
+ * 9 of the 15 rows in the live 「不可逆／人類 gate」 bucket came off Blocked headings, and every
+ * single one was a signal-wait (`維護期 cutover 日期（signal-wait）`, merge-backs waiting on a
+ * clade tag) or a standing status note (`<consumer-e> derive 推送仍在 shadow —— 非故障，是刻意設定`
+ * — whose own text says 「不是待拍板」). Zero named an action for Charles. Charles's verbatim
+ * reading of that queue: 「我看不懂我要幹嘛」.
+ *
+ * When the blocker really IS a human, the fleet already writes it where this scanner looks —
+ * `Awaiting Charles` / `待拍板` (a ruling), `Ready for review` (a review to perform),
+ * tech-debt's `### 需要 Charles`, or a `deferred-user-only` task. That is the precision bias
+ * this file declares at the top: a missed item costs one `\my` typed by hand; a false one costs
+ * a push notification for something nobody has to do. NEVER re-admit `Blocked` wholesale, and
+ * NEVER replace this with a keyword heuristic over the section body.
  */
 function categoryOfHeading(heading: string): DecisionCategory | null {
   if (heading.includes('跨 repo')) return null
   if (heading.includes('Awaiting Charles') || heading.includes('待拍板')) return 'ruling'
-  if (heading.includes('Blocked')) return 'irreversible'
-  if (heading.includes('Ready for review')) return 'irreversible'
+  // Answerable: 「做完了，去看一下」 ends in 通過 or 退回, which is one short reply. Filing it as
+  // a doing told 7 rows' worth of finished work that there was nowhere to record the verdict.
+  if (heading.includes('Ready for review')) return 'review'
+  // `需要 Charles` is the explicit home for a one-off doing that is NOT a review — the heading
+  // tech-debt already uses for the same gate. Dropping `Blocked` removed the accidental home
+  // such items used to fall into; this is the deliberate one that replaces it.
+  if (heading.includes('需要 Charles')) return 'human-action'
   return null
 }
+
+/**
+ * The one-way migration that moves the EXISTING ready-for-review spans into the new bucket.
+ *
+ * The spine is append-only and `driftOf()` deliberately does not compare `category`, on the
+ * stated grounds that a bucket change always arrives with a new `source_id`. That holds when a
+ * HUMAN edits a heading; it does not hold here, because what changed is `categoryOfHeading()`
+ * itself and the headings in every HANDOFF.md are untouched. Without a discriminator the already
+ * open spans keep `category: 'irreversible'` in their frozen payload forever, and the fix ships
+ * with the measured rows still unanswerable.
+ *
+ * So review ids carry an epoch. The old id stops being emitted and retracts, the new one opens —
+ * which is precisely the honest outcome `decision-sync.ts` documents for a bucket change.
+ *
+ * SCOPED TO `review` ON PURPOSE. Stamping every handoff id would retract and reopen the whole
+ * fleet's queue in one scan, discarding the clarification threads on open rulings Charles is
+ * mid-conversation about. NEVER widen it to buy symmetry.
+ */
+const REVIEW_EPOCH = '@r2'
 
 /**
  * Status markers, which is how the fleet actually says "done" without a checkbox.
@@ -536,11 +687,32 @@ const RESOLVED_PHRASE = /(?:^|[（(\s])(?:本次)?已(?:完成|解決|拍板|處
 const OPEN_MARK = /^(?:🟡|🟢|🔴|🟠|🔵|⛔|🔶|🔷|⚠️?|🚨|⏳|❓)/
 
 /**
- * The open items in a section body — checkbox form and lamp form, and NEITHER for a bare bullet.
+ * The §QnX question form, which is a lamp written in letters.
  *
- * A `- ` with no checkbox and no lamp is a NOTE, not an item: <consumer-b>'s Awaiting section closes with
- * three of them (`- TD-272：landed main …`) that are provenance for decisions already taken.
- * Requiring an explicit open-marker is what keeps those out without a keyword heuristic.
+ * `Qn` is not incidental wording — the operator's own §QnX protocol *defines* it: a bullet may
+ * carry a `Q` number only if answering it with one short reply closes it, and every such bullet
+ * must ship either options or an explicit "this one needs a value". That is a stronger open-item
+ * signal than any coloured circle, and it is the shape the protocol *requires* for exactly the
+ * rows this queue exists to surface.
+ *
+ * Measured 2026-08-28 on <consumer-e>: its `## ⏳ Awaiting Charles` section held eight such
+ * bullets and `scanDecisionSources()` returned **0** — every one was read as a bare-bullet note.
+ * Prefixing five of them with a lamp turned the same scan into **5**. The rows were never the
+ * problem; the marker vocabulary was.
+ *
+ * Deliberately narrow: `**Q` plus optional digits plus a full stop. It does NOT match `- Q4 是什麼`
+ * or a sentence that merely opens with the letter Q — the bold-plus-terminator shape is what the
+ * protocol writes and what a note never accidentally is.
+ */
+const QUESTION_MARK = /^\*\*Q\d*[.．、]/
+
+/**
+ * The open items in a section body — checkbox, lamp, or §QnX question form; NEITHER for a bare
+ * bullet.
+ *
+ * A `- ` with no checkbox, no lamp and no `**Qn.` is a NOTE, not an item: <consumer-b>'s Awaiting section
+ * closes with three of them (`- TD-272：landed main …`) that are provenance for decisions already
+ * taken. Requiring an explicit open-marker is what keeps those out without a keyword heuristic.
  */
 function openBullets(body: string): SectionItem[] {
   const lines = body.split(/\r?\n/)
@@ -568,6 +740,12 @@ function openBullets(body: string): SectionItem[] {
       if (OPEN_MARK.test(rest)) {
         const lamped = rest.replace(OPEN_MARK, '').trim()
         current = { title: plainTitle(lamped), raw: lamped, body: [] }
+        continue
+      }
+      // §QnX form: the `**Qn.` prefix stays on `raw` — it is part of the question's own wording,
+      // unlike a lamp, which is pure marker and gets stripped.
+      if (QUESTION_MARK.test(rest)) {
+        current = { title: plainTitle(rest), raw: rest, body: [] }
       }
       continue
     }
@@ -663,10 +841,14 @@ export function scanHandoff(repoRoot: string): SourceItem[] {
     })()
 
     for (const item of items) {
-      const { options, recommended, nearMiss } = extractOptions(item.body)
+      const { options: parsed, recommended, nearMiss } = extractOptions(item.body)
+      // A review's choices come from the verb, not from the file. See `REVIEW_CHOICES`.
+      const options = category === 'review' && parsed.length === 0 ? [...REVIEW_CHOICES] : parsed
       out.push({
         source_kind: 'handoff',
-        source_id: `handoff:${rel}#${slug(section.heading)}/${slug(identityKey(item.raw))}`,
+        source_id: `handoff:${rel}#${slug(section.heading)}${
+          category === 'review' ? REVIEW_EPOCH : ''
+        }/${slug(identityKey(item.raw))}`,
         question: item.title,
         detail: item.body,
         options,
@@ -674,7 +856,7 @@ export function scanHandoff(repoRoot: string): SourceItem[] {
         category,
         carrier: rel,
         fingerprint: fingerprint(item.title, item.body),
-        lint: lintOf(category, options, nearMiss),
+        lint: lintOf(category, options, nearMiss, item.body),
       })
     }
   }
@@ -735,7 +917,7 @@ export function scanTechDebt(repoRoot: string): SourceItem[] {
         category: 'ruling',
         carrier: rel,
         fingerprint: fingerprint(tdId, question, body),
-        lint: lintOf('ruling', options, nearMiss),
+        lint: lintOf('ruling', options, nearMiss, body),
       })
       return
     }
@@ -749,7 +931,7 @@ export function scanTechDebt(repoRoot: string): SourceItem[] {
         detail: body.trim(),
         options: [],
         recommended: null,
-        category: 'irreversible',
+        category: 'human-action',
         carrier: rel,
         fingerprint: fingerprint(tdId, gate[1], body),
         lint: [],
@@ -782,8 +964,8 @@ export function scanTechDebt(repoRoot: string): SourceItem[] {
 /**
  * `(deferred-user-only: …)` — work an agent cannot do, marked as such at the point of deferral.
  *
- * These land in bucket 3, NOT bucket 1: every real instance is a physical gate (a phone in
- * someone's hand, a production OA account), never a choice between options. Filing them as
+ * These land in `human-action`, NOT `ruling`: every real instance is a physical gate (a phone
+ * in someone's hand, a production OA account), never a choice between options. Filing them as
  * rulings would put an answer box under a task that has no answer, only a doing.
  *
  * `openspec/changes/archive/**` is excluded. An archived change is finished by definition, and
@@ -847,7 +1029,7 @@ export function scanTasks(repoRoot: string): SourceItem[] {
         detail: `${name} ${key}`,
         options: [],
         recommended: null,
-        category: 'irreversible',
+        category: 'human-action',
         carrier: rel,
         fingerprint: fingerprint(rel, key, title),
         lint: [],

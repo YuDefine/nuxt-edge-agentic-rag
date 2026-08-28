@@ -10,7 +10,8 @@
 // events stream is the only state, and every function below is a pure function of it.
 
 export interface FlowEvent {
-  work_id: string
+  /** Null for `session_summary` only — a session is not a work item. See `foldSpans`. */
+  work_id: string | null
   span_id: string
   parent_span?: string | null
   phase: 'start' | 'end' | 'point'
@@ -94,6 +95,12 @@ export interface WorkItem {
 export function foldSpans(events: FlowEvent[]): Span[] {
   const spans = new Map<string, Span>()
   for (const e of events) {
+    // A work-id-less event is a fact about a SESSION (`session_summary`), not about a work item.
+    // Dropping it here rather than filtering downstream is what keeps it out of every projection at
+    // once: it never becomes a card, never lands in the orphan numerator, never crosses the board
+    // threshold. Readers that want it — the governance join — read the raw stream and join on
+    // `session_id`, which is the only correct attribution anyway.
+    if (!e.work_id) continue
     const cur: Span = spans.get(e.span_id) ?? {
       span_id: e.span_id,
       work_id: e.work_id,
@@ -355,6 +362,10 @@ export function orphanRatio(
   const buckets = new Map<string, { ids: Set<string>; events: number; newest_mint: string }>()
   for (const e of events) {
     if (!e.ts_utc || e.ts_utc < cutoff) continue
+    // Out of the DENOMINATOR too, not just the numerator. A `session_summary` has no work id by
+    // design, so counting it as a measured event would make the ratio improve for free every time
+    // the sweep runs — the one way a governance signal can be corrupted by its own instrumentation.
+    if (!e.work_id) continue
     total += 1
     if (!isOrphanWorkId(e.work_id)) continue
     if ((firstSeen.get(e.work_id as string) ?? e.ts_utc) < cutoff) {

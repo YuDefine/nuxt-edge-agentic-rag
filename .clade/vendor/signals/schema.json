@@ -139,9 +139,9 @@
           "maxLength": 36
         },
         "work_id": {
-          "type": "string",
+          "type": ["string", "null"],
           "pattern": "^W-[0-9]{4}-[0-9]{2}-[0-9]{2}-[a-z0-9][a-z0-9-]*$",
-          "description": "W-<YYYY-MM-DD>-<slug>, minted by `flow open <slug>`. Dispatches with no ambient work_id mint an orphan one (slug prefixed `orphan-`) so the event still joins the stream."
+          "description": "W-<YYYY-MM-DD>-<slug>, minted by `flow open <slug>`. Dispatches with no ambient work_id mint an orphan one (slug prefixed `orphan-`) so the event still joins the stream. Null is legal for exactly one kind, session_summary, and validateFlowEvent enforces the biconditional in BOTH directions. A session is not a work item: one session spans many work items and one work item spans many sessions, so any hard attribution rule is wrong in both directions and the join belongs on the read side, on session_id. The null is also what keeps these events out of the orphan numerator, so widening it to a second kind would silently corrupt the R3 signal."
         },
         "span_id": {
           "type": "string",
@@ -171,6 +171,7 @@
             "execute_tool",
             "plan",
             "session_transport",
+            "session_summary",
             "gate",
             "decision.request",
             "decision.clarify",
