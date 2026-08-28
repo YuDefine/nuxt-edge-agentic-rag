@@ -26,6 +26,7 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { endSpan, startSpan, type SpanHandle } from './emit.ts'
+import { normalizeArtifacts } from './nodes/lib/artifacts.ts'
 
 // Overridable so the engine's own tests can point at a fixture directory. Nodes are resolved by
 // name, never by path from the spec, so a spec can never reach outside whichever directory this is.
@@ -164,12 +165,25 @@ export function runNode(
   const ok = exitCode === 0
   const outcome = outcomeFor(exitCode)
 
+  // Artifacts are the one part of a node's `data` that gets lifted to a named payload field
+  // rather than staying inside the node's own blob: `brief.ts` reads `payload.artifacts` to
+  // answer "where does a successor pick this up", and a coordinate nested under a per-node shape
+  // would be invisible to it. Normalised, never trusted verbatim — the strict check ran inside
+  // the node, and by here the work is already done (telemetry NEVER outranks it).
+  // `defineNode` prints `{ node, summary, data }`, so a node's own structured result is one level
+  // down — reading `data.artifacts` off the envelope silently finds nothing forever, and an
+  // empty artifact list is indistinguishable from a node that never recorded one.
+  const artifacts = normalizeArtifacts(
+    (data?.data as Record<string, unknown> | undefined)?.artifacts,
+  )
+
   endSpan(span, {
     outcome,
     payload: {
       attempts,
       exit_code: exitCode,
       summary: (data?.summary as string) ?? stdout.trim().split('\n')[0] ?? '',
+      ...(artifacts.length > 0 ? { artifacts } : {}),
       ...(ok ? {} : { stderr: (proc.stderr ?? '').trim().slice(0, 2000) }),
     },
     cwd,

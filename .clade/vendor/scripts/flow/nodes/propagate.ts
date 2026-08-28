@@ -14,6 +14,7 @@
 import { spawnSync } from 'node:child_process'
 import { join } from 'node:path'
 
+import { journalArtifacts } from './lib/artifacts.ts'
 import { blocked, defineNode, fatal } from './lib/contract.ts'
 
 const RUNNER_CHILD_ENV = 'WORK_LOOP_RUNNER_CHILD'
@@ -60,9 +61,23 @@ running anything: propagation is attended-only, and that wait belongs on the gra
       const tail = (r.stderr || r.stdout || '').trim().split('\n').slice(-40).join('\n')
       fatal(`propagate failed (exit ${exitCode}) after ${durationMs}ms:\n${tail}`)
     }
+    // Where the delivery actually landed, one coordinate per consumer. Read out of the journal
+    // `propagate.ts` already writes (`.git/.clade-propagate/v<version>/<consumer>.json`) rather
+    // than scraped from its log: the journal is the same record `--resume` trusts, so an artifact
+    // that disagrees with it would be a second, weaker copy of the truth.
+    //
+    // Best-effort throughout — propagation already succeeded by this point, and a missing
+    // coordinate NEVER turns a delivered fleet into a failed node.
+    const artifacts = journalArtifacts(repo)
+
     return {
-      summary: `propagate finished in ${durationMs}ms`,
-      data: { exit_code: exitCode, duration_ms: durationMs, canary: args.canary ?? null },
+      summary: `propagate finished in ${durationMs}ms${artifacts.length > 0 ? `, ${artifacts.length} consumer(s) recorded` : ''}`,
+      data: {
+        exit_code: exitCode,
+        duration_ms: durationMs,
+        canary: args.canary ?? null,
+        artifacts,
+      },
     }
   },
 })
