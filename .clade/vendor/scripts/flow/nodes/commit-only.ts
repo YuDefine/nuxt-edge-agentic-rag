@@ -16,6 +16,7 @@
 
 import { spawnSync } from 'node:child_process'
 
+import { artifact, repoSlug } from './lib/artifacts.ts'
 import { defineNode, fatal, listArg, requireArg } from './lib/contract.ts'
 
 function git(repo: string, args: string[]): { status: number; stdout: string; stderr: string } {
@@ -98,9 +99,14 @@ content (--needle must appear in the committed --needle-path), line count (repor
       }
     }
 
+    // The commit is what this node LEFT BEHIND, so it goes out as an artifact — the full SHA,
+    // never the 12-char form the summary carries for eyes (see lib/artifacts.ts). A successor
+    // picking this up needs a coordinate it can `git show`, not a sentence about a commit.
+    const artifacts = [artifact('commit', sha, repoSlug(repo))]
+
     return {
       summary: `committed ${sha.slice(0, 12)}: ${committedFiles.length} file(s), +${insertions}/-${deletions}, needle found in ${needlePath}`,
-      data: { sha, files: committedFiles, insertions, deletions, needle_found: true },
+      data: { sha, files: committedFiles, insertions, deletions, needle_found: true, artifacts },
     }
   },
 })

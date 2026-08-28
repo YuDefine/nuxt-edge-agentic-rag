@@ -604,6 +604,22 @@ function stripGroupLetters(options: string[]): string[] {
   return options.map((o) => stripOptionLetter(o.replace(/^\s*[A-Za-z]\s+/u, '')))
 }
 
+/**
+ * 問這一題的人是誰，用得上的那種——`workIdFromIdentity` 的穩定身分欄位（TD-710）。
+ *
+ * `actor` 預設是 `'unknown'`（`flow ask` 沒帶 `--actor` 就是它），而把全 fleet 的無名提問
+ * 折進同一個 `W-<date>-unknown` 比 orphan 更糟：orphan 至少一題一列、數得出歸因缺口，
+ * `unknown` 會把互不相干的問題黏成一件看起來有名字的 work。所以它退回 pane id，再退回 null
+ * （＝讓 `workIdFromIdentity` 鑄 orphan）。
+ *
+ * NEVER 改用 `question`：那是自由文字，且一題一 work 會讓 /flow 的清單被決策淹掉（[[TD-710]]）。
+ */
+function askerIdentity(actor: string | null | undefined): string | null {
+  const named = String(actor ?? '').trim()
+  if (named && named !== 'unknown') return named
+  return process.env.HERDR_PANE_ID?.trim() || null
+}
+
 export function requestDecision({
   question,
   options = [],
@@ -630,7 +646,18 @@ export function requestDecision({
         : stripGroupLetters([recommended, ...options])[0]
 
   return startSpan({
-    work_id,
+    /*
+     * 沒帶 `work_id` 也沒有 ambient `CLADE_WORK_ID` 時，用**提問者身分**鑄具名 id，
+     * NEVER 落 `resolveWorkId(null)` 的 orphan（[[TD-710]]，Charles 2026-08-28 拍板 A．自成一件 work）。
+     *
+     * 順序仍是 ambient → 提問者身分 → orphan：`workIdFromIdentity` 自己先讀 ambient，所以
+     * 有 ambient 的 session 行為與此改動之前完全相同——NEVER 改成把身分餵給 `resolveWorkId(hint)`，
+     * 那個順序是 `hint ?? env`，會把一件具名工作的多題拆成互不相干的 per-question trace。
+     *
+     * 同一個 pane 的多題折進同一件（身分逐日鑄名），代價是 `/flow` 上多出以 pane 命名的
+     * work item——那正是拍板時接受的那一項。
+     */
+    work_id: work_id ?? workIdFromIdentity(askerIdentity(actor)),
     kind: 'decision.request',
     actor,
     substrate,

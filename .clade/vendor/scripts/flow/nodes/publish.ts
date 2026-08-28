@@ -19,6 +19,7 @@
 import { spawnSync } from 'node:child_process'
 import { join } from 'node:path'
 
+import { releaseArtifacts } from './lib/artifacts.ts'
 import { blocked, defineNode, fatal } from './lib/contract.ts'
 
 export const RUNNER_CHILD_ENV = 'WORK_LOOP_RUNNER_CHILD'
@@ -65,9 +66,14 @@ without running anything: publish is attended-only, and that wait belongs on the
       const tail = (r.stderr || r.stdout || '').trim().split('\n').slice(-40).join('\n')
       fatal(`publish failed (exit ${exitCode}) after ${durationMs}ms:\n${tail}`)
     }
+    // What this publish left behind: the release tag and the release commit, as coordinates
+    // (see lib/artifacts.ts). Best-effort — publish already succeeded, and a missing coordinate
+    // NEVER turns a delivered release into a failed node.
+    const artifacts = releaseArtifacts(repo)
+
     return {
       summary: `publish ${bump} succeeded in ${durationMs}ms`,
-      data: { bump, exit_code: exitCode, duration_ms: durationMs },
+      data: { bump, exit_code: exitCode, duration_ms: durationMs, artifacts },
     }
   },
 })
