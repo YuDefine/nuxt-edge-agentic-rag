@@ -600,6 +600,10 @@ if (cmd === 'pending') {
     if (d.lint.includes('near-miss-option-line')) {
       lines.push(`      ✎ ${LINT_NOTES['near-miss-option-line']}`)
     }
+    if (d.lint.includes('belongs-on-review')) {
+      lines.push(`      ✎ ${LINT_NOTES['belongs-on-review']}`)
+      lines.push('      已自動退回給 agent；這條的處置在 /review，不在這裡')
+    }
     if (d.carrier) lines.push(`      答案落到：${d.carrier}`)
     if (d.awaiting_clarification) {
       lines.push(
@@ -636,6 +640,16 @@ if (cmd === 'pending') {
       if (d.action) lines.push(`    → ${d.action}`)
       if (d.lint.includes('near-miss-option-line')) {
         lines.push(`    ✎ ${LINT_NOTES['near-miss-option-line']}`)
+      }
+      /*
+       * 這一桶原本只印 near-miss，於是 `belongs-on-review` 在它最常出現的地方是隱形的——
+       * 措施實例（<consumer-g> product-save-hardening）正是落在 `## 需要 Charles 執行`。
+       * 退回的文字寄到 span 上沒有用，讀這一頁的人看不到 clarification note；要嘛印在這裡，
+       * 要嘛這條 lint 對這一桶等於不存在。
+       */
+      if (d.lint.includes('belongs-on-review')) {
+        lines.push(`    ✎ ${LINT_NOTES['belongs-on-review']}`)
+        lines.push('    已自動退回給 agent；這條的處置在 /review，不在這裡')
       }
     }
     lines.push('')

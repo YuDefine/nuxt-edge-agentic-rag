@@ -19,7 +19,7 @@
 // is the surface that already owns questions.
 
 import type { Span, WorkItem, WorkState } from './spine.ts'
-import type { Stall } from './stall.ts'
+import type { Stall, StallShape } from './stall.ts'
 
 export type BoardLane = 'awaiting-you' | 'blocked' | 'in-flight' | 'parked' | 'closed'
 
@@ -78,10 +78,53 @@ export interface BoardCard {
   verification: string | null
 }
 
+/**
+ * One pile of dispatch residue: the same stall shape on the same substrate.
+ *
+ * WHY THIS EXISTS. Measured 2026-08-28 across the fleet: 受阻 held 52 cards and every one of them
+ * was anonymous — 43 Herdr panes, 12 pi, 4 codex, all of them dead dispatches rather than work
+ * anybody is doing. Read as 52 equal cards that list is unactionable, and the failure it produces
+ * is documented: the 2026-08-27 stalls sat 67.3h and 33.6h with correct actions nobody ran. The
+ * pile is not 52 decisions, it is four or five, and this is the type that says so.
+ *
+ * NEVER let this become a filter. Nothing is dropped: every card in a cluster is also in the
+ * lane's `cards`. Grouping changes how many things a reader must look at, not how many exist —
+ * hiding a residue card is how the oldest stall on the fleet stops being anybody's problem.
+ */
+export interface ResidueCluster {
+  /** `<shape>·<substrate>` — stable, and the DOM key a renderer folds on. */
+  key: string
+  /** Null for the residue admitted by "needs eyes" with no stall at all (a failed anonymous run). */
+  shape: StallShape | null
+  substrate: string
+  cards: BoardCard[]
+  /** Oldest card in the pile. A collapsed group MUST still be able to show this. */
+  oldest_minutes: number
+  /**
+   * Every card's `action`, verbatim, one per line — what a "copy this pile" control hands over.
+   *
+   * NEVER replace this with one synthesised loop command. `--reclaim <pane> --verified` asserts a
+   * human checked three things; a `for` loop over 22 panes performs that assertion 22 times and
+   * checks it zero times. Concatenation keeps every judgement where it was, and only removes the
+   * cost of copying 22 lines one at a time — which is the actual complaint.
+   */
+  actions: string
+  /** Pane ids present in this pile, for locating them in Herdr. May be shorter than `cards`. */
+  pane_ids: string[]
+}
+
 export interface BoardLaneGroup {
   lane: BoardLane
   label: string
   cards: BoardCard[]
+  /**
+   * `cards` split into work with a name and anonymous dispatch residue. Both are always present
+   * and always sum to `cards` — a renderer picks the split or the flat list, and gets the same
+   * set either way. Non-blocked lanes leave `residue` empty: 擱置 is 27 *named* work items, a
+   * different failure needing a different answer (see `classify`'s parked branch).
+   */
+  named: BoardCard[]
+  residue: ResidueCluster[]
 }
 
 export interface Board {
@@ -174,6 +217,18 @@ function isBlockingStall(stall: Stall): boolean {
   return stall.shape === 'clarification-requested' || stall.kind !== 'decision.request'
 }
 
+/**
+ * The one stall a blocked card speaks for: the oldest of the blocking ones.
+ *
+ * Shared by `classify` (which words the card) and `clusterResidue` (which piles the card up) so
+ * the heading a reader folds open and the sentence they find inside can never name two different
+ * stalls. Two copies of "which stall is this card about" is the same bug as two copies of "which
+ * lane is this card in", one level down.
+ */
+function worstStall(blocking: Stall[]): Stall | undefined {
+  return blocking.toSorted((a, b) => b.age_minutes - a.age_minutes)[0]
+}
+
 function pendingDecisionsByWork(spans: Span[], now: number): Map<string, PendingDecision[]> {
   const dismissed = new Set<string>()
   for (const s of spans) {
@@ -200,6 +255,24 @@ function hours(minutes: number): string {
 
 const ACCEPT_ACTION = (workId: string) =>
   `node vendor/scripts/flow/flow.ts accept ${workId} --reason '<why>'   (或 drop)`
+
+/**
+ * The parked branch's next step — deliberately TWO options, never one.
+ *
+ * 27 named work items sat parked with `action: null` (measured 2026-08-28): the board had nothing
+ * to say about any of them. That silence is the documented failure — 登記是紀錄, relay 是送達 —
+ * and a parked item nobody relayed is one nobody will do.
+ *
+ * NEVER cut this down to the relay half. Some of those 27 are stale and want dropping, and an
+ * action that only knows how to dispatch would send zombie work to a fresh pane; 27 zombie panes
+ * is strictly worse than 27 quiet cards. The two halves are also deliberately asymmetric in form:
+ * the relay half names an act and the skill that performs it, because this file does not know the
+ * consumer, cwd or brief a real dispatch needs, and a command template that fails when pasted
+ * costs the whole action column its credibility. Only the half we can state exactly is a command.
+ */
+const PARKED_TRIAGE_ACTION = (workId: string) =>
+  `還要做 → 交給一個 session：/handoff relay（brief 指向這件工作的 origin）` +
+  `｜不做了 → node vendor/scripts/flow/flow.ts drop ${workId} --reason '<why>'`
 
 const ANSWER_ACTION = (spanId: string) =>
   `answer it in review-gui /decisions, or: node vendor/scripts/flow/flow.ts answer ${spanId} --answer '<text>'`
@@ -236,7 +309,7 @@ function classify(
     }
   }
   if (item.state === 'failed' || blocking.length > 0) {
-    const worst = blocking.toSorted((a, b) => b.age_minutes - a.age_minutes)[0]
+    const worst = worstStall(blocking)
     return {
       lane: 'blocked',
       reason: worst
@@ -267,7 +340,7 @@ function classify(
     reason: item.parked_at
       ? `park@${item.parked_at} · ${hours(ageMinutes(item.last_ts, now))} 未動`
       : `無 span 在跑、無人宣告完成 · ${hours(ageMinutes(item.last_ts, now))} 未動`,
-    action: null,
+    action: PARKED_TRIAGE_ACTION(item.work_id),
   }
 }
 
@@ -318,6 +391,64 @@ export function cardFor(
 }
 
 /**
+ * Split one lane's cards into named work and piles of residue.
+ *
+ * A card is residue when it has no name at all — `title === null`, i.e. `isNamed` was false and
+ * the card got in on "needs eyes" alone. That predicate is deliberate rather than convenient: an
+ * anonymous card cannot be recognised, cannot be searched for, and cannot be resumed; the only
+ * thing a reader can do with it is clear it. Named blocked work is the opposite — it has a thing
+ * to go back to — so it stays as individual cards.
+ *
+ * Piles are keyed by `shape × substrate` because that pair is exactly what decides the command:
+ * `unharvested·herdr` reclaims, `in-flight-overdue·pi` closes, and mixing them into one pile
+ * would produce a copy button whose lines do different things.
+ */
+function clusterResidue(cards: BoardCard[]): { named: BoardCard[]; residue: ResidueCluster[] } {
+  const named: BoardCard[] = []
+  const piles = new Map<string, ResidueCluster>()
+  for (const card of cards) {
+    if (card.title !== null) {
+      named.push(card)
+      continue
+    }
+    // The same stall `classify` spoke for, so the heading and the card agree. A residue card with
+    // no stall at all is real — the 10 anonymous `failed` runs measured 2026-08-28 — and it gets
+    // its own pile rather than being dropped for not fitting the shape vocabulary.
+    const worst = worstStall(card.stalls.filter(isBlockingStall))
+    const shape = worst?.shape ?? null
+    const substrate = worst?.substrate ?? 'unknown'
+    const key = `${shape ?? 'failed-no-stall'}·${substrate}`
+    const held = piles.get(key) ?? {
+      key,
+      shape,
+      substrate,
+      cards: [],
+      oldest_minutes: 0,
+      actions: '',
+      pane_ids: [],
+    }
+    held.cards.push(card)
+    held.oldest_minutes = Math.max(held.oldest_minutes, card.age_minutes)
+    if (worst?.pane_id && !held.pane_ids.includes(worst.pane_id)) held.pane_ids.push(worst.pane_id)
+    piles.set(key, held)
+  }
+  for (const pile of piles.values()) {
+    pile.cards.sort((a, b) => b.age_minutes - a.age_minutes)
+    // Built after the sort so the copied lines arrive in the same order the reader sees them.
+    pile.actions = pile.cards
+      .map((c) => c.action)
+      .filter((a): a is string => Boolean(a))
+      .join('\n')
+  }
+  // Biggest pile first: it is both the most cards cleared per decision and, being a pile, the
+  // most likely to be one systemic cause rather than N separate ones.
+  const residue = [...piles.values()].toSorted(
+    (a, b) => b.cards.length - a.cards.length || b.oldest_minutes - a.oldest_minutes,
+  )
+  return { named, residue }
+}
+
+/**
  * The board. Pure function of the fold plus `now`; the three inputs are exactly what every other
  * view already computed (`buildWorkItems`, `findStalls`, `foldSpans`), so no caller has to build
  * a fourth thing to render a fifth view.
@@ -343,6 +474,8 @@ export function buildBoardLanes(
     lane: l.lane,
     label: l.label,
     cards: [],
+    named: [],
+    residue: [],
   }))
   const byLane = new Map(groups.map((g) => [g.lane, g]))
   const hiddenCutoff = new Date(now - hiddenRecentDays * 86_400_000).toISOString()
@@ -369,6 +502,18 @@ export function buildBoardLanes(
   // Oldest first inside a lane: the thing that has been waiting longest is the thing a reader
   // should see first, and "newest on top" would bury exactly the rows a stall list is for.
   for (const g of groups) g.cards.sort((a, b) => b.age_minutes - a.age_minutes)
+
+  // Clustering runs on 受阻 only. Every other lane keeps `residue` empty and `named === cards`:
+  // 擱置's 27 are all named, and piling up 待你 would hide questions behind a fold.
+  for (const g of groups) {
+    if (g.lane === 'blocked') {
+      const split = clusterResidue(g.cards)
+      g.named = split.named
+      g.residue = split.residue
+    } else {
+      g.named = g.cards
+    }
+  }
 
   const counts = Object.fromEntries(groups.map((g) => [g.lane, g.cards.length])) as Record<
     BoardLane,

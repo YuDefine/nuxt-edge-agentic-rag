@@ -50,7 +50,8 @@ const STDERR_CAPTURE_BYTES = 2048
 // native stack。這裡在串流階段就認出它，收尾時與真失敗分開報，讓判讀者不必自己去量 load。
 //
 // NEVER 改成 retry 該檔：真失敗與本現象在 summary 層無法區分，retry 會把真失敗一起吞掉
-// （docs/tech-debt.md TD-667 § 已排除第一條）。本段只加判讀，不改 exit code。
+// （docs/archives/tech-debt-closed-2026-08.md TD-667 § 已排除第一條）。本段只加判讀，
+// 不改 exit code。判讀本身的已知缺口見 docs/tech-debt.md TD-775。
 const NATIVE_CRASH_RE = /Native stack trace|node::Assert/
 const CRASH_SCAN_CARRY = 64
 
@@ -89,9 +90,12 @@ function reportEnvironmentCrash(label, exitCode) {
   w(`environment: node runtime crash (load=${load} / nproc=${nproc})`)
   w(`  gate=${label} exit=${exitCode} —— 輸出含 native stack，node runtime 自己在 event loop`)
   w('  收尾階段 abort。子測試可能全部 ✔ 而整檔仍報 fail。')
-  w('  這不是 assertion 失敗：NEVER 據此推論剛才的改動壞了測試。')
+  w('  **整檔 fail 這個訊號**不是 assertion 失敗：NEVER 據此推論剛才的改動壞了測試。')
+  w('  但 crash 與真 assertion 失敗是獨立事件、**可以併存**，而且兩者在輸出裡長得一樣。')
+  w('  → MUST 獨立掃這趟有沒有 AssertionError，NEVER 因為本段就整趟不採信（TD-775）。')
   w(`  uptime=${up}；復現條件是 load > 4×nproc（多個 session 同時跑測試）。`)
-  w('  判讀：低負載環境重跑。詳見 docs/tech-debt.md TD-667。')
+  w('  判讀：把真 assertion 失敗挑出來處理完，剩下的部分低負載環境重跑。')
+  w('  詳見 docs/archives/tech-debt-closed-2026-08.md TD-667 與 docs/tech-debt.md TD-775。')
 }
 
 function usage(msg) {
@@ -180,7 +184,7 @@ if (HEAVY_GATES.includes(gateLabel) && process.env.CLADE_GATE_SLOT_HELD !== '1')
 
 if (process.env.CLADE_IMPROVEMENT_LOOP_OFF === '1' || !signalsAvailable) {
   // passthrough 模式維持 stdio inherit（保住 inner command 的 TTY），因此沒有串流可掃 ——
-  // TD-667 的判讀分離只在下方 instrumented 分支生效。clade home 與所有 registry consumer
+  // TD-667 的判讀分離（已歸檔，見 docs/archives/tech-debt-closed-2026-08.md）只在下方 instrumented 分支生效。clade home 與所有 registry consumer
   // 都有 vendor/signals，走的是下面那條。
   const c = spawn(execArgv[0], execArgv.slice(1), { stdio: 'inherit' })
   c.on('exit', (code, sig) => process.exit(code ?? (sig ? 128 : 0)))

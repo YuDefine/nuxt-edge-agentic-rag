@@ -48,6 +48,22 @@ export interface Stall {
   /** What a reader should do about it — the same contract patrol's `action` column carries. */
   action: string
   label: string | null
+  /**
+   * The handles that locate this stall in the substrate it lives in — a Herdr pane, a dispatch
+   * record. Both are ALSO interpolated into `action`, and that is the point: `action` is a
+   * sentence for a human to run, these are fields for a caller to group, filter and probe by.
+   *
+   * They exist because the sentence was the only carrier for three months, and a reader looking
+   * at 52 anonymous residue cards could not get from the board to the pane without parsing
+   * English. NEVER recover a missing value by regexing `action` — that is a second derivation of
+   * the same fact wearing a disguise, and the two copies will disagree the first time the
+   * sentence is reworded. Missing here means missing in `span.payload`; say so with null.
+   *
+   * Null on every stall whose substrate has no such handle (a `stash-residue` has no pane) and on
+   * older spans emitted before the payload carried one — consumers MUST render the null case.
+   */
+  pane_id: string | null
+  dispatch_id: string | null
 }
 
 /**
@@ -56,6 +72,12 @@ export interface Stall {
  * no outcome is a race, not a leak, and the two surfaces must not disagree about where that line is.
  */
 export const DEFAULT_STALL_MINUTES = 60
+
+/** One string field off a span payload, or null. The payload is an open bag; nothing is promised. */
+function payloadString(span: Span, key: string): string | null {
+  const held = span.payload?.[key]
+  return typeof held === 'string' && held.length > 0 ? held : null
+}
 
 function ageMinutes(ts: string | null, now: number): number | null {
   if (!ts) return null
@@ -214,6 +236,12 @@ export function findStalls(
       kind: span.kind,
       actor: span.actor,
       label: labelOf(span),
+      // Read once, here, for every shape — the `unharvested` branch below interpolates the same
+      // two values into its sentence and MUST keep reading them from this one place. Two readers
+      // of `span.payload.pane_id` is how a card ends up pointing at a different pane than the
+      // command printed underneath it.
+      pane_id: payloadString(span, 'pane_id'),
+      dispatch_id: payloadString(span, 'dispatch_id'),
     }
 
     if (!span.end_ts) {
@@ -277,9 +305,11 @@ export function findStalls(
       !reclaimed.has(span.span_id) &&
       endAge >= thresholdMinutes
     ) {
-      const dispatchId =
-        typeof span.payload?.dispatch_id === 'string' ? span.payload.dispatch_id : ''
-      const paneId = typeof span.payload?.pane_id === 'string' ? span.payload.pane_id : '<pane>'
+      // Same two values as `base.pane_id` / `base.dispatch_id`, placeholder-substituted for the
+      // sentence. The substitution is presentation only — NEVER let the placeholders leak back
+      // into the fields, or a caller probing `pane_id` gets the literal string `<pane>`.
+      const dispatchId = base.dispatch_id ?? ''
+      const paneId = base.pane_id ?? '<pane>'
       stalls.push({
         ...base,
         shape: 'unharvested',
@@ -372,6 +402,11 @@ export function findOwnershipStalls(
         age_minutes: age ?? 0,
         since: row.written_at ?? '',
         label: row.session_id,
+        // git-substrate stalls have no pane and no dispatch: the handle for a dirty path IS the
+        // path, and it is already `work_id`. Explicit nulls, NEVER an empty string — "" reads as
+        // "there is a pane and it is nameless".
+        pane_id: null,
+        dispatch_id: null,
         action: `dirty and its writer is gone (two signals agree) — NEVER 盲等. Adjudicate now: git commit --only -- ${row.resource}, or stash it`,
       })
       continue
@@ -389,6 +424,8 @@ export function findOwnershipStalls(
         age_minutes: age,
         since: row.written_at as string,
         label: row.resource,
+        pane_id: null,
+        dispatch_id: null,
         // A live publish holds its stash for minutes, not half an hour. Past that the stash is
         // residue and reading it as "a publish is in flight" blocks a gate on nothing —
         // clade-role-and-todo-discipline § Commit 前 MUST 先確認別人的 publish 沒在飛 says the
