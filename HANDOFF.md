@@ -74,6 +74,19 @@
 3. **adopt-evlog-nuxthub-ai-t3**：推進 impl（獨立，可平行）
 4. **TD-056 / TD-061 / TD-057 behavior 驗收**：production 觀察 pipeline_error 比例
 
+## Follow-ups（2026-08-29 session — TD-685 heavy-gate relay）
+
+- [ ] **debdfba0 已 commit 未 push** — `🧹 chore: build script 納入 heavy-gate semaphore`
+  - 卡在 Step 6-Gate：`verdict=needs-approval status=unconfirmable`
+  - `detail=production deploy workflows disagree (deploy.yml) — declare the production trigger, not the staging one`
+  - main push 會不會觸發 production deploy 推不出結論，故未 push（不是失敗，是 fail-closed）
+  - 收尾：修 `.claude/consumer-meta.json` 的 `deploy.deployTrigger` 宣告使其與 `deploy.yml` 一致，或改 workflow；宣告修正是獨立工作，NEVER 夾在別的 commit 裡
+- [ ] **既有測試紅燈：5 個 test file 在 `setupNuxt()` hook 10s timeout**（與本次改動無關，已用 stash 對照驗證 HEAD 原狀同樣紅）
+  - `test/unit/auth-return-to.spec.ts`、`auth-return-to-pending-delete.test.ts`、`chat-conversation-history.test.ts`、`chat-conversation-session.test.ts`、`create-chat-conversation-history.spec.ts`
+  - 單獨重跑仍紅 → 不是負載 flake，是 nuxt test environment setup 的真紅燈
+  - 另兩個 chart test（`debug-outcome-breakdown` / `admin-usage-timeline-chart`）在 build 併發下 5s timeout，機器閒置時重跑即綠 → 那兩個是負載 flake，不是 bug
+- [ ] **clade `scripts/audit-gate-coverage.ts` 尚無 § 3b heavy-label 覆蓋表** — TD-685 relay 的驗收標準 1 目前無從機械驗證（§ 3 只列 test / lint / typecheck，不含 build）。這條屬 clade 端，consumer 不動
+
 ## Worktree & Stash Audit
 
 _Updated: 2026-06-09_
