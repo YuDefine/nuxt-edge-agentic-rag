@@ -19,6 +19,15 @@ export const ACCEPTANCE_PREDICATE =
   /\*\*(驗收|Acceptance|Unblock predicate|解凍 predicate)\*\*\s*[:：]/i
 export const LOCATION_LINE = /^(?:[-*+]\s+)?\*\*Location\*\*\s*[:：]/
 export const STATUS_LINE = /^(?:[-*+]\s+)?\*\*Status\*\*\s*[:：]\s*(.*)$/
+/**
+ * `**Parent**: TD-NNN` — the ONLY machine-readable statement that one entry belongs under another.
+ *
+ * Explicit marker only, on the same basis `scanTechDebt` refuses a keyword heuristic. `[[TD-NNN]]`
+ * prose links do NOT carry direction: TD-787's Class line names both TD-684 and TD-786 while being
+ * their DOWNSTREAM, and no reading of the link tells you which way it points. A field a person
+ * typed on purpose is the only source that does.
+ */
+export const PARENT_LINE = /^(?:[-*+]\s+)?\*\*Parent\*\*\s*[:：]\s*(TD-\d+)\b/
 /** A Location pointing into a clade-managed tree means the fix is not done until it propagates. */
 export const PUBLISH_REQUIRED_PATH =
   /(?:^|[\s`(（、＋+])(?:rules|plugins|vendor|claude-md|\.claude)\//
@@ -29,6 +38,8 @@ export interface TdEntry {
   title: string
   status: string
   location: string
+  /** `**Parent**: TD-NNN`, when the entry states one. NEVER inferred from prose links. */
+  parent: string | null
   /** A 自驗 heading or an acceptance predicate — either counts as an evidence carrier. */
   hasEvidence: boolean
   needsPublish: boolean
@@ -58,12 +69,15 @@ export function parseTdRegister(source: string): TdEntry[] {
 
     let status = ''
     let location = ''
+    let parent: string | null = null
     let hasEvidence = false
     let needsPublish = false
 
     for (const line of body.slice(1)) {
       const st = STATUS_LINE.exec(line)
       if (st) status = st[1]
+      const pa = PARENT_LINE.exec(line)
+      if (pa) parent = pa[1]
       if (SELF_VERIFY_HEADING.test(line) || ACCEPTANCE_PREDICATE.test(line)) hasEvidence = true
       if (LOCATION_LINE.test(line)) {
         location = line
@@ -76,6 +90,7 @@ export function parseTdRegister(source: string): TdEntry[] {
       title: heading[1],
       status: status.trim(),
       location: location.trim(),
+      parent,
       hasEvidence,
       needsPublish,
       isOpen: DEBT_OPEN_STATUS.test(status) && !DEBT_PARKED_STATUS.test(status),

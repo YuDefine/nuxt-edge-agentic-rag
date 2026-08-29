@@ -162,7 +162,23 @@ export interface FlowEventInput {
 }
 
 export interface OpenWorkInput {
+  /**
+   * Slug half of the name. May be the empty string ONLY together with an explicit `work_id`:
+   * a label that normalises to nothing (a fully CJK one does) still deserves a `title`, and an
+   * empty slug is omitted from the payload rather than written through. Writing `slug: ''` would
+   * be worse than omitting it — `isNamed` reads `slug ?? origin_ref ?? title` and `''` short-
+   * circuits the `??` chain, so an empty slug would HIDE a title that is right there.
+   */
   slug: string
+  /**
+   * Name an id that already exists instead of minting one from `slug`.
+   *
+   * For callers that must decide the id first and can only name it afterwards — the dispatch
+   * adapters mint before they know whether the label survives slug normalisation. Without this
+   * they can only call `mintWorkId`, and an id whose characters spell the label is NOT a name:
+   * `buildWorkItems` reads slug/title/origin from the `work.open` payload and nothing else.
+   */
+  work_id?: string | null
   actor?: string
   session_id?: string | null
   /**
@@ -173,6 +189,8 @@ export interface OpenWorkInput {
   origin?: string | null
   /** One human line naming the problem, so a reader recognises it without opening anything. */
   title?: string | null
+  /** Where the work was born, for readers that group by it. Defaults to `manual` (a person ran `flow open`). */
+  substrate?: string
   payload?: Record<string, unknown>
   cwd?: string
 }
@@ -224,7 +242,10 @@ export interface SpanHandle {
  * a non-zero exit. The gate lives HERE rather than in the helpers below because `flow emit --kind
  * work.done` is a door too, and a gate only one door honours is not a gate.
  */
-const REQUIRED_PAYLOAD: Record<string, { field: string; code: string; why: string }> = {
+const REQUIRED_PAYLOAD: Record<
+  string,
+  { field: string; code: string; why: string; nullable?: boolean }
+> = {
   'work.done': {
     field: 'verification',
     code: 'verification-required',
@@ -240,6 +261,24 @@ const REQUIRED_PAYLOAD: Record<string, { field: string; code: string; why: strin
     code: 'reason-required',
     why: 'work.drop needs payload.reason — a drop with no stated basis is a silent delete',
   },
+  // `nullable` is the whole reason this rule shape has a fourth field, and it is not a loophole:
+  // the requirement is on the KEY being present, and `null` is a MEANINGFUL value — it is detach.
+  //
+  // Without a legal null, "no parent" would be reachable only at birth: a work item mis-linked to
+  // a parent that turns out not to exist could be re-parented forever but never returned to having
+  // none. That is not the same shape as `work.park` or `work.accept` having no inverse event —
+  // those reach every state they have by last-write-wins overwrite. Detach is not an inverse
+  // event; it is the value that completes the range.
+  //
+  // The alternative considered was a `{ detached: true }` flag with `parent_work_id` exempted from
+  // the requirement. That buys a second code path through the one gate on this stream that is
+  // allowed to refuse a write, for a state a legal `null` already expresses.
+  'work.link': {
+    field: 'parent_work_id',
+    code: 'parent-required',
+    why: 'work.link needs payload.parent_work_id — the parent work id, or null to detach. An event naming no parent records no fact and folds to a silent no-op',
+    nullable: true,
+  },
 }
 
 function requiredPayloadError(kind: string, payload: Record<string, unknown>) {
@@ -247,6 +286,10 @@ function requiredPayloadError(kind: string, payload: Record<string, unknown>) {
   if (!rule) return null
   const value = payload?.[rule.field]
   if (typeof value === 'string' && value.trim().length > 0) return null
+  // Presence, not truthiness, and ONLY for a rule that opted in. The three rules that did not are
+  // unchanged: `work.done` with `verification: null` is still refused, which is the assertion that
+  // keeps this widening from silently becoming a hole in the one fail-closed gate on the stream.
+  if (rule.nullable && value === null && Object.hasOwn(payload ?? {}, rule.field)) return null
   return { code: rule.code, message: rule.why }
 }
 
@@ -312,14 +355,16 @@ export function emitEvent({
 /** Open a work item: one point event that names the work id for everything downstream. */
 export function openWork({
   slug,
+  work_id: existingId = null,
   actor = 'unknown',
   session_id = null,
   origin = null,
   title = null,
+  substrate = 'manual',
   payload = {},
   cwd,
 }: OpenWorkInput) {
-  const work_id = mintWorkId(slug)
+  const work_id = existingId ?? mintWorkId(slug)
   const span_id = newSpanId()
   // origin_kind is derived from origin_ref rather than passed separately: two fields that must
   // agree are two fields that can disagree, and the scheme is already the first half of the ref.
@@ -332,10 +377,10 @@ export function openWork({
     phase: 'point',
     kind: 'work.open',
     actor,
-    substrate: 'manual',
+    substrate,
     session_id,
     payload: {
-      slug,
+      ...(slug ? { slug } : {}),
       ...(origin_ref ? { origin_ref, origin_kind } : {}),
       ...(typeof title === 'string' && title.trim() ? { title: title.trim() } : {}),
       ...payload,
@@ -1417,6 +1462,78 @@ export function parkWork({
     substrate,
     session_id,
     payload: { carrier: trimmed, ...(note ? { note } : {}) },
+    cwd,
+  })
+}
+
+export interface LinkWorkInput {
+  /** The CHILD. The link is carried on it, because that is the id whose belonging changed. */
+  work_id: string
+  /** The parent work id, or null to detach. Empty string is normalised to null — see below. */
+  parent_work_id: string | null
+  /** Why it belongs there. Optional: unlike a verdict, a link states a fact rather than closes one. */
+  reason?: string | null
+  actor?: string
+  substrate?: string
+  session_id?: string | null
+  payload?: Record<string, unknown>
+  cwd?: string
+}
+
+/**
+ * Give a work item a parent — the hierarchy an initiative needs, with no new entity to hold it.
+ *
+ * An initiative or epic IS a work item: one that other work items point at. That is the whole
+ * design. A separate epic type would be a second data model with its own lifecycle, its own
+ * states, and its own way of disagreeing with the spine about whether something is finished.
+ *
+ * A POINT event on the child, with no `parent_span`, for the same reason `work.done` is one: this
+ * is a fact about the WORK, not about whichever pane happened to notice. Hanging it off a span
+ * would make a work item's parentage depend on which dispatch was last, which is precisely the
+ * confusion the work layer exists to remove.
+ *
+ * LAST-WRITE-WINS, deliberately unlike `work.open`'s first-origin-wins. A work item is born once,
+ * so rewriting its origin would re-parent history that is already folded under it; but WHERE it
+ * belongs is a judgement, and judgements get revised. The cost is that two links can form a cycle
+ * (A→B then B→A), which is why `workDepth` in the spine is cycle-guarded and the PM view marks
+ * the members rather than silently picking one to be the root.
+ *
+ * NEVER emit this from a hook or any automatic path. It is in `REQUIRED_PAYLOAD`, so it is checked
+ * before the `CLADE_FLOW_OFF` gate and can refuse a write — an exception to this library's
+ * fail-open contract that only holds while the writer is a person, or an orchestration a person
+ * asked for, ASSERTING something. Telemetry that observes work NEVER changes that work's outcome.
+ */
+export function linkWork({
+  work_id,
+  parent_work_id,
+  reason = null,
+  actor = 'unknown',
+  substrate = 'manual',
+  session_id = null,
+  payload = {},
+  cwd,
+}: LinkWorkInput) {
+  // '' and null mean the same thing here (no parent), and keeping both spellings would leave a
+  // value that a later reader eventually treats as a third state. Normalise at the door.
+  const parent =
+    typeof parent_work_id === 'string' && parent_work_id.trim() ? parent_work_id.trim() : null
+  // A cycle of length one. Nothing but a typo produces it, and the fold would have to carry it.
+  if (parent !== null && parent === work_id) {
+    return {
+      written: false,
+      errors: [{ code: 'self-parent', message: 'a work item cannot be its own parent' }],
+    }
+  }
+  return workPoint('work.link', {
+    work_id,
+    actor,
+    substrate,
+    session_id,
+    payload: {
+      parent_work_id: parent,
+      ...(typeof reason === 'string' && reason.trim() ? { reason: reason.trim() } : {}),
+      ...payload,
+    },
     cwd,
   })
 }

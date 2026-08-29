@@ -34,6 +34,7 @@ import { parseArgs } from 'node:util'
 
 import { findConsumerRoot } from '../claim-helper.ts'
 import { fleetRoots, syncDecisions, syncFleet } from './decision-sync.ts'
+import { syncWork, syncWorkFleet, type WorkSyncResult } from './work-sources.ts'
 import {
   acceptWork,
   answerClarification,
@@ -45,6 +46,7 @@ import {
   eventsPath,
   ingestEvents,
   knownWorkIds,
+  linkWork,
   markWorkDone,
   newSpanId,
   openWork,
@@ -103,6 +105,7 @@ import { DEFAULT_STALL_MINUTES, findOwnershipStalls, findStalls, renderStalls } 
 import { readWaves, renderFleetMarkdown, renderWorkMarkdown } from './viz-md.ts'
 import { buildBoardLanes } from './board.ts'
 import { buildDossier, dossierJson, overviewJson, renderDossier, renderOverview } from './brief.ts'
+import { buildPmView, pmViewJson, renderPmView } from './pm-view.ts'
 import { buildWhoRows, renderWho } from './who.ts'
 
 // parseArgs folds everything after `--` into positionals, losing the boundary, so the split has
@@ -152,6 +155,10 @@ const { values: args, positionals } = parseArgs({
     recommended: { type: 'string' },
     category: { type: 'string' },
     carrier: { type: 'string' },
+    // `link` flags — same reason as the rest: undeclared, `--parent W-…` becomes parent=true with
+    // the id stranded in positionals, and the CLI would then read the id as a second work id.
+    parent: { type: 'string' },
+    detach: { type: 'boolean', default: false },
     // 互動決策頁。同上：未宣告的話 `--question-page .impeccable/questions/x.json` 會變成
     // question-page=true、路徑落進 positionals，而題目照樣進佇列 —— 只是點開來沒有頁。
     'question-page': { type: 'string' },
@@ -184,9 +191,14 @@ const { values: args, positionals } = parseArgs({
   strict: false,
 })
 
-const USAGE = `Usage: flow <open|done|accept|drop|park|ask|pending|answer|answers|sources|amend-options|ask-options|clarify|dismiss|emit|close|ingest|run|step|viz|status|who|brief|otlp> [args]
+const USAGE = `Usage: flow <open|link|done|accept|drop|park|ask|pending|answer|answers|sources|amend-options|ask-options|clarify|dismiss|emit|close|ingest|run|step|viz|status|who|brief|otlp> [args]
 
   open <slug> [--actor <actor>]   mint a work id and emit its work.open event
+  link <work_id> --parent <id>    put this work item under another one. An initiative is not a new
+       [--detach] [--reason R]    entity — it is an ordinary work item that others point at.
+                                  Re-parenting is last-write-wins; --detach removes the parent.
+                                  A parent this spine does not know is WARNED, not refused: on a
+                                  12-repo fleet the parent often lives in another repo's spine.
   done <work_id>                  claim the work item is finished. --verification is REQUIRED and
        --verification '<how>'     is refused when empty: a done nobody can check is what makes
        [--verified-by W]          "accepted" meaningless. Any span started later reverts it.
@@ -245,11 +257,13 @@ const USAGE = `Usage: flow <open|done|accept|drop|park|ask|pending|answer|answer
   viz timeline [<work_id>]        span waterfall for a work item (default: most recent)
   viz --md [<work_id>] [--out P]  write docs/flow/<work_id>.md (mermaid graph + gantt)
   viz --fleet [--waves N]         write docs/flow/fleet.md from the propagate ledger
-  brief [--json]                  the board: 待你 / 受阻 / 進行中 / 擱置 / 已收, under a hard
+  brief [--pm] [--json]           the board: 待你 / 受阻 / 進行中 / 擱置 / 已收, under a hard
         [--work-id W]             token budget. Without --work-id it is the session-opening
                                   overview; with one it is that work item's dossier (state, lane,
                                   origin, last 10 events, pending decisions, dispatch trail,
                                   session chain, stall + action). Same lane function /board reads.
+                                  --pm re-groups the SAME lanes by origin for a PM/client
+                                  reader: named work only, orphan activity counted not listed.
   who [--json] [--transcripts]    one line per contended resource (dirty path / worktree /
                                   stash) with an owner verdict + a named action. Reads
                                   write-time evidence, not declared fields (TD-664).
@@ -350,6 +364,38 @@ if (cmd === 'open') {
   process.stdout.write(`${JSON.stringify({ work_id, span_id })}\n`)
   process.stderr.write(`export CLADE_WORK_ID=${work_id}\n`)
   process.exit(0)
+}
+
+if (cmd === 'link') {
+  const workId = positionals[1] ?? strFlag(args['work-id'])
+  if (!workId) fail('link needs a work id (or --work-id)')
+  // The CHILD must exist: a link filed against an id this spine never saw is a claim about
+  // nothing, exactly like `done` on an unknown id.
+  if (!knownWorkIds().has(workId)) {
+    fail(`no work item ${workId} on this spine (${eventsPath()}); \`flow open <slug>\` mints one`)
+  }
+  const parent = strFlag(args.parent)
+  const detach = args.detach === true
+  if (!parent && !detach) fail('link needs --parent <work_id>, or --detach to remove the parent')
+  if (parent && detach) fail('link takes --parent or --detach, not both')
+  // WARNED, never refused. Each of the 12 consumer repos keeps its own spine, so a parent in
+  // another repo is unresolvable here BY DESIGN — refusing it would make the cross-repo case
+  // require a --force that everyone would then type by reflex, and the typo protection a force
+  // flag was meant to provide goes to zero the moment it becomes muscle memory. A dangling
+  // parent declares an edge this repo cannot draw; it does not mint an entity.
+  if (parent && !knownWorkIds().has(parent)) {
+    process.stderr.write(
+      `flow: parent ${parent} is not on this spine — fine if it lives in another repo, a typo otherwise\n`,
+    )
+  }
+  const res = linkWork({
+    work_id: workId,
+    parent_work_id: detach ? null : parent,
+    reason: strFlag(args.reason),
+    actor: strFlag(args.actor) ?? 'unknown',
+    substrate: strFlag(args.substrate) ?? 'claude-code',
+  })
+  report(res, { work_id: workId, parent_work_id: detach ? null : parent })
 }
 
 /**
@@ -689,13 +735,22 @@ if (cmd === 'sources') {
   // getting the dedup key wrong is a queue that grows without bound — so the safe invocation has
   // to be the short one, and `--apply` has to be typed on purpose.
   const apply = args.apply === true
+  const cladeRoot = process.env.CLADE_HOME ?? repoRoot()
+  const localRoot = findConsumerRoot(process.cwd()) ?? repoRoot()
   const results =
     args.all === true
-      ? syncFleet({ cladeRoot: process.env.CLADE_HOME ?? repoRoot(), dryRun: !apply })
-      : [syncDecisions({ repoRoot: findConsumerRoot(process.cwd()) ?? repoRoot(), dryRun: !apply })]
+      ? syncFleet({ cladeRoot, dryRun: !apply })
+      : [syncDecisions({ repoRoot: localRoot, dryRun: !apply })]
+  // The WORK half (TD-787). Same files, same --apply gate, same door — a second entry point would
+  // be a second thing to remember to run, and the register's `Status: done` would keep never
+  // reaching the spine for exactly as long as nobody remembered.
+  const work =
+    args.all === true
+      ? syncWorkFleet({ roots: fleetRoots(cladeRoot), dryRun: !apply })
+      : [syncWork({ repoRoot: localRoot, dryRun: !apply })]
 
   if (args.json === true) {
-    process.stdout.write(`${JSON.stringify({ applied: apply, results }, null, 2)}\n`)
+    process.stdout.write(`${JSON.stringify({ applied: apply, results, work }, null, 2)}\n`)
     process.exit(0)
   }
 
@@ -742,8 +797,81 @@ if (cmd === 'sources') {
     `\n${verb}開 ${opened} 題、${verb}撤回 ${retracted} 題、${verb}更新 ${amended} 題`,
   )
   process.stdout.write(apply ? '\n' : '（加 --apply 才會真的寫入）\n')
+
+  const workActions = renderWork(work, verb, apply)
   // 2 = nothing to show, the same convention `status` uses.
-  process.exit(opened + retracted + amended === 0 ? 2 : 0)
+  process.exit(opened + retracted + amended + workActions === 0 ? 2 : 0)
+}
+
+/** The work half's report. Returns how many actions it named, for the caller's exit code. */
+function renderWork(results: WorkSyncResult[], verb: string, apply: boolean): number {
+  let opens = 0
+  let dones = 0
+  let links = 0
+  let thin = 0
+  for (const r of results) {
+    if (r.skipped) {
+      process.stdout.write(`\n${r.repo}\n  work 對帳 skipped: ${r.skipped}\n`)
+      continue
+    }
+    if (
+      r.actions.length === 0 &&
+      r.vanished.length === 0 &&
+      r.unwritten.length === 0 &&
+      r.unresolved_parents.length === 0
+    )
+      continue
+    process.stdout.write(
+      `\n${r.repo}  work（register ${r.scanned} 條，其中 actionable-open ${r.actionable}，已有卡 ${r.tracked}）\n`,
+    )
+    for (const a of r.actions) {
+      if (a.type === 'open') {
+        opens += 1
+        process.stdout.write(`  + 開卡  ${a.td}  ${a.title.slice(0, 76)}\n`)
+      } else if (a.type === 'done') {
+        dones += 1
+        if (a.thin_evidence === true) thin += 1
+        process.stdout.write(
+          `  ✓ 關卡  ${a.td}${a.thin_evidence === true ? '（薄證據）' : ''}  ${String(a.detail).slice(0, 68)}\n`,
+        )
+      } else {
+        links += 1
+        process.stdout.write(`  ↳ 掛在  ${a.detail} 底下  ${a.td}\n`)
+      }
+    }
+    // Reported, never acted on: rotation into docs/archives IS closure, and inventing a closure
+    // event for it would write a claim nobody made.
+    if (r.vanished.length > 0) {
+      process.stdout.write(
+        `  · ${r.vanished.length} 張卡的 TD 已不在 live register（輪出即結案，不動它）：${r.vanished.slice(0, 6).join(' ')}\n`,
+      )
+    }
+    // Named, not acted on: there is no work id to link to, so an action here could never be
+    // written. A closed or archived parent is the normal case, a typo looks the same, and only a
+    // person can tell them apart.
+    if (r.unresolved_parents.length > 0) {
+      process.stdout.write(
+        `  · ${r.unresolved_parents.length} 條 **Parent** 指向沒有卡的 TD（已結案 / 已輪出 / 打錯）：${r.unresolved_parents.slice(0, 6).join(' ')}\n`,
+      )
+    }
+    // The emit library is fail-open and swallows, so a run that wrote nothing looks exactly like a
+    // run that worked. This is the only place that difference is visible.
+    if (r.unwritten.length > 0) {
+      process.stdout.write(
+        `  ⚠ ${r.unwritten.length} 筆回報寫入但 spine 上找不到：${r.unwritten.join(' ')}\n`,
+      )
+    }
+  }
+  if (opens + dones + links === 0) return 0
+  process.stdout.write(
+    `\n${verb}開 ${opens} 張卡、${verb}關 ${dones} 張、${verb}掛 ${links} 條層級`,
+  )
+  // Thin evidence is printed on its own line rather than folded into the done count: `work.accept`
+  // is supposed to rest on the verification, and "the register said so" is not the same basis as a
+  // 自驗 block. Silently equal counts would make that difference unrecoverable.
+  if (thin > 0) process.stdout.write(`（其中 ${thin} 張的證據只有 register 本身）`)
+  process.stdout.write(apply ? '\n' : '（加 --apply 才會真的寫入）\n')
+  return opens + dones + links
 }
 
 if (cmd === 'dismiss') {
@@ -1337,6 +1465,14 @@ if (cmd === 'brief') {
     const dossier = buildDossier({ workId, board, workItems, spans, stalls, events })
     process.stdout.write(args.json ? dossierJson(dossier) : renderDossier(dossier))
     process.exit(dossier.found ? 0 : 2)
+  }
+  // `--pm` is a second PROJECTION of the same board, never a second board — `buildPmView`
+  // consumes the lanes above rather than deriving any. See pm-view.ts for why the two views
+  // cannot share one entry threshold.
+  if (args.pm) {
+    const view = buildPmView(board, workItems, spans)
+    process.stdout.write(args.json ? pmViewJson(view) : renderPmView(view))
+    process.exit(0)
   }
   process.stdout.write(args.json ? overviewJson(board) : renderOverview(board))
   process.exit(0)
