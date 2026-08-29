@@ -9,6 +9,8 @@
 // Everything here is derived. There is NEVER a stored span, a cache, or a second file — the
 // events stream is the only state, and every function below is a pure function of it.
 
+import { artifactsOf, dedupeArtifacts, type SpanArtifact } from './nodes/lib/artifacts.ts'
+
 export interface FlowEvent {
   /** Null for `session_summary` only — a session is not a work item. See `foldSpans`. */
   work_id: string | null
@@ -97,6 +99,36 @@ export interface WorkItem {
    * a defect to null out. `rootWorkItems` treats it as a root; a view MUST say that it did.
    */
   parent_work_id: string | null
+  /**
+   * Everything this work item's spans recorded leaving behind, deduped, in span order.
+   *
+   * AGGREGATED, never written: the same `artifactsOf` the dossier has always used, applied one
+   * level up. A `work.artifact` kind was considered and rejected — a work item's output is the
+   * union of what its spans produced, and a second place to record it is a second thing to keep in
+   * sync. Hand-registered output (a PR opened from another machine, a cross-repo landing) rides on
+   * `work.done`'s payload, because the moment somebody registers output by hand IS the moment they
+   * claim to be finished.
+   */
+  artifacts: SpanArtifact[]
+  /**
+   * Why a `work.done` was allowed to stand with no artifact at all, from `payload.artifact_waiver`.
+   *
+   * The waived case and the "nobody has taught this path to record artifacts yet" case are the same
+   * empty list, and only this field separates them. A reader MUST be able to tell "there is nothing
+   * to show and here is why" from "there is nothing to show" — the second is what makes a board
+   * unreadable.
+   */
+  artifact_waiver: string | null
+  /**
+   * The DECLARED delivery estimate (`work.eta`), last write wins. Null when nobody declared one —
+   * the derived fallback is computed by whoever renders, and NEVER stored here: a percentile over
+   * comparable work is stale the moment the next work item finishes, and a stale number that looks
+   * like a promise is worse than no number.
+   */
+  eta_target: string | null
+  eta_basis: 'human' | 'agent-estimate' | null
+  eta_declared_ts: string | null
+  eta_note: string | null
 }
 
 /**
@@ -190,6 +222,8 @@ export function buildWorkItems(spans: Span[]): WorkItem[] {
   const lastRealStart = new Map<string, string>()
   /** When each work item's parentage was last set — the tiebreak for last-write-wins re-parenting. */
   const lastLinkTs = new Map<string, string>()
+  /** Same tiebreak for the delivery estimate, and a local map for the same reason. */
+  const lastEtaTs = new Map<string, string>()
   for (const s of spans) {
     if (s.is_point || !s.start_ts) continue
     if ((lastRealStart.get(s.work_id) ?? '') < s.start_ts) lastRealStart.set(s.work_id, s.start_ts)
@@ -216,6 +250,12 @@ export function buildWorkItems(spans: Span[]): WorkItem[] {
       terminal_reason: null,
       parked_at: null,
       parent_work_id: null,
+      artifacts: [],
+      artifact_waiver: null,
+      eta_target: null,
+      eta_basis: null,
+      eta_declared_ts: null,
+      eta_note: null,
     }
     cur.spans += 1
     if (!s.end_ts) cur.in_flight += 1
@@ -241,6 +281,26 @@ export function buildWorkItems(spans: Span[]): WorkItem[] {
       cur.done_ts = at
       cur.verification = str(s.payload?.verification)
       cur.verified_by = str(s.payload?.verified_by)
+      // Read off the LATEST claim only. A waiver explains one claim of completion; carrying an old
+      // one forward would let a superseded excuse stand in for output the current claim never had.
+      cur.artifact_waiver = str(s.payload?.artifact_waiver)
+    }
+    // Every span, not just the terminal ones: output is produced by the work, and the claim that
+    // the work is finished is a different event from the work that produced anything.
+    cur.artifacts.push(...artifactsOf([s]))
+    // LAST-WRITE-WINS, exactly like `work.link`: an estimate is a judgement that gets revised, and
+    // the revision is the one that holds. `target_ts` with no `basis` is refused at the emitter,
+    // so a row here either has both or has neither.
+    if (s.kind === 'work.eta' && at >= (lastEtaTs.get(s.work_id) ?? '')) {
+      const target = str(s.payload?.target_ts)
+      const basis = str(s.payload?.basis)
+      if (target && (basis === 'human' || basis === 'agent-estimate')) {
+        lastEtaTs.set(s.work_id, at)
+        cur.eta_target = target
+        cur.eta_basis = basis
+        cur.eta_declared_ts = at
+        cur.eta_note = str(s.payload?.note)
+      }
     }
     if ((s.kind === 'work.accept' || s.kind === 'work.drop') && at >= (cur.terminal_ts ?? '')) {
       cur.terminal = s.kind === 'work.accept' ? 'accepted' : 'dropped'
@@ -267,9 +327,14 @@ export function buildWorkItems(spans: Span[]): WorkItem[] {
     // that is exactly what the first real run did, wiping the fleet's age information with a
     // metadata operation.
     //
+    // `work.eta` is excluded on the same grounds and only those grounds: it states when the work is
+    // EXPECTED to land, which is a statement about the future rather than a thing that happened to
+    // the work. An afternoon spent filing estimates across the board would otherwise reset 「最後
+    // 活動」on every card it touched — the identical wipe measured for `work.link` above.
+    //
     // NEVER widen this to the other point kinds. `work.park` records that the work stopped
     // somewhere, `work.done` that someone claimed it finished — those are things that happened.
-    if (s.kind !== 'work.link') {
+    if (s.kind !== 'work.link' && s.kind !== 'work.eta') {
       const ts = s.end_ts ?? s.start_ts ?? ''
       if (ts > cur.last_ts) cur.last_ts = ts
       if (s.start_ts && (!cur.first_ts || s.start_ts < cur.first_ts)) cur.first_ts = s.start_ts
@@ -277,6 +342,10 @@ export function buildWorkItems(spans: Span[]): WorkItem[] {
     byWork.set(s.work_id, cur)
   }
   for (const item of byWork.values()) {
+    // Deduped once here rather than on every push: the same commit legitimately lands on a retry
+    // span and on the `work.done` that registered it by hand, and a card listing one coordinate
+    // twice reads as two deliveries.
+    item.artifacts = dedupeArtifacts(item.artifacts)
     // A claim of completion that real work outlived is no longer a claim about the current state.
     // `done_ts` and `verification` stay on the row regardless: they record that the claim WAS made,
     // which is exactly what a reviewer needs to see when asking why the work came back.

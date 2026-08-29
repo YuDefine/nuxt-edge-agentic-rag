@@ -153,11 +153,20 @@ const GATE_MAP = {
 const gateName = GATE_MAP[gateLabel] ?? 'other'
 
 // ── Heavy-gate 併發閘門 ────────────────────────────────────────────────────
-// typecheck（預設）這類 gate 單跑就吃 2–4 GiB RAM + 一整顆核心。多 repo session 並行時
-// 需要一個跨 repo 的總量上限，否則整台開發機進 CPU wait + swap thrash。
+// heavy gate 單跑就吃 2–4 GiB RAM + 一整顆核心。多 repo session 並行時需要一個跨 repo 的
+// 總量上限，否則整台開發機進 CPU wait + swap thrash。
 // 實際的鎖邏輯是 vendor/scripts/gate-slot.sh（consumer 投影於 scripts/gate-slot.sh）——
 // 這裡只負責把 inner command 包進去。找不到 helper 就照舊直接跑（零行為改變）。
-const HEAVY_GATES = (process.env.CLADE_HEAVY_GATES ?? 'typecheck')
+//
+// 2026-08-29（TD-685）預設從 'typecheck' 擴到四個 label。原本只有 typecheck 進閘，
+// 而 `test`（consumer 端多為 vitest --coverage）、`test-mutation`（stryker）、`build`
+// （nuxt build，heap 上限 8192 比 typecheck 的 4096 更高）全部在閘門外 —— 2026-08-29 的
+// 假死事故裡，兩套 vue-tsc 被終止後 autonomous agent 立刻重啟 coverage 把機器再次拖垮，
+// 走的就是這條沒有閘門的路。
+//
+// NEVER 把 `build` 讀成「加了 label 就受閘」：consumer 的 build script 必須實際寫成
+// `clade-gate run build -- <cmd>` 才會經過這裡。label 先到位，script 改寫在各 consumer 端。
+const HEAVY_GATES = (process.env.CLADE_HEAVY_GATES ?? 'typecheck,test,test-mutation,build')
   .split(',')
   .map((s) => s.trim())
   .filter(Boolean)

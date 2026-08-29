@@ -25,6 +25,7 @@ import { fileURLToPath } from 'node:url'
 import { redactPayload, validateFlowEvent } from '../../signals/redact.ts'
 import { appendRaw } from '../../signals/ledger-writer.ts'
 import { detectConsumer } from '../../signals/shim-core.ts'
+import { normalizeArtifacts } from './nodes/lib/artifacts.ts'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const CLADE_ROOT = resolve(__dirname, '..', '..', '..')
@@ -242,25 +243,53 @@ export interface SpanHandle {
  * a non-zero exit. The gate lives HERE rather than in the helpers below because `flow emit --kind
  * work.done` is a door too, and a gate only one door honours is not a gate.
  */
-const REQUIRED_PAYLOAD: Record<
-  string,
-  { field: string; code: string; why: string; nullable?: boolean }
-> = {
-  'work.done': {
-    field: 'verification',
-    code: 'verification-required',
-    why: "work.done needs payload.verification — how it was verified, in one line. A done nobody can check is what makes 'accepted' meaningless",
-  },
-  'work.accept': {
-    field: 'reason',
-    code: 'reason-required',
-    why: 'work.accept needs payload.reason — an acceptance with no stated basis is a silent close',
-  },
-  'work.drop': {
-    field: 'reason',
-    code: 'reason-required',
-    why: 'work.drop needs payload.reason — a drop with no stated basis is a silent delete',
-  },
+interface PayloadRule {
+  field: string
+  code: string
+  why: string
+  nullable?: boolean
+}
+
+/*
+ * A LIST per kind, not one rule, because `work.eta` is the first kind whose claim needs two fields
+ * to mean anything: a date with no basis is the template number the estimate discipline forbids,
+ * and a basis naming no date states nothing. Widening the shape rather than picking one field to
+ * enforce keeps the gate honest about what it is actually checking.
+ */
+const REQUIRED_PAYLOAD: Record<string, PayloadRule[]> = {
+  'work.done': [
+    {
+      field: 'verification',
+      code: 'verification-required',
+      why: "work.done needs payload.verification — how it was verified, in one line. A done nobody can check is what makes 'accepted' meaningless",
+    },
+  ],
+  'work.accept': [
+    {
+      field: 'reason',
+      code: 'reason-required',
+      why: 'work.accept needs payload.reason — an acceptance with no stated basis is a silent close',
+    },
+  ],
+  'work.drop': [
+    {
+      field: 'reason',
+      code: 'reason-required',
+      why: 'work.drop needs payload.reason — a drop with no stated basis is a silent delete',
+    },
+  ],
+  'work.eta': [
+    {
+      field: 'target_ts',
+      code: 'target-required',
+      why: 'work.eta needs payload.target_ts — the estimated delivery date. An estimate naming no date records no estimate',
+    },
+    {
+      field: 'basis',
+      code: 'basis-required',
+      why: 'work.eta needs payload.basis (human | agent-estimate) — a date that cannot say where it came from is exactly the template number the estimate discipline forbids',
+    },
+  ],
   // `nullable` is the whole reason this rule shape has a fourth field, and it is not a loophole:
   // the requirement is on the KEY being present, and `null` is a MEANINGFUL value — it is detach.
   //
@@ -273,24 +302,51 @@ const REQUIRED_PAYLOAD: Record<
   // The alternative considered was a `{ detached: true }` flag with `parent_work_id` exempted from
   // the requirement. That buys a second code path through the one gate on this stream that is
   // allowed to refuse a write, for a state a legal `null` already expresses.
-  'work.link': {
-    field: 'parent_work_id',
-    code: 'parent-required',
-    why: 'work.link needs payload.parent_work_id — the parent work id, or null to detach. An event naming no parent records no fact and folds to a silent no-op',
-    nullable: true,
-  },
+  // `dispatch.verdict` is written by a THIRD PARTY (herdr-patrol) about a dispatch whose pane is
+  // already gone, so it carries the whole burden of saying which dispatch and on what basis —
+  // nothing else on the stream can supply either after the fact.
+  'dispatch.verdict': [
+    {
+      field: 'verdict',
+      code: 'verdict-required',
+      why: 'dispatch.verdict needs payload.verdict — abandoned | adjudicated | reported. A verdict event naming no verdict records that somebody looked, not what they concluded',
+    },
+    {
+      field: 'dispatch_id',
+      code: 'dispatch-id-required',
+      why: 'dispatch.verdict needs payload.dispatch_id — the dispatch it judges. The pane is gone by definition, so pane_id cannot identify it, and a verdict that names no dispatch is unattachable forever',
+    },
+    {
+      field: 'reason',
+      code: 'reason-required',
+      why: 'dispatch.verdict needs payload.reason on the same basis work.accept and work.drop do — a closure with no stated basis is a silent delete, and this one closes something its own author never ran',
+    },
+  ],
+  'work.link': [
+    {
+      field: 'parent_work_id',
+      code: 'parent-required',
+      why: 'work.link needs payload.parent_work_id — the parent work id, or null to detach. An event naming no parent records no fact and folds to a silent no-op',
+      nullable: true,
+    },
+  ],
 }
 
 function requiredPayloadError(kind: string, payload: Record<string, unknown>) {
-  const rule = REQUIRED_PAYLOAD[kind]
-  if (!rule) return null
-  const value = payload?.[rule.field]
-  if (typeof value === 'string' && value.trim().length > 0) return null
-  // Presence, not truthiness, and ONLY for a rule that opted in. The three rules that did not are
-  // unchanged: `work.done` with `verification: null` is still refused, which is the assertion that
-  // keeps this widening from silently becoming a hole in the one fail-closed gate on the stream.
-  if (rule.nullable && value === null && Object.hasOwn(payload ?? {}, rule.field)) return null
-  return { code: rule.code, message: rule.why }
+  const rules = REQUIRED_PAYLOAD[kind]
+  if (!rules) return null
+  // First failure wins. Reporting every missing field at once would read as a form to fill in, and
+  // these are not form fields — each one is a claim the event cannot be written without.
+  for (const rule of rules) {
+    const value = payload?.[rule.field]
+    if (typeof value === 'string' && value.trim().length > 0) continue
+    // Presence, not truthiness, and ONLY for a rule that opted in. The rules that did not are
+    // unchanged: `work.done` with `verification: null` is still refused, which is the assertion
+    // that keeps this widening from silently becoming a hole in the one fail-closed gate.
+    if (rule.nullable && value === null && Object.hasOwn(payload ?? {}, rule.field)) continue
+    return { code: rule.code, message: rule.why }
+  }
+  return null
 }
 
 export function emitEvent({
@@ -1306,6 +1362,22 @@ export interface MarkWorkDoneInput {
   work_id: string
   /** How it was verified, in one line. Required — see REQUIRED_PAYLOAD. */
   verification: string
+  /**
+   * Output this claim registers BY HAND, for the part that no span produced: a PR opened from
+   * another machine, a landing in a repo whose spine is elsewhere. Everything a span already
+   * recorded is aggregated by the fold and MUST NOT be retyped here.
+   *
+   * Normalised through `normalizeArtifacts`, the same function the read side uses, so a
+   * hand-registered coordinate and a node-produced one are the same shape on the stream.
+   */
+  artifacts?: unknown
+  /**
+   * Why this claim stands with nothing to show. The escape hatch is deliberately a STATED reason
+   * rather than a flag: work with no output is a real and legitimate outcome (a question answered,
+   * an investigation that concluded nothing needed changing), and the thing a reader needs is which
+   * one of those it was.
+   */
+  artifactWaiver?: string | null
   verifiedBy?: string
   actor?: string
   substrate?: string
@@ -1351,6 +1423,8 @@ function workPoint(
 export function markWorkDone({
   work_id,
   verification,
+  artifacts,
+  artifactWaiver = null,
   verifiedBy = 'unknown',
   actor = 'unknown',
   substrate = 'manual',
@@ -1358,6 +1432,8 @@ export function markWorkDone({
   payload = {},
   cwd,
 }: MarkWorkDoneInput) {
+  const registered = normalizeArtifacts(artifacts)
+  const waiver = String(artifactWaiver ?? '').trim()
   return workPoint('work.done', {
     work_id,
     actor,
@@ -1366,7 +1442,65 @@ export function markWorkDone({
     payload: {
       verification: String(verification ?? '').trim(),
       verified_by: verifiedBy,
+      // Absent rather than empty when there is nothing to say: an `artifacts: []` on the stream
+      // asserts "this claim registered no output", which is a different fact from a claim written
+      // before anybody thought about output at all.
+      ...(registered.length > 0 ? { artifacts: registered } : {}),
+      ...(waiver ? { artifact_waiver: waiver } : {}),
       ...payload,
+    },
+    cwd,
+  })
+}
+
+export interface WorkEtaInput {
+  work_id: string
+  /** The estimated delivery date, ISO. Required — see REQUIRED_PAYLOAD. */
+  target_ts: string
+  /** Where the number came from. Required for the same reason: a bare date is a template number. */
+  basis: 'human' | 'agent-estimate'
+  note?: string | null
+  actor?: string
+  substrate?: string
+  session_id?: string | null
+  cwd?: string
+}
+
+/**
+ * Declare when this work item is expected to land.
+ *
+ * LAST-WRITE-WINS like `work.link`, and for the same reason: an estimate is a judgement, and a
+ * judgement that cannot be revised is one people stop making. The fold reads only the newest.
+ *
+ * There is deliberately NO event for the derived estimate. The fallback — a percentile over
+ * comparable finished work — is computed at read time and never written: written down, it would be
+ * stale the moment the next comparable work item finishes, and a stale derived date is
+ * indistinguishable on the page from a promise somebody made.
+ *
+ * NEVER emit this from a periodic sweep that chases people for estimates. Overdue is something the
+ * fold RENDERS; a job that pushes about it is a second, nagging surface for a fact the board
+ * already shows.
+ */
+export function emitWorkEta({
+  work_id,
+  target_ts,
+  basis,
+  note = null,
+  actor = 'unknown',
+  substrate = 'manual',
+  session_id = null,
+  cwd,
+}: WorkEtaInput) {
+  const target = String(target_ts ?? '').trim()
+  return workPoint('work.eta', {
+    work_id,
+    actor,
+    substrate,
+    session_id,
+    payload: {
+      target_ts: target,
+      basis,
+      ...(typeof note === 'string' && note.trim() ? { note: note.trim() } : {}),
     },
     cwd,
   })

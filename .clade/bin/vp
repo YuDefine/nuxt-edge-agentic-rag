@@ -14,6 +14,41 @@ import { fileURLToPath } from 'node:url'
 
 import { runShim } from '../vendor/signals/shim-core.ts'
 
+// ── 機器層並行上限注入（TD-685）────────────────────────────────────────────
+// oxlint / oxfmt 未指定 --threads 時使用**全部**可用核心；vitest 未指定 --maxWorkers
+// 時同理。單台機器上跑 N 個 consumer session 時，每個輕量 lint 都會扇出到 nproc，
+// N 個加起來就是 N × nproc 個執行緒搶 nproc 顆核 —— 2026-08-29 實測 `vp fmt` 預設
+// 403% CPU、`--threads=2` 198%（thread 數差正好 nproc-2）。
+//
+// 注入條件三條全中才動：env 有設且是正整數、子命令對得上、使用者沒有自己帶那個旗標。
+// **env 沒設就完全不注入** —— CI 是別台機器、核心數與負載模型都不同，預設 NEVER 由
+// clade 替它決定。desk 這類多 session 開發機在 environment.d / zshrc 設 env 即生效。
+//
+// NEVER 改成寫死數字：這支 shim 散播到全 fleet，每台機器的核心數與同時 session 數不同。
+const PARALLEL_CAPS = [
+  { subcommands: ['lint', 'fmt'], flag: '--threads', env: 'CLADE_OXC_THREADS' },
+  { subcommands: ['test'], flag: '--maxWorkers', env: 'CLADE_VITEST_MAX_WORKERS' },
+]
+
+function injectParallelCaps() {
+  const argv = process.argv
+  // 子命令 = 第一個非旗標參數（process.argv[0]=node, [1]=shim path）
+  const subIdx = argv.findIndex((a, i) => i >= 2 && !a.startsWith('-'))
+  if (subIdx === -1) return
+  const sub = argv[subIdx]
+  for (const cap of PARALLEL_CAPS) {
+    if (!cap.subcommands.includes(sub)) continue
+    const value = process.env[cap.env]
+    if (!value || !/^[1-9][0-9]*$/.test(value)) continue
+    // 使用者自己帶了就尊重使用者，兩種寫法都要認（`--flag N` 與 `--flag=N`）
+    const alreadySet = argv.some((a, i) => i > subIdx && (a === cap.flag || a.startsWith(`${cap.flag}=`)))
+    if (alreadySet) continue
+    argv.splice(subIdx + 1, 0, `${cap.flag}=${value}`)
+  }
+}
+
+injectParallelCaps()
+
 await runShim({
   binName: 'vp',
   shimAbsPath: resolve(fileURLToPath(import.meta.url)),

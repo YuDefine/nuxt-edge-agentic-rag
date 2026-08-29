@@ -17,9 +17,10 @@
 //   - `file` → a repo-relative path. Absolute paths encode one machine's checkout, which is
 //     exactly the coordinate a successor on another machine cannot use.
 //
-// The consuming end already exists (`brief.ts` `artifactsOf()` reads `payload.artifacts`); this
-// module is the producing end, and it is deliberately strict so the two never disagree about what
-// a ref means.
+// Both ends live here. `artifact()` is the producing end and is deliberately strict; `artifactsOf()`
+// is the consuming end (it used to be a private function inside `brief.ts`, and moved here when the
+// work layer needed the same aggregation the dossier already did). One module, so the two ends can
+// never disagree about what a ref means — NEVER add a third normalisation or a second aggregator.
 
 import { spawnSync } from 'node:child_process'
 import { readdirSync, readFileSync } from 'node:fs'
@@ -27,7 +28,7 @@ import { join } from 'node:path'
 
 import { fatal } from './contract.ts'
 
-export const ARTIFACT_TYPES = ['commit', 'tag', 'propagate', 'file'] as const
+export const ARTIFACT_TYPES = ['commit', 'tag', 'propagate', 'file', 'url'] as const
 export type ArtifactType = (typeof ARTIFACT_TYPES)[number]
 
 export interface Artifact {
@@ -62,6 +63,12 @@ export function artifact(type: ArtifactType, ref: string, repo?: string | null):
   }
   if (type === 'file' && value.startsWith('/')) {
     fatal(`artifact file ref must be repo-relative (got absolute "${value}")`)
+  }
+  // `url` carries the coordinates that live outside any checkout — a PR, a deploy, a dashboard.
+  // https only: an `http://` link is a coordinate that a browser will refuse or downgrade, and a
+  // bare `github.com/...` is a display string, which is the one thing this field must not become.
+  if (type === 'url' && !value.startsWith('https://')) {
+    fatal(`artifact url ref must start with https:// (got "${value}")`)
   }
   return owner ? { type, ref: value, repo: owner } : { type, ref: value }
 }
@@ -178,4 +185,72 @@ export function journalArtifacts(repo: string): Artifact[] {
     out.push(artifact('propagate', sha, consumerRepo ?? file.replace(/\.json$/, '')))
   }
   return out
+}
+
+/**
+ * What one span RECORDED it left behind, as it sits on the stream.
+ *
+ * Looser than `Artifact` on purpose, and the looseness is a fact about the data rather than a
+ * convenience: this reads an append-only stream whose oldest entries predate every constraint
+ * above, so a `type` that is no longer in `ARTIFACT_TYPES` is history, not a bug to null out. The
+ * strict half runs at the WRITE end (`artifact()`), where a bad ref is still fixable.
+ */
+export interface SpanArtifact {
+  type: string
+  ref: string
+  repo?: string
+}
+
+/**
+ * Every artifact carried by a set of spans, in span order.
+ *
+ * MOVED here from `brief.ts`, where it was private, when the work layer needed the same list the
+ * dossier had been rendering all along. Behaviour is unchanged BY DESIGN — a fold that dropped
+ * unrecognised types would quietly shorten dossiers that have been correct for weeks, and this
+ * function's job is to report what the stream says, not to re-litigate it.
+ *
+ * Takes a structural shape rather than `Span` so the spine can call it without a module cycle.
+ */
+export function artifactsOf(
+  spans: readonly { payload?: Record<string, unknown> }[],
+): SpanArtifact[] {
+  const out: SpanArtifact[] = []
+  for (const s of spans) {
+    const list = s.payload?.artifacts
+    if (!Array.isArray(list)) continue
+    for (const raw of list) {
+      if (!raw || typeof raw !== 'object') continue
+      const item = raw as Record<string, unknown>
+      const ref = nonEmpty(item.ref)
+      if (!ref) continue
+      out.push({
+        type: nonEmpty(item.type) ?? 'file',
+        ref,
+        ...(nonEmpty(item.repo) ? { repo: nonEmpty(item.repo) as string } : {}),
+      })
+    }
+  }
+  return out
+}
+
+/** `<type>:<ref>[@<repo>]` — the identity two copies of the same artifact share. */
+export function artifactKey(a: SpanArtifact): string {
+  return `${a.type}:${a.ref}${a.repo ? `@${a.repo}` : ''}`
+}
+
+/** Same list, first sighting of each artifact kept. Order is the evidence trail, so it is preserved. */
+export function dedupeArtifacts(list: readonly SpanArtifact[]): SpanArtifact[] {
+  const seen = new Set<string>()
+  const out: SpanArtifact[] = []
+  for (const a of list) {
+    const key = artifactKey(a)
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(a)
+  }
+  return out
+}
+
+function nonEmpty(value: unknown): string | null {
+  return typeof value === 'string' && value.length > 0 ? value : null
 }

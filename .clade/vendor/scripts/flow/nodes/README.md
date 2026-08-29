@@ -42,6 +42,7 @@
 | `vp-check` | `vp check` 當 gate | — |
 | `publish` | `scripts/publish.ts` 的 wrapper；runner child 下回 blocked | — |
 | `propagate` | `scripts/propagate.ts` 的 wrapper；runner child 下回 blocked | — |
+| `ingest-pi-ledger` | pi/codex dispatch ledger 回填上脊椎（唯一 emit 他人事件的節點） | 0 |
 
 ## 加一支新節點
 

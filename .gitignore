@@ -47,7 +47,6 @@ tmp/
 local/
 
 # Screenshots (review artifacts)
-screenshots/
 coverage/
 
 # Spectra cache
@@ -80,3 +79,5 @@ reports/stryker-incremental.json
 .spectra/evidence/*.bak*
 
 .clade/flow/
+
+/screenshots/
