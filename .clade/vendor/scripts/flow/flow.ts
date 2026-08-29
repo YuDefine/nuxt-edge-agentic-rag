@@ -47,6 +47,7 @@ import {
   ingestEvents,
   knownWorkIds,
   linkWork,
+  emitWorkEta,
   markWorkDone,
   newSpanId,
   openWork,
@@ -103,7 +104,8 @@ import {
 } from './spine.ts'
 import { DEFAULT_STALL_MINUTES, findOwnershipStalls, findStalls, renderStalls } from './stall.ts'
 import { readWaves, renderFleetMarkdown, renderWorkMarkdown } from './viz-md.ts'
-import { buildBoardLanes } from './board.ts'
+import { buildBoardLanes, durationBaselines, etaFor } from './board.ts'
+import { ARTIFACT_TYPES, type ArtifactType, artifact } from './nodes/lib/artifacts.ts'
 import { buildDossier, dossierJson, overviewJson, renderDossier, renderOverview } from './brief.ts'
 import { buildPmView, pmViewJson, renderPmView } from './pm-view.ts'
 import { buildWhoRows, renderWho } from './who.ts'
@@ -185,13 +187,21 @@ const { values: args, positionals } = parseArgs({
     repo: { type: 'string' },
     via: { type: 'string' },
     'dry-run': { type: 'boolean', default: false },
+    // `done` flags. `artifact` repeats — a claim can register more than one coordinate, and the
+    // comma-split spelling breaks on a url ref, which is the type most likely to be typed by hand.
+    artifact: { type: 'string', multiple: true },
+    'no-artifact': { type: 'boolean', default: false },
+    // `eta` flags. Undeclared, `--target 2026-09-05` becomes target=true with the date stranded in
+    // positionals, and the estimate would land with no date while the caller sees a success line.
+    target: { type: 'string' },
+    basis: { type: 'string' },
   },
   // `flow step <node> --whatever` forwards unknown flags to the node, so parseArgs must not
   // reject them here. The node's own parser is the one that validates them.
   strict: false,
 })
 
-const USAGE = `Usage: flow <open|link|done|accept|drop|park|ask|pending|answer|answers|sources|amend-options|ask-options|clarify|dismiss|emit|close|ingest|run|step|viz|status|who|brief|otlp> [args]
+const USAGE = `Usage: flow <open|link|done|eta|accept|drop|park|ask|pending|answer|answers|sources|amend-options|ask-options|clarify|dismiss|emit|close|ingest|run|step|viz|status|who|brief|otlp> [args]
 
   open <slug> [--actor <actor>]   mint a work id and emit its work.open event
   link <work_id> --parent <id>    put this work item under another one. An initiative is not a new
@@ -202,6 +212,15 @@ const USAGE = `Usage: flow <open|link|done|accept|drop|park|ask|pending|answer|a
   done <work_id>                  claim the work item is finished. --verification is REQUIRED and
        --verification '<how>'     is refused when empty: a done nobody can check is what makes
        [--verified-by W]          "accepted" meaningless. Any span started later reverts it.
+       [--artifact T:REF[@repo]]  Refused when the work item's spans left NOTHING behind: register
+       [--no-artifact             what it produced (${ARTIFACT_TYPES.join(' | ')}), or say why
+        --reason '<why>']         there is none. Spans that already recorded artifacts cost zero
+                                  extra typing — the check is on the RESULT, never on the flags.
+  eta <work_id>                   declare when this work item is expected to land. Last write wins.
+      --target <YYYY-MM-DD>       --basis is REQUIRED: a date that cannot say where it came from is
+      --basis human|agent-estimate  a template number. With no declaration the board derives one
+      [--note N]                  from comparable finished work (>=5 samples) and says so; below
+                                  that it prints 估不出來 with the sample size. NEVER a bare date.
   accept <work_id> --reason R     the human verdict: this work item is finished and accepted
   drop <work_id> --reason R       the human verdict: this work item is written off
   park <work_id> --carrier C      the work stopped at a prose carrier awaiting a successor
@@ -282,7 +301,12 @@ const USAGE = `Usage: flow <open|link|done|accept|drop|park|ask|pending|answer|a
 Spine: ${eventsPath()}
 `
 
-function fail(msg) {
+/**
+ * `: never` is load-bearing, not decoration. TypeScript infers `void` for a function DECLARATION
+ * that only exits, so without the annotation every `if (bad) fail(...)` guard below narrows
+ * nothing — the value stays wide on the line after it, and the compiler is right to say so.
+ */
+function fail(msg): never {
   process.stderr.write(`flow: ${msg}\n\n${USAGE}`)
   process.exit(1)
 }
@@ -398,6 +422,41 @@ if (cmd === 'link') {
   report(res, { work_id: workId, parent_work_id: detach ? null : parent })
 }
 
+/** `--artifact` repeats, and strict:false hands back a bare string when it was given once. */
+function artifactFlags(): string[] {
+  const raw = args.artifact
+  if (Array.isArray(raw)) return raw.filter((v): v is string => typeof v === 'string')
+  return typeof raw === 'string' ? [raw] : []
+}
+
+/**
+ * `<type>:<ref>[@<repo>]` → an artifact, or null when the type is not one of ours.
+ *
+ * Split on the FIRST colon and the LAST `@`: a `url` ref contains both (`url:https://github.com/
+ * YuDefine/clade/pull/7`), and a greedy split on either one silently truncates the coordinate into
+ * a string that still looks like a link. Validation itself is `artifact()` — the same strict writer
+ * every node goes through, so a hand-registered ref and a node-produced one mean the same thing.
+ */
+function parseArtifactFlag(raw: string): { type: ArtifactType; ref: string; repo?: string } | null {
+  const at = raw.indexOf(':')
+  if (at < 0) return null
+  const type = raw.slice(0, at)
+  if (!ARTIFACT_TYPES.includes(type as ArtifactType)) return null
+  let rest = raw.slice(at + 1)
+  let repo: string | null = null
+  const owner = rest.lastIndexOf('@')
+  // A repo qualifier is `owner/name`, which is what tells it apart from the `@` inside a ref.
+  if (owner > 0 && /^[^/@]+\/[^/@]+$/.test(rest.slice(owner + 1))) {
+    repo = rest.slice(owner + 1)
+    rest = rest.slice(0, owner)
+  }
+  try {
+    return artifact(type as ArtifactType, rest, repo)
+  } catch (err) {
+    fail(`--artifact ${raw}: ${err instanceof Error ? err.message : String(err)}`)
+  }
+}
+
 /**
  * The terminal half of the work lifecycle: an agent claims `done`, a human answers `accept` / `drop`.
  *
@@ -405,7 +464,7 @@ if (cmd === 'link') {
  * the whole point: the claim and the verdict come from different parties, and a single verb with a
  * state flag invites the doing side to type its own acceptance.
  */
-const WORK_VERBS = new Set(['done', 'accept', 'drop', 'park'])
+const WORK_VERBS = new Set(['done', 'eta', 'accept', 'drop', 'park'])
 
 if (WORK_VERBS.has(cmd)) {
   const workId = positionals[1] ?? strFlag(args['work-id'])
@@ -426,14 +485,82 @@ if (WORK_VERBS.has(cmd)) {
         "done needs --verification '<how it was verified>'; an unverifiable done is what makes acceptance meaningless",
       )
     }
+    /*
+     * The artifact gate checks the RESULT, never the flags.
+     *
+     * Work whose spans already recorded what they left behind passes with nothing extra typed —
+     * which is most work, because the nodes write those coordinates themselves. Only a claim of
+     * completion over a work item that produced NO recorded trace has to say something, and even
+     * then `--no-artifact --reason` is a legal answer: work with no output is real (a question
+     * answered, an investigation that changed nothing), and what a reader needs is which it was.
+     *
+     * NEVER turn this into "typing `done` requires a flag". Requiring a hand-typed coordinate for
+     * output a node already recorded teaches people to retype what the machine knows, which is the
+     * failure mode every other optional field in this system has already demonstrated.
+     */
+    const doneItem = buildWorkItems(buildSpans(readEvents())).find((w) => w.work_id === workId)
+    const existing = doneItem?.artifacts ?? []
+    const registered: { type: ArtifactType; ref: string; repo?: string }[] = []
+    for (const raw of artifactFlags()) {
+      const parsed = parseArtifactFlag(raw)
+      if (!parsed) {
+        fail(
+          `--artifact must be <type>:<ref>[@<repo>] with type one of ${ARTIFACT_TYPES.join(' | ')} (got: ${raw})`,
+        )
+      }
+      registered.push(parsed)
+    }
+    const waiver = args['no-artifact'] === true ? strFlag(args.reason) : null
+    if (args['no-artifact'] === true && !waiver) {
+      fail("--no-artifact needs --reason '<why there is nothing to show>'")
+    }
+    if (existing.length === 0 && registered.length === 0 && !waiver) {
+      fail(
+        `${workId} has no artifacts on any of its spans: register what it produced ` +
+          `(--artifact commit:<40-hex sha> | url:https://… | file:<repo-relative path>), ` +
+          `or --no-artifact --reason '<why there is none>'`,
+      )
+    }
     const res = markWorkDone({
       work_id: workId,
       verification,
+      artifacts: registered,
+      artifactWaiver: waiver,
       verifiedBy: strFlag(args['verified-by']) ?? actor,
       actor,
       substrate: strFlag(args.substrate) ?? 'claude-code',
     })
-    report(res, { work_id: workId, state: 'done' })
+    report(res, {
+      work_id: workId,
+      state: 'done',
+      artifacts: existing.length + registered.length,
+      ...(waiver ? { artifact_waiver: waiver } : {}),
+    })
+  }
+
+  if (cmd === 'eta') {
+    const target = strFlag(args.target)
+    const basis = strFlag(args.basis)
+    if (!target) fail('eta needs --target <YYYY-MM-DD>')
+    // Parsed rather than pattern-matched: `--target next week` is a wish, and a wish stored as a
+    // date renders on the board as a promise nobody can trace back to anything.
+    if (Number.isNaN(Date.parse(target))) {
+      fail(`eta --target must be a date this can parse (got: ${target})`)
+    }
+    if (basis !== 'human' && basis !== 'agent-estimate') {
+      fail(
+        'eta needs --basis human|agent-estimate; a date that cannot say where it came from is a template number',
+      )
+    }
+    const res = emitWorkEta({
+      work_id: workId,
+      target_ts: new Date(target).toISOString(),
+      basis,
+      note: strFlag(args.note),
+      actor,
+      substrate: strFlag(args.substrate) ?? 'claude-code',
+    })
+    report(res, { work_id: workId, eta_target: new Date(target).toISOString(), basis })
   }
 
   if (cmd === 'accept' || cmd === 'drop') {
@@ -1397,13 +1524,18 @@ if (cmd === 'status') {
   }
 
   const rows = buildWorkItems(spans)
+  // Derived at render time, never folded onto the row: a percentile over comparable work is stale
+  // the next time anything finishes, so it is computed here and thrown away — the same reason
+  // `WorkState` itself is derived rather than stored.
+  const etaBaselines = durationBaselines(rows)
+  const withEta = rows.map((r) => ({ ...r, eta: etaFor(r, etaBaselines, Date.now()) }))
   if (args.json) {
     // An object, not the bare array this printed before P2. `awaiting_acceptance` is the answer to
     // a different question than "what is on the spine" — it is the queue a person has to drain —
     // and a top-level array has nowhere to put it that JSON.stringify would actually serialize.
     process.stdout.write(
       `${JSON.stringify(
-        { work_items: rows, awaiting_acceptance: rows.filter((r) => r.state === 'done') },
+        { work_items: withEta, awaiting_acceptance: withEta.filter((r) => r.state === 'done') },
         null,
         2,
       )}\n`,
@@ -1426,6 +1558,18 @@ if (cmd === 'status') {
     for (const r of awaiting) {
       process.stdout.write(`    ${r.slug ?? r.work_id}  ${r.done_ts}\n`)
       process.stdout.write(`      驗證: ${r.verification ?? '(none)'}\n`)
+      // Printed next to the verification because that is what a verdict is supposed to rest on:
+      // a claim with nothing to show and a claim with a commit behind it read identically until
+      // this line exists, and only one of them is checkable.
+      process.stdout.write(
+        `      產出: ${
+          r.artifacts.length > 0
+            ? r.artifacts.map((a) => `${a.type}:${a.ref}${a.repo ? `@${a.repo}` : ''}`).join(', ')
+            : r.artifact_waiver
+              ? `（無，waiver: ${r.artifact_waiver}）`
+              : '（無，且未說明）'
+        }\n`,
+      )
       process.stdout.write(
         `      node vendor/scripts/flow/flow.ts accept ${r.work_id} --reason '<why>'   (或 drop)\n`,
       )

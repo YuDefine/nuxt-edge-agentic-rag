@@ -72,6 +72,12 @@
       "cluster": "propagate with the runner-child guard as a blocked state (§11.2)"
     },
     {
+      "name": "ingest-pi-ledger",
+      "coverage": 0,
+      "cluster": "backfill dispatch-ledger rows onto the spine as point events (TD-794 刀 1)",
+      "$comment": "coverage 0 on purpose: the 88 .mjs corpus never touched the pi ledger because nothing ever read it back — that blindness is what this node removes, not a cluster it replaces. It is also the one node that emits events it did not itself perform; the library's 「NEVER 自己 emit span」 is about a node recording its OWN execution, and these rows are somebody else's history."
+    },
+    {
       "name": "cmd",
       "coverage": 0,
       "cluster": "consumer-facing: any project command, with --each fan-out over a git pathspec",

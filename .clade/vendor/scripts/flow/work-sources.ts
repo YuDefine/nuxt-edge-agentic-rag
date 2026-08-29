@@ -258,6 +258,15 @@ export function syncWork({
         markWorkDone({
           work_id: existing.work_id,
           verification,
+          // Thin evidence and a missing artifact are ONE fact, not two. This close reads a register
+          // entry that says the work is done; it holds no coordinate to anything, and it never
+          // will. Filing the same absence twice — once as `thin_evidence`, once as a card whose
+          // artifact list is empty for unexplained reasons — would show a reader two problems where
+          // there is one, and the fix for the second one does not exist.
+          //
+          // A thick entry gets no waiver: its evidence line is a real acceptance predicate, and
+          // waiving output it never claimed to have would be an excuse nobody asked for.
+          ...(evidence ? {} : { artifactWaiver: thinVerification(entry) }),
           verifiedBy: 'tech-debt-register',
           actor,
           substrate: 'file-scan',

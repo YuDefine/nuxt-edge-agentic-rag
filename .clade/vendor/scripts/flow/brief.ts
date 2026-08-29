@@ -22,6 +22,7 @@ import {
   laneLabel,
   shortOrigin,
 } from './board.ts'
+import { artifactsOf } from './nodes/lib/artifacts.ts'
 import type { FlowEvent, Span, WorkItem } from './spine.ts'
 import type { Stall } from './stall.ts'
 
@@ -378,26 +379,6 @@ function sessionHops(events: FlowEvent[]): SessionHop[] {
   return [...hops.values()].toSorted((a, b) => a.first_ts.localeCompare(b.first_ts))
 }
 
-function artifactsOf(spans: Span[]): { type: string; ref: string; repo?: string }[] {
-  const out: { type: string; ref: string; repo?: string }[] = []
-  for (const s of spans) {
-    const list = s.payload?.artifacts
-    if (!Array.isArray(list)) continue
-    for (const raw of list) {
-      if (!raw || typeof raw !== 'object') continue
-      const item = raw as Record<string, unknown>
-      const ref = str(item.ref)
-      if (!ref) continue
-      out.push({
-        type: str(item.type) ?? 'file',
-        ref,
-        ...(str(item.repo) ? { repo: str(item.repo) as string } : {}),
-      })
-    }
-  }
-  return out
-}
-
 export function buildDossier({
   workId,
   board,
@@ -420,7 +401,7 @@ export function buildDossier({
   // the threshold hid is still a work item somebody asked about by name.
   const card =
     board.groups.flatMap((g) => g.cards).find((c) => c.work_id === workId) ??
-    (item ? cardFor(item, stalls, spans, { now }) : null)
+    (item ? cardFor(item, stalls, spans, { now, items: workItems }) : null)
   const mine = spans.filter((s) => s.work_id === workId)
   const myEvents = events.filter((e) => e.work_id === workId)
   return {
