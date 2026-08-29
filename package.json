@@ -6,7 +6,7 @@
   "scripts": {
     "admin:create": "npx tsx scripts/create-admin.ts",
     "audit:ux-drift": "node scripts/audit-ux-drift.mts",
-    "build": "NODE_OPTIONS=--max-old-space-size=4096 nuxt build",
+    "build": "NODE_OPTIONS=--max-old-space-size=4096 .clade/bin/clade-gate run build -- nuxt build",
     "check": "pnpm check:vue-components && pnpm check:test-roots && pnpm format:check && pnpm run lint && pnpm typecheck",
     "check:test-roots": "node scripts/checks/check-legacy-test-roots.mts",
     "check:vue-components": "node scripts/checks/check-vue-component-resolution.mts",
