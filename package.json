@@ -30,7 +30,7 @@
     "hub:vendor": "node ${CLADE_HOME:-$HOME/offline/clade}/scripts/sync-vendor.ts",
     "hub:vendor:check": "node ${CLADE_HOME:-$HOME/offline/clade}/scripts/sync-vendor.ts --check",
     "hub:vendor:force": "node ${CLADE_HOME:-$HOME/offline/clade}/scripts/sync-vendor.ts --force",
-    "lint": "if test -x .clade/bin/clade-gate; then .clade/bin/clade-gate run lint -- vp lint --deny-warnings; else vp lint --deny-warnings; fi",
+    "lint": "sh -c 'if test -x .clade/bin/clade-gate; then exec .clade/bin/clade-gate run lint -- vp lint --deny-warnings \"$@\"; else exec vp lint --deny-warnings \"$@\"; fi' --",
     "mcp:acceptance:staging": "node scripts/mcp/staging-sse-acceptance.mts",
     "mint:dev-mcp-token": "node --env-file=.env scripts/mint-dev-mcp-token.mts",
     "postinstall": "node -e \"const f=require('node:fs'),p=require('node:path'),o=require('node:os'),s=require('node:child_process');const c=process.env.CLADE_HOME||[p.join(o.homedir(),'clade'),p.join(o.homedir(),'offline','clade')].find(x=>f.existsSync(x));if(!c){console.warn('[clade] not found locally — skip bootstrap. Set CLADE_HOME or clone to ~/clade');process.exit(0)}const r=s.spawnSync('node',[p.join(c,'scripts','bootstrap-hub.ts')],{stdio:'inherit'});process.exit(r.status||0)\" ; node scripts/patch-evlog-nuxthub-skip-prompt.mjs",
