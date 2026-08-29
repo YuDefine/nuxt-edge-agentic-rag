@@ -86,6 +86,17 @@ export interface WorkItem {
   terminal_reason: string | null
   /** Prose carrier this work stopped at (`/handoff park`), when it did. Not a state — a pointer. */
   parked_at: string | null
+  /**
+   * The work item this one belongs under, from `work.link`. Null means no parent was ever
+   * registered, OR that one was and it was detached — the two are the same fact about the
+   * present, and the stream keeps the difference for anyone who needs the history.
+   *
+   * LAST-WRITE-WINS, unlike `origin_ref`'s first-origin-wins: a work item is born once, but where
+   * it belongs is a judgement that gets revised. The id is kept RAW — a parent living in another
+   * repo's spine is normal on a 12-repo fleet, so an unresolvable parent is a fact to render, not
+   * a defect to null out. `rootWorkItems` treats it as a root; a view MUST say that it did.
+   */
+  parent_work_id: string | null
 }
 
 /**
@@ -177,6 +188,8 @@ export function buildWorkItems(spans: Span[]): WorkItem[] {
   // starts AFTER it — that is how "sent back for rework" is expressed, with no reopen event to
   // forget to emit. Points are excluded on purpose: a park note or a second verdict is not rework.
   const lastRealStart = new Map<string, string>()
+  /** When each work item's parentage was last set — the tiebreak for last-write-wins re-parenting. */
+  const lastLinkTs = new Map<string, string>()
   for (const s of spans) {
     if (s.is_point || !s.start_ts) continue
     if ((lastRealStart.get(s.work_id) ?? '') < s.start_ts) lastRealStart.set(s.work_id, s.start_ts)
@@ -202,6 +215,7 @@ export function buildWorkItems(spans: Span[]): WorkItem[] {
       terminal_ts: null,
       terminal_reason: null,
       parked_at: null,
+      parent_work_id: null,
     }
     cur.spans += 1
     if (!s.end_ts) cur.in_flight += 1
@@ -236,9 +250,30 @@ export function buildWorkItems(spans: Span[]): WorkItem[] {
     if (s.kind === 'work.park' && typeof s.payload?.carrier === 'string') {
       cur.parked_at = s.payload.carrier
     }
-    const ts = s.end_ts ?? s.start_ts ?? ''
-    if (ts > cur.last_ts) cur.last_ts = ts
-    if (s.start_ts && (!cur.first_ts || s.start_ts < cur.first_ts)) cur.first_ts = s.start_ts
+    // Last write wins. `lastLinkTs` is a local map rather than a row field on purpose: a reader
+    // wants the parent, never the timestamp at which someone decided it, and a field nothing
+    // renders is a field that drifts. Same reason `lastRealStart` above is not on the row.
+    if (s.kind === 'work.link' && Object.hasOwn(s.payload ?? {}, 'parent_work_id')) {
+      if (at >= (lastLinkTs.get(s.work_id) ?? '')) {
+        lastLinkTs.set(s.work_id, at)
+        cur.parent_work_id = str(s.payload.parent_work_id)
+      }
+    }
+    // `work.link` is the ONE kind that does not touch the clock. Every other event on a work item
+    // records that something HAPPENED to it; a link records where it BELONGS, which is a statement
+    // about the board's shape and not about the work. Counting it as activity means one afternoon
+    // of filing 32 cards under their initiatives resets `最後活動` to "just now" on all 32 — and
+    // `age_minutes` is what the board sorts by and what every stall reads. Measured 2026-08-29:
+    // that is exactly what the first real run did, wiping the fleet's age information with a
+    // metadata operation.
+    //
+    // NEVER widen this to the other point kinds. `work.park` records that the work stopped
+    // somewhere, `work.done` that someone claimed it finished — those are things that happened.
+    if (s.kind !== 'work.link') {
+      const ts = s.end_ts ?? s.start_ts ?? ''
+      if (ts > cur.last_ts) cur.last_ts = ts
+      if (s.start_ts && (!cur.first_ts || s.start_ts < cur.first_ts)) cur.first_ts = s.start_ts
+    }
     byWork.set(s.work_id, cur)
   }
   for (const item of byWork.values()) {
@@ -258,6 +293,76 @@ export function buildWorkItems(spans: Span[]): WorkItem[] {
             : 'settled'
   }
   return [...byWork.values()].toSorted((a, b) => a.last_ts.localeCompare(b.last_ts))
+}
+
+export function indexWorkItems(items: WorkItem[]): Map<string, WorkItem> {
+  return new Map(items.map((w) => [w.work_id, w]))
+}
+
+/**
+ * What a work item's `parent_work_id` actually resolves to, in the set being rendered.
+ *
+ * Four outcomes rather than a boolean, because three of them look identical on a page that only
+ * asks "does it have a parent I can draw":
+ *
+ * - `none`      — nothing was ever registered, or it was detached. Genuinely a root.
+ * - `resolved`  — the parent is right here. The only case that nests.
+ * - `dangling`  — a parent id we do not hold. NORMAL on a 12-repo fleet where each repo keeps its
+ *                 own spine, and also exactly what a typo looks like. Drawn as a root, but a view
+ *                 MUST say so: a silent root makes a typo permanently invisible, since nothing
+ *                 local will ever resolve it and no later signal mentions it again.
+ * - `cycle`     — the chain returns to where it started. Reachable through ordinary use, not just
+ *                 malformed data: re-parenting is last-write-wins, so A→B followed by B→A is two
+ *                 legal writes. NEVER silently break it by electing one member the root — the
+ *                 members must be visible as members, or nobody will ever fix it.
+ */
+export type WorkParentState = 'none' | 'resolved' | 'dangling' | 'cycle'
+
+export function workParentState(item: WorkItem, byId: Map<string, WorkItem>): WorkParentState {
+  if (!item.parent_work_id) return 'none'
+  const seen = new Set<string>([item.work_id])
+  let cur = byId.get(item.parent_work_id)
+  if (!cur) return 'dangling'
+  while (cur) {
+    if (seen.has(cur.work_id)) return 'cycle'
+    seen.add(cur.work_id)
+    if (!cur.parent_work_id) return 'resolved'
+    const next = byId.get(cur.parent_work_id)
+    if (!next) return 'resolved'
+    cur = next
+  }
+  return 'resolved'
+}
+
+/**
+ * Depth by `parent_work_id`. An unresolvable or CYCLIC parent is depth 0 — the same 0 that says
+ * "root", because `workParentState` is what tells a renderer which kind of root it is looking at.
+ *
+ * This is deliberately stricter than `spanDepth`, whose `seen` guard only stops the recursion and
+ * still returns whatever it counted on the way in. Two spans cannot legally point at each other;
+ * two WORK ITEMS can, because re-parenting is last-write-wins and A→B followed by B→A is two valid
+ * writes. Counting a depth for that would indent a card under a parent that is in fact its child —
+ * a hierarchy drawn confidently upside down, which is worse than one that declines to nest.
+ */
+export function workDepth(item: WorkItem, byId: Map<string, WorkItem>): number {
+  const seen = new Set<string>([item.work_id])
+  let depth = 0
+  let cur = item
+  while (cur.parent_work_id) {
+    const parent = byId.get(cur.parent_work_id)
+    if (!parent) return depth
+    if (seen.has(parent.work_id)) return 0
+    seen.add(parent.work_id)
+    depth += 1
+    cur = parent
+  }
+  return depth
+}
+
+/** Work items with no drawable parent in the same set — where a hierarchy view starts drawing. */
+export function rootWorkItems(items: WorkItem[]): WorkItem[] {
+  const byId = indexWorkItems(items)
+  return items.filter((w) => workParentState(w, byId) !== 'resolved')
 }
 
 /** Exactly what `resolveWorkId` mints with no ambient id: `W-<date>-orphan-<6 hex>`. */
