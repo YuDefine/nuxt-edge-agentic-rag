@@ -185,7 +185,7 @@ export const LINT_NOTES: Record<LintCode, string> = {
   'missing-evidence':
     '這條等驗收，但沒寫齊「改了什麼 / 證據 / 退回會怎樣」三欄，證據要可點（見 decision-authoring）',
   'belongs-on-review':
-    '這條把 live change 的 `## 人工檢查` 寫成 HANDOFF 條目——逐條確認是 /review 的職責，不是這裡（見 decision-authoring）',
+    '這條指向的 change 還有沒勾的 `[review:ui]`——那是要人在瀏覽器逐條驗的，verdict 落在 /review inbox 與 tasks.md 的 checkbox，不是這裡的一句「通過」（見 decision-authoring）',
 }
 
 /**
@@ -864,9 +864,74 @@ function liveChangeNames(repoRoot: string): string[] {
  * instance (<consumer-g> `product-save-hardening`, 2026-08-28) was the second case, and it is the
  * second case precisely BECAUSE the author could not get it onto /review.
  */
-function restatesManualReview(text: string, liveChanges: readonly string[]): boolean {
+function restatesManualReview(
+  text: string,
+  liveChanges: readonly string[],
+  openManualReview: ReadonlyMap<string, number>,
+): boolean {
+  /*
+   * Ground truth first, prose second.
+   *
+   * The prose test below asks whether the AUTHOR happened to type 「人工檢查」. That is a
+   * property of the writing, not of the change — and the four measured <consumer-i> rows (2026-08-29:
+   * `retire-legacy-employee-route-cluster`, `employee-backpay-request`,
+   * `manager-my-approval-inbox`, `line-messaging-interaction`) all escaped it while naming a
+   * change whose `tasks.md` still had every `[review:ui]` item unticked. All four were answered
+   * 「A. 通過」 on the queue; `retire-legacy-employee-route-cluster` had nine `[review:ui]` items
+   * open at the time and has them open still, because answering the queue row is what made the
+   * row disappear.
+   *
+   * So the first test reads the checkbox, not the sentence: naming a change that still owes
+   * `[review:ui]` ticks IS restating its manual review, however the row is worded. NEVER fold
+   * this back into the prose test to save a directory walk — the failure being fixed is exactly
+   * that the prose does not say it.
+   */
+  for (const [name] of openManualReview) if (text.includes(name)) return true
   if (!text.includes('人工檢查')) return false
   return liveChanges.some((name) => text.includes(name))
+}
+
+/**
+ * Live changes that still owe `[review:ui]` ticks, and how many.
+ *
+ * `[review:ui]` is the marker for a check only a HUMAN can perform in a browser — the whitelist
+ * in `manual-review.evidence.md` is email, webhook, physical device, subjective visual, real
+ * handset. Its verdict is recorded by ticking the box in `tasks.md`, through the /review inbox
+ * that carries the preview and the write-back.
+ *
+ * That is a DIFFERENT verdict from the queue's 「通過」, which says only 「the direction is fine,
+ * put it on the inbox」. Conflating them is how nine browser checks stayed unticked behind a row
+ * that read as passed. NEVER add these to the queue as rows of their own: `scanTasks` already
+ * documents why seventeen sub-steps of one errand must not become seventeen queue rows.
+ */
+export function changesWithOpenManualReview(repoRoot: string): Map<string, number> {
+  const out = new Map<string, number>()
+  const changesDir = join(repoRoot, 'openspec', 'changes')
+  if (!existsSync(changesDir)) return out
+  let entries: string[]
+  try {
+    entries = readdirSync(changesDir)
+  } catch {
+    return out
+  }
+  for (const name of entries) {
+    if (name === 'archive' || name.length < 4) continue
+    try {
+      if (!statSync(join(changesDir, name)).isDirectory()) continue
+    } catch {
+      continue
+    }
+    const text = readIfPresent(join(changesDir, name, 'tasks.md'))
+    if (!text) continue
+    let open = 0
+    for (const line of text.split(/\r?\n/)) {
+      if (!line.includes('[review:ui]')) continue
+      const box = /\[([ xX])\]/.exec(line)
+      if (box && box[1] === ' ') open++
+    }
+    if (open > 0) out.set(name, open)
+  }
+  return out
 }
 
 export function scanHandoff(repoRoot: string): SourceItem[] {
@@ -874,6 +939,7 @@ export function scanHandoff(repoRoot: string): SourceItem[] {
   const text = readIfPresent(join(repoRoot, rel))
   if (!text) return []
   const liveChanges = liveChangeNames(repoRoot)
+  const openManualReview = changesWithOpenManualReview(repoRoot)
 
   const out: SourceItem[] = []
   for (const section of splitSections(text)) {
@@ -911,8 +977,24 @@ export function scanHandoff(repoRoot: string): SourceItem[] {
 
     for (const item of items) {
       const { options: parsed, recommended, nearMiss } = extractOptions(item.body)
+      const belongsOnReview = restatesManualReview(
+        `${item.title}\n${item.body}`,
+        liveChanges,
+        openManualReview,
+      )
       // A review's choices come from the verb, not from the file. See `REVIEW_CHOICES`.
-      const options = category === 'review' && parsed.length === 0 ? [...REVIEW_CHOICES] : parsed
+      //
+      // …except when the verdict is not this surface's to take. A row that restates a live
+      // change's manual review gets NO synthesised 通過／退回 pair: the pair is what let four
+      // <consumer-i> rows be closed with one tap while the browser checks they stood for stayed
+      // unticked. Without it the row stays visible (NEVER hidden — decision-authoring is
+      // explicit that hiding finished work is worse than a row sitting there) but it renders
+      // like any other option-less item, and the lint note says where the verdict actually
+      // lives. NEVER "fix" this by dropping such rows from the scan.
+      const options =
+        category === 'review' && parsed.length === 0 && !belongsOnReview
+          ? [...REVIEW_CHOICES]
+          : parsed
       out.push({
         source_kind: 'handoff',
         source_id: `handoff:${rel}#${slug(section.heading)}${
@@ -927,9 +1009,7 @@ export function scanHandoff(repoRoot: string): SourceItem[] {
         fingerprint: fingerprint(item.title, item.body),
         lint: [
           ...lintOf(category, options, nearMiss, item.body),
-          ...(restatesManualReview(`${item.title}\n${item.body}`, liveChanges)
-            ? (['belongs-on-review'] as LintCode[])
-            : []),
+          ...(belongsOnReview ? (['belongs-on-review'] as LintCode[]) : []),
         ],
       })
     }
@@ -961,6 +1041,7 @@ export function scanTechDebt(repoRoot: string): SourceItem[] {
   const text = readIfPresent(join(repoRoot, rel))
   if (!text) return []
   const liveChanges = liveChangeNames(repoRoot)
+  const openManualReview = changesWithOpenManualReview(repoRoot)
 
   const out: SourceItem[] = []
   const lines = text.split(/\r?\n/)
@@ -994,7 +1075,9 @@ export function scanTechDebt(repoRoot: string): SourceItem[] {
         fingerprint: fingerprint(tdId, question, body),
         lint: [
           ...lintOf('ruling', options, nearMiss, body),
-          ...(restatesManualReview(body, liveChanges) ? (['belongs-on-review'] as LintCode[]) : []),
+          ...(restatesManualReview(body, liveChanges, openManualReview)
+            ? (['belongs-on-review'] as LintCode[])
+            : []),
         ],
       })
       return
@@ -1018,7 +1101,9 @@ export function scanTechDebt(repoRoot: string): SourceItem[] {
          * HANDOFF spelling would leave the identical row admissible one file over, which is the
          * hole an author finds on the first retry.
          */
-        lint: restatesManualReview(body, liveChanges) ? (['belongs-on-review'] as LintCode[]) : [],
+        lint: restatesManualReview(body, liveChanges, openManualReview)
+          ? (['belongs-on-review'] as LintCode[])
+          : [],
       })
     }
   }

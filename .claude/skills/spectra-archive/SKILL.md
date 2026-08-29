@@ -359,6 +359,24 @@ awk '/^## 人工檢查/{mr=1; next} /^## /{mr=0} !mr && /^- \[ \]/{print NR": "$
 
    **NEVER** advance the sidecar to `folder-mv` if the CLI failed or was interrupted — leaving `phase=spec-sync` is the trigger that lets Step 0.5 detect the dangerous mid-CLI state and force manual fixup on next `--resume`. (silent fail-safe if helper / sidecar missing.)
 
+6.5. **Sanitize the injected `@trace` lists (clade fork addition)**
+
+   `spectra archive` builds each `@trace` block's `code:` / `tests:` list from **the dirty files in the working tree at archive time**, not from the change's own diff. Two independent sources of pollution follow:
+
+   - The `spectra` CLI is a Windows binary running under wine; its git implementation cannot read the POSIX executable bit, so **every `100755` file in the index** is treated as mode-changed and swept in. <consumer-b> 2026-08-29 measured this at ~90% of the noise — one change's 111 entries contained 98 that were simply the repo's entire set of executable tracked files.
+   - Any **other session's uncommitted work** present at archive time is counted as this change's dependency.
+
+   The CLI is closed-source, so this cannot be fixed upstream — only corrected after it writes. Run:
+
+   ```bash
+   node scripts/spectra-advanced/trace-sanitize.ts --fix --change <change-name>
+   ```
+
+   It rebuilds each list from the change's own implementation commits when it can (anchored on commits touching `openspec/changes/**<name>/**`), and falls back to deleting only entries matching the pollution signature when it cannot — **never** guessing a dependency it cannot source.
+
+   - **Silent fail-safe**: if `scripts/spectra-advanced/trace-sanitize.ts` does not exist (consumer pre-propagation), skip with a one-line note: `Trace sanitize: skipped — helper not available (consumer pre-propagate)`. **NEVER** let this step block or fail the archive — the change is already archived at this point, and a polluted `@trace` list is a correctness problem in impact analysis, not in the archive itself.
+   - **Report, do not re-run**: note the block count it changed in the Step 8 summary (`Trace sanitize: N block(s) corrected` / `Trace sanitize: clean`). If it reports blocks it could not rebuild, that is expected for parked changes and for changes whose implementation landed under a differently-named change — the tool deliberately leaves those alone rather than inventing entries.
+
 7. **Sweep screenshots (auto)**
 
    After successful archive, **automatically** invoke the `screenshots-archive` skill (via Skill tool) with `change <change-name>` to sweep the corresponding screenshot folders into `screenshots/<env>/_archive/YYYY-MM/`.
