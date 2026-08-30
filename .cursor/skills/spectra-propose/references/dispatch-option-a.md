@@ -83,7 +83,9 @@ Local edits will be reverted by the next sync.
         --cwd <consumer-repo-root> \
         --label spectra-propose-<change-name> \
         --model sol --effort max \
-        --route routing-table --tier-basis table-row --table-row spectra-artifact-draft
+        --route routing-table \
+        --workspace-access mutation \
+        --tier-basis table-row --table-row spectra-artifact-draft
       ```
 
    4. **立刻**簡短回報給使用者：「已派 GPT-5.6-sol via Pi（effort: max）在背景負責 draft `/spectra-propose <change-name>`（bash job `<id>`），完成後主線會 cross-check 並補 Design Review template」
@@ -96,8 +98,7 @@ Local edits will be reverted by the next sync.
    - `0`：讀 `result`，往下走。
    - `2`：業務 fail；讀 `result` 的原因，主線決定修補或重派。
    - `3`：機械故障；讀 receipt 指向的 stderr log，依 watch protocol fallback。
-   - `4`：配額擋；本列是 sol，依 [[agent-routing]] § 配額耗盡時的 fallback 紀律先走 `--model sol-cursor`
-     同 effort 重派一次，**NEVER** 當成可立即重試的機械故障，**也 NEVER** 改派 Claude subagent。
+   - `4`：配額擋；本列是 sol 且是 workspace mutation，逐字採用 dispatcher payload，跳過 `sol-cursor` 交給 writable terminal carrier，**NEVER** 當成可立即重試的機械故障，**也 NEVER** 改派 Claude subagent。
 
    收到 `<task-notification> status=completed` 時**立刻**依序執行：
 

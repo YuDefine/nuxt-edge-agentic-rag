@@ -45,10 +45,12 @@ Local edits will be reverted by the next sync.
      --template ~/offline/clade/vendor/snippets/pi-offload/templates/self-collect-evidence.template.md \
      --var <key>=<value> ...（依 template 變數表填：change name、dev-login route 路徑、fixture UUID、port、table 等） \
      --label 8a-self-collect-<change> --model sol --effort low \
-     --route routing-table --tier-basis table-row --table-row spectra-8a-self-collect
+     --route routing-table \
+     --workspace-access mutation \
+     --tier-basis table-row --table-row spectra-8a-self-collect
    ```
 
-   （背景跑、stdout 單一 JSON evidence；exit 0=ok / 2=(a)(b) 皆業務 fail / 3=機械故障 / 4=quota。exit 2 → 主線依序降到 (c)(d)，**不**重派同一 brief；exit 3 → 機械故障，主線 fallback foreground 自跑 (a)(b) 再續 chain；exit 4 → 配額擋，本列是 sol，依 [[agent-routing]] § 配額耗盡時的 fallback 紀律先走 `--model sol-cursor` 同 effort 重派（`-cursor` 變體的適用邊界受 TD-520 限制：**NEVER** 用於不可信第三方 code 或會接觸 secrets／prod 憑證的內容；0-A.1 review gate 已明文排除，見 `commit/gates.md` § 0-A.1），**NEVER** 當成機械故障直接 foreground 自跑。）
+   （背景跑、stdout 單一 JSON evidence；exit 0=ok / 2=(a)(b) 皆業務 fail / 3=機械故障 / 4=quota。exit 2 → 主線依序降到 (c)(d)，**不**重派同一 brief；exit 3 → 機械故障，主線 fallback foreground 自跑 (a)(b) 再續 chain；exit 4 → 配額擋，本列是 workspace mutation，逐字採用dispatcher payload跳過`sol-cursor`並交給writable terminal carrier，**NEVER**當成機械故障直接foreground自跑。）
 
    - **(c)(d) 既有路徑不動**：(c) 維持主線自起 dev server + agent-browser；(d) 走 `screenshot-review` Claude subagent，**不**改走本 dispatcher
    - **Evidence annotation 寫回 tasks.md 維持主線**（多 session 共用 working tree 的寫入紀律）— pi 只回報 JSON evidence，**NEVER** 讓 pi 直接 Edit tasks.md
