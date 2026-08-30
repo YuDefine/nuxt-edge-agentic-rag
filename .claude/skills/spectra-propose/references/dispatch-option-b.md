@@ -17,7 +17,7 @@ Local edits will be reverted by the next sync.
 
    ### 選項 B：三模型交叉 pipeline（Fable draft → Pi review → 主線 Fable final check）
 
-   三段序列：Claude Fable 5 xhigh 在背景起草 → Pi GPT-5.6-sol max（fresh session）檢查出 findings → 主線 Claude Fable 5 xhigh 整合 findings 並完成全套 cross-check。三段皆背景派工 + notification-only watch（per `.claude/rules/agent-routing.pi-watch-protocol.md` § 監看排程 A）。draft 與 review 是兩個不同 model 的獨立 session（Fable draft + Pi review 交叉視角，比同 model 更能抓到盲點）。
+   三段序列：Claude Fable 5（effort: xhigh）在背景起草 → GPT-5.6-sol via Pi（effort: max；fresh session）檢查出 findings → 主線 Claude Fable 5（effort: xhigh）整合 findings 並完成全套 cross-check。三段皆背景派工 + notification-only watch（per `.claude/rules/agent-routing.pi-watch-protocol.md` § 監看排程 A）。draft 與 review 是兩個不同 model 的獨立 session（Fable draft + Pi review 交叉視角，比同 model 更能抓到盲點）。
 
    #### Phase B-0a：背景 Fable draft
 
@@ -33,7 +33,7 @@ Local edits will be reverted by the next sync.
       ```
 
       預設 text 輸出（主線讀 tail）。
-   4. **立刻**簡短回報：「已派 Claude Fable 5 xhigh 在背景 draft `<change-name>`（bash job `<id>`）；完成後派 Pi review，再由主線 Fable final check」。
+   4. **立刻**簡短回報：「已派 Claude Fable 5（effort: xhigh）在背景負責 draft `<change-name>`（bash job `<id>`）；完成後派 Pi review，再由主線 Fable final check」。
    5. 啟動 **Watch Protocol**：`claude -p` background Bash 回傳 `<task-id>` 後，立刻記錄 owner / deadline（deadline 取值依 [[agent-routing]] § deadline 怎麼取），並排 1500s canonical `ASYNC_KEEPALIVE_CONTROL task=<task-id> owner=fable:spectra-propose:<change-name>:draft deadline=<ISO>...` inert control message。控制 turn 只准 `TaskOutput(block=false)`、重排同一 inert prompt、停止 wakeup或排 lifecycle intervention；**NEVER** 放原 draft prompt、讀 output tail、執行 artifact mutation或短輪詢。完成通知到達後才 claim task id、讀 stdout並進 Phase B-0b。
 
    #### Phase B-0b：Fable draft 完成 → 派 Pi review
@@ -65,7 +65,7 @@ Local edits will be reverted by the next sync.
         --route routing-table --tier-basis table-row --table-row spectra-artifact-draft
       ```
 
-   5. **立刻**回報：「Fable draft 完成，已派 Pi GPT-5.6-sol max review（bash job `<id>`）；完成後主線 Fable final check」+ 啟動 notification-only watch（同 Phase B-0a step 5）。
+   5. **立刻**回報：「Fable draft 完成，已派 GPT-5.6-sol via Pi（effort: max）負責 review（bash job `<id>`）；完成後主線 Fable final check」+ 啟動 notification-only watch（同 Phase B-0a step 5）。
 
    #### Phase B-0c：Pi 檢查完 → 主線 Fable final check
 
