@@ -18,7 +18,7 @@ Local edits will be reverted by the next sync.
 -->
 
 
-> **Spectra target guard (clade fork):** Every lifecycle command in this skill that names a change **MUST** run through `node scripts/spectra-target-guard.ts --change "<name>" -- <spectra args...>`. `TARGET_AMBIGUOUS`, `TARGET_FOREIGN`, or `TARGET_MISSING` is a hard STOP: closed-source `kaochenlong/spectra-app` v2.3.1 targeting cannot be proven. Preserve every candidate worktree; **NEVER** delete, move, or clean one to make the guard pass. A pass proves only this invocation's integration contract, not an upstream fix.
+> **Spectra target guard (clade fork):** Every lifecycle command in this skill that names a change **MUST** run through `node scripts/spectra-target-guard.ts --change "<name>" -- <spectra args...>`. Main＋session worktree 同時持有 tracked artifacts 是正常狀態：read-only command 由回傳 artifact path 證明 current target；受支援 mutation 在多候選時先 probe；`unpark` 驗 zero-candidate → current-only restore。任何 `TARGET_*`／`MUTATION_POSTCONDITION` 都是 hard STOP；preserve every candidate worktree，**NEVER** delete, move, or clean one to make the guard pass。A pass proves only this invocation's integration contract, not an upstream fix.
 
 Update an existing Spectra change — from a plan file or conversation context.
 
@@ -219,7 +219,9 @@ Update an existing Spectra change — from a plan file or conversation context.
         --cwd <consumer-repo-root> \
         --label spectra-ingest-<change-name> \
         --model sol --effort max \
-        --route routing-table --tier-basis table-row --table-row spectra-artifact-draft
+        --route routing-table \
+        --workspace-access mutation \
+        --tier-basis table-row --table-row spectra-artifact-draft
       ```
 
       選項 B：
@@ -238,8 +240,7 @@ Update an existing Spectra change — from a plan file or conversation context.
    - `0`：讀 `result`，往下走。
    - `2`：業務 fail；讀 `result` 的原因，主線決定修補或重派。
    - `3`：機械故障；讀 receipt 指向的 stderr log，依 watch protocol fallback。
-   - `4`：配額擋；本列是 sol，依 [[agent-routing]] § 配額耗盡時的 fallback 紀律先走 `--model sol-cursor`
-     同 effort 重派一次，**NEVER** 當成可立即重試的機械故障，**也 NEVER** 改派 Claude subagent。
+   - `4`：配額擋；本列是 sol 且是 workspace mutation，逐字採用 dispatcher payload，跳過 `sol-cursor` 交給 writable terminal carrier，**NEVER** 當成可立即重試的機械故障，**也 NEVER** 改派 Claude subagent。
 
    **Cross-check（A / B 共用，收到 `<task-notification status=completed>` 後立刻）**：
 

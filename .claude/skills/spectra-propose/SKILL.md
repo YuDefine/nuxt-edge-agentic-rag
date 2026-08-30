@@ -18,7 +18,7 @@ Local edits will be reverted by the next sync.
 -->
 
 
-> **Spectra target guard (clade fork):** Every lifecycle command in this skill that names a change **MUST** run through `node scripts/spectra-target-guard.ts --change "<name>" -- <spectra args...>`. `TARGET_AMBIGUOUS`, `TARGET_FOREIGN`, or `TARGET_MISSING` is a hard STOP: closed-source `kaochenlong/spectra-app` v2.3.1 targeting cannot be proven. Preserve every candidate worktree; **NEVER** delete, move, or clean one to make the guard pass. A pass proves only this invocation's integration contract, not an upstream fix.
+> **Spectra target guard (clade fork):** Every lifecycle command in this skill that names a change **MUST** run through `node scripts/spectra-target-guard.ts --change "<name>" -- <spectra args...>`. Main＋session worktree 同時持有 tracked artifacts 是正常狀態：read-only command 由回傳 artifact path 證明 current target；受支援 mutation 在多候選時先 probe；`unpark` 驗 zero-candidate → current-only restore。任何 `TARGET_*`／`MUTATION_POSTCONDITION` 都是 hard STOP；preserve every candidate worktree，**NEVER** delete, move, or clean one to make the guard pass。A pass proves only this invocation's integration contract, not an upstream fix.
 
 Create a complete Spectra change proposal — from requirement to validated artifacts — in a single workflow.
 

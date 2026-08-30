@@ -96,6 +96,7 @@ node ~/offline/clade/vendor/scripts/pi-dispatch.ts \
   --cwd <consumer-worktree-root> \
   --model sol --effort high \
   --route routing-table \
+  --workspace-access mutation \
   --tier-basis table-row --table-row spectra-phase-implementation \
   --origin spectra-apply \
   --origin-id "$IMPLEMENTATION_ORIGIN_ID" \

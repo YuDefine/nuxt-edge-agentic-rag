@@ -62,7 +62,9 @@ Local edits will be reverted by the next sync.
         --cwd <consumer-repo-root> \
         --label spectra-propose-review-<change-name> \
         --model sol --effort max \
-        --route routing-table --tier-basis table-row --table-row spectra-artifact-draft
+        --route routing-table \
+        --workspace-access readonly \
+        --tier-basis table-row --table-row spectra-artifact-draft
       ```
 
    5. **立刻**回報：「Fable draft 完成，已派 GPT-5.6-sol via Pi（effort: max）負責 review（bash job `<id>`）；完成後主線 Fable final check」+ 啟動 notification-only watch（同 Phase B-0a step 5）。
@@ -74,9 +76,8 @@ Local edits will be reverted by the next sync.
    - `0`：讀 findings，往下走。
    - `2`：業務 fail；讀 `result` 的原因，主線決定修補或重派。
    - `3`：機械故障；讀 receipt 指向的 stderr log，依 watch protocol fallback。
-   - `4`：配額擋；本段是 sol，依 [[agent-routing]] § 配額耗盡時的 fallback 紀律先走 `--model sol-cursor`
-     同 effort 重派一次，**NEVER** 當成可立即重試的機械故障。Pi review 是本選項的**交叉視角來源**，
-     兩池皆耗盡時 **NEVER** 用主線 Fable 自審頂替——那會讓三模型交叉塌成兩模型，MUST 明示使用者並登記待補。
+   - `4`：配額擋；本段是 sol readonly review，逐字採用 dispatcher payload，先走 `sol-cursor` readonly fallback，該池也耗盡才交給 payload 指定的 terminal carrier；**NEVER** 當成可立即重試的機械故障。Pi review 是本選項的**交叉視角來源**，
+     readonly 鏈耗盡時 **NEVER** 用主線 Fable 自審頂替——那會讓三模型交叉塌成兩模型，MUST 明示使用者並登記待補。
 
    收到 Pi `<task-notification status=completed>` 時**立刻**：
 
