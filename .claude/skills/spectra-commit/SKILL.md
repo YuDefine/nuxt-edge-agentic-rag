@@ -17,6 +17,8 @@ Local edits will be reverted by the next sync.
 -->
 
 
+> **Spectra target guard (clade fork):** Every lifecycle command in this skill that names a change **MUST** run through `node scripts/spectra-target-guard.ts --change "<name>" -- <spectra args...>`. `TARGET_AMBIGUOUS`, `TARGET_FOREIGN`, or `TARGET_MISSING` is a hard STOP: closed-source `kaochenlong/spectra-app` v2.3.1 targeting cannot be proven. Preserve every candidate worktree; **NEVER** delete, move, or clean one to make the guard pass. A pass proves only this invocation's integration contract, not an upstream fix.
+
 Commit files related to a specific Spectra change.
 
 This is a **utility skill** (not a workflow step). It reads source file tracking data and artifact changes to stage and commit only the files belonging to one change — useful when multiple changes are in progress simultaneously.
@@ -135,7 +137,7 @@ This is a **utility skill** (not a workflow step). It reads source file tracking
    ```
    ### Source Files
    ⚠ No source file tracking data found.
-   Only artifact files will be committed. Use `spectra task done` during apply to enable source file tracking.
+   Only artifact files will be committed. Use the guarded `task done` lifecycle command during apply to enable source file tracking.
    ```
 
    If there are no artifact files AND no tracked source files, inform the user that there is nothing to commit and STOP.
@@ -185,7 +187,7 @@ This is a **utility skill** (not a workflow step). It reads source file tracking
     - If **incomplete tasks exist**:
       - Display the list of incomplete tasks
       - Use the **AskUserQuestion tool** to ask: "These tasks are still incomplete. Mark all as complete before archiving?"
-        - **Yes**: set a flag to pass `--mark-tasks-complete` to `spectra archive`
+        - **Yes**: set a flag to pass `--mark-tasks-complete` to the guarded archive command
         - **No**: proceed without the flag (archive will continue with a warning)
 
       If **AskUserQuestion tool** is not available, ask the same question as plain text and wait for the user's response.
@@ -207,8 +209,8 @@ This is a **utility skill** (not a workflow step). It reads source file tracking
     Execute the archive:
 
     ```bash
-    spectra archive <name>          # without --mark-tasks-complete
-    spectra archive <name> --mark-tasks-complete  # if user chose to mark tasks complete in 6a-i
+    node scripts/spectra-target-guard.ts --change "<name>" -- archive <name>          # without --mark-tasks-complete
+    node scripts/spectra-target-guard.ts --change "<name>" -- archive <name> --mark-tasks-complete  # if user chose to mark tasks complete in 6a-i
     ```
 
     After archive completes successfully:

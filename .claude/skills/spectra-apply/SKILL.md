@@ -20,6 +20,8 @@ Local edits will be reverted by the next sync.
 
 Implement tasks from a Spectra change.
 
+> **Spectra target guard (clade fork):** Every lifecycle command in this skill that names a change **MUST** run through `node scripts/spectra-target-guard.ts --change "<name>" -- <spectra args...>`. `TARGET_AMBIGUOUS`, `TARGET_FOREIGN`, `TARGET_MISSING`, or `MUTATION_POSTCONDITION` is a hard STOP: closed-source `kaochenlong/spectra-app` v2.3.1 targeting cannot be proven. Preserve every candidate worktree; **NEVER** delete, move, or clean one to make the guard pass. A pass proves only this invocation's integration contract, not an upstream fix.
+
 > **Ownership**（clade fork；cross-phase matrix in `rules/core/spectra-workflow.md`）：apply 負責 code 正確性 + Class B UI view phase refactor invariant（Step 6c / Layer B：無 column 整欄 fallback + 0 個 4xx/5xx）+ review-rules 機械規則掃描（Step 6d：`patterns.json` multi-line match，補 pre-commit hook 逐行 grep 漏抓的跨行 Vue props）+ Design Review data-sanity（Layer C：client param vs server schema bound）+ pre-handoff 5-維度 cross-check（Step 8a.6 / Layer E.1 主線 + E.2 pi）。**不**負責 user 主觀視覺 / UX 真人驗收（manual review / review-gui 管）。
 
 **Input**: Optionally specify a change name (e.g., `/spectra-apply add-auth`). If omitted, check if it can be inferred from conversation context. If vague or ambiguous you MUST prompt for available changes.
@@ -51,13 +53,13 @@ Implement tasks from a Spectra change.
 
       **MUST** 在 dispatch subagent **之前**，由主線在 main worktree（或 Step 0c 剛 fork 出的 session worktree — 兩者都是 persistent disk）跑 unpark + commit-to-git，讓 artifacts 落 git tracked file，不再依賴 `.git/spectra-app/spectra.db` 的 SQLite blob。
 
-      **執行流程**：**MUST** 完整讀 `references/worktree-setup.md` § Step 0c.5——偵測是否 parked → 主線在 main 跑 `spectra unpark` → selective stage + commit → worktree sync，含 unpark / commit / pull 各自的 failure handling。**NEVER** 憑記憶跑。
+      **執行流程**：**MUST** 完整讀 `references/worktree-setup.md` § Step 0c.5——偵測是否 parked → 主線在 main 跑 guarded unpark command → selective stage + commit → worktree sync，含 unpark / commit / pull 各自的 failure handling。**NEVER** 憑記憶跑。
 
       **Skip-condition**：`spectra list --parked --json` 未命中本 change → artifacts 已在 disk / git，直接進 Step 0d。
 
       **NEVER**：
 
-      - **NEVER** 在 Agent tool dispatched subagent 內跑 `spectra unpark`（Agent tool 的 cwd 是 ephemeral `.claude/worktrees/agent-*/`，unpark 寫的 artifacts 會被 session GC 清掉 → permanent data loss）
+      - **NEVER** 在 Agent tool dispatched subagent 內跑 guarded unpark command（Agent tool 的 cwd 是 ephemeral `.claude/worktrees/agent-*/`，unpark 寫的 artifacts 會被 session GC 清掉 → permanent data loss）
       - **NEVER** 跳過此步直接 dispatch subagent 期望 Step 2 在 subagent 內跑 unpark — Step 2 的 unpark 路徑已標記為 fallback only，主線預先做才是 default
       - **NEVER** 用 `git add -A` / `git add .` stage artifacts — 會把 main 上其他 user WIP 一起 commit
       - **NEVER** 透過 `Skill` tool 或 `Agent` tool 委派此步給 subagent — 必須主線自己跑（subagent 的 cwd 不可信）
@@ -92,7 +94,7 @@ Implement tasks from a Spectra change.
 2. **Check status to understand the schema**
 
    ```bash
-   spectra status --change "<name>" --json
+   node scripts/spectra-target-guard.ts --change "<name>" -- status --change "<name>" --json
    ```
 
    **If the command fails**: show the error and STOP.
@@ -117,7 +119,7 @@ Implement tasks from a Spectra change.
      If the user chooses to continue:
 
      ```bash
-     spectra unpark "<name>"
+     node scripts/spectra-target-guard.ts --change "<name>" -- unpark "<name>"
      ```
 
      **Post-unpark commit**（clade fork addition；防 SQLite-only state）：unpark 後 **MUST** 立刻把 artifacts commit 進 git（`git add openspec/changes/<name>/` → commit）。**禁止** `git add -A`；`no changes to commit` 視為成功、hook fail 則 STOP。逐字指令見 `references/worktree-setup.md` § Step 2 parked fallback。
@@ -125,21 +127,21 @@ Implement tasks from a Spectra change.
      Then mark it as in-progress:
 
      ```bash
-     spectra in-progress add "<name>"
+     node scripts/spectra-target-guard.ts --change "<name>" -- in-progress add "<name>"
      ```
 
      This is a silent operation — do not show the output to the user.
 
-     Then re-run `spectra status --change "<name>" --json` and continue normally.
+     Then re-run `node scripts/spectra-target-guard.ts --change "<name>" -- status --change "<name>" --json` and continue normally.
 
      If there is no AskUserQuestion tool available (non-Claude-Code environment):
      Inform the user that this change is currently parked（暫存）and ask via plain text whether to unpark and continue, or cancel.
-     Wait for the user's response. If the user confirms, run `spectra unpark "<name>"` + post-unpark commit + `spectra in-progress add "<name>"`, and continue normally.
+     Wait for the user's response. If the user confirms, run `node scripts/spectra-target-guard.ts --change "<name>" -- unpark "<name>"` + post-unpark commit + `node scripts/spectra-target-guard.ts --change "<name>" -- in-progress add "<name>"`, and continue normally.
 
    - **If the change is NOT in the parked list**: mark it as in-progress and proceed normally.
 
      ```bash
-     spectra in-progress add "<name>"
+     node scripts/spectra-target-guard.ts --change "<name>" -- in-progress add "<name>"
      ```
 
      This is a silent operation — do not show the output to the user.
@@ -165,7 +167,7 @@ Implement tasks from a Spectra change.
 3. **Get apply instructions**
 
    ```bash
-   spectra instructions apply --change "<name>" --json
+   node scripts/spectra-target-guard.ts --change "<name>" -- instructions apply --change "<name>" --json
    ```
 
    This returns:
@@ -309,10 +311,10 @@ If there is no AskUserQuestion tool available, present options as plain text and
    1. **Read tasks.md** and identify all `## N.` phase sections
    2. **For each phase, classify into one of three categories**（依序判定，命中即停）:
       - **A. Design Review phase** — title contains "Design Review" OR phase body references `/design improve` / `/impeccable audit` / `/impeccable *` / `review-screenshot` / `/design *`
-        → **主線 Claude Opus 5 xhigh 自己做**，**永不**派 pi
+        → **主線 Claude Opus 5（effort: xhigh）自己做**，**永不**派 pi
         → Design skill is Claude Code first-class; pi tooling weak in this domain
       - **B. UI view phase** — phase 內任一 task 描述/路徑指涉 view 層檔案：`.vue` / `.tsx` / `.jsx` / `app/pages/` / `app/components/` / `pages/` / `components/` / `views/` / `layouts/` / `.css` / `.scss` / Tailwind class 變動，**且**該 phase 沒有摻入非 view 的 frontend / backend 工作（store / hook / API client / type / util / migration / API server）
-        → **主線 Claude Opus 5 xhigh 自己做**，**永不**派 pi——UI view 實作在 `agent-routing.md` § 派不派 的不外派清單，**NEVER** 派 Pi 任一 model、**NEVER** 派 Claude subagent
+        → **主線 Claude Opus 5（effort: xhigh）自己做**，**永不**派 pi——UI view 實作在 `agent-routing.md` § 派不派 的不外派清單，**NEVER** 派 Pi 任一 model、**NEVER** 派 Claude subagent
         → **NEVER** 因為 phase 大、時間晚、非 view phase 的 dispatch 管線現成就轉派——那條管線是 C 類專用
         → 實作完、該 phase commit / 標 done **之前**，照跑 Step 6c / 6d 檢查與 Design Review gate
         → frontend 但非 view 的工作（store / hook / API client / type / util）不在此範圍，走 C 類
@@ -394,10 +396,10 @@ If there is no AskUserQuestion tool available, present options as plain text and
    **Reminder: Track progress by editing checkboxes in the tasks file only. Do not use any built-in task tracker.**
 
    **Dispatch reminder**: For each phase, follow Step 6b's three-way classification:
-   - Class C（Other）→ 以泛用 dispatcher 的 `spectra-phase-implementation` row dispatch Pi Sol high（phase granularity）
-   - Class A（Design Review）→ 主線 Opus 5 xhigh self-execute：**MUST invoke Skill tool** 跑 `/design improve` + `/impeccable audit` 完成全部 tasks（per Step 6b §6 hard rule；NEVER 停下叫 user 自己跑）
+   - Class C（Other）→ 以泛用 dispatcher 的 `spectra-phase-implementation` row dispatch GPT-5.6-sol via Pi（effort: high）（phase granularity）
+   - Class A（Design Review）→ 主線 Claude Opus 5（effort: xhigh）self-execute：**MUST invoke Skill tool** 跑 `/design improve` + `/impeccable audit` 完成全部 tasks（per Step 6b §6 hard rule；NEVER 停下叫 user 自己跑）
      - 這兩支是 Claude Code 內建 skill，不知道 clade Routing Table 存在。它們內文若叫起 `Agent`（含省略 `model` 而繼承主線 Opus 的形狀），照樣會被 PreToolUse:Agent gate default-deny 攔下（per [[agent-routing]] § Routing Table，TD-513）。攔下時 **MUST** 照 block message 走 dispatch／waive／fallback；Design Review 本身仍是主線自己做，**NEVER** 把它變成外派
-   - Class B（UI view: component / page / view / layout / styling）→ 主線 Opus 5 xhigh self-execute，永不派 pi（形狀見 Step 6b B 類）。該 phase 實作完、commit / 標 done **之前** MUST 跑 **Step 6c Refactor Invariant Check** + **Step 6d Review Rules Check**
+   - Class B（UI view: component / page / view / layout / styling）→ 主線 Claude Opus 5（effort: xhigh）self-execute，永不派 pi（形狀見 Step 6b B 類）。該 phase 實作完、commit / 標 done **之前** MUST 跑 **Step 6c Refactor Invariant Check** + **Step 6d Review Rules Check**
    - Mixed phase（UI view + 非 view 摻同 phase）→ 已開工主線吸收、未開工 STOP 提示 `/spectra-ingest`
 
    For each pending task:
@@ -430,13 +432,10 @@ If there is no AskUserQuestion tool available, present options as plain text and
    - Make the code changes required
    - Keep changes minimal and focused
    - **Verify before marking done** — re-read the task description from the tasks file AND the relevant Implementation Contract content from design.md. For each requirement stated in the task description and each contract item that covers this task's scope, confirm it is addressed by your changes. Confirm the verification target named by the task (test name, CLI invocation, analyzer check, or manual assertion) actually passes. If any contract item, task requirement, or verification target is missing or failing, implement/fix it now. Do not mark the task complete until every part of the description is covered and the contract for this task is satisfied.
-   - Mark task complete by running: `spectra task done --change "<name>" <task-id>`
+   - Mark task complete by running: `node scripts/spectra-target-guard.ts --change "<name>" -- task done --change "<name>" <task-id>`
      This command marks the checkbox in tasks.md AND records which files were modified for this task.
 
-     **Worktree workaround (clade TD-015 / spectra ≤2.3.1)**: when running inside a session worktree (path `<consumer>-wt/<slug>/`), `spectra task done` writes `.spectra/touched/<change>.json` to the current worktree ✅ but its `tasks.md` checkbox flip can land in the Claude Code system-managed agent worktree (`<consumer>/.claude/worktrees/agent-*/`) instead. Workaround:
-       1. After `spectra task done`, **MUST** verify `git -C $(pwd) diff -- openspec/changes/<change>/tasks.md` shows the `[ ] → [x]` flip in the current worktree.
-       2. If diff is empty → mirror-flip manually with Edit (change `- [ ] <task-id>` to `- [x] <task-id>` on the matching line). The `.spectra/touched/` write already happened, so this is a UI-only sync.
-       3. **NEVER** touch `<consumer>/.claude/worktrees/agent-*/`; that's Claude Code harness state — let it GC at session end.
+     The guard snapshots current `tasks.md` and every registered worktree's `.spectra/touched/<change>.json` before delegation. Success requires the requested checkbox to flip `[ ] → [x]` in the current root, the current touched sidecar to record that task, and every foreign snapshot to remain unchanged. `MUTATION_POSTCONDITION` is a hard STOP; **NEVER** mirror-flip a checkbox, copy foreign state, or modify Spectra SQLite after a failed proof.
    - Continue to next task
 
    **Parallel task dispatch**: When consecutive `[P]`-marked tasks are found and `parallel_tasks: true` is configured (see Step 5), dispatch them as parallel agents in a single message. If any `[P]` task fails, pause and report.
@@ -489,14 +488,14 @@ If there is no AskUserQuestion tool available, present options as plain text and
 
    **5 輪仍 FAIL** → Output On Pause，附最後一輪 error 全文，escalation_action = ASK。
 
-   **Skip-condition**：consumer 的 `verify-commands.md` 不存在 → 退回既有行為（只跑 `spectra instructions apply --json` 確認 state）。不 block apply 流程。
+   **Skip-condition**：consumer 的 `verify-commands.md` 不存在 → 退回既有行為（只跑 `node scripts/spectra-target-guard.ts --change "<name>" -- instructions apply --change "<name>" --json` 確認 state）。不 block apply 流程。
 
 8. **Final check**
 
    After completing all tasks AND Step 7.5 gate chain PASS, re-run:
 
    ```bash
-   spectra instructions apply --change "<name>" --json
+   node scripts/spectra-target-guard.ts --change "<name>" -- instructions apply --change "<name>" --json
    ```
 
    Confirm `state: "all_done"`. If not, review remaining tasks and complete them.
@@ -521,8 +520,8 @@ If there is no AskUserQuestion tool available, present options as plain text and
 
    | 角色 | 範圍 | 檔位 |
    | --- | --- | --- |
-   | **收集**（輸出不是 gate） | Step 8a 全部（含 8a.5 / 8a.6 / 8a.7）跑 verify channel、截圖、hook、sweep | **Pi Grok-4.6 low**（`--model grok-xai`） |
-   | **判定（gate）** | 截圖收集完成後分析每張截圖是否匹配對應要求（防止亂截圖搪塞） | **pi GPT-5.6-sol xhigh** |
+   | **收集**（輸出不是 gate） | `[verify:e2e]` / `[verify:api]` 由主線執行；`[verify:ui]` 與 stale 重拍由具名 agent 收集截圖 | **`screenshot-review` Claude subagent**（UI）；其餘依 channel recipe |
+   | **判定（gate）** | 截圖收集完成後分析每張截圖是否匹配對應要求（防止亂截圖搪塞） | **GPT-5.6-sol via Pi（effort: xhigh）** |
 
    Read `tasks.md` `## 人工檢查` 找未勾 `[verify:e2e]` / `[verify:api]` / `[verify:ui]` / `[verify:<a>+<b>]` / deprecated `[verify:auto]` items。**MUST** 先處理完所有 verify channels 才進 Step 8b。
 
@@ -532,7 +531,7 @@ If there is no AskUserQuestion tool available, present options as plain text and
 
    **Pre-verify baseline check + 自接路徑**：dispatch 任何 verify channel 前 **MUST** 完整讀 `references/verify-channels.md` § Pre-verify——per-channel baseline 檢查、mis-marked item reclassify（TD-176）、以及 baseline 存在但功能性缺時的 (a)(b)(c)(d) self-collect chain（預設派背景 pi，per [[pitfall-verify-evidence-handoff-instead-of-self-collect]]）。**四層全失敗才**寫 `deferred` annotation 且 MUST 註明已嘗試 path；主線收 pi JSON evidence 後 **MUST 抽查至少一項**再寫 annotation。
 
-   **執行流程**：**MUST** 完整讀 `references/verify-channels.md` § 執行流程，逐 channel 執行——`[verify:e2e]` 主線寫 Playwright spec、`[verify:api]` 主線跑 HTTP round-trip、`[verify:ui]` 走 pi dispatcher + **Screenshot Match Analysis gate**（收集 medium / 判斷 xhigh 分離）、multi-marker 依 `e2e → api → ui`、deprecated `[verify:auto]` 視為 `[verify:api+ui]`。evidence 一律走 `evidence-store.ts` 寫入（payload 進 sidecar，短 marker 貼 tasks.md）。
+   **執行流程**：**MUST** 完整讀 `references/verify-channels.md` § 執行流程，逐 channel 執行——`[verify:e2e]` 主線寫 Playwright spec、`[verify:api]` 主線跑 HTTP round-trip、`[verify:ui]` 走 `screenshot-review` Claude subagent + **GPT-5.6-sol via Pi（effort: xhigh）執行 Screenshot Match Analysis gate**（收集與判斷分離）、multi-marker 依 `e2e → api → ui`、deprecated `[verify:auto]` 視為 `[verify:api+ui]`。evidence 一律走 `evidence-store.ts` 寫入（payload 進 sidecar，短 marker 貼 tasks.md）。
 
    **反 bypass（hard rule — 2026-06-11 audit 實證）**：
 
@@ -568,14 +567,14 @@ If there is no AskUserQuestion tool available, present options as plain text and
 
    | 角色 | 範圍 | 檔位 |
    | --- | --- | --- |
-   | **收集**（輸出不是 gate） | E.1 五維 evidence 收集 | **Pi Grok-4.6 medium（`--model grok-xai`）** |
-   | **判定（gate）** | E.1 對收集結果做五維判定 | **pi GPT-5.6-sol xhigh** |
-   | **判定（gate）** | E.2 cross-model second opinion（另起 session 獨立審） | **pi GPT-5.6-sol xhigh** |
+   | **收集**（輸出不是 gate） | E.1 五維 evidence 收集 | **Grok 4.6 via Pi（effort: medium；`--model grok-xai`）** |
+   | **判定（gate）** | E.1 對收集結果做五維判定 | **GPT-5.6-sol via Pi（effort: xhigh）** |
+   | **判定（gate）** | E.2 cross-model second opinion（另起 session 獨立審） | **GPT-5.6-sol via Pi（effort: xhigh）** |
 
-   **MUST** before Step 8b handoff 先派 **Pi Grok-4.6 medium（`--model grok-xai --table-row spectra-prehandoff-collect`）** 跑 5-dimension 收集（template 見下）。
-   收集回來後 **MUST** 另派 **pi GPT-5.6-sol xhigh** 對收集結果做 5-dimension 判定——判定是 gate，**NEVER** 與收集併在同一次 dispatch：
+   **MUST** before Step 8b handoff 先派 **Grok 4.6 via Pi（effort: medium；`--model grok-xai --table-row spectra-prehandoff-collect`）** 跑 5-dimension 收集（template 見下）。
+   收集回來後 **MUST** 另派 **GPT-5.6-sol via Pi（effort: xhigh）** 對收集結果做 5-dimension 判定——判定是 gate，**NEVER** 與收集併在同一次 dispatch：
 
-   **E.1 + E.2 執行**：**MUST** 完整讀 `references/pre-handoff-checks.md` § Step 8a.6 執行——E.1（pi medium 收集 5-dimension evidence → pi xhigh 判定 → 主線寫 finding report、FAIL 補 `（issue:）` / strip 假 annotation → `pre-handoff-ledger.ts record`）與 E.2（`pi-dispatch-pre-handoff-check.ts` cross-model 獨立審；fallback Claude subagent，**NEVER** 憑記憶補、**NEVER** 跳過 cross-check 直接 handoff）。**No finding report written → NO Step 8b handoff — this is the gate**；E.1 record 由 `archive-gate.sh` Check 7 機械強制。
+   **E.1 + E.2 執行**：**MUST** 完整讀 `references/pre-handoff-checks.md` § Step 8a.6 執行——E.1（Grok 4.6 via Pi（effort: medium）收集 5-dimension evidence → GPT-5.6-sol via Pi（effort: xhigh）判定 → 主線寫 finding report、FAIL 補 `（issue:）` / strip 假 annotation → `pre-handoff-ledger.ts record`）與 E.2（`pi-dispatch-pre-handoff-check.ts` cross-model 獨立審；fallback Claude subagent，**NEVER** 憑記憶補、**NEVER** 跳過 cross-check 直接 handoff）。**No finding report written → NO Step 8b handoff — this is the gate**；E.1 record 由 `archive-gate.sh` Check 7 機械強制。
 
    **Level**：Phase 2 為 **warning / soft-gate**——E.1 + E.2 都 MUST 跑、findings MUST 寫成 `（issue:）` annotation 讓 user 在 review-gui 看到，但**不** hard-block workflow。升 hard gate 的 rollout 狀態與 soak 評估指令見 `references/pre-handoff-checks.md` § Step 8a.6 rollout 狀態。
 
@@ -587,7 +586,7 @@ If there is no AskUserQuestion tool available, present options as plain text and
 
    **觸發條件**：`## 人工檢查` 含至少一個 `[verify:ui]` item 且 `screenshots/local/<change>/` 目錄存在。否則 silent skip。
 
-   **執行流程**：**MUST** 依 `references/pre-handoff-checks.md` § Step 8a.7 執行——`audit-screenshot-staleness.ts` → LEGACY 清理 → STALE 重拍（pi medium + Screenshot Match Analysis）→ 重跑 audit 至 `stale` 為 0（最多 2 輪）→ selective commit 更新截圖。
+   **執行流程**：**MUST** 依 `references/pre-handoff-checks.md` § Step 8a.7 執行——`audit-screenshot-staleness.ts` → LEGACY 清理 → STALE 由 `screenshot-review` Claude subagent 重拍 → GPT-5.6-sol via Pi（effort: xhigh）執行 Screenshot Match Analysis → 重跑 audit 至 `stale` 為 0（最多 2 輪）→ selective commit 更新截圖。
 
    **Skip 條件**：
    - 無 `screenshots/local/<change>/` 目錄（純 backend change）
@@ -675,7 +674,7 @@ Working on task 4/7: <task description>
 
 **Completion evidence gate**（clade fork addition — 輸出「Implementation Complete」前 MUST 逐格自查；每格附「實跑命令＋輸出摘尾」，貼不出證據＝該格未完成，不准宣告完成）：
 
-- [ ] `spectra instructions apply --change "<name>" --json` 回傳 `state: "all_done"`（貼該欄位輸出行）
+- [ ] `node scripts/spectra-target-guard.ts --change "<name>" -- instructions apply --change "<name>" --json` 回傳 `state: "all_done"`（貼該欄位輸出行）
 - [ ] typecheck / test / lint 全綠（貼各命令與最後幾行輸出；worktree 內實跑，不引用歷史結果）
 - [ ] Step 8a verify-channel annotations 已寫入 tasks.md（貼其中一條 annotation 行）
 

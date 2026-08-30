@@ -10,6 +10,8 @@ Local edits will be reverted by the next sync.
 > 本檔是 `spectra-apply/SKILL.md` 的執行細節分冊（clade fork 加料，2026-08-02 自 SKILL.md 抽出以縮 invoke 成本）。
 > SKILL.md 對應 step 的 inline pointer 指到本檔；**MUST 依 pointer 指示完整讀對應 § 再執行**。
 > 行為 gate（NEVER / MUST 判定）留在 SKILL.md inline；本檔是操作 recipe / 範本 / 查表。
+>
+> 本檔每一個帶 change name 的 lifecycle command **MUST** 經 `node scripts/spectra-target-guard.ts --change "<change-name>" -- <spectra args...>`。guard 紅燈即 STOP；保留全部候選 worktree，不以刪除、搬移或清理候選換取通過。
 
 ---
 
@@ -91,7 +93,7 @@ Local edits will be reverted by the next sync.
       2. **主線在 main 跑 unpark**（**禁止**在 subagent / ephemeral worktree 跑；本步驟發生在 dispatch 之前，主線 cwd 仍是 main）：
 
          ```bash
-         spectra unpark "<change-name>"
+         node scripts/spectra-target-guard.ts --change "<change-name>" -- unpark "<change-name>"
          ```
 
          Unpark 把 artifacts blob restore 到 main worktree disk 的 `openspec/changes/<change-name>/`。SQLite parked 條目被刪除（這是 unpark 的正常行為）。
@@ -117,7 +119,7 @@ Local edits will be reverted by the next sync.
 
       **Failure handling**：
 
-      - `spectra unpark` 失敗（SQLite blob corrupt / change name typo）→ STOP，回報 error，**不要** dispatch subagent；user 解掉 unpark issue 再重試 `/spectra-apply`
+      - guarded unpark command 失敗（target proof / SQLite blob corrupt / change name typo）→ STOP，回報 error，**不要** dispatch subagent；user 解掉 issue 再重試 `/spectra-apply`
       - `git commit` 失敗（pre-commit hook fail / no changes to commit）→
         - `no changes to commit`：artifacts 已在 git，視為成功，繼續
         - hook fail：STOP，回報 hook 拒絕原因，user 修完 artifacts 再重試
@@ -141,7 +143,7 @@ Local edits will be reverted by the next sync.
 
      - 若 cwd 看起來像 ephemeral agent worktree（`git-dir` 路徑含 `.claude/worktrees/agent-` 片段）→ **STOP**，回報：
        ```
-       ⚠ spectra unpark must run on main worktree or persistent session worktree, NOT inside Agent tool dispatched subagent.
+       ⚠ Guarded unpark must run on main worktree or persistent session worktree, NOT inside Agent tool dispatched subagent.
        This subagent's cwd is `.claude/worktrees/agent-*/`, which Claude Code will GC at session end.
        Running unpark here would write artifacts to a path that disappears → permanent data loss
        (see docs/pitfalls/2026-05-22-agent-tool-subagent-worktree-bypass.md).
@@ -163,7 +165,7 @@ Local edits will be reverted by the next sync.
        If the user chooses to continue:
 
        ```bash
-       spectra unpark "<name>"
+       node scripts/spectra-target-guard.ts --change "<name>" -- unpark "<name>"
        ```
 
        **Post-unpark commit**（clade fork addition；防 SQLite-only state）：unpark 把 artifacts restore 到 cwd worktree disk，SQLite parked 條目被刪。**MUST** 立刻 commit 到 git，避免下次 session 又需重做：
@@ -178,16 +180,16 @@ Local edits will be reverted by the next sync.
        Then mark it as in-progress:
 
        ```bash
-       spectra in-progress add "<name>"
+       node scripts/spectra-target-guard.ts --change "<name>" -- in-progress add "<name>"
        ```
 
        This is a silent operation — do not show the output to the user.
 
-       Then re-run `spectra status --change "<name>" --json` and continue normally.
+       Then re-run `node scripts/spectra-target-guard.ts --change "<name>" -- status --change "<name>" --json` and continue normally.
 
        If there is no AskUserQuestion tool available (non-Claude-Code environment):
        Inform the user that this change is currently parked（暫存）and ask via plain text whether to unpark and continue, or cancel.
-       Wait for the user's response. If the user confirms, run `spectra unpark "<name>"` + post-unpark commit + `spectra in-progress add "<name>"`, and continue normally.
+       Wait for the user's response. If the user confirms, run `node scripts/spectra-target-guard.ts --change "<name>" -- unpark "<name>"` + post-unpark commit + `node scripts/spectra-target-guard.ts --change "<name>" -- in-progress add "<name>"`, and continue normally.
 
 ---
 

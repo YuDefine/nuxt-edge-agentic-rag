@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "permissions": {
+    "allow": [
+      "Shell(cat)",
+      "Shell(curl)",
+      "Shell(done)",
+      "Shell(echo)",
+      "Shell(fi)",
+      "Shell(find)",
+      "Shell(grep)",
+      "Shell(head)",
+      "Shell(jq)",
+      "Shell(ls)",
+      "Shell(node)",
+      "Shell(sort)",
+      "Shell(test)",
+      "Shell(tree)",
+      "Shell(wc)",
+      "WebFetch(github.com)",
+      "WebFetch(pinia-colada.esm.dev)",
+      "WebFetch(ui.nuxt.com)",
+      "WebFetch(vueuse.org)"
+    ],
+    "deny": []
+  }
+}

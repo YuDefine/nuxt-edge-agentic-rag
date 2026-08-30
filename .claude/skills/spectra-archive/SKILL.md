@@ -18,6 +18,8 @@ Local edits will be reverted by the next sync.
 -->
 
 
+> **Spectra target guard (clade fork):** Every lifecycle command in this skill that names a change **MUST** run through `node scripts/spectra-target-guard.ts --change "<name>" -- <spectra args...>`. `TARGET_AMBIGUOUS`, `TARGET_FOREIGN`, or `TARGET_MISSING` is a hard STOP: closed-source `kaochenlong/spectra-app` v2.3.1 targeting cannot be proven. Preserve every candidate worktree; **NEVER** delete, move, or clean one to make the guard pass. A pass proves only this invocation's integration contract, not an upstream fix.
+
 Archive a completed change.
 
 > **Ownership**（clade fork；cross-phase matrix in `rules/core/spectra-workflow.md`）：archive gate-check 負責 archive 前再跑 Layer C data-sanity + `archive-gate.sh` Check 1–7（journey / schema-types / exhaustiveness / manual-review kind / screenshot quality / stale verified-ui / pre-handoff-verdict）。**不**負責上游 phase 已 own 的 checkpoint（propose Layer A、apply Step 6c/Layer B、pre-handoff Step 8a.6/Layer E 各在自己 phase 抓）；Check 7 只是機械驗證 Step 8a.6 的 E.1 verdict record 已存在（缺則擋 archive），不重跑 self-analysis 本身。
@@ -36,10 +38,10 @@ Before running archive, classify the change into one of four dispositions. Pick 
 
 | Disposition | Trigger | spec sync | manual review | CLI |
 |---|---|---|---|---|
-| **Park** | Change is **postponed but still planned**. Premise still valid. | — | — | `spectra park <name>` (NOT this skill) |
-| **Standard archive** | Implementation `[x]` complete + `## 人工檢查` `[x]` complete | applied | already done | `spectra archive <name>` (default flow) |
-| **Skip-archive (A)** | **Won't be implemented.** Premise dissolved (decision changed / concept removed / change became redundant). | **skipped** | **skipped** | `spectra archive <name> --mark-tasks-complete --skip-specs --no-validate -y` |
-| **In-main-done archive (B)** | Implementation `[x]` complete (built directly on main, no session worktree). Only `## 人工檢查` items remain unchecked. | applied | **skipped** | `spectra archive <name> --mark-tasks-complete --no-validate -y` |
+| **Park** | Change is **postponed but still planned**. Premise still valid. | — | — | `node scripts/spectra-target-guard.ts --change "<name>" -- park <name>` (NOT this skill) |
+| **Standard archive** | Implementation `[x]` complete + `## 人工檢查` `[x]` complete | applied | already done | `node scripts/spectra-target-guard.ts --change "<name>" -- archive <name>` (default flow) |
+| **Skip-archive (A)** | **Won't be implemented.** Premise dissolved (decision changed / concept removed / change became redundant). | **skipped** | **skipped** | `node scripts/spectra-target-guard.ts --change "<name>" -- archive <name> --mark-tasks-complete --skip-specs --no-validate -y` |
+| **In-main-done archive (B)** | Implementation `[x]` complete (built directly on main, no session worktree). Only `## 人工檢查` items remain unchecked. | applied | **skipped** | `node scripts/spectra-target-guard.ts --change "<name>" -- archive <name> --mark-tasks-complete --no-validate -y` |
 | **Apply-required (block)** | Non-`## 人工檢查` items still `[ ]` + change is still wanted. | — | — | **STOP** — run `/spectra-apply <name>` first, then re-classify |
 
 ### Hard rules
@@ -190,7 +192,7 @@ awk '/^## 人工檢查/{mr=1; next} /^## /{mr=0} !mr && /^- \[ \]/{print NR": "$
 
 2. **Check artifact completion status**
 
-   Run `spectra status --change "<name>" --json` to check artifact completion.
+   Run `node scripts/spectra-target-guard.ts --change "<name>" -- status --change "<name>" --json` to check artifact completion.
 
    Parse the JSON to understand:
    - `schemaName`: The workflow being used
@@ -261,7 +263,7 @@ awk '/^## 人工檢查/{mr=1; next} /^## /{mr=0} !mr && /^- \[ \]/{print NR": "$
 
 3.5b. **Resume walkthrough** (clade fork addition — only runs when Step 0.5 detected Resume mode; skip otherwise)
 
-   **MUST** 完整讀 `references/resume.md` § Step 3.5b 執行：對每條 `(deferred-to-handoff:)` item 重新分類 trigger → 收 post-signal evidence → 逐項問 user（OK / Issue / Skip / **Still pending**；**Defer 在 Resume mode 禁止** — 會無限再延）→ 依回答編輯 archived tasks.md + 移除對應 HANDOFF entry。**NEVER** 在 Resume mode 跑 `spectra archive` CLI / 重跑 gates / 動 archived 目錄 / 碰未帶 `(deferred-to-handoff:)` 的 items。
+   **MUST** 完整讀 `references/resume.md` § Step 3.5b 執行：對每條 `(deferred-to-handoff:)` item 重新分類 trigger → 收 post-signal evidence → 逐項問 user（OK / Issue / Skip / **Still pending**；**Defer 在 Resume mode 禁止** — 會無限再延）→ 依回答編輯 archived tasks.md + 移除對應 HANDOFF entry。**NEVER** 在 Resume mode 重跑 archive lifecycle command / gates / archived 目錄 mutation / 碰未帶 `(deferred-to-handoff:)` 的 items。
 
 4. **Assess delta spec sync state**
 
@@ -337,11 +339,11 @@ awk '/^## 人工檢查/{mr=1; next} /^## /{mr=0} !mr && /^- \[ \]/{print NR": "$
 
 6. **Perform the archive**
 
-   Use the `spectra archive` CLI command which handles the full archive workflow
+   Use the guarded archive command, which delegates the full archive workflow only after proving the current target
    (spec snapshot, delta application, @trace injection, identity recording, vector indexing):
 
    ```bash
-   spectra archive <name>
+   node scripts/spectra-target-guard.ts --change "<name>" -- archive <name>
    ```
 
    **Optional flags:**
@@ -351,7 +353,7 @@ awk '/^## 人工檢查/{mr=1; next} /^## /{mr=0} !mr && /^- \[ \]/{print NR": "$
 
    **If archive fails** with "already exists" error, suggest renaming existing archive.
 
-   **Sidecar advance (TD-155)** — **only after `spectra archive` exits 0**, advance phase:
+   **Sidecar advance (TD-155)** — **only after the guarded archive command exits 0**, advance phase:
 
    ```bash
    node scripts/spectra-archive-sidecar.ts update <change-name> --phase folder-mv --last-completed spec-sync
@@ -568,7 +570,7 @@ Target archive directory already exists.
 **Guardrails**
 
 - Always prompt for change selection if not provided
-- Use artifact graph (spectra status --json) for completion checking
+- Use artifact graph (`node scripts/spectra-target-guard.ts --change "<name>" -- status --change "<name>" --json`) for completion checking
 - Don't block archive on warnings - just inform and confirm
 - Preserve .openspec.yaml when moving to archive (it moves with the directory)
 - Show clear summary of what happened

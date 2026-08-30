@@ -18,6 +18,8 @@ Local edits will be reverted by the next sync.
 -->
 
 
+> **Spectra target guard (clade fork):** Every lifecycle command in this skill that names a change **MUST** run through `node scripts/spectra-target-guard.ts --change "<name>" -- <spectra args...>`. `TARGET_AMBIGUOUS`, `TARGET_FOREIGN`, or `TARGET_MISSING` is a hard STOP: closed-source `kaochenlong/spectra-app` v2.3.1 targeting cannot be proven. Preserve every candidate worktree; **NEVER** delete, move, or clean one to make the guard pass. A pass proves only this invocation's integration contract, not an upstream fix.
+
 Update an existing Spectra change — from a plan file or conversation context.
 
 **Plan file support** is available when the tool has a plan directory (`~/.claude/plans/`). Otherwise, use conversation context to update artifacts.
@@ -101,12 +103,12 @@ Update an existing Spectra change — from a plan file or conversation context.
    If the selected change appears in the `parked` array:
    - Inform the user that this change is currently parked（暫存）
    - Use **AskUserQuestion tool** to ask: continue (unpark) or cancel
-   - If continue: run `spectra unpark "<name>"` then proceed
+   - If continue: run `node scripts/spectra-target-guard.ts --change "<name>" -- unpark "<name>"` then proceed
    - If cancel: stop the workflow
 
    If there is no AskUserQuestion tool available (non-Claude-Code environment):
    Inform the user that this change is currently parked（暫存）and ask via plain text whether to unpark and continue, or cancel.
-   Wait for the user's response. If the user confirms, run `spectra unpark "<name>"` then proceed.
+   Wait for the user's response. If the user confirms, run `node scripts/spectra-target-guard.ts --change "<name>" -- unpark "<name>"` then proceed.
 
    Read existing artifacts for context before updating.
 
@@ -146,9 +148,9 @@ Update an existing Spectra change — from a plan file or conversation context.
 
    **Step 4b 開頭 MUST 用 AskUserQuestion 跳三選一選單**讓使用者選（除非使用者已明確指定路徑，見下方捷徑）：
 
-   - **A. Pi flow（預設 / 推薦，選單第一項）** — Pi GPT-5.6-sol max 在背景更新 artifacts + 主線 Claude Fable 5 xhigh cross-check。
-   - **B. Fable flow** — Claude Fable 5 xhigh 在背景更新 artifacts + 主線 Claude Fable 5 xhigh cross-check。
-   - **C. 純 Claude** — 主線 Claude Fable 5 xhigh 直接走 Step 5~9。
+   - **A. Pi flow（預設 / 推薦，選單第一項）** — GPT-5.6-sol via Pi（effort: max）在背景更新 artifacts + 主線 Claude Fable 5（effort: xhigh）負責 cross-check。
+   - **B. Fable flow** — Claude Fable 5（effort: xhigh）在背景更新 artifacts + 主線 Claude Fable 5（effort: xhigh）負責 cross-check。
+   - **C. 純 Claude** — 主線 Claude Fable 5（effort: xhigh）直接走 Step 5~9。
 
    **明確指定捷徑（跳過選單）**：
    - 「用 pi」「用 codex」「照舊」→ **選項 A**
@@ -198,7 +200,7 @@ Update an existing Spectra change — from a plan file or conversation context.
       3. Flow（執行 Step 5~9）：
          .claude/skills/spectra-ingest/SKILL.md
 
-      完成標準：`spectra validate` 通過 + `spectra park <change-name>`。
+      完成標準：`node scripts/spectra-target-guard.ts --change "<change-name>" -- validate "<change-name>"` 通過 + `node scripts/spectra-target-guard.ts --change "<change-name>" -- park <change-name>`。
       語言遵循：artifacts 依 `spectra instructions` 的 `locale` 欄位寫；spec 一律英文。
       ```
 
@@ -241,8 +243,8 @@ Update an existing Spectra change — from a plan file or conversation context.
 
    **Cross-check（A / B 共用，收到 `<task-notification status=completed>` 後立刻）**：
 
-   1. Read draft stdout，確認 artifacts 已更新 + `spectra validate` 通過。
-   2. 若 draft 已 `spectra park <change-name>`：先 `spectra unpark <change-name>`。
+   1. Read draft stdout，確認 artifacts 已更新 + guarded validate command 通過。
+   2. 若 draft 已 `node scripts/spectra-target-guard.ts --change "<change-name>" -- park <change-name>`：先 `node scripts/spectra-target-guard.ts --change "<change-name>" -- unpark <change-name>`。
    3. 主線跑 Step 6 全套 Inline Self-Review（7 項 Check）— 對 draft 產出做 cross-check，發現問題主線自己 Edit 修。
    4. 主線跑 Step 7 Analyze-Fix Loop + Step 8 Validation。
    5. 主線跑 Step 8.5 commit artifacts + Step 9 Summary。
@@ -262,7 +264,7 @@ Update an existing Spectra change — from a plan file or conversation context.
    For each artifact, get instructions first:
 
    ```bash
-   spectra instructions <artifact-id> --change "<name>" --json
+   node scripts/spectra-target-guard.ts --change "<name>" -- instructions <artifact-id> --change "<name>" --json
    ```
 
    Use the `template` from instructions as the output structure. Apply `context` and `rules` as constraints but do NOT copy them into the file.
@@ -300,7 +302,7 @@ Update an existing Spectra change — from a plan file or conversation context.
    After creating each artifact, re-check status:
 
    ```bash
-   spectra status --change "<name>" --json
+   node scripts/spectra-target-guard.ts --change "<name>" -- status --change "<name>" --json
    ```
 
    Continue until all `applyRequires` artifacts are complete. Show progress: "✓ Created <artifact-id>"
@@ -406,7 +408,7 @@ Update an existing Spectra change — from a plan file or conversation context.
 8. **Validation**
 
    ```bash
-   spectra validate "<name>"
+   node scripts/spectra-target-guard.ts --change "<name>" -- validate "<name>"
    ```
 
    If validation fails, fix errors and re-validate.

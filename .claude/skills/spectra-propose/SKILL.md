@@ -18,6 +18,8 @@ Local edits will be reverted by the next sync.
 -->
 
 
+> **Spectra target guard (clade fork):** Every lifecycle command in this skill that names a change **MUST** run through `node scripts/spectra-target-guard.ts --change "<name>" -- <spectra args...>`. `TARGET_AMBIGUOUS`, `TARGET_FOREIGN`, or `TARGET_MISSING` is a hard STOP: closed-source `kaochenlong/spectra-app` v2.3.1 targeting cannot be proven. Preserve every candidate worktree; **NEVER** delete, move, or clean one to make the guard pass. A pass proves only this invocation's integration contract, not an upstream fix.
+
 Create a complete Spectra change proposal — from requirement to validated artifacts — in a single workflow.
 
 > **Ownership**（clade fork；cross-phase matrix in `rules/core/spectra-workflow.md`）：propose 負責 manual-review item data-readiness — sample key inline + **該 key 是否真的會在 target UI render**（Layer A `VERIFY_UI_SAMPLE_KEY_DISPLAY_CHECK` + reverse page-grep）。**不**負責 runtime 正確性 / 視覺 / 資料形狀（apply Step 6c/Layer B、Design Review/Layer C、verify、manual review 各自接棒）。
@@ -52,9 +54,9 @@ Main worktree 的 staged / modified / untracked / unmerged **完全不影響**�
 
    本 skill 的 draft 階段有三條可選路徑。**Step 0 開頭 MUST 用 AskUserQuestion 跳三選一選單**讓使用者選（除非使用者已明確指定路徑，見下方捷徑）：
 
-   - **A. Pi flow（預設 / 推薦，選單第一項）** — Pi GPT-5.6-sol max draft + 主線 Claude Fable 5 xhigh cross-check。draft + cross-check 比擇一穩，wall-clock 最短。
-   - **B. 三模型交叉 pipeline** — Claude Fable 5 xhigh draft → Pi GPT-5.6-sol max review（fresh session、只出 findings、不改檔）→ 主線 Claude Fable 5 xhigh final check。三模型交叉（Fable draft + Pi review + Fable final）比擇一穩，wall-clock 較長（多一層背景等待）。
-   - **C. 純 Claude** — 主線 Claude Fable 5 xhigh 直接走 Step 1~11（含 Step 8 補 7 步 Design Review check）。
+   - **A. Pi flow（預設 / 推薦，選單第一項）** — GPT-5.6-sol via Pi（effort: max）負責 draft + 主線 Claude Fable 5（effort: xhigh）負責 cross-check。draft + cross-check 比擇一穩，wall-clock 最短。
+   - **B. 三模型交叉 pipeline** — Claude Fable 5（effort: xhigh）負責 draft → GPT-5.6-sol via Pi（effort: max）負責 review（fresh session、只出 findings、不改檔）→ 主線 Claude Fable 5（effort: xhigh）負責 final check。三模型交叉（Fable draft + Pi review + Fable final）比擇一穩，wall-clock 較長（多一層背景等待）。
+   - **C. 純 Claude** — 主線 Claude Fable 5（effort: xhigh）直接走 Step 1~11（含 Step 8 補 7 步 Design Review check）。
 
    選單寫法：option A label 標「(預設/推薦)」並排第一（使用者按 Enter 即走現狀）。
 
@@ -144,7 +146,7 @@ Main worktree 的 staged / modified / untracked / unmerged **完全不影響**�
    **選項 B 專屬 NEVER**：
 
    - **NEVER** 把 Phase B-0a 的 draft prompt（`-draft-prompt.md`）與 Phase B-0b 的 review prompt（`-review-prompt.md`）混用 — draft 會寫檔，review 只出 findings、禁止改檔
-   - **NEVER** 在 Phase B-0b 派 Pi review 前，讓 artifacts 處於 parked 狀態（artifacts 在 SQLite blob、不在 disk，Pi 讀不到）。正常流程不會 park；若 draft 違規 park 了，先 `spectra unpark`
+   - **NEVER** 在 Phase B-0b 派 Pi review 前，讓 artifacts 處於 parked 狀態（artifacts 在 SQLite blob、不在 disk，Pi 讀不到）。正常流程不會 park；若 draft 違規 park 了，先跑 `node scripts/spectra-target-guard.ts --change "<name>" -- unpark "<name>"`
    - **NEVER** 讓 Pi review 階段改檔 — review prompt 必含「禁止 Edit / Write、只輸出 findings」；實際修補由主線 Phase B-0c 做
 
    **選 A / B 時本 session 不再執行任何 Step 1 ~ 11**（避免雙重生產）— Step 0 結束本 skill。
@@ -223,7 +225,7 @@ Main worktree 的 staged / modified / untracked / unmerged **完全不影響**�
    Get instructions:
 
    ```bash
-   spectra instructions proposal --change "<name>" --json
+   node scripts/spectra-target-guard.ts --change "<name>" -- instructions proposal --change "<name>" --json
    ```
 
    Generate the proposal content based on change type (see formats below), then write it via CLI:
@@ -363,7 +365,7 @@ Main worktree 的 staged / modified / untracked / unmerged **完全不影響**�
 6. **Get the artifact build order**
 
    ```bash
-   spectra status --change "<name>" --json
+   node scripts/spectra-target-guard.ts --change "<name>" -- status --change "<name>" --json
    ```
 
    Parse the JSON to get:
@@ -378,7 +380,7 @@ Main worktree 的 staged / modified / untracked / unmerged **完全不影響**�
    - **Check if the artifact is optional**: If the artifact is NOT in the dependency chain of any `applyRequires` artifact (i.e., removing it would not block reaching apply), it is optional. Get its instructions and read the `instruction` field. If the instruction contains conditional criteria (e.g., "create only if any apply"), evaluate whether any criteria apply to this change based on the proposal content. If none apply, skip the artifact and show: "⊘ Skipped <artifact-id> (not needed for this change)". Then continue to the next artifact.
    - Get instructions:
      ```bash
-     spectra instructions <artifact-id> --change "<name>" --json
+     node scripts/spectra-target-guard.ts --change "<name>" -- instructions <artifact-id> --change "<name>" --json
      ```
    - The instructions JSON includes:
      - `context`: Project background (constraints for you - do NOT include in output)
@@ -416,7 +418,7 @@ Main worktree 的 staged / modified / untracked / unmerged **完全不影響**�
    - Show brief progress: "✓ Created <artifact-id>"
 
    b. **Continue until all `applyRequires` artifacts are complete**
-   - After creating each artifact, re-run `spectra status --change "<name>" --json`
+   - After creating each artifact, re-run `node scripts/spectra-target-guard.ts --change "<name>" -- status --change "<name>" --json`
    - Check if every artifact ID in `applyRequires` has `status: "done"`
    - Stop when all `applyRequires` artifacts are done
 
@@ -490,7 +492,7 @@ Main worktree 的 staged / modified / untracked / unmerged **完全不影響**�
      - 一個 phase 要嘛純 view 工作（component / page / view / layout / styling），要嘛純非 view 工作；混雜 phase 違規
    - Verify by running `bash scripts/spectra-advanced/post-propose-check.sh <change-name>` and acting on Check 4c FINDINGS
    - If a mixed phase is detected, **MUST** split inline now into independent phases — do NOT defer to ingest. spectra-apply Phase Dispatch 規則仰賴 phase purity；混雜 phase 在 apply 時會被擋下要求重 ingest，propose 階段就修掉成本最低
-   - Reason: spectra-apply 把 UI view phase 留在主線 Opus（永不外派）、其他 phase 派給 Pi sol high；phase 混雜會破壞 dispatch 邊界，要嘛讓 Pi 碰 view 層、要嘛讓主線吞下原本可以 offload 的 mechanical 工作
+   - Reason: spectra-apply 把 UI view phase 留在主線 Claude Opus 5（effort: xhigh；永不外派）、其他 phase 派給 GPT-5.6-sol via Pi（effort: high）；phase 混雜會破壞 dispatch 邊界，要嘛讓 Pi 碰 view 層、要嘛讓主線吞下原本可以 offload 的 mechanical 工作
 
    **Check 9: Manual Review Marker Hygiene** (applies to **every** change, not only backend-only)
 
@@ -579,7 +581,7 @@ Main worktree 的 staged / modified / untracked / unmerged **完全不影響**�
 10. **Validation**
 
     ```bash
-    spectra validate "<name>"
+    node scripts/spectra-target-guard.ts --change "<name>" -- validate "<name>"
     ```
 
     If validation fails, fix errors and re-validate.
@@ -603,11 +605,11 @@ Main worktree 的 staged / modified / untracked / unmerged **完全不影響**�
     - 建出的 Story 標題是從 Capability 描述草擬的客戶語言（Class 2），**MUST** 在 summary 標明「標題為草擬，可直接在 Notion 改」。
     - consumer 未啟用 `projectWorkflow` → script 自行 exit 0，不需另外判斷。
 
-    **NEVER 執行 `spectra park`**（2026-07-31 起；決策見 `docs/decisions/2026-07-31-propose-does-not-park.md`）
+    **NEVER 在本 skill 執行 park lifecycle command**（2026-07-31 起；決策見 `docs/decisions/2026-07-31-propose-does-not-park.md`）
 
     Change 在 propose 完成後**維持 active**。Park 的成文契約是「future work pending」
     （per `spectra-archive/SKILL.md` Hard rules），與「剛 propose 完、apply worktree 已備妥、
-    下一步就是開工」是不同狀態；由 **user 在決定擱置某張 change 時顯式** `spectra park <name>`。
+    下一步就是開工」是不同狀態；由 **user 在決定擱置某張 change 時顯式** `node scripts/spectra-target-guard.ts --change "<name>" -- park <name>`。
 
     移除理由的完整論證見 decision doc：不 park 就沒有 unpark，整類 ghost-park 永久遺失在主路徑上消失。
 

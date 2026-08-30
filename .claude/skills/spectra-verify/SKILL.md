@@ -21,6 +21,8 @@ Local edits will be reverted by the next sync.
 -->
 
 
+> **Spectra target guard (clade fork):** Every lifecycle command in this skill that names a change **MUST** run through `node scripts/spectra-target-guard.ts --change "<name>" -- <spectra args...>`. `TARGET_AMBIGUOUS`, `TARGET_FOREIGN`, or `TARGET_MISSING` is a hard STOP: closed-source `kaochenlong/spectra-app` v2.3.1 targeting cannot be proven. Preserve every candidate worktree; **NEVER** delete, move, or clean one to make the guard pass. A pass proves only this invocation's integration contract, not an upstream fix.
+
 ## Claude fork context
 
 This generated Claude Code skill runs with `context: fork`. The rules in this section take precedence over the shared `verify` body below.
@@ -50,7 +52,7 @@ Verify that an implementation matches the change artifacts (specs, tasks, design
 2. **Check status to understand the schema**
 
    ```bash
-   spectra status --change "<name>" --json
+   node scripts/spectra-target-guard.ts --change "<name>" -- status --change "<name>" --json
    ```
 
    Parse the JSON to understand:
@@ -74,7 +76,7 @@ Verify that an implementation matches the change artifacts (specs, tasks, design
 3. **Get the change directory and load artifacts**
 
    ```bash
-   spectra instructions apply --change "<name>" --json
+   node scripts/spectra-target-guard.ts --change "<name>" -- instructions apply --change "<name>" --json
    ```
 
    This returns the change directory and context files. Read all available artifacts from `contextFiles`.
