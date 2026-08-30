@@ -11,7 +11,7 @@ Local edits will be reverted by the next sync.
 > SKILL.md 對應 step 的 inline pointer 指到本檔；**MUST 依 pointer 指示完整讀對應 § 再執行**。
 > 行為 gate（NEVER / MUST 判定）留在 SKILL.md inline；本檔是操作 recipe / 範本 / 查表。
 >
-> 本檔每一個帶 change name 的 lifecycle command **MUST** 經 `node scripts/spectra-target-guard.ts --change "<change-name>" -- <spectra args...>`。main＋session worktree 的同名 tracked artifacts 是正常狀態，由 read-only path proof／mutation probe／postcondition 分 command 證明 target；guard 紅燈即 STOP。保留全部候選 worktree，不以刪除、搬移或清理候選換取通過。
+> 本檔每一個帶 change name 的 lifecycle command **MUST** 經 `node scripts/spectra-target-guard.ts --change "<change-name>" -- <spectra args...>`。main＋session worktree 的同名 tracked artifacts 是正常狀態，由 path-bearing `instructions apply --json` proof（pathless `status --json` 先跑此 proof）／mutation probe／postcondition 分 command 證明 target；guard 紅燈即 STOP。保留全部候選 worktree，不以刪除、搬移或清理候選換取通過。
 
 ---
 
