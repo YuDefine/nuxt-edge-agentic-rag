@@ -136,15 +136,26 @@ function ruledWorkIds(spans: Span[]): Set<string> {
   return out
 }
 
-/** Point events emitted by a reclaim, keyed by the dispatch span they close out. */
-function reclaimedSpanIds(spans: Span[]): Set<string> {
-  const out = new Set<string>()
+/**
+ * Point events emitted by a reclaim, keyed by canonical dispatch identity when available.
+ *
+ * One dispatch can have several completion spans after continuation. A reclaim belongs to that
+ * dispatch, not only to whichever continuation span happened to be its parent. Older events did
+ * not carry `dispatch_id`, so their parent span remains the compatibility identity.
+ */
+function reclaimedIdentities(spans: Span[]): {
+  dispatchIds: Set<string>
+  spanIds: Set<string>
+} {
+  const dispatchIds = new Set<string>()
+  const spanIds = new Set<string>()
   for (const s of spans) {
-    if (s.is_point && s.payload?.transport_event === 'reclaim' && s.parent_span) {
-      out.add(s.parent_span)
-    }
+    if (!s.is_point || s.payload?.transport_event !== 'reclaim') continue
+    const dispatchId = payloadString(s, 'dispatch_id')
+    if (dispatchId) dispatchIds.add(dispatchId)
+    else if (s.parent_span) spanIds.add(s.parent_span)
   }
-  return out
+  return { dispatchIds, spanIds }
 }
 
 /**
@@ -219,7 +230,7 @@ export function findStalls(
     thresholdMinutes = DEFAULT_STALL_MINUTES,
   }: { now?: number; thresholdMinutes?: number } = {},
 ): Stall[] {
-  const reclaimed = reclaimedSpanIds(spans)
+  const reclaimed = reclaimedIdentities(spans)
   const dismissed = dismissedSpanIds(spans)
   const lastStart = lastStartByWork(spans)
   const ruled = ruledWorkIds(spans)
@@ -302,7 +313,8 @@ export function findStalls(
     if (
       span.substrate === 'herdr' &&
       span.payload?.closed_by === 'completion' &&
-      !reclaimed.has(span.span_id) &&
+      !reclaimed.spanIds.has(span.span_id) &&
+      !(base.dispatch_id && reclaimed.dispatchIds.has(base.dispatch_id)) &&
       endAge >= thresholdMinutes
     ) {
       // Same two values as `base.pane_id` / `base.dispatch_id`, placeholder-substituted for the
