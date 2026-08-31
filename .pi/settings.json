@@ -1,7 +1,7 @@
 {
   "packages": [
     {
-      "source": "git:github.com/YuDefine/clade@v1.11.105",
+      "source": "git:github.com/YuDefine/clade@v1.11.106",
       "skills": [
         "plugins/hub-capabilities-openspec/skills",
         "plugins/hub-core/skills",
