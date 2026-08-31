@@ -34,6 +34,7 @@ export type StallShape =
   | 'dead-holder'
   | 'stash-residue'
   | 'clarification-requested'
+  | 'answer-not-filed'
 
 export interface Stall {
   shape: StallShape
@@ -174,6 +175,20 @@ function reclaimedIdentities(spans: Span[]): {
  */
 export const CLARIFICATION_REQUESTED_ACTION =
   '有人要求補充說明，答案不在他手上：node vendor/scripts/flow/flow.ts clarify <span_id> --text "<說明>"'
+
+/**
+ * How long an answer may be missing from the prose world before it is a stall.
+ *
+ * Not zero, because the landing is written AFTER the closing event: for a few milliseconds every
+ * answer is legitimately unfiled. Not an hour either — the whole failure is that nobody notices,
+ * and the surface that consumes this fires at session start. Ten minutes clears the write window
+ * and every commit shuffle that follows it, and still catches the loss inside the first session
+ * that opens afterwards.
+ */
+export const ANSWER_FILING_GRACE_MINUTES = 10
+
+export const ANSWER_NOT_FILED_ACTION =
+  '答案在 spine 上，但 carrier 上沒有它的決策紀錄段落——被覆寫或搬走了，讀那個檔的 agent 看不到答案。重新歸檔：node vendor/scripts/flow/flow.ts relend <span_id>'
 
 export const AWAITING_ATTENDED_ACTION =
   "blocked and nothing followed — this is the awaiting-attended state; an attended session has to pick it up. If it was already settled another way, say so instead of leaving it here: node vendor/scripts/flow/flow.ts dismiss <span_id> --reason '<why it no longer needs anyone>'"
@@ -447,4 +462,63 @@ export function findOwnershipStalls(
     }
   }
   return stalls.toSorted((a, b) => b.age_minutes - a.age_minutes)
+}
+
+/**
+ * Answers the spine holds that no file in the repo carries.
+ *
+ * The one stall shape whose evidence is not on the spine at all — it is the DISAGREEMENT between
+ * the spine and the working tree, so the caller supplies the second half (`filed`, from
+ * `spanIdsFiledInRepo`) and this stays a pure function of its inputs like everything else here.
+ *
+ * Why it is a stall and not a write error: the write reported success. The answer was appended,
+ * and then the file was rewritten from another session's buffer with the block gone — nothing
+ * failed, nothing was logged, and the agent waiting on the answer went on re-asking the question.
+ * Measured 2026-08-29 on <consumer-i> `ee92949d75fa703c`: three writes, zero survivors, found two hours
+ * later by a human who opened `/decisions` and could not see his own answer.
+ *
+ * A decision with no carrier is NOT reported. `no-carrier` is a legitimate outcome — the answer
+ * was never meant to land anywhere — and reporting it would bury the real finding under every
+ * question that was only ever a question.
+ */
+export function findUnfiledAnswerStalls(
+  spans: Span[],
+  filed: Set<string>,
+  {
+    now = Date.now(),
+    graceMinutes = ANSWER_FILING_GRACE_MINUTES,
+  }: { now?: number; graceMinutes?: number } = {},
+): Stall[] {
+  const dismissed = dismissedSpanIds(spans)
+  const stalls: Stall[] = []
+  for (const span of spans) {
+    if (span.kind !== 'decision.request' || span.is_point) continue
+    if (!span.end_ts || dismissed.has(span.span_id)) continue
+    // A retracted close is not an answer. `flow sources` closes a file-scan question the moment
+    // its source row leaves the file — the item WAS settled, in the prose that no longer mentions
+    // it, and no landing block was ever written or wanted. Measured on <consumer-i> 2026-08-29: 54 of the
+    // 76 closed decision spans are this shape, and reporting them turned a 1-line finding into a
+    // 55-line wall. A surface that cries wolf is not a louder surface, it is a silent one.
+    if (span.payload?.retracted === true) continue
+    if (filed.has(span.span_id)) continue
+    const carrier = span.payload?.carrier
+    if (typeof carrier !== 'string' || carrier.length === 0) continue
+    const age = ageMinutes(span.end_ts, now)
+    if (age === null || age < graceMinutes) continue
+    stalls.push({
+      shape: 'answer-not-filed',
+      span_id: span.span_id,
+      work_id: span.work_id,
+      substrate: span.substrate,
+      kind: span.kind,
+      actor: span.actor,
+      age_minutes: age,
+      since: span.end_ts,
+      label: labelOf(span),
+      pane_id: null,
+      dispatch_id: null,
+      action: `${ANSWER_NOT_FILED_ACTION} （落點 ${carrier}）`,
+    })
+  }
+  return stalls
 }
