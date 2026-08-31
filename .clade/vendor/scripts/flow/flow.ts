@@ -61,7 +61,7 @@ import {
   spanHandleFromSpine,
   spanIsClosed,
 } from './emit.ts'
-import { REF_SCHEMES, answerDecision, parseRef } from './answer.ts'
+import { REF_SCHEMES, answerDecision, parseRef, relandDecision } from './answer.ts'
 import { LINT_NOTES, OPTIONS_REQUEST_TEXT, buildDecisionQueue } from './decisions.ts'
 import { isAnswerable } from './decision-sources.ts'
 
@@ -94,6 +94,7 @@ import { measureRepo, measurementLine } from './measure.ts'
 import { DEFAULT_OTLP_ENDPOINT, countSpans, postOtlp, toOtlpPayload } from './otlp-export.ts'
 import { loadSpec, runCommand, runNode, runSpec } from './run.ts'
 import { buildServeSnapshot } from './serve.ts'
+import type { Span } from './spine.ts'
 import {
   buildWorkItems,
   foldSpans,
@@ -102,7 +103,15 @@ import {
   orphanRatio,
   spanDepth,
 } from './spine.ts'
-import { DEFAULT_STALL_MINUTES, findOwnershipStalls, findStalls, renderStalls } from './stall.ts'
+import type { Stall } from './stall.ts'
+import {
+  DEFAULT_STALL_MINUTES,
+  findOwnershipStalls,
+  findStalls,
+  findUnfiledAnswerStalls,
+  renderStalls,
+} from './stall.ts'
+import { spanIdsFiledInRepo } from './carrier-presence.ts'
 import { readWaves, renderFleetMarkdown, renderWorkMarkdown } from './viz-md.ts'
 import { buildBoardLanes, durationBaselines, etaFor } from './board.ts'
 import { ARTIFACT_TYPES, type ArtifactType, artifact } from './nodes/lib/artifacts.ts'
@@ -201,7 +210,7 @@ const { values: args, positionals } = parseArgs({
   strict: false,
 })
 
-const USAGE = `Usage: flow <open|link|done|eta|accept|drop|park|ask|pending|answer|answers|sources|amend-options|ask-options|clarify|dismiss|emit|close|ingest|run|step|viz|status|who|brief|otlp> [args]
+const USAGE = `Usage: flow <open|link|done|eta|accept|drop|park|ask|pending|answer|answers|relend|sources|amend-options|ask-options|clarify|dismiss|emit|close|ingest|run|step|viz|status|who|brief|otlp> [args]
 
   open <slug> [--actor <actor>]   mint a work id and emit its work.open event
   link <work_id> --parent <id>    put this work item under another one. An initiative is not a new
@@ -250,6 +259,12 @@ const USAGE = `Usage: flow <open|link|done|eta|accept|drop|park|ask|pending|answ
   sources [--apply] [--all]       reconcile the four FILE sources of \`\\my\` (work-loop state,
           [--json]                HANDOFF.md, docs/tech-debt.md, openspec tasks) against the
                                   queue. Without --apply it only reports what it would do.
+  relend <span_id> [--repo N]      put an already-answered decision back on its carrier, when the
+         [--via T] [--dry-run]     block it landed in was overwritten or moved away. Rebuilds the
+                                   block from the spine and takes NO new answer: the spine is
+                                   already right, the file is what lost it. Re-running is a no-op,
+                                   never a duplicate. status --stalled prints this command for
+                                   every answer-not-filed line.
   dismiss <span_id> --reason R    write off a decision span that no longer needs anyone — blocked
                                   and settled another way, or asked but never really a question.
                                   Clears it from /decisions and --stalled.
@@ -1119,6 +1134,33 @@ if (cmd === 'answer') {
   process.exit(res.ok ? 0 : 1)
 }
 
+if (cmd === 'relend') {
+  // The recovery command for an answer the prose world lost.
+  //
+  // Same repo resolution as `answer`, and for the same reason: the queue is fleet-wide, and a
+  // recovery that guessed the repo would re-file one repo's answer into another repo's carrier.
+  //
+  // Writes nothing to the spine. The spine is already right — that is exactly why this can rebuild
+  // the block from it — and emitting anything here would turn "the file lost it" into a second
+  // decision event nobody made.
+  const spanId = positionals[1]
+  if (!spanId) fail('relend needs <span_id>')
+  const home = process.env.CLADE_HOME ?? repoRoot()
+  const target = resolveRepoRootByName(strFlag(args.repo), home)
+  if (!target) {
+    process.stderr.write(`flow: ${REPO_NOT_ON_ROSTER(strFlag(args.repo))}\n`)
+    process.exit(1)
+  }
+  const res = relandDecision({
+    spanId,
+    repoRoot: target,
+    via: strFlag(args.via) ?? '重新歸檔（flow relend）',
+    dryRun: args['dry-run'] === true,
+  })
+  process.stdout.write(`${JSON.stringify(res)}\n`)
+  process.exit(res.ok ? 0 : 1)
+}
+
 if (cmd === 'answers') {
   // The entry point for reading answers, and the ONLY thing that can produce a hard lock.
   //
@@ -1448,6 +1490,31 @@ if (cmd === 'status' && args.all) {
   process.exit(0)
 }
 
+/**
+ * The stalls that live in the working tree rather than on the spine.
+ *
+ * Both callers below take the same two and skip them under the same condition, so they are read
+ * from one place: a caller that included one and forgot the other would go quiet about half of
+ * what it claims to answer, and nothing would say which half.
+ *
+ * `--all` (the fleet path) deliberately does NOT call this. It folds each consumer's events.jsonl,
+ * and answering these would mean walking a dozen working trees on disk — a different question with
+ * a different cost, per the note at the fleet call site.
+ */
+function workingTreeStalls(spans: Span[]): Stall[] {
+  const root = findConsumerRoot() ?? repoRoot()
+  const answered = spans
+    .filter(
+      (s) =>
+        s.kind === 'decision.request' && !s.is_point && s.end_ts && s.payload?.retracted !== true,
+    )
+    .map((s) => s.span_id)
+  return [
+    ...findOwnershipStalls(buildWhoRows(root)),
+    ...findUnfiledAnswerStalls(spans, spanIdsFiledInRepo(root, answered)),
+  ]
+}
+
 if (cmd === 'status') {
   const events = readEvents()
   // Ownership stalls do not live on the spine, so an empty spine MUST NOT suppress them:
@@ -1482,9 +1549,7 @@ if (cmd === 'status') {
       // fresh checkout and red on every real one. NEVER fix that shape by tidying the working
       // tree — the environment dependency is the defect, and a green run bought by deleting a
       // stash carries no information about the logic under test.
-      ...(process.env.CLADE_FLOW_EVENTS
-        ? []
-        : findOwnershipStalls(buildWhoRows(findConsumerRoot() ?? repoRoot()))),
+      ...(process.env.CLADE_FLOW_EVENTS ? [] : workingTreeStalls(spans)),
     ]
     // Attribution health rides along with the stall list because it shares the one consumer that
     // actually reads this command unprompted: the SessionStart hook. A ratio printed anywhere
@@ -1597,9 +1662,7 @@ if (cmd === 'brief') {
     ...findStalls(spans, {
       thresholdMinutes: numberFlag(args['stall-minutes'], DEFAULT_STALL_MINUTES),
     }),
-    ...(process.env.CLADE_FLOW_EVENTS
-      ? []
-      : findOwnershipStalls(buildWhoRows(findConsumerRoot() ?? repoRoot()))),
+    ...(process.env.CLADE_FLOW_EVENTS ? [] : workingTreeStalls(spans)),
   ]
   const workItems = buildWorkItems(spans)
   const board = buildBoardLanes(workItems, stalls, spans)

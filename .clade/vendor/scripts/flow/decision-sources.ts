@@ -294,6 +294,7 @@ function beforeAnnotation(text: string): string {
  *
  *   SPLIT     `- **A**（推薦）—— 文字`   bold wraps the letter only. This is canonical.
  *   WRAPPED   `- **A（推薦）文字**`      bold wraps the whole option. This is what people write.
+ *   CLOSED    `- **A（推薦）**：文字`    bold wraps letter AND marker, text sits outside.
  *
  * WRAPPED was rejected until 2026-08-27 on a precision argument, and the measurement says the
  * argument cost everything it was defending: across the 12 fleet repos with a `HANDOFF.md`,
@@ -312,9 +313,17 @@ function beforeAnnotation(text: string): string {
  * LETTER OF ANY BOLD RUN — `**Status**: open` parses as option `S` with text `tatus**: open`,
  * which is exactly how the first draft of this widening broke `scanTechDebt`, whose own fixtures
  * carry `**Status**` and `**Awaiting**` lines in every body it reads.
+ *
+ * CLOSED is the shape the 2026-08-27 widening left half-read, and it failed WORSE than a refusal:
+ * the letter matched, so the option was offered — with the bold's own closing `**` and the
+ * separator still glued to the front of its text. Measured on <consumer-i>'s `HANDOFF.md` the same day,
+ * `- **A（推薦）**：保留區分…` rendered on the phone as `A. ：保留區分…（推薦）`. A refusal shows a
+ * blank box and says so; this drew a button whose label started with a stray colon, and nothing
+ * anywhere reported a problem. The `(?:\*\*)?` is the whole fix: the closing `**` may sit between
+ * the marker and the separator run.
  */
 const OPTION_LINE =
-  /^\s*(?:[-*]\s*)?\*\*([A-Z])(?:\*\*|(?=[（(\s—:：、.,-]))\s*(（推薦）|\(推薦\))?\s*[—:：、.,-]*\s*(.+?)\s*$/
+  /^\s*(?:[-*]\s*)?\*\*([A-Z])(?:\*\*|(?=[（(\s—:：、.,-]))\s*(（推薦）|\(推薦\))?\s*(?:\*\*)?\s*[—:：、.,-]*\s*(.+?)\s*$/
 
 /**
  * How far apart two option lines may sit and still be the same list.
@@ -329,6 +338,52 @@ const OPTION_LINE =
  * reaching the next paragraph.
  */
 const OPTION_GAP_LIMIT = 6
+
+/**
+ * How many wrapped lines an option may carry before the rest is treated as prose.
+ *
+ * An option is one bullet, and a bullet whose text is longer than the editor's width arrives here
+ * as several lines. Reading only the first one does not shorten the option — it CUTS it, mid
+ * sentence, with no ellipsis and no signal: <consumer-i>'s `- **A（推薦）**：…改記到 TD-296 —— 折進去要動`
+ * ended there on the phone, and the clause that said what that costs was on the next line. Somebody
+ * picking between two options is picking between the halves they were shown.
+ *
+ * Three is the ceiling rather than "until the next bullet" because the failure directions are not
+ * symmetric: a truncated option loses the tail of one sentence, while an unbounded absorb pulls a
+ * whole trailing paragraph into a radio button's label. Across the 12 fleet `HANDOFF.md` files no
+ * real option wraps past two.
+ */
+const OPTION_CONTINUATION_LIMIT = 3
+
+/**
+ * The wrapped remainder of an option bullet, starting at `start`.
+ *
+ * Continuation is decided by SHAPE, never by "it did not look like anything else": a line joins
+ * only when it is indented deeper than the bullet that owns it, carries no list marker of its own,
+ * and is not itself an option line. Each of the three is load-bearing — indent separates a wrap
+ * from the next sibling bullet, the marker check keeps a nested list out, and the option-line check
+ * keeps the NEXT option from being swallowed into this one's label, which would delete a choice
+ * rather than truncate it.
+ */
+function continuationOf(
+  lines: string[],
+  start: number,
+  optionIndent: number,
+): { text: string; consumed: number } {
+  const parts: string[] = []
+  let index = start
+  while (index < lines.length && parts.length < OPTION_CONTINUATION_LIMIT) {
+    const raw = lines[index]
+    const trimmed = raw.trim()
+    if (!trimmed) break
+    if (OPTION_LINE.test(raw)) break
+    if (/^(?:[-*+]\s|\d+[.)]\s|#{1,6}\s|>)/u.test(trimmed)) break
+    if (raw.length - raw.trimStart().length <= optionIndent) break
+    parts.push(trimmed)
+    index += 1
+  }
+  return { text: parts.join(' '), consumed: index - start }
+}
 
 /**
  * Option text that records a decision already taken.
@@ -347,6 +402,16 @@ const RESOLVED_NARRATIVE = /(?:已(?:採用|否決|拍板|落地|完成|收掉|l
 interface OptionCandidate {
   letter: string
   text: string
+  /**
+   * The option's own bullet line, without the wrapped remainder.
+   *
+   * `RESOLVED_NARRATIVE` reads THIS and never `text`. The guard exists to catch a LABEL that
+   * announces a settled decision (`- **A 方案已採用**`); once wrapped lines join `text`, an
+   * ordinary explanation that mentions 「已完成」 anywhere in its tail would discard a live choice.
+   * Widening what a field contains silently widens every guard that reads it — so the guard keeps
+   * reading the narrow thing it was written for.
+   */
+  head: string
   recommended: boolean
   line: number
   /**
@@ -393,19 +458,30 @@ function extractOptions(body: string): {
 } {
   const candidates: OptionCandidate[] = []
   const lines = body.split(/\r?\n/)
-  for (const [index, rawLine] of lines.entries()) {
+  for (let index = 0; index < lines.length; index += 1) {
+    const rawLine = lines[index]
     const match = OPTION_LINE.exec(rawLine)
     if (!match) continue
     const [, letter, rec, text] = match
-    const option = plainTitle(text).replace(/\s*（推薦）\s*$/, '')
+    const startIndex = index
+    const rawIndent = rawLine.length - rawLine.trimStart().length
+    const wrapped = continuationOf(lines, index + 1, rawIndent)
+    const option = plainTitle(wrapped.text ? `${text} ${wrapped.text}` : text).replace(
+      /\s*（推薦）\s*$/,
+      '',
+    )
+    index += wrapped.consumed
     if (!option) continue
     candidates.push({
       letter,
       text: option,
-      // WRAPPED puts 「（推薦）」 inside the bold, so it can arrive in either capture group.
+      head: plainTitle(text).replace(/\s*（推薦）\s*$/, ''),
+      // WRAPPED puts 「（推薦）」 inside the bold, so it can arrive in either capture group. Read
+      // off the FIRST line only: a wrapped tail that happens to mention 推薦 is prose about the
+      // option, not the marker that names it.
       recommended: Boolean(rec) || /（推薦）|\(推薦\)/.test(text),
-      line: index,
-      indent: index === 0 ? null : rawLine.length - rawLine.trimStart().length,
+      line: startIndex,
+      indent: startIndex === 0 ? null : rawIndent,
     })
   }
 
@@ -469,7 +545,7 @@ function qualify(
   if (options.length < 2) return null
   const consecutiveFromA = [...seen].every((l, i) => l.codePointAt(0) === 65 + i)
   if (!consecutiveFromA) return null
-  if (options.some((option) => RESOLVED_NARRATIVE.test(option))) return null
+  if (group.some((candidate) => RESOLVED_NARRATIVE.test(candidate.head))) return null
   return { options, recommended }
 }
 

@@ -67,8 +67,6 @@ export type AnswerFailure =
   | 'not-answered'
   /** An agent already picked this answer up; changing it now would desync work already underway. */
   | 'picked-up'
-  /** The landed block is not on the carrier any more — nothing to rewrite in place. */
-  | 'landed-block-missing'
   /** The span id appears more than once on the carrier; refused rather than guessing which. */
   | 'landed-block-ambiguous'
   /** 驗收合成題：這個 work item 現在不是 `done`，沒有待裁決的判決可下。 */
@@ -274,6 +272,23 @@ function findLandedBlock(
   return { start: headingStart, end }
 }
 
+/**
+ * Whether `text` carries a landed decision block for `spanId`.
+ *
+ * The exported half of `findLandedBlock`, for the surface that asks "is this answer filed
+ * anywhere at all". It MUST stay this function rather than a bare `text.includes(spanId)`: a span
+ * id also appears in prose ABOUT a decision — a TD entry describing a bug, a HANDOFF line
+ * narrating what was decided — and counting those as filed is how a lost answer reads as a safe
+ * one. Measured on <consumer-i> `ee92949d75fa703c`: after the loss was written up by hand, a substring
+ * search found the id in two files, neither of which held the answer.
+ *
+ * `ambiguous` counts as present. More than one copy is a different problem (the rewrite path
+ * refuses it, loudly); it is not a missing answer.
+ */
+export function landedBlockPresent(text: string, spanId: string): boolean {
+  return findLandedBlock(text, spanId) !== 'missing'
+}
+
 /** The audit's findings, as a comparable set. Its metrics section moves every run; findings do not. */
 function tdFindings(output: string): Set<string> {
   return new Set(
@@ -391,10 +406,26 @@ function replaceOnCarrier(
   const before = readFileSync(path, 'utf8')
   const found = findLandedBlock(before, spanId)
   if (found === 'missing') {
+    // Re-land it at the tail rather than doing nothing.
+    //
+    // Missing means the block this revision was meant to rewrite is not on the carrier any more:
+    // archived, moved, or — the measured case — overwritten by another session that rewrote the
+    // whole file from its own buffer while the answer was being given. Refusing here was the
+    // ORIGINAL contract and it lost the answer silently: `ok:true`, `landed:false`, a `reason`
+    // handed back to review-gui and read by nobody, while the agent the answer was for went on
+    // re-asking the same question. Measured 2026-08-29 on <consumer-i> span `ee92949d75fa703c` — answered
+    // once and revised twice, none of the three ever reached `HANDOFF.md`.
+    //
+    // Appending is NOT the guessing this file refuses elsewhere. `ambiguous` still refuses,
+    // because there the block exists and picking among copies is a guess. Here there is nothing to
+    // pick: the tail is where a first landing would have gone anyway, and a revision filed in the
+    // wrong SECTION is recoverable in ten seconds while a revision filed nowhere is not.
+    const appended = landOnCarrier(carrier, path, block, repoRoot, dryRun)
+    if (!appended.landed) return appended
     return {
-      landed: false,
-      reason: 'landed-block-missing',
-      detail: `${carrier} 上找不到 span ${spanId} 的決策紀錄段落（可能被搬走或歸檔了）。修訂已記在 spine 上，請人工更新該段`,
+      landed: true,
+      reason: null,
+      detail: `${carrier} 上原本的決策紀錄段落已不在（被搬走、歸檔，或被另一個 session 覆寫）。修訂改附在檔尾，請人工挪回它該在的段落`,
     }
   }
   if (found === 'ambiguous') {
@@ -773,4 +804,70 @@ export function answerDecision({
   // recorded and the queue will stop showing the question. `landed:false` + `reason` says what
   // still needs a human — NEVER report that as a failed answer.
   return { ...preview, ok: true, resolved: true, landed, reason, detail }
+}
+
+/**
+ * Put an already-answered decision back onto its carrier.
+ *
+ * The recovery half of the surface that reports an answer as missing from the prose world. It
+ * takes no new answer and writes nothing to the spine: the spine is already correct, and it is
+ * the ONLY thing that is — everything here is rebuilt from it. That asymmetry is the point.
+ * `reviseDecision` exists for "the human changed their mind"; this exists for "the file lost what
+ * the human already said", and conflating them would make a recovery look like a second decision.
+ *
+ * Landing goes through `replaceOnCarrier`, so the block is rewritten in place when it IS there
+ * (a re-run is a no-op) and appended when it is not. A second `relend` therefore never stacks a
+ * duplicate, which is what makes this safe to print as an unconditional action on a stall line.
+ */
+export function relandDecision({
+  spanId,
+  repoRoot,
+  via = 'flow relend',
+  dryRun = false,
+}: {
+  spanId: string
+  repoRoot: string
+  via?: string
+  dryRun?: boolean
+}): AnswerDecisionResult {
+  const base = { resolved: false, landed: false, carrier: null, carrierPath: null, block: '' }
+  const decision = lookupDecision(spanId, repoRoot)
+  if (!decision) {
+    return {
+      ...base,
+      ok: false,
+      reason: 'no-such-decision',
+      detail: `${repoRoot} 的 spine 上沒有 span ${spanId} 的 decision.request`,
+    }
+  }
+  const history = decisionAnswerHistory(spanId, repoRoot)
+  if (!history.answered || history.retracted) {
+    return {
+      ...base,
+      ok: false,
+      reason: 'not-answered',
+      detail: '這題沒有可以重新歸檔的答案——還沒有人回答，或答案已被撤回',
+    }
+  }
+
+  const path = carrierPath(decision.carrier, repoRoot)
+  const block = landingBlock(
+    decision.question,
+    history.answer,
+    spanId,
+    via,
+    new Date(),
+    history.revisions,
+  )
+  const r = replaceOnCarrier(decision.carrier, path, spanId, block, repoRoot, dryRun)
+  return {
+    ...r,
+    ok: r.landed,
+    resolved: false,
+    carrier: decision.carrier,
+    carrierPath: path,
+    block,
+    revisions: history.revisions,
+    locked: null,
+  }
 }
