@@ -300,7 +300,7 @@ If there is no AskUserQuestion tool available, present options as plain text and
       - 機械 sweep（無正式 tasks.md，residency 進入條件 B）→ classifier 用不上，直接 `record --verdict codex-primary --executor codex`
       - Record 落 `<consumer>/.spectra/residency-ledger.jsonl`
 
-   3. **依 verdict 走對應路徑**：verdict=`codex-primary` 且 executor=codex → 走 `agent-routing.md` § Orchestration Residency 的 **change 粒度單次 dispatch + notification-only**，**不要**落到 Step 6b 逐 phase 派工；verdict=`claude-primary`（或帶正當 `--reason` 留主線）→ 續走 Step 6b Phase Dispatch。
+   3. **依 runtime 走對應路徑**：verdict=`codex-primary` 時，若目前是 AI Agent runtime，走 `agent-routing.md` § Orchestration Residency 的 **change 粒度單次 dispatch + notification-only**，把整條 change 交給一個 Pi／`cx` carrier；若目前已有 `PI_CODING_AGENT=true`，本 session 就是 carrier，**NEVER recursive dispatch 自己**，直接續走 Step 6b 按 phase 選 executor。只有 user 明確 override 且 record 帶正當 `--reason` 時，才由 Claude runtime 持有 apply。
 
    **後果（機械強制，同 Check 7 / E.1 先例）**：`archive-gate.sh` **Check 8** 會機械驗 residency record 存在 — 缺 record → archive 被擋 exit 2。正當例外（user 明確指示主線自做等）在 tasks.md 加 bypass marker `<!-- residency-decision: intentional, reason: ... -->`。
 
@@ -311,16 +311,19 @@ If there is no AskUserQuestion tool available, present options as plain text and
    1. **Read tasks.md** and identify all `## N.` phase sections
    2. **For each phase, classify into one of three categories**（依序判定，命中即停）:
       - **A. Design Review phase** — title contains "Design Review" OR phase body references `/design improve` / `/impeccable audit` / `/impeccable *` / `review-screenshot` / `/design *`
-        → **主線 Claude Opus 5（effort: xhigh）自己做**，**永不**派 pi
-        → Design skill is AI Agent first-class; pi tooling weak in this domain
+        → executor 固定 Claude Opus 5（effort: xhigh），**永不**由 Pi 實作
+        → carrier 若在 AI Agent就自己做；carrier 若在 Pi／`cx`，用 Herdr create-only `--launcher cc`／`ccw` + `--coordinate` 派 bounded phase，收回結果後繼續
+        → Design skill is AI Agent first-class; Pi tooling weak in this domain
       - **B. UI view phase** — phase 內任一 task 描述/路徑指涉 view 層檔案：`.vue` / `.tsx` / `.jsx` / `app/pages/` / `app/components/` / `pages/` / `components/` / `views/` / `layouts/` / `.css` / `.scss` / Tailwind class 變動，**且**該 phase 沒有摻入非 view 的 frontend / backend 工作（store / hook / API client / type / util / migration / API server）
-        → **主線 Claude Opus 5（effort: xhigh）自己做**，**永不**派 pi——UI view 實作在 `agent-routing.md` § 派不派 的不外派清單，**NEVER** 派 Pi 任一 model、**NEVER** 派 Claude subagent
-        → **NEVER** 因為 phase 大、時間晚、非 view phase 的 dispatch 管線現成就轉派——那條管線是 C 類專用
+        → executor 固定 Claude Opus 5（effort: xhigh），**永不**由 Pi 實作——UI view 實作在 `agent-routing.md` § 派不派 的不外派清單，**NEVER** 派 Pi 任一 model
+        → carrier 若在 AI Agent就自己做；carrier 若在 Pi／`cx`，用 Herdr create-only `--launcher cc`／`ccw` + `--coordinate` 派 bounded phase，**NEVER** 把整條 apply residency 一起交出去
+        → **NEVER** 因為 phase 大、時間晚、非 view phase 的 dispatch 管線現成就改用 Pi 實作——那條能力路徑是 C 類專用
         → 實作完、該 phase commit / 標 done **之前**，照跑 Step 6c / 6d 檢查與 Design Review gate
         → frontend 但非 view 的工作（store / hook / API client / type / util）不在此範圍，走 C 類
       - **C. Other phase** — 上述兩類以外（schema / migration / API server / CLI / 純 backend / frontend 但非 view 的 store / hook / API client / type / util / unit test / docs）
-        → **派 background Pi，統一走泛用 dispatcher 的 `spectra-phase-implementation` row（Sol high）**
-        → Phase 粒度避免大量 Pi round-trip；model／effort／origin 由 dispatcher receipt 與 ledger 鎖定
+        → carrier 已在 Pi／`cx`：同一 carrier 直接實作，沿用 `spectra-phase-implementation` 的 Sol high 契約與 gates，**NEVER** recursive dispatch
+        → carrier 是帶 override 的 Claude runtime：派 background Pi，統一走泛用 dispatcher的 `spectra-phase-implementation` row（Sol high）
+        → Phase 粒度只切 executor boundary；model／effort／origin 由 runtime receipt 與 ledger 鎖定
         → **在 Form 3 / Form 4 下這一步由 worktree subagent 自己派**，per `agent-routing.md` § Dispatch 入口「pi MUST 由該層編排者在其自身 sandbox 內直接 Bash 派」。准入條件是**該 subagent 自跑完整 Pi Watch Protocol**（notification-only + 安全網 fallback），做不到就退回薄中介禁令。主線對這些 pi **零探針**（TD-351）
    3. **Mixed-phase fallback**（A、B 都不是純 view、又混雜 view 與非 view 工作）:
       - **看該 phase 是否已開工**（任一 task `[x]`，或 git history 顯示 phase 內檔案已被改）:
