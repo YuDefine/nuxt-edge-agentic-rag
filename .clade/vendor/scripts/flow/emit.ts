@@ -124,10 +124,14 @@ export function workIdFromIdentity(sourceIdentity: string | null | undefined): s
  * rather than dropping the event: an unattributed span still belongs on the spine, and the
  * `orphan-` prefix makes the attribution gap countable instead of invisible.
  */
+function mintOrphanWorkId() {
+  return mintWorkId(`orphan-${randomBytes(3).toString('hex')}`)
+}
+
 export function resolveWorkId(hint = null) {
   const explicit = hint ?? process.env.CLADE_WORK_ID ?? null
   if (explicit) return explicit
-  return mintWorkId(`orphan-${randomBytes(3).toString('hex')}`)
+  return mintOrphanWorkId()
 }
 
 function identity(cwd) {
@@ -721,6 +725,52 @@ function askerIdentity(actor: string | null | undefined): string | null {
   return process.env.HERDR_PANE_ID?.trim() || null
 }
 
+const CLOSED_WORK_KINDS = new Set(['work.done', 'work.accept', 'work.drop'])
+
+/**
+ * Raw closed-claim scan, not the fold's `state`.
+ *
+ * Fold treats `work.done` as standing only when no later real start outlived it (`claimStands`).
+ * Relay after a done work writes a new `session_transport` onto the same id (TD-791 實測
+ * `W-2026-08-29-board-pm-…`：04:05 `work.done`，04:06 下一棒 TD-787 transport)，於是 fold
+ * 讀成 settled／in-flight，問句照樣掛回已結束的卡。問句這條路要的是「有沒有人宣告過結束」，
+ * 不是「後來有沒有人又在這張卡上寫了 span」。
+ *
+ * Fail-open：spine 讀不到時當沒結束，沿用今日行為。
+ */
+function workHasClosedClaim(workId: string, cwd?: string): boolean {
+  try {
+    return readEvents(cwd).some(
+      (e) => e.work_id === workId && CLOSED_WORK_KINDS.has(String(e.kind)),
+    )
+  } catch {
+    return false
+  }
+}
+
+/**
+ * `flow ask` 的 work id：明確參數 → 未結束的 ambient → 提問者身分 → orphan。
+ *
+ * 過期的 ambient（已有 `work.done` / accept / drop）NEVER 沿用，也 NEVER 退回 pane
+ * 身分——relay 之後 pane id 不變，那正是過期身分本身（[[TD-791]]）。此時鑄 orphan
+ * （未歸屬），且 MUST 走 `mintOrphanWorkId` 而不是 `resolveWorkId(null)`：後者的順序
+ * 是 `hint ?? env`，hint 為 null 時會把過期 ambient 再讀回來。
+ *
+ * 真正沒有 ambient 時維持 [[TD-710]]：用提問者身分鑄具名 id，NEVER 一上來就 orphan。
+ */
+function decisionWorkId(
+  explicit: string | null | undefined,
+  actor: string | null | undefined,
+  cwd?: string,
+): string {
+  const named = String(explicit ?? '').trim()
+  if (named) return named
+  const ambient = process.env.CLADE_WORK_ID?.trim()
+  if (ambient && !workHasClosedClaim(ambient, cwd)) return ambient
+  if (ambient) return mintOrphanWorkId()
+  return workIdFromIdentity(askerIdentity(actor))
+}
+
 export function requestDecision({
   question,
   options = [],
@@ -748,17 +798,19 @@ export function requestDecision({
 
   return startSpan({
     /*
-     * 沒帶 `work_id` 也沒有 ambient `CLADE_WORK_ID` 時，用**提問者身分**鑄具名 id，
+     * 沒帶 `work_id` 也沒有（未結束的）ambient 時，用**提問者身分**鑄具名 id，
      * NEVER 落 `resolveWorkId(null)` 的 orphan（[[TD-710]]，Charles 2026-08-28 拍板 A．自成一件 work）。
      *
-     * 順序仍是 ambient → 提問者身分 → orphan：`workIdFromIdentity` 自己先讀 ambient，所以
-     * 有 ambient 的 session 行為與此改動之前完全相同——NEVER 改成把身分餵給 `resolveWorkId(hint)`，
-     * 那個順序是 `hint ?? env`，會把一件具名工作的多題拆成互不相干的 per-question trace。
+     * 過期 ambient（已 work.done）另案：鑄 orphan 未歸屬，見 `decisionWorkId`（[[TD-791]]）。
+     *
+     * 順序仍是 明確參數 → 未結束 ambient → 提問者身分 → orphan。NEVER 把身分餵給
+     * `resolveWorkId(hint)`，那個順序是 `hint ?? env`，會把一件具名工作的多題拆成
+     * 互不相干的 per-question trace。
      *
      * 同一個 pane 的多題折進同一件（身分逐日鑄名），代價是 `/flow` 上多出以 pane 命名的
      * work item——那正是拍板時接受的那一項。
      */
-    work_id: work_id ?? workIdFromIdentity(askerIdentity(actor)),
+    work_id: decisionWorkId(work_id, actor, cwd),
     kind: 'decision.request',
     actor,
     substrate,
