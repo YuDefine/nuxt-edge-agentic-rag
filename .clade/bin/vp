@@ -9,7 +9,7 @@
 // Install: ensure $CLADE_ROOT/bin precedes the real vp install dir in PATH.
 // Verified at SessionStart by plugins/hub-core/hooks/session-start-improvement-loop-path-check.sh.
 
-import { resolve } from 'node:path'
+import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { runShim } from '../vendor/signals/shim-core.ts'
@@ -49,8 +49,11 @@ function injectParallelCaps() {
 
 injectParallelCaps()
 
+const shimAbsPath = resolve(fileURLToPath(import.meta.url))
+
 await runShim({
   binName: 'vp',
-  shimAbsPath: resolve(fileURLToPath(import.meta.url)),
+  shimAbsPath,
+  preferredBin: resolve(dirname(shimAbsPath), '..', 'node_modules', '.bin', 'vp'),
   source: 'shim',
 })
