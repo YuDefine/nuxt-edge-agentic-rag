@@ -189,7 +189,7 @@ When updating an existing change：
 ### Analyze-Fix Loop（max 2 iterations）
 
 ```bash
-spectra analyze <name> --json
+node .cursor/scripts/spectra-target-guard.ts --change <name> -- analyze <name> --json
 ```
 
 1. Filter findings to **Critical and Warning only**（ignore Suggestion）
@@ -200,18 +200,18 @@ spectra analyze <name> --json
 ### Validation
 
 ```bash
-spectra validate "<name>"
+node .cursor/scripts/spectra-target-guard.ts --change "<name>" -- validate "<name>"
 ```
 
 If validation fails, fix errors and re-validate.
 
 ### Propose completion
 
-`spectra validate <change-name>` 通過。**NEVER 執行 `spectra park`** — change 維持 active，artifacts 留在 disk。不要呼叫 /spectra-apply。
+`node .cursor/scripts/spectra-target-guard.ts --change <change-name> -- validate <change-name>` 通過。**NEVER 執行 the guarded `park` lifecycle command** — change 維持 active，artifacts 留在 disk。不要呼叫 /spectra-apply。
 
 ### Ingest completion
 
-`spectra validate` 通過 + commit artifacts：
+the guarded `validate` command 通過 + commit artifacts：
 ```bash
 git commit --only -m "📝 docs(spectra): ingest <change-name>" -- openspec/changes/<change-name>/
 ```
@@ -241,7 +241,7 @@ Fix every failure inline before running the CLI analyzer.
 ## Change
 - name: <change-name>
 - type: feature | bugfix | refactor
-- locale: <from spectra instructions, e.g. zh-TW>
+- locale: <from guarded instructions output, e.g. zh-TW>
 - ui_scope: true | false
 - backend_only: true | false
 

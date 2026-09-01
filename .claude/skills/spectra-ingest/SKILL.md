@@ -18,7 +18,7 @@ Local edits will be reverted by the next sync.
 -->
 
 
-> **Spectra target guard (clade fork):** Every lifecycle command in this skill that names a change **MUST** run through `node scripts/spectra-target-guard.ts --change "<name>" -- <spectra args...>`. Main＋session worktree 同時持有 tracked artifacts 是正常狀態：path-bearing `instructions apply --json` 證明 current target；pathless `status --json` 與受支援 mutation 在多候選時先跑該 proof；`unpark` 驗 zero-candidate → current-only restore。任何 `TARGET_*`／`MUTATION_POSTCONDITION` 都是 hard STOP；preserve every candidate worktree，**NEVER** delete, move, or clean one to make the guard pass。A pass proves only this invocation's integration contract, not an upstream fix.
+> **Spectra target guard (clade fork):** Every executable Spectra command that names a change **MUST** run through `node .claude/scripts/spectra-target-guard.ts --change "<name>" -- <spectra args...>`. Existing targets pass only with path-bearing attestation anchored to the current git root; `new change` passes only with a current-root create postcondition. `TARGET_FOREIGN`, `TARGET_UNPROVEN`, `TARGET_MISSING`, or `MUTATION_POSTCONDITION` is a hard STOP. Preserve every candidate worktree and the failed mutation scene; **NEVER** delete, move, clean, or mirror state to make the guard pass. Global `list`, `list --parked`, `search`, and `instructions --skill` calls remain raw because they do not target a change.
 
 Update an existing Spectra change — from a plan file or conversation context.
 
@@ -103,12 +103,12 @@ Update an existing Spectra change — from a plan file or conversation context.
    If the selected change appears in the `parked` array:
    - Inform the user that this change is currently parked（暫存）
    - Use **AskUserQuestion tool** to ask: continue (unpark) or cancel
-   - If continue: run `node scripts/spectra-target-guard.ts --change "<name>" -- unpark "<name>"` then proceed
+   - If continue: run `node .claude/scripts/spectra-target-guard.ts --change "<name>" -- unpark "<name>"` then proceed
    - If cancel: stop the workflow
 
    If there is no AskUserQuestion tool available (non-Claude-Code environment):
    Inform the user that this change is currently parked（暫存）and ask via plain text whether to unpark and continue, or cancel.
-   Wait for the user's response. If the user confirms, run `node scripts/spectra-target-guard.ts --change "<name>" -- unpark "<name>"` then proceed.
+   Wait for the user's response. If the user confirms, run `node .claude/scripts/spectra-target-guard.ts --change "<name>" -- unpark "<name>"` then proceed.
 
    Read existing artifacts for context before updating.
 
@@ -169,7 +169,7 @@ Update an existing Spectra change — from a plan file or conversation context.
       ## Change
       - name: <change-name>
       - type: ingest
-      - locale: <from spectra instructions>
+      - locale: <from guarded instructions output>
       - ui_scope: <true/false>
       - backend_only: <true/false>
 
@@ -200,8 +200,8 @@ Update an existing Spectra change — from a plan file or conversation context.
       3. Flow（執行 Step 5~9）：
          .claude/skills/spectra-ingest/SKILL.md
 
-      完成標準：`node scripts/spectra-target-guard.ts --change "<change-name>" -- validate "<change-name>"` 通過 + `node scripts/spectra-target-guard.ts --change "<change-name>" -- park <change-name>`。
-      語言遵循：artifacts 依 `spectra instructions` 的 `locale` 欄位寫；spec 一律英文。
+      完成標準：`node .claude/scripts/spectra-target-guard.ts --change "<change-name>" -- validate "<change-name>"` 通過 + `node .claude/scripts/spectra-target-guard.ts --change "<change-name>" -- park <change-name>`。
+      語言遵循：artifacts 依 guarded instructions output 的 `locale` 欄位寫；spec 一律英文。
       ```
 
       > **Why context pack + contract 取代 inline 規約**：原 prompt 把 Step 5 更新規約 / Step 6
@@ -245,7 +245,7 @@ Update an existing Spectra change — from a plan file or conversation context.
    **Cross-check（A / B 共用，收到 `<task-notification status=completed>` 後立刻）**：
 
    1. Read draft stdout，確認 artifacts 已更新 + guarded validate command 通過。
-   2. 若 draft 已 `node scripts/spectra-target-guard.ts --change "<change-name>" -- park <change-name>`：先 `node scripts/spectra-target-guard.ts --change "<change-name>" -- unpark <change-name>`。
+   2. 若 draft 已 `node .claude/scripts/spectra-target-guard.ts --change "<change-name>" -- park <change-name>`：先 `node .claude/scripts/spectra-target-guard.ts --change "<change-name>" -- unpark <change-name>`。
    3. 主線跑 Step 6 全套 Inline Self-Review（7 項 Check）— 對 draft 產出做 cross-check，發現問題主線自己 Edit 修。
    4. 主線跑 Step 7 Analyze-Fix Loop + Step 8 Validation。
    5. 主線跑 Step 8.5 commit artifacts + Step 9 Summary。
@@ -265,7 +265,7 @@ Update an existing Spectra change — from a plan file or conversation context.
    For each artifact, get instructions first:
 
    ```bash
-   node scripts/spectra-target-guard.ts --change "<name>" -- instructions <artifact-id> --change "<name>" --json
+   node .claude/scripts/spectra-target-guard.ts --change "<name>" -- instructions <artifact-id> --change "<name>" --json
    ```
 
    Use the `template` from instructions as the output structure. Apply `context` and `rules` as constraints but do NOT copy them into the file.
@@ -303,7 +303,7 @@ Update an existing Spectra change — from a plan file or conversation context.
    After creating each artifact, re-check status:
 
    ```bash
-   node scripts/spectra-target-guard.ts --change "<name>" -- status --change "<name>" --json
+   node .claude/scripts/spectra-target-guard.ts --change "<name>" -- status --change "<name>" --json
    ```
 
    Continue until all `applyRequires` artifacts are complete. Show progress: "✓ Created <artifact-id>"
@@ -392,7 +392,7 @@ Update an existing Spectra change — from a plan file or conversation context.
 7. **Analyze-Fix Loop** (max 2 iterations)
 
    ```bash
-   spectra analyze <name> --json
+   node .claude/scripts/spectra-target-guard.ts --change <name> -- analyze <name> --json
    ```
 
    1. Filter findings to **Critical and Warning only** (ignore Suggestion)
@@ -400,7 +400,7 @@ Update an existing Spectra change — from a plan file or conversation context.
    3. If Critical/Warning findings exist:
       a. Show: "Found N issue(s), fixing... (attempt M/2)"
       b. Fix each finding in the affected artifact
-      c. Re-run `spectra analyze <name> --json`
+      c. Re-run `node .claude/scripts/spectra-target-guard.ts --change <name> -- analyze <name> --json`
       d. Repeat up to 2 total iterations
    4. After 2 attempts, if findings remain:
       - Show remaining findings as a summary
@@ -409,7 +409,7 @@ Update an existing Spectra change — from a plan file or conversation context.
 8. **Validation**
 
    ```bash
-   node scripts/spectra-target-guard.ts --change "<name>" -- validate "<name>"
+   node .claude/scripts/spectra-target-guard.ts --change "<name>" -- validate "<name>"
    ```
 
    If validation fails, fix errors and re-validate.

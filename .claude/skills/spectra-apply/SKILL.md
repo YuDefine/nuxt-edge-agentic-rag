@@ -20,7 +20,7 @@ Local edits will be reverted by the next sync.
 
 Implement tasks from a Spectra change.
 
-> **Spectra target guard (clade fork):** Every lifecycle command in this skill that names a change **MUST** run through `node scripts/spectra-target-guard.ts --change "<name>" -- <spectra args...>`. Main＋session worktree 同時持有 tracked artifacts 是正常狀態：path-bearing `instructions apply --json` 證明 current target；pathless `status --json` 與 `task done`／`in-progress`／`validate` 在多候選時先跑該 read-only proof；`unpark` 以 zero-candidate → current-only restore postcondition 證明；destructive command 仍要求 unique candidate。任何 `TARGET_*`／`MUTATION_POSTCONDITION` 都是 hard STOP。Preserve every candidate worktree；**NEVER** delete, move, or clean one to make the guard pass。A pass proves only this invocation's integration contract, not an upstream fix.
+> **Spectra target guard (clade fork):** Every executable Spectra command that names a change **MUST** run through `node .claude/scripts/spectra-target-guard.ts --change "<name>" -- <spectra args...>`. Existing targets pass only with path-bearing attestation anchored to the current git root; `new change` passes only with a current-root create postcondition. `TARGET_FOREIGN`, `TARGET_UNPROVEN`, `TARGET_MISSING`, or `MUTATION_POSTCONDITION` is a hard STOP. Preserve every candidate worktree and the failed mutation scene; **NEVER** delete, move, clean, or mirror state to make the guard pass. Global `list`, `list --parked`, `search`, and `instructions --skill` calls remain raw because they do not target a change.
 
 > **Ownership**（clade fork；cross-phase matrix in `rules/core/spectra-workflow.md`）：apply 負責 code 正確性 + Class B UI view phase refactor invariant（Step 6c / Layer B：無 column 整欄 fallback + 0 個 4xx/5xx）+ review-rules 機械規則掃描（Step 6d：`patterns.json` multi-line match，補 pre-commit hook 逐行 grep 漏抓的跨行 Vue props）+ Design Review data-sanity（Layer C：client param vs server schema bound）+ pre-handoff 5-維度 cross-check（Step 8a.6 / Layer E.1 主線 + E.2 pi）。**不**負責 user 主觀視覺 / UX 真人驗收（manual review / review-gui 管）。
 
@@ -94,7 +94,7 @@ Implement tasks from a Spectra change.
 2. **Check status to understand the schema**
 
    ```bash
-   node scripts/spectra-target-guard.ts --change "<name>" -- status --change "<name>" --json
+   node .claude/scripts/spectra-target-guard.ts --change "<name>" -- status --change "<name>" --json
    ```
 
    **If the command fails**: show the error and STOP.
@@ -119,7 +119,7 @@ Implement tasks from a Spectra change.
      If the user chooses to continue:
 
      ```bash
-     node scripts/spectra-target-guard.ts --change "<name>" -- unpark "<name>"
+     node .claude/scripts/spectra-target-guard.ts --change "<name>" -- unpark "<name>"
      ```
 
      **Post-unpark commit**（clade fork addition；防 SQLite-only state）：unpark 後 **MUST** 立刻把 artifacts commit 進 git（`git add openspec/changes/<name>/` → commit）。**禁止** `git add -A`；`no changes to commit` 視為成功、hook fail 則 STOP。逐字指令見 `references/worktree-setup.md` § Step 2 parked fallback。
@@ -127,21 +127,21 @@ Implement tasks from a Spectra change.
      Then mark it as in-progress:
 
      ```bash
-     node scripts/spectra-target-guard.ts --change "<name>" -- in-progress add "<name>"
+     node .claude/scripts/spectra-target-guard.ts --change "<name>" -- in-progress add "<name>"
      ```
 
      This is a silent operation — do not show the output to the user.
 
-     Then re-run `node scripts/spectra-target-guard.ts --change "<name>" -- status --change "<name>" --json` and continue normally.
+     Then re-run `node .claude/scripts/spectra-target-guard.ts --change "<name>" -- status --change "<name>" --json` and continue normally.
 
      If there is no AskUserQuestion tool available (non-Claude-Code environment):
      Inform the user that this change is currently parked（暫存）and ask via plain text whether to unpark and continue, or cancel.
-     Wait for the user's response. If the user confirms, run `node scripts/spectra-target-guard.ts --change "<name>" -- unpark "<name>"` + post-unpark commit + `node scripts/spectra-target-guard.ts --change "<name>" -- in-progress add "<name>"`, and continue normally.
+     Wait for the user's response. If the user confirms, run `node .claude/scripts/spectra-target-guard.ts --change "<name>" -- unpark "<name>"` + post-unpark commit + `node .claude/scripts/spectra-target-guard.ts --change "<name>" -- in-progress add "<name>"`, and continue normally.
 
    - **If the change is NOT in the parked list**: mark it as in-progress and proceed normally.
 
      ```bash
-     node scripts/spectra-target-guard.ts --change "<name>" -- in-progress add "<name>"
+     node .claude/scripts/spectra-target-guard.ts --change "<name>" -- in-progress add "<name>"
      ```
 
      This is a silent operation — do not show the output to the user.
@@ -167,7 +167,7 @@ Implement tasks from a Spectra change.
 3. **Get apply instructions**
 
    ```bash
-   node scripts/spectra-target-guard.ts --change "<name>" -- instructions apply --change "<name>" --json
+   node .claude/scripts/spectra-target-guard.ts --change "<name>" -- instructions apply --change "<name>" --json
    ```
 
    This returns:
@@ -214,7 +214,7 @@ If the `preflight` field is absent (blocked or all_done states), skip this step.
 
 3c. **Artifact quality check**
 
-Run `spectra analyze <change-name> --json` to check cross-artifact consistency (Coverage, Consistency, Ambiguity, Gaps).
+Run `node .claude/scripts/spectra-target-guard.ts --change <change-name> -- analyze <change-name> --json` to check cross-artifact consistency (Coverage, Consistency, Ambiguity, Gaps).
 
 - **Zero findings**: silently continue.
 - **Warning/Suggestion only**: display a one-line summary (e.g., "⚠ Artifact analysis: 2 warnings found") and continue automatically.
@@ -231,7 +231,7 @@ When the change has been dormant for more than 5 days AND the change directory h
 
 Detect dormancy from `.openspec.yaml` `created` and `git log -1 --format=%at -- docs/specs/changes/<name>/`:
 
-- **Both conditions met**: run `spectra drift <change-name>`, display the report, then use the **AskUserQuestion tool**:
+- **Both conditions met**: run `node .claude/scripts/spectra-target-guard.ts --change <change-name> -- drift <change-name>`, display the report, then use the **AskUserQuestion tool**:
   - **Continue with apply** — proceed to tasks (recommended for Light drift)
   - **Refresh first** — pause apply, run `/spectra-ingest <change-name>` to update artifacts, then resume
   - **Stop** — end the workflow
@@ -435,15 +435,15 @@ If there is no AskUserQuestion tool available, present options as plain text and
    - Make the code changes required
    - Keep changes minimal and focused
    - **Verify before marking done** — re-read the task description from the tasks file AND the relevant Implementation Contract content from design.md. For each requirement stated in the task description and each contract item that covers this task's scope, confirm it is addressed by your changes. Confirm the verification target named by the task (test name, CLI invocation, analyzer check, or manual assertion) actually passes. If any contract item, task requirement, or verification target is missing or failing, implement/fix it now. Do not mark the task complete until every part of the description is covered and the contract for this task is satisfied.
-   - Mark task complete by running: `node scripts/spectra-target-guard.ts --change "<name>" -- task done --change "<name>" <task-id>`
+   - Mark task complete by running: `node .claude/scripts/spectra-target-guard.ts --change "<name>" -- task done --change "<name>" <task-id>`
      This command marks the checkbox in tasks.md AND records which files were modified for this task.
 
      The guard snapshots current `tasks.md` and every registered worktree's `.spectra/touched/<change>.json` before delegation. Success requires the requested checkbox to flip `[ ] → [x]` in the current root, the current touched sidecar to record that task, and every foreign snapshot to remain unchanged. `MUTATION_POSTCONDITION` is a hard STOP; **NEVER** mirror-flip a checkbox, copy foreign state, or modify Spectra SQLite after a failed proof.
 
      **Interrupted `task done` recovery（唯一合法路徑）**：先確認 current worktree 的具名 checkbox 已是 `[x]`，再依 current touched sidecar 對該 ordinal 的 record 數量執行 guard recovery；**NEVER** 直接呼叫 closed-source `spectra`：
 
-     - 恰有 1 筆 record（checkbox + sidecar 都已 partial mutate）→ `node scripts/spectra-target-guard.ts --change "<name>" -- task recover-done <task-id>`
-     - 恰有 0 筆 record（只有 checkbox 被翻轉）→ `node scripts/spectra-target-guard.ts --change "<name>" -- task recover-done --checkbox-only <task-id>`
+     - 恰有 1 筆 record（checkbox + sidecar 都已 partial mutate）→ `node .claude/scripts/spectra-target-guard.ts --change "<name>" -- task recover-done <task-id>`
+     - 恰有 0 筆 record（只有 checkbox 被翻轉）→ `node .claude/scripts/spectra-target-guard.ts --change "<name>" -- task recover-done --checkbox-only <task-id>`
      - malformed / wrong-change sidecar、record 數量不是對應模式、checkbox 未勾、或任何 `RECOVERY_*` error → hard STOP；**NEVER** 改用另一模式試撞、手動翻 checkbox、手動補／刪／複製 sidecar、修改 Spectra SQLite、從 focus 推 target，或動 foreign worktree
 
      Recovery 成功只把該 task 恢復成可重跑 bookkeeping 的狀態；重新執行 guarded `task done` 前，該 task 的真實 product diff **MUST** 重新成為 current working-tree diff，讓 touched-file recording 能觀察到它。用 git-history-safe 的 scoped uncommit／重建方式恢復真實 diff；**NEVER** 做 no-op semantic edit 欺騙 touched recording。
@@ -451,7 +451,7 @@ If there is no AskUserQuestion tool available, present options as plain text and
      **Verification-only completion（唯一例外）**：若 task 只驗證已完成的 product paths、沒有自己的新 product diff，而且 guarded `task done` 已以 `MUTATION_POSTCONDITION` 明確證明「checkbox 有翻轉但 current sidecar 沒有新增 requested task record」並完成 rollback，才可改用 wrapper-owned completion：
 
      ```bash
-     node scripts/spectra-target-guard.ts --change "<name>" -- \
+     node .claude/scripts/spectra-target-guard.ts --change "<name>" -- \
        task verify-done --change "<name>" <numeric-ordinal> --verification-only \
        --evidence-path <already-attributed-path> [--evidence-path <path> ...] -- \
        <verification-command> [args...]
@@ -510,14 +510,14 @@ If there is no AskUserQuestion tool available, present options as plain text and
 
    **5 輪仍 FAIL** → Output On Pause，附最後一輪 error 全文，escalation_action = ASK。
 
-   **Skip-condition**：consumer 的 `verify-commands.md` 不存在 → 退回既有行為（只跑 `node scripts/spectra-target-guard.ts --change "<name>" -- instructions apply --change "<name>" --json` 確認 state）。不 block apply 流程。
+   **Skip-condition**：consumer 的 `verify-commands.md` 不存在 → 退回既有行為（只跑 `node .claude/scripts/spectra-target-guard.ts --change "<name>" -- instructions apply --change "<name>" --json` 確認 state）。不 block apply 流程。
 
 8. **Final check**
 
    After completing all tasks AND Step 7.5 gate chain PASS, re-run:
 
    ```bash
-   node scripts/spectra-target-guard.ts --change "<name>" -- instructions apply --change "<name>" --json
+   node .claude/scripts/spectra-target-guard.ts --change "<name>" -- instructions apply --change "<name>" --json
    ```
 
    Confirm `state: "all_done"`. If not, review remaining tasks and complete them.
@@ -696,7 +696,7 @@ Working on task 4/7: <task description>
 
 **Completion evidence gate**（clade fork addition — 輸出「Implementation Complete」前 MUST 逐格自查；每格附「實跑命令＋輸出摘尾」，貼不出證據＝該格未完成，不准宣告完成）：
 
-- [ ] `node scripts/spectra-target-guard.ts --change "<name>" -- instructions apply --change "<name>" --json` 回傳 `state: "all_done"`（貼該欄位輸出行）
+- [ ] `node .claude/scripts/spectra-target-guard.ts --change "<name>" -- instructions apply --change "<name>" --json` 回傳 `state: "all_done"`（貼該欄位輸出行）
 - [ ] typecheck / test / lint 全綠（貼各命令與最後幾行輸出；worktree 內實跑，不引用歷史結果）
 - [ ] Step 8a verify-channel annotations 已寫入 tasks.md（貼其中一條 annotation 行）
 

@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-// 🔒 LOCKED — managed by clade · Source: plugins/hub-capabilities-openspec/scripts/spectra-target-guard.ts · 改這裡無效，下次 propagate 會覆寫；請改 $CLADE_HOME/plugins/hub-capabilities-openspec/scripts/spectra-target-guard.ts
 
 /**
  * Fail-closed integration guard for closed-source kaochenlong/spectra-app v2.3.1.

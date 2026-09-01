@@ -21,7 +21,7 @@ Local edits will be reverted by the next sync.
 -->
 
 
-> **Spectra target guard (clade fork):** Every lifecycle command in this skill that names a change **MUST** run through `node scripts/spectra-target-guard.ts --change "<name>" -- <spectra args...>`. Main＋session worktree 同時持有 tracked artifacts 是正常狀態；path-bearing `instructions apply --json` 證明 current target，pathless `status --json` 在多候選時先跑該 proof。任何 `TARGET_*`／`MUTATION_POSTCONDITION` 都是 hard STOP；preserve every candidate worktree，**NEVER** delete, move, or clean one to make the guard pass。A pass proves only this invocation's integration contract, not an upstream fix.
+> **Spectra target guard (clade fork):** Every executable Spectra command that names a change **MUST** run through `node .claude/scripts/spectra-target-guard.ts --change "<name>" -- <spectra args...>`. Existing targets pass only with path-bearing attestation anchored to the current git root; `new change` passes only with a current-root create postcondition. `TARGET_FOREIGN`, `TARGET_UNPROVEN`, `TARGET_MISSING`, or `MUTATION_POSTCONDITION` is a hard STOP. Preserve every candidate worktree and the failed mutation scene; **NEVER** delete, move, clean, or mirror state to make the guard pass. Global `list`, `list --parked`, `search`, and `instructions --skill` calls remain raw because they do not target a change.
 
 ## Claude fork context
 
@@ -52,7 +52,7 @@ Verify that an implementation matches the change artifacts (specs, tasks, design
 2. **Check status to understand the schema**
 
    ```bash
-   node scripts/spectra-target-guard.ts --change "<name>" -- status --change "<name>" --json
+   node .claude/scripts/spectra-target-guard.ts --change "<name>" -- status --change "<name>" --json
    ```
 
    Parse the JSON to understand:
@@ -76,7 +76,7 @@ Verify that an implementation matches the change artifacts (specs, tasks, design
 3. **Get the change directory and load artifacts**
 
    ```bash
-   node scripts/spectra-target-guard.ts --change "<name>" -- instructions apply --change "<name>" --json
+   node .claude/scripts/spectra-target-guard.ts --change "<name>" -- instructions apply --change "<name>" --json
    ```
 
    This returns the change directory and context files. Read all available artifacts from `contextFiles`.

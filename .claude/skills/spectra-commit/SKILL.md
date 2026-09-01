@@ -17,7 +17,7 @@ Local edits will be reverted by the next sync.
 -->
 
 
-> **Spectra target guard (clade fork):** Every lifecycle command in this skill that names a change **MUST** run through `node scripts/spectra-target-guard.ts --change "<name>" -- <spectra args...>`. Main＋session worktree 同時持有 tracked artifacts 是正常狀態；path-bearing `instructions apply --json` 證明 current target，pathless `status --json` 在多候選時先跑該 proof；archive 等 destructive command 仍要求 unique candidate。任何 `TARGET_*`／`MUTATION_POSTCONDITION` 都是 hard STOP；preserve every candidate worktree，**NEVER** delete, move, or clean one to make the guard pass。A pass proves only this invocation's integration contract, not an upstream fix.
+> **Spectra target guard (clade fork):** Every executable Spectra command that names a change **MUST** run through `node .claude/scripts/spectra-target-guard.ts --change "<name>" -- <spectra args...>`. Existing targets pass only with path-bearing attestation anchored to the current git root; `new change` passes only with a current-root create postcondition. `TARGET_FOREIGN`, `TARGET_UNPROVEN`, `TARGET_MISSING`, or `MUTATION_POSTCONDITION` is a hard STOP. Preserve every candidate worktree and the failed mutation scene; **NEVER** delete, move, clean, or mirror state to make the guard pass. Global `list`, `list --parked`, `search`, and `instructions --skill` calls remain raw because they do not target a change.
 
 Commit files related to a specific Spectra change.
 
@@ -199,7 +199,7 @@ This is a **utility skill** (not a workflow step). It reads source file tracking
     - If **no delta specs exist** (directory is empty or absent): skip to 6a-iii.
     - If **delta specs exist**:
       - Use the **AskUserQuestion tool** to ask: "Delta specs found. Sync to main specs before archiving?"
-        - **Yes**: run `spectra sync <name>` before proceeding
+        - **Yes**: run `node .claude/scripts/spectra-target-guard.ts --change <name> -- sync <name>` before proceeding
         - **No**: proceed without syncing
 
       If **AskUserQuestion tool** is not available, ask the same question as plain text and wait for the user's response.
@@ -209,8 +209,8 @@ This is a **utility skill** (not a workflow step). It reads source file tracking
     Execute the archive:
 
     ```bash
-    node scripts/spectra-target-guard.ts --change "<name>" -- archive <name>          # without --mark-tasks-complete
-    node scripts/spectra-target-guard.ts --change "<name>" -- archive <name> --mark-tasks-complete  # if user chose to mark tasks complete in 6a-i
+    node .claude/scripts/spectra-target-guard.ts --change "<name>" -- archive <name>          # without --mark-tasks-complete
+    node .claude/scripts/spectra-target-guard.ts --change "<name>" -- archive <name> --mark-tasks-complete  # if user chose to mark tasks complete in 6a-i
     ```
 
     After archive completes successfully:
