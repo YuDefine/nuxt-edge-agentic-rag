@@ -1,5 +1,5 @@
 {
-  "version": "1.11.117",
+  "version": "1.11.118",
   "rules_projection": "symlink",
   "consumer_id": "nuxt-edge-agentic-rag",
   "modules": {

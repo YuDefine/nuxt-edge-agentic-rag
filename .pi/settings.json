@@ -1,7 +1,7 @@
 {
   "packages": [
     {
-      "source": "git:github.com/YuDefine/clade@v1.11.117",
+      "source": "git:github.com/YuDefine/clade@v1.11.118",
       "skills": [],
       "extensions": []
     }

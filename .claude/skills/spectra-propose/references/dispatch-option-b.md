@@ -22,7 +22,7 @@ Local edits will be reverted by the next sync.
    #### Phase B-0a：背景 Fable draft
 
    1. **解析 change name + requirement**（同 Phase 0a step 1）。
-   2. **Write prompt 檔到 `/tmp/fable-spectra-propose-<change-name>-draft-prompt.md`** — 內容**完全沿用 Phase 0a step 2 的 draft prompt 範本**（Plan-first / Phase Purity / Manual Review Kind Marker / Backend-only 規約 / `docs/FIXTURES.md` sample / 語言遵循 / `spectra validate` 完成標準與 **NEVER park** 禁令全部照搬）。檔名用 `-draft-prompt` 與 Phase B-0b 的 `-review-prompt` 區隔，避免兩個背景 job 混用 prompt。
+   2. **Write prompt 檔到 `/tmp/fable-spectra-propose-<change-name>-draft-prompt.md`** — 內容**完全沿用 Phase 0a step 2 的 draft prompt 範本**（Plan-first / Phase Purity / Manual Review Kind Marker / Backend-only 規約 / `docs/FIXTURES.md` sample / 語言遵循 / the guarded `validate` command 完成標準與 **NEVER park** 禁令全部照搬）。檔名用 `-draft-prompt` 與 Phase B-0b 的 `-review-prompt` 區隔，避免兩個背景 job 混用 prompt。
    3. **背景啟動 claude**（**Bash** tool 加 `run_in_background=true`）：
 
       ```bash
@@ -40,9 +40,9 @@ Local edits will be reverted by the next sync.
 
    收到 Fable draft `<task-notification status=completed>` 時**立刻**：
 
-   1. **Read Fable draft stdout** 摘要：BashOutput 讀完整 stdout，回報 artifacts list / `spectra validate` 結果。
-   2. **若 Fable draft 仍 `spectra park` 了**（不該發生，draft prompt 已明令禁止）：先
-      `spectra unpark <change-name>` —— park 後 artifacts 只存 `.git/spectra-app/spectra.db` SQLite
+   1. **Read Fable draft stdout** 摘要：BashOutput 讀完整 stdout，回報 artifacts list / the guarded `validate` command 結果。
+   2. **若 Fable draft 仍 the guarded `park` lifecycle command 了**（不該發生，draft prompt 已明令禁止）：先
+      `node .claude/scripts/spectra-target-guard.ts --change <change-name> -- unpark <change-name>` —— park 後 artifacts 只存 `.git/spectra-app/spectra.db` SQLite
       blob、不在 disk，review Pi 讀不到。
    3. **Write Pi review prompt 到 `/tmp/pi-spectra-propose-<change-name>-review-prompt.md`**：
 
@@ -81,6 +81,6 @@ Local edits will be reverted by the next sync.
    收到 Pi `<task-notification status=completed>` 時**立刻**：
 
    1. **Read Pi findings**：BashOutput 讀 pi stdout，整理 findings 摘要。
-   2. **主線整合 findings + 跑完整 cross-check** — 執行 Phase 0b step 3 ~ 9 全套（`post-propose-check.sh` / `post-propose-manual-review-check.sh` / **`--check7-only` hard gate** / `design-inject.sh` / 補 Design Review 7 步 / Manual Review Marker Hygiene / `[verify:auto]`→explicit marker / Backend Verification Evidence 搬移 / Open Questions→AskUserQuestion / `spectra analyze` / `spectra validate` / commit artifacts 進 git），並把 Pi findings 一併納入修補依據。
+   2. **主線整合 findings + 跑完整 cross-check** — 執行 Phase 0b step 3 ~ 9 全套（`post-propose-check.sh` / `post-propose-manual-review-check.sh` / **`--check7-only` hard gate** / `design-inject.sh` / 補 Design Review 7 步 / Manual Review Marker Hygiene / `[verify:auto]`→explicit marker / Backend Verification Evidence 搬移 / Open Questions→AskUserQuestion / the guarded `analyze` command / the guarded `validate` command / commit artifacts 進 git），並把 Pi findings 一併納入修補依據。
    3. **主線自己 Edit 修**（**NEVER** 把修補丟回 pi，太慢、來回成本高）。
    4. 回報使用者：artifacts list + Fable draft 摘要 + **Pi review findings 摘要** + 主線補了什麼（Design Review 7 步 OK 與否、analyze/validate 結果）+ `/spectra-apply <change-name>` 提示。

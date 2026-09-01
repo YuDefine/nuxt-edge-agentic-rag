@@ -21,6 +21,9 @@ Local edits will be reverted by the next sync.
 -->
 
 
+> **Spectra target guard (clade fork):** Every executable Spectra command that names a change **MUST** run through `node .cursor/scripts/spectra-target-guard.ts --change "<name>" -- <spectra args...>`. Existing targets pass only with path-bearing attestation anchored to the current git root; `new change` passes only with a current-root create postcondition. `TARGET_FOREIGN`, `TARGET_UNPROVEN`, `TARGET_MISSING`, or `MUTATION_POSTCONDITION` is a hard STOP. Preserve every candidate worktree and the failed mutation scene; **NEVER** delete, move, clean, or mirror state to make the guard pass. Global `list`, `list --parked`, `search`, and `instructions --skill` calls remain raw because they do not target a change.
+
+
 ## Claude fork context
 
 This generated AI Agent skill runs with `context: fork`. The rules in this section take precedence over the shared `drift` body below.
@@ -44,7 +47,7 @@ Detect drift between a Spectra change and the current codebase state. Reports ti
 2. **Run programmatic drift analysis**
 
    ```bash
-   spectra drift <change-name> --json
+   node .cursor/scripts/spectra-target-guard.ts --change <change-name> -- drift <change-name> --json
    ```
 
    The JSON contains:
@@ -94,7 +97,7 @@ Detect drift between a Spectra change and the current codebase state. Reports ti
 
 4. **Apply the recommendation interactively**
 
-   Use the **AskUserQuestion tool** to offer one decision based on `severity`. Use plain-language option labels while preserving the exact command in each option description. Do NOT auto-invoke `/spectra-apply`, `/spectra-ingest`, or `spectra archive`; always wait for the user's choice.
+   Use the **AskUserQuestion tool** to offer one decision based on `severity`. Use plain-language option labels while preserving the exact command in each option description. Do NOT auto-invoke `/spectra-apply`, `/spectra-ingest`, or the guarded `archive` command; always wait for the user's choice.
    - **Light** (score 0-3, drift is minor):
      - Recommended label: "Directly start work"
        - Description: run `/spectra-apply <name>`
@@ -127,6 +130,6 @@ When `/spectra-apply` is invoked on a change whose `.openspec.yaml created` date
 
 - Read-only: NEVER modify files, artifacts, or git state based on drift findings
 - The CLI caps anchor checks at 50 via `ANCHOR_CAP` in `spectra_core::drift` to bound run-time
-- If `spectra drift` returns a non-zero exit code (e.g., older binary without the drift subcommand), report the error and stop
+- If the guarded `drift` command returns a non-zero exit code (e.g., older binary without the drift subcommand), report the error and stop
 - Do NOT auto-invoke any follow-up command — recommendations are user-confirmed
 - If **AskUserQuestion tool** is not available, ask the same questions as plain text and wait for the user's response

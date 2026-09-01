@@ -11,7 +11,7 @@ Local edits will be reverted by the next sync.
 > SKILL.md 對應 step 的 inline pointer 指到本檔；**MUST 依 pointer 指示完整讀對應 § 再執行**。
 > 行為 gate（NEVER / MUST 判定）留在 SKILL.md inline；本檔是操作 recipe / 範本 / 查表。
 >
-> 本檔每一個帶 change name 的 lifecycle command **MUST** 經 `node scripts/spectra-target-guard.ts --change "<change-name>" -- <spectra args...>`。main＋session worktree 的同名 tracked artifacts 是正常狀態，由 path-bearing `instructions apply --json` proof（pathless `status --json` 先跑此 proof）／mutation probe／postcondition 分 command 證明 target；guard 紅燈即 STOP。保留全部候選 worktree，不以刪除、搬移或清理候選換取通過。
+> 本檔每一個帶 change name 的 lifecycle command **MUST** 經 `node .claude/scripts/spectra-target-guard.ts --change "<change-name>" -- <spectra args...>`。guard 紅燈即 STOP；保留全部候選 worktree，不以刪除、搬移或清理候選換取通過。
 
 ---
 
@@ -75,7 +75,7 @@ Local edits will be reverted by the next sync.
 
 ## Step 0c.5 — Main-side unpark + commit-to-git（理由、四步流程、failure handling）
 
-      **理由**：spectra v3 `spectra park` 把 artifacts 從 disk 搬進 `.git/spectra-app/spectra.db` SQLite blob（**不在 git tracked file**）；後續 `spectra unpark` 會 restore artifacts 到 cwd 的 worktree disk 並把 SQLite parked 條目刪除。若 unpark 在 Claude Code `Agent` tool dispatched subagent 的 ephemeral cwd（`.claude/worktrees/agent-*/`，session 結束 GC）跑 → artifacts 寫進去就被 GC 清掉、SQLite 也沒了 → **永久遺失**（<consumer-f> 已撞，99 tasks + 5 specs + proposal 蒸發）。
+      **理由**：Spectra v3 的 guarded `park` lifecycle command 把 artifacts 從 disk 搬進 `.git/spectra-app/spectra.db` SQLite blob（**不在 git tracked file**）；後續 guarded `unpark` lifecycle command 會 restore artifacts 到 cwd 的 worktree disk 並把 SQLite parked 條目刪除。若 unpark 在 Claude Code `Agent` tool dispatched subagent 的 ephemeral cwd（`.claude/worktrees/agent-*/`，session 結束 GC）跑 → artifacts 寫進去就被 GC 清掉、SQLite 也沒了 → **永久遺失**（<consumer-f> 已撞，99 tasks + 5 specs + proposal 蒸發）。
 
       因此 **MUST** 在 dispatch subagent **之前**，由主線在 main worktree（**或** Step 0c 剛 fork 出的 session worktree — 兩者都是 persistent disk，非 ephemeral）跑 unpark + commit-to-git，artifacts 落 git tracked file，subagent fork 出去後天然帶過、不再依賴 SQLite blob。
 
@@ -93,7 +93,7 @@ Local edits will be reverted by the next sync.
       2. **主線在 main 跑 unpark**（**禁止**在 subagent / ephemeral worktree 跑；本步驟發生在 dispatch 之前，主線 cwd 仍是 main）：
 
          ```bash
-         node scripts/spectra-target-guard.ts --change "<change-name>" -- unpark "<change-name>"
+         node .claude/scripts/spectra-target-guard.ts --change "<change-name>" -- unpark "<change-name>"
          ```
 
          Unpark 把 artifacts blob restore 到 main worktree disk 的 `openspec/changes/<change-name>/`。SQLite parked 條目被刪除（這是 unpark 的正常行為）。
@@ -165,7 +165,7 @@ Local edits will be reverted by the next sync.
        If the user chooses to continue:
 
        ```bash
-       node scripts/spectra-target-guard.ts --change "<name>" -- unpark "<name>"
+       node .claude/scripts/spectra-target-guard.ts --change "<name>" -- unpark "<name>"
        ```
 
        **Post-unpark commit**（clade fork addition；防 SQLite-only state）：unpark 把 artifacts restore 到 cwd worktree disk，SQLite parked 條目被刪。**MUST** 立刻 commit 到 git，避免下次 session 又需重做：
@@ -180,16 +180,16 @@ Local edits will be reverted by the next sync.
        Then mark it as in-progress:
 
        ```bash
-       node scripts/spectra-target-guard.ts --change "<name>" -- in-progress add "<name>"
+       node .claude/scripts/spectra-target-guard.ts --change "<name>" -- in-progress add "<name>"
        ```
 
        This is a silent operation — do not show the output to the user.
 
-       Then re-run `node scripts/spectra-target-guard.ts --change "<name>" -- status --change "<name>" --json` and continue normally.
+       Then re-run `node .claude/scripts/spectra-target-guard.ts --change "<name>" -- status --change "<name>" --json` and continue normally.
 
        If there is no AskUserQuestion tool available (non-Claude-Code environment):
        Inform the user that this change is currently parked（暫存）and ask via plain text whether to unpark and continue, or cancel.
-       Wait for the user's response. If the user confirms, run `node scripts/spectra-target-guard.ts --change "<name>" -- unpark "<name>"` + post-unpark commit + `node scripts/spectra-target-guard.ts --change "<name>" -- in-progress add "<name>"`, and continue normally.
+       Wait for the user's response. If the user confirms, run `node .claude/scripts/spectra-target-guard.ts --change "<name>" -- unpark "<name>"` + post-unpark commit + `node .claude/scripts/spectra-target-guard.ts --change "<name>" -- in-progress add "<name>"`, and continue normally.
 
 ---
 

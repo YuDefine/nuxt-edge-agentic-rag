@@ -21,6 +21,9 @@ Local edits will be reverted by the next sync.
 -->
 
 
+> **Spectra target guard (clade fork):** Every executable Spectra command that names a change **MUST** run through `node .cursor/scripts/spectra-target-guard.ts --change "<name>" -- <spectra args...>`. Existing targets pass only with path-bearing attestation anchored to the current git root; `new change` passes only with a current-root create postcondition. `TARGET_FOREIGN`, `TARGET_UNPROVEN`, `TARGET_MISSING`, or `MUTATION_POSTCONDITION` is a hard STOP. Preserve every candidate worktree and the failed mutation scene; **NEVER** delete, move, clean, or mirror state to make the guard pass. Global `list`, `list --parked`, `search`, and `instructions --skill` calls remain raw because they do not target a change.
+
+
 ## Claude fork context
 
 This generated AI Agent skill runs with `context: fork`. The rules in this section take precedence over the shared `analyze` body below.
@@ -44,7 +47,7 @@ Analyze artifact consistency for a change. Can be invoked directly or triggered 
 2. **Run programmatic analysis**
 
    ```bash
-   spectra analyze <change-name> --json
+   node .cursor/scripts/spectra-target-guard.ts --change <change-name> -- analyze <change-name> --json
    ```
 
    This returns structured JSON with:
@@ -86,7 +89,7 @@ Analyze artifact consistency for a change. Can be invoked directly or triggered 
 
 **Passive Trigger**
 
-When `spectra status --change "<name>" --json` shows `isComplete: true`, run this analysis automatically before recommending `/spectra-apply`.
+When `node .cursor/scripts/spectra-target-guard.ts --change "<name>" -- status --change "<name>" --json` shows `isComplete: true`, run this analysis automatically before recommending `/spectra-apply`.
 
 **Guardrails**
 

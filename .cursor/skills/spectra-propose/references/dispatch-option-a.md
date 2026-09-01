@@ -34,7 +34,7 @@ Local edits will be reverted by the next sync.
       ## Change
       - name: <change-name>
       - type: feature | bugfix | refactor
-      - locale: <跑 `spectra instructions proposal --change <name> --json` 取 locale，或 grep consumer AGENTS.md 判定>
+      - locale: <跑 `node .cursor/scripts/spectra-target-guard.ts --change <name> -- instructions proposal --change <name> --json` 取 locale，或 grep consumer AGENTS.md 判定>
       - ui_scope: <true if requirement 涉及 .vue / pages/ / components/ / layouts/ / .css / .scss>
       - backend_only: <true if User Journeys 為 No user-facing journey>
 
@@ -64,9 +64,9 @@ Local edits will be reverted by the next sync.
       4. 任何 discuss 階段已捕獲的 design.md / spec.md：
          openspec/changes/<change-name>/（若已存在）
 
-      完成標準：`spectra validate <change-name>` 通過。
-      **NEVER 執行 `spectra park`** — change 維持 active，artifacts 留在 disk。
-      不要呼叫 /spectra-apply。產出後在 stdout 摘要 artifacts 列表 + `spectra validate` 結果。
+      完成標準：`node .cursor/scripts/spectra-target-guard.ts --change <change-name> -- validate <change-name>` 通過。
+      **NEVER 執行 the guarded `park` lifecycle command** — change 維持 active，artifacts 留在 disk。
+      不要呼叫 /spectra-apply。產出後在 stdout 摘要 artifacts 列表 + the guarded `validate` command 結果。
       ```
 
       > **Why context pack + contract 取代 inline 規約**：原 prompt 把 Phase Purity / Manual Review
@@ -102,10 +102,10 @@ Local edits will be reverted by the next sync.
 
    收到 `<task-notification> status=completed` 時**立刻**依序執行：
 
-   1. **Read pi stdout** 摘要：BashOutput 讀完整 stdout，回報 artifacts list / `spectra validate` 結果
+   1. **Read pi stdout** 摘要：BashOutput 讀完整 stdout，回報 artifacts list / the guarded `validate` command 結果
 
-   2. **若 pi 仍 `spectra park` 了**（不該發生，draft prompt 已明令禁止）：先
-      `spectra unpark <change-name>` 把 artifacts 還原到 disk 才能繼續 cross-check
+   2. **若 pi 仍 the guarded `park` lifecycle command 了**（不該發生，draft prompt 已明令禁止）：先
+      `node .cursor/scripts/spectra-target-guard.ts --change <change-name> -- unpark <change-name>` 把 artifacts 還原到 disk 才能繼續 cross-check
 
    3. **跑 post-propose-check.sh**（檢查 User Journeys / Affected Entity Matrix / Implementation Risk Plan / Design Review 7 步）：
 
@@ -184,9 +184,9 @@ Local edits will be reverted by the next sync.
        明確標為 out of scope，兩者都留痕跡；**NEVER** 靜默丟棄，**NEVER** 用繼承主線對話的
        fork 型 subagent。
 
-   7. **跑 `spectra analyze <change-name> --json`** 確認無 Critical/Warning（max 2 輪 fix loop，與 Step 9 邏輯相同）
+   7. **跑 `node .cursor/scripts/spectra-target-guard.ts --change <change-name> -- analyze <change-name> --json`** 確認無 Critical/Warning（max 2 輪 fix loop，與 Step 9 邏輯相同）
 
-   8. **`spectra validate <change-name>`** 確認 artifacts 結構合法
+   8. **`node .cursor/scripts/spectra-target-guard.ts --change <change-name> -- validate <change-name>`** 確認 artifacts 結構合法
 
    9. **commit artifacts 進 git** 後結束流程（**不 park**，見 Step 11）
 

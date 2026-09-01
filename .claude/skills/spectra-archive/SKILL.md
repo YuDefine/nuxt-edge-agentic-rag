@@ -18,7 +18,7 @@ Local edits will be reverted by the next sync.
 -->
 
 
-> **Spectra target guard (clade fork):** Every lifecycle command in this skill that names a change **MUST** run through `node scripts/spectra-target-guard.ts --change "<name>" -- <spectra args...>`. Main＋session worktree 同時持有 tracked artifacts 是正常狀態；path-bearing `instructions apply --json` 證明 current target，pathless `status --json` 在多候選時先跑該 proof；archive／park 等 destructive command 仍要求 unique candidate。任何 `TARGET_*`／`MUTATION_POSTCONDITION` 都是 hard STOP；preserve every candidate worktree，**NEVER** delete, move, or clean one to make the guard pass。A pass proves only this invocation's integration contract, not an upstream fix.
+> **Spectra target guard (clade fork):** Every executable Spectra command that names a change **MUST** run through `node .claude/scripts/spectra-target-guard.ts --change "<name>" -- <spectra args...>`. Existing targets pass only with path-bearing attestation anchored to the current git root; `new change` passes only with a current-root create postcondition. `TARGET_FOREIGN`, `TARGET_UNPROVEN`, `TARGET_MISSING`, or `MUTATION_POSTCONDITION` is a hard STOP. Preserve every candidate worktree and the failed mutation scene; **NEVER** delete, move, clean, or mirror state to make the guard pass. Global `list`, `list --parked`, `search`, and `instructions --skill` calls remain raw because they do not target a change.
 
 Archive a completed change.
 
@@ -38,10 +38,10 @@ Before running archive, classify the change into one of four dispositions. Pick 
 
 | Disposition | Trigger | spec sync | manual review | CLI |
 |---|---|---|---|---|
-| **Park** | Change is **postponed but still planned**. Premise still valid. | — | — | `node scripts/spectra-target-guard.ts --change "<name>" -- park <name>` (NOT this skill) |
-| **Standard archive** | Implementation `[x]` complete + `## 人工檢查` `[x]` complete | applied | already done | `node scripts/spectra-target-guard.ts --change "<name>" -- archive <name>` (default flow) |
-| **Skip-archive (A)** | **Won't be implemented.** Premise dissolved (decision changed / concept removed / change became redundant). | **skipped** | **skipped** | `node scripts/spectra-target-guard.ts --change "<name>" -- archive <name> --mark-tasks-complete --skip-specs --no-validate -y` |
-| **In-main-done archive (B)** | Implementation `[x]` complete (built directly on main, no session worktree). Only `## 人工檢查` items remain unchecked. | applied | **skipped** | `node scripts/spectra-target-guard.ts --change "<name>" -- archive <name> --mark-tasks-complete --no-validate -y` |
+| **Park** | Change is **postponed but still planned**. Premise still valid. | — | — | `node .claude/scripts/spectra-target-guard.ts --change "<name>" -- park <name>` (NOT this skill) |
+| **Standard archive** | Implementation `[x]` complete + `## 人工檢查` `[x]` complete | applied | already done | `node .claude/scripts/spectra-target-guard.ts --change "<name>" -- archive <name>` (default flow) |
+| **Skip-archive (A)** | **Won't be implemented.** Premise dissolved (decision changed / concept removed / change became redundant). | **skipped** | **skipped** | `node .claude/scripts/spectra-target-guard.ts --change "<name>" -- archive <name> --mark-tasks-complete --skip-specs --no-validate -y` |
+| **In-main-done archive (B)** | Implementation `[x]` complete (built directly on main, no session worktree). Only `## 人工檢查` items remain unchecked. | applied | **skipped** | `node .claude/scripts/spectra-target-guard.ts --change "<name>" -- archive <name> --mark-tasks-complete --no-validate -y` |
 | **Apply-required (block)** | Non-`## 人工檢查` items still `[ ]` + change is still wanted. | — | — | **STOP** — run `/spectra-apply <name>` first, then re-classify |
 
 ### Hard rules
@@ -158,7 +158,7 @@ awk '/^## 人工檢查/{mr=1; next} /^## /{mr=0} !mr && /^- \[ \]/{print NR": "$
 
    #### Resume Dispatch Table (mid-flight)
 
-   讀 sidecar `.phase`（`node scripts/spectra-archive-sidecar.ts read <change-name>`）後 **MUST** 依 `references/resume.md` § Resume Dispatch Table 跳轉（merge-back / gate-check / spec-sync / screenshot-sweep / cleanup 各自 idempotent 重入）——**唯一例外 `phase=folder-mv` 是 STOP，manual fixup required**（`spectra archive` CLI 黑盒中斷，現實狀態未知，不可 retry）。
+   讀 sidecar `.phase`（`node scripts/spectra-archive-sidecar.ts read <change-name>`）後 **MUST** 依 `references/resume.md` § Resume Dispatch Table 跳轉（merge-back / gate-check / spec-sync / screenshot-sweep / cleanup 各自 idempotent 重入）——**唯一例外 `phase=folder-mv` 是 STOP，manual fixup required**（the guarded `archive` command CLI 黑盒中斷，現實狀態未知，不可 retry）。
 
    ### Discuss-deferred resume (legacy)
 
@@ -192,7 +192,7 @@ awk '/^## 人工檢查/{mr=1; next} /^## /{mr=0} !mr && /^- \[ \]/{print NR": "$
 
 2. **Check artifact completion status**
 
-   Run `node scripts/spectra-target-guard.ts --change "<name>" -- status --change "<name>" --json` to check artifact completion.
+   Run `node .claude/scripts/spectra-target-guard.ts --change "<name>" -- status --change "<name>" --json` to check artifact completion.
 
    Parse the JSON to understand:
    - `schemaName`: The workflow being used
@@ -343,7 +343,7 @@ awk '/^## 人工檢查/{mr=1; next} /^## /{mr=0} !mr && /^- \[ \]/{print NR": "$
    (spec snapshot, delta application, @trace injection, identity recording, vector indexing):
 
    ```bash
-   node scripts/spectra-target-guard.ts --change "<name>" -- archive <name>
+   node .claude/scripts/spectra-target-guard.ts --change "<name>" -- archive <name>
    ```
 
    **Optional flags:**
@@ -363,7 +363,7 @@ awk '/^## 人工檢查/{mr=1; next} /^## /{mr=0} !mr && /^- \[ \]/{print NR": "$
 
 6.5. **Sanitize the injected `@trace` lists (clade fork addition)**
 
-   `spectra archive` builds each `@trace` block's `code:` / `tests:` list from **the dirty files in the working tree at archive time**, not from the change's own diff. Two independent sources of pollution follow:
+   the guarded `archive` command builds each `@trace` block's `code:` / `tests:` list from **the dirty files in the working tree at archive time**, not from the change's own diff. Two independent sources of pollution follow:
 
    - The `spectra` CLI is a Windows binary running under wine; its git implementation cannot read the POSIX executable bit, so **every `100755` file in the index** is treated as mode-changed and swept in. <consumer-b> 2026-08-29 measured this at ~90% of the noise — one change's 111 entries contained 98 that were simply the repo's entire set of executable tracked files.
    - Any **other session's uncommitted work** present at archive time is counted as this change's dependency.
@@ -570,7 +570,7 @@ Target archive directory already exists.
 **Guardrails**
 
 - Always prompt for change selection if not provided
-- Use artifact graph (`node scripts/spectra-target-guard.ts --change "<name>" -- status --change "<name>" --json`) for completion checking
+- Use artifact graph (`node .claude/scripts/spectra-target-guard.ts --change "<name>" -- status --change "<name>" --json`) for completion checking
 - Don't block archive on warnings - just inform and confirm
 - Preserve .openspec.yaml when moving to archive (it moves with the directory)
 - Show clear summary of what happened

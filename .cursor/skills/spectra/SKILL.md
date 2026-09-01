@@ -12,6 +12,9 @@ Local edits will be reverted by the next sync.
 -->
 
 
+> **Spectra target guard (clade fork):** Every executable Spectra command that names a change **MUST** run through `node .cursor/scripts/spectra-target-guard.ts --change "<name>" -- <spectra args...>`. Existing targets pass only with path-bearing attestation anchored to the current git root; `new change` passes only with a current-root create postcondition. `TARGET_FOREIGN`, `TARGET_UNPROVEN`, `TARGET_MISSING`, or `MUTATION_POSTCONDITION` is a hard STOP. Preserve every candidate worktree and the failed mutation scene; **NEVER** delete, move, clean, or mirror state to make the guard pass. Global `list`, `list --parked`, `search`, and `instructions --skill` calls remain raw because they do not target a change.
+
+
 <!-- namespace-claim: spectra — 上游 Spectra 只出 spectra-* 子 skill，裸名懸空；clade 刻意用它當「自動判斷該叫哪一支」的入口。2026-08-27 曾與一支同名的手寫 spec 產生器撞名，見 _validate-manifests 的品牌真空名佔用檢查。 -->
 
 # Spectra Orchestrator
@@ -51,7 +54,7 @@ After the user picks, invoke the corresponding skill with the Skill tool.
 For each active change, run:
 
 ```bash
-spectra status --change "<name>" --json
+node .cursor/scripts/spectra-target-guard.ts --change "<name>" -- status --change "<name>" --json
 ```
 
 Summarize the state to the user:

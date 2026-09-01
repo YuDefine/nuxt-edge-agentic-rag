@@ -18,7 +18,7 @@ Local edits will be reverted by the next sync.
 -->
 
 
-> **Spectra target guard (clade fork):** Every lifecycle command in this skill that names a change **MUST** run through `node scripts/spectra-target-guard.ts --change "<name>" -- <spectra args...>`. Main＋session worktree 同時持有 tracked artifacts 是正常狀態：path-bearing `instructions apply --json` 證明 current target；pathless `status --json` 與受支援 mutation 在多候選時先跑該 proof；`unpark` 驗 zero-candidate → current-only restore。任何 `TARGET_*`／`MUTATION_POSTCONDITION` 都是 hard STOP；preserve every candidate worktree，**NEVER** delete, move, or clean one to make the guard pass。A pass proves only this invocation's integration contract, not an upstream fix.
+> **Spectra target guard (clade fork):** Every executable Spectra command that names a change **MUST** run through `node .claude/scripts/spectra-target-guard.ts --change "<name>" -- <spectra args...>`. Existing targets pass only with path-bearing attestation anchored to the current git root; `new change` passes only with a current-root create postcondition. `TARGET_FOREIGN`, `TARGET_UNPROVEN`, `TARGET_MISSING`, or `MUTATION_POSTCONDITION` is a hard STOP. Preserve every candidate worktree and the failed mutation scene; **NEVER** delete, move, clean, or mirror state to make the guard pass. Global `list`, `list --parked`, `search`, and `instructions --skill` calls remain raw because they do not target a change.
 
 Create a complete Spectra change proposal — from requirement to validated artifacts — in a single workflow.
 
@@ -74,7 +74,7 @@ Main worktree 的 staged / modified / untracked / unmerged **完全不影響**�
    選 A 後 **MUST** 完整讀 `references/dispatch-option-a.md` 並依序執行：
 
    - **Phase 0a**：解析 change name + requirement → 寫 draft prompt 檔（範本含 Plan-first / Phase Purity / Manual Review Kind Marker / Backend-only 規約 / FIXTURES sample / 語言遵循 / **NEVER park**）→ 背景 Pi dispatcher（max effort）→ notification-only watch（**NEVER** 短輪詢）。
-   - **Phase 0b**（收到 completed 通知**立刻**跑，step 1–10）：讀 stdout → `post-propose-check.sh` → `post-propose-manual-review-check.sh` → **Check 7 hard gate（`--check7-only` MUST exit 0 才續行，NEVER 跳過）** → `design-inject.sh` → 補 Design Review 7 步 → Manual Review Marker Hygiene（Rule 1–6，Rule 6 = 結構化 entry 落盤）→ 語言遵循 check → **掃 design.md Open Questions（非空 MUST 立刻 AskUserQuestion 逐題問，NEVER 自行假設答案）** → `spectra analyze` / `validate` → commit artifacts → 回報。
+   - **Phase 0b**（收到 completed 通知**立刻**跑，step 1–10）：讀 stdout → `post-propose-check.sh` → `post-propose-manual-review-check.sh` → **Check 7 hard gate（`--check7-only` MUST exit 0 才續行，NEVER 跳過）** → `design-inject.sh` → 補 Design Review 7 步 → Manual Review Marker Hygiene（Rule 1–6，Rule 6 = 結構化 entry 落盤）→ 語言遵循 check → **掃 design.md Open Questions（非空 MUST 立刻 AskUserQuestion 逐題問，NEVER 自行假設答案）** → the guarded `analyze` command / `validate` → commit artifacts → 回報。
    - 修補一律主線自己 Edit，**NEVER** 丟回 pi。
 
    ---
@@ -112,7 +112,7 @@ Main worktree 的 staged / modified / untracked / unmerged **完全不影響**�
 
    四題全部「本需求不適用」時 MUST 逐題寫出為什麼不適用，**NEVER** 整段略過不留痕跡。
 
-   **Part 2 — Post-draft QA 視角 agent（spec deltas 寫完、`spectra validate` 之前）**
+   **Part 2 — Post-draft QA 視角 agent（spec deltas 寫完、the guarded `validate` command 之前）**
 
    派**一個** fresh-context subagent，任務只有一個：對草稿 spec 問「那如果⋯⋯呢」。
 
@@ -146,7 +146,7 @@ Main worktree 的 staged / modified / untracked / unmerged **完全不影響**�
    **選項 B 專屬 NEVER**：
 
    - **NEVER** 把 Phase B-0a 的 draft prompt（`-draft-prompt.md`）與 Phase B-0b 的 review prompt（`-review-prompt.md`）混用 — draft 會寫檔，review 只出 findings、禁止改檔
-   - **NEVER** 在 Phase B-0b 派 Pi review 前，讓 artifacts 處於 parked 狀態（artifacts 在 SQLite blob、不在 disk，Pi 讀不到）。正常流程不會 park；若 draft 違規 park 了，先跑 `node scripts/spectra-target-guard.ts --change "<name>" -- unpark "<name>"`
+   - **NEVER** 在 Phase B-0b 派 Pi review 前，讓 artifacts 處於 parked 狀態（artifacts 在 SQLite blob、不在 disk，Pi 讀不到）。正常流程不會 park；若 draft 違規 park 了，先跑 `node .claude/scripts/spectra-target-guard.ts --change "<name>" -- unpark "<name>"`
    - **NEVER** 讓 Pi review 階段改檔 — review prompt 必含「禁止 Edit / Write、只輸出 findings」；實際修補由主線 Phase B-0c 做
 
    **選 A / B 時本 session 不再執行任何 Step 1 ~ 11**（避免雙重生產）— Step 0 結束本 skill。
@@ -177,7 +177,7 @@ Main worktree 的 staged / modified / untracked / unmerged **完全不影響**�
    - If context is insufficient, use the **AskUserQuestion tool** to ask what they want to build
 
    From the resolved description, derive a kebab-case change name (e.g., "add dark mode" → `add-dark-mode`).
-   Do not keep archive-style date prefixes in active change names. If the source name starts with `YYYY-MM-DD-`, strip that date prefix before running `spectra new change`; archived change names and directories are historical references, not active names to reuse.
+   Do not keep archive-style date prefixes in active change names. If the source name starts with `YYYY-MM-DD-`, strip that date prefix before running the guarded `new change` command; archived change names and directories are historical references, not active names to reuse.
 
    **IMPORTANT**: Do NOT proceed without understanding what the user wants to build.
 
@@ -209,7 +209,7 @@ Main worktree 的 staged / modified / untracked / unmerged **完全不影響**�
 4. **Create the change directory**
 
    ```bash
-   spectra new change "<name>" --agent claude
+   node .claude/scripts/spectra-target-guard.ts --change "<name>" -- new change "<name>" --agent claude
    ```
 
    If a change with that name already exists, suggest continuing the existing change instead of creating a new one.
@@ -225,13 +225,13 @@ Main worktree 的 staged / modified / untracked / unmerged **完全不影響**�
    Get instructions:
 
    ```bash
-   node scripts/spectra-target-guard.ts --change "<name>" -- instructions proposal --change "<name>" --json
+   node .claude/scripts/spectra-target-guard.ts --change "<name>" -- instructions proposal --change "<name>" --json
    ```
 
    Generate the proposal content based on change type (see formats below), then write it via CLI:
 
    ```bash
-   spectra new artifact proposal --change "<name>" --stdin <<'ARTIFACT_EOF'
+   node .claude/scripts/spectra-target-guard.ts --change "<name>" -- new artifact proposal --change "<name>" --stdin <<'ARTIFACT_EOF'
    <proposal content>
    ARTIFACT_EOF
    ```
@@ -365,7 +365,7 @@ Main worktree 的 staged / modified / untracked / unmerged **完全不影響**�
 6. **Get the artifact build order**
 
    ```bash
-   node scripts/spectra-target-guard.ts --change "<name>" -- status --change "<name>" --json
+   node .claude/scripts/spectra-target-guard.ts --change "<name>" -- status --change "<name>" --json
    ```
 
    Parse the JSON to get:
@@ -380,7 +380,7 @@ Main worktree 的 staged / modified / untracked / unmerged **完全不影響**�
    - **Check if the artifact is optional**: If the artifact is NOT in the dependency chain of any `applyRequires` artifact (i.e., removing it would not block reaching apply), it is optional. Get its instructions and read the `instruction` field. If the instruction contains conditional criteria (e.g., "create only if any apply"), evaluate whether any criteria apply to this change based on the proposal content. If none apply, skip the artifact and show: "⊘ Skipped <artifact-id> (not needed for this change)". Then continue to the next artifact.
    - Get instructions:
      ```bash
-     node scripts/spectra-target-guard.ts --change "<name>" -- instructions <artifact-id> --change "<name>" --json
+     node .claude/scripts/spectra-target-guard.ts --change "<name>" -- instructions <artifact-id> --change "<name>" --json
      ```
    - The instructions JSON includes:
      - `context`: Project background (constraints for you - do NOT include in output)
@@ -400,7 +400,7 @@ Main worktree 的 staged / modified / untracked / unmerged **完全不影響**�
      For **design** or **tasks**:
 
      ```bash
-     spectra new artifact <artifact-id> --change "<name>" --stdin <<'ARTIFACT_EOF'
+     node .claude/scripts/spectra-target-guard.ts --change "<name>" -- new artifact <artifact-id> --change "<name>" --stdin <<'ARTIFACT_EOF'
      <content>
      ARTIFACT_EOF
      ```
@@ -408,7 +408,7 @@ Main worktree 的 staged / modified / untracked / unmerged **完全不影響**�
      For **specs** (one command per capability):
 
      ```bash
-     spectra new artifact spec <capability-name> --change "<name>" --stdin <<'ARTIFACT_EOF'
+     node .claude/scripts/spectra-target-guard.ts --change "<name>" -- new artifact spec <capability-name> --change "<name>" --stdin <<'ARTIFACT_EOF'
      <delta spec content>
      ARTIFACT_EOF
      ```
@@ -418,7 +418,7 @@ Main worktree 的 staged / modified / untracked / unmerged **完全不影響**�
    - Show brief progress: "✓ Created <artifact-id>"
 
    b. **Continue until all `applyRequires` artifacts are complete**
-   - After creating each artifact, re-run `node scripts/spectra-target-guard.ts --change "<name>" -- status --change "<name>" --json`
+   - After creating each artifact, re-run `node .claude/scripts/spectra-target-guard.ts --change "<name>" -- status --change "<name>" --json`
    - Check if every artifact ID in `applyRequires` has `status: "done"`
    - Stop when all `applyRequires` artifacts are done
 
@@ -566,13 +566,13 @@ Main worktree 的 staged / modified / untracked / unmerged **完全不影響**�
    **NEVER** 靜默丟棄，**NEVER** 用繼承主線對話的 fork 型 subagent。
 
 9. **Analyze-Fix Loop** (max 2 iterations)
-   1. Run `spectra analyze <change-name> --json`
+   1. Run `node .claude/scripts/spectra-target-guard.ts --change <change-name> -- analyze <change-name> --json`
    2. Filter findings to **Critical and Warning only** (ignore Suggestion)
    3. If no Critical/Warning findings → show "Artifacts look consistent ✓" and proceed
    4. If Critical/Warning findings exist:
       a. Show: "Found N issue(s), fixing... (attempt M/2)"
       b. Fix each finding in the affected artifact
-      c. Re-run `spectra analyze <change-name> --json`
+      c. Re-run `node .claude/scripts/spectra-target-guard.ts --change <change-name> -- analyze <change-name> --json`
       d. Repeat up to 2 total iterations
    5. After 2 attempts, if findings remain:
       - Show remaining findings as a summary
@@ -581,7 +581,7 @@ Main worktree 的 staged / modified / untracked / unmerged **完全不影響**�
 10. **Validation**
 
     ```bash
-    node scripts/spectra-target-guard.ts --change "<name>" -- validate "<name>"
+    node .claude/scripts/spectra-target-guard.ts --change "<name>" -- validate "<name>"
     ```
 
     If validation fails, fix errors and re-validate.
@@ -609,7 +609,7 @@ Main worktree 的 staged / modified / untracked / unmerged **完全不影響**�
 
     Change 在 propose 完成後**維持 active**。Park 的成文契約是「future work pending」
     （per `spectra-archive/SKILL.md` Hard rules），與「剛 propose 完、apply worktree 已備妥、
-    下一步就是開工」是不同狀態；由 **user 在決定擱置某張 change 時顯式** `node scripts/spectra-target-guard.ts --change "<name>" -- park <name>`。
+    下一步就是開工」是不同狀態；由 **user 在決定擱置某張 change 時顯式** `node .claude/scripts/spectra-target-guard.ts --change "<name>" -- park <name>`。
 
     移除理由的完整論證見 decision doc：不 park 就沒有 unpark，整類 ghost-park 永久遺失在主路徑上消失。
 
@@ -670,7 +670,7 @@ Main worktree 的 staged / modified / untracked / unmerged **完全不影響**�
 
 **Artifact Creation Guidelines**
 
-- Follow the `instruction` field from `spectra instructions` for each artifact type
+- Follow the `instruction` field from guarded instructions output for each artifact type
 - Read dependency artifacts for context before creating new ones
 - Use `template` as the structure for your output file - fill in its sections
 - **IMPORTANT**: `context` and `rules` are constraints for YOU, not content for the file
