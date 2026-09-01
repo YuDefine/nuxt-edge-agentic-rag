@@ -30,6 +30,14 @@ import { join, resolve } from 'node:path'
 
 import type { QuestionPageRef } from '../review-gui.question-page.ts'
 import { readQuestionPageRef } from '../review-gui.question-page.ts'
+import {
+  OFF_REPO_SCHEMES,
+  REF_SCHEMES,
+  type RefScheme,
+  isOffRepoCarrier,
+  parseRef,
+  tasksRef,
+} from './carrier-ref.ts'
 import type { AcceptVerdict } from './decisions.ts'
 import { acceptVerdictOf, parseAcceptSpanId } from './decisions.ts'
 import type { DecisionLock, LockCandidate } from './emit.ts'
@@ -166,20 +174,11 @@ export function lookupDecision(spanId: string, repoRoot: string): DecisionLookup
  * resolves to nothing. That is a fact worth recording rather than a gap to be filled — it is the
  * one origin with no mechanical backstop possible.
  */
-export const REF_SCHEMES = ['notion', 'im', 'td', 'tasks', 'handoff'] as const
-export type RefScheme = (typeof REF_SCHEMES)[number]
-
-const SCHEME_RE = new RegExp(`^(${REF_SCHEMES.join('|')}):(.+)$`, 'u')
-
-/** Split `<scheme>:<id>`. A bare value (no known scheme) keeps its historical meaning: a path. */
-export function parseRef(ref: string | null): { scheme: RefScheme | null; id: string } | null {
-  if (!ref) return null
-  const trimmed = ref.trim()
-  if (!trimmed) return null
-  const m = SCHEME_RE.exec(trimmed)
-  if (!m) return { scheme: null, id: trimmed }
-  return { scheme: m[1] as RefScheme, id: m[2].trim() }
-}
+// Re-exported so the existing import surface keeps working: `flow.ts` imports these from here
+// statically and `wt-helper.ts` dynamically, and moving the definitions was a cycle fix, not an
+// API change.
+export { OFF_REPO_SCHEMES, REF_SCHEMES, isOffRepoCarrier, parseRef, tasksRef }
+export type { RefScheme }
 
 /**
  * Where an answer has to be written down so it survives this process — and, for the same reason
@@ -195,11 +194,15 @@ export function carrierPath(carrier: string | null, repoRoot: string): string | 
   if (!parsed) return null
   // Off-repo by definition: a Notion page and a chat message have no path, and inventing one
   // here would hand a caller a repo-relative path built from a customer-controlled string.
-  if (parsed.scheme === 'notion' || parsed.scheme === 'im') return null
+  // `chat` was named in this comment long before it was a scheme: until it joined REF_SCHEMES the
+  // whole `chat:<id>` string fell through to the path branch, so a decision parked on a chat turn
+  // resolved to `<repo>/chat:<id>` and reported carrier-missing forever — an off-repo carrier
+  // mis-rendered as a broken path (2026-09-01: span 1ec9fa75 sat 35h that way).
+  if (isOffRepoCarrier(carrier)) return null
   const trimmed = parsed.id
   if (/^TD-\d+$/u.test(trimmed)) return join(repoRoot, TD_REGISTER)
   const root = resolve(repoRoot)
-  const p = resolve(root, trimmed.split('#')[0])
+  const p = resolve(root, parsed.scheme === 'tasks' ? tasksRef(trimmed) : trimmed.split('#')[0])
   return p === root || p.startsWith(`${root}/`) ? p : null
 }
 

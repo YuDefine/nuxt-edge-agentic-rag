@@ -24,6 +24,7 @@
 // Every predicate below is a pure function of the folded spans plus `now`. There is no second
 // store, no bookkeeping file, and nothing to keep in sync.
 
+import { isOffRepoCarrier } from './carrier-ref.ts'
 import type { Span } from './spine.ts'
 import type { WhoRow } from './who.ts'
 
@@ -187,8 +188,14 @@ export const CLARIFICATION_REQUESTED_ACTION =
  */
 export const ANSWER_FILING_GRACE_MINUTES = 10
 
-export const ANSWER_NOT_FILED_ACTION =
-  '答案在 spine 上，但 carrier 上沒有它的決策紀錄段落——被覆寫或搬走了，讀那個檔的 agent 看不到答案。重新歸檔：node vendor/scripts/flow/flow.ts relend <span_id>'
+/**
+ * Takes the span id because the caller has it: a remediation printed with `<span_id>` still in it
+ * is not a command, it is a template, and the reader has to go find the value that the line right
+ * above it just truncated to 8 hex. Both halves of that failure shipped together, so the fix ships
+ * together too (2026-09-01).
+ */
+export const answerNotFiledAction = (spanId: string): string =>
+  `答案在 spine 上，但 carrier 上沒有它的決策紀錄段落——被覆寫或搬走了，讀那個檔的 agent 看不到答案。重新歸檔：node vendor/scripts/flow/flow.ts relend ${spanId}`
 
 export const AWAITING_ATTENDED_ACTION =
   "blocked and nothing followed — this is the awaiting-attended state; an attended session has to pick it up. If it was already settled another way, say so instead of leaving it here: node vendor/scripts/flow/flow.ts dismiss <span_id> --reason '<why it no longer needs anyone>'"
@@ -385,7 +392,12 @@ export function renderStalls(stalls: Stall[]): string {
   for (const s of stalls) {
     const hours = (s.age_minutes / 60).toFixed(1)
     lines.push(
-      `${s.shape}  ${s.substrate}:${s.kind}${s.label ? ` [${s.label}]` : ''}  ${hours}h  ${s.work_id}  ${s.span_id.slice(0, 8)}`,
+      // Full span id, never an abbreviation: the action line below is meant to be pasted, and
+      // `lookupDecision` matches the span id exactly. An 8-hex prefix reads like an identifier
+      // and fails as one — every relend copied off this display returned no-such-decision, which
+      // is why seven answer-not-filed decisions sat here for up to 124h with a correct-looking
+      // remediation printed under each of them (2026-09-01).
+      `${s.shape}  ${s.substrate}:${s.kind}${s.label ? ` [${s.label}]` : ''}  ${hours}h  ${s.work_id}  ${s.span_id}`,
     )
     lines.push(`    → ${s.action}`)
   }
@@ -503,6 +515,11 @@ export function findUnfiledAnswerStalls(
     if (filed.has(span.span_id)) continue
     const carrier = span.payload?.carrier
     if (typeof carrier !== 'string' || carrier.length === 0) continue
+    // The doc above says a decision with no carrier is not reported. An off-repo carrier is that
+    // same case wearing a non-empty string: `chat:`/`notion:`/`im:` name somewhere real that no
+    // path can address, so "the file lost the block" is not a claim that can be made about them,
+    // and `relend` — the action this shape prints — cannot act on them either.
+    if (isOffRepoCarrier(carrier)) continue
     const age = ageMinutes(span.end_ts, now)
     if (age === null || age < graceMinutes) continue
     stalls.push({
@@ -517,7 +534,7 @@ export function findUnfiledAnswerStalls(
       label: labelOf(span),
       pane_id: null,
       dispatch_id: null,
-      action: `${ANSWER_NOT_FILED_ACTION} （落點 ${carrier}）`,
+      action: `${answerNotFiledAction(span.span_id)} （落點 ${carrier}）`,
     })
   }
   return stalls
