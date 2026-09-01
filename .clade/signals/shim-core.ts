@@ -29,14 +29,15 @@ const CLADE_ROOT = resolve(__dirname, '..', '..')
 
 const STDERR_CAPTURE_BYTES = 2048
 
-function findRealBinary(name, shimAbsPath) {
+function findRealBinary(name, shimAbsPath, preferredBin = null) {
   const shimDir = resolve(dirname(shimAbsPath))
-  const pathDirs = (process.env.PATH ?? '').split(':')
-  for (const dir of pathDirs) {
-    if (!dir) continue
-    const dirAbs = resolve(dir)
-    if (dirAbs === shimDir) continue
-    const candidate = join(dirAbs, name)
+  const pathCandidates = (process.env.PATH ?? '')
+    .split(':')
+    .filter(Boolean)
+    .filter((dir) => resolve(dir) !== shimDir)
+    .map((dir) => join(resolve(dir), name))
+  for (const candidate of [preferredBin, ...pathCandidates]) {
+    if (!candidate) continue
     try {
       const st = statSync(candidate)
       if (st.isFile() && st.mode & 0o111) {
@@ -183,9 +184,9 @@ function classifyGate(binName, args) {
   return 'other'
 }
 
-function passthroughExec(binName, shimAbsPath) {
+function passthroughExec(binName, shimAbsPath, preferredBin) {
   const args = process.argv.slice(2)
-  const realBin = findRealBinary(binName, shimAbsPath)
+  const realBin = findRealBinary(binName, shimAbsPath, preferredBin)
   if (!realBin) {
     process.stderr.write(`[clade improvement-loop] real ${binName} not found; aborting\n`)
     process.exit(127)
@@ -194,13 +195,13 @@ function passthroughExec(binName, shimAbsPath) {
   child.on('exit', (code, sig) => process.exit(code ?? (sig ? 128 : 0)))
 }
 
-export async function runShim({ binName, shimAbsPath, source = 'shim' }) {
+export async function runShim({ binName, shimAbsPath, preferredBin, source = 'shim' }) {
   if (process.env.CLADE_IMPROVEMENT_LOOP_OFF === '1') {
-    passthroughExec(binName, shimAbsPath)
+    passthroughExec(binName, shimAbsPath, preferredBin)
     return
   }
   const args = process.argv.slice(2)
-  const realBin = findRealBinary(binName, shimAbsPath)
+  const realBin = findRealBinary(binName, shimAbsPath, preferredBin)
   if (!realBin) {
     process.stderr.write(`[clade improvement-loop] real ${binName} not found in PATH; aborting\n`)
     process.exit(127)

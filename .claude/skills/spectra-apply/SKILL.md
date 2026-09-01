@@ -439,6 +439,14 @@ If there is no AskUserQuestion tool available, present options as plain text and
      This command marks the checkbox in tasks.md AND records which files were modified for this task.
 
      The guard snapshots current `tasks.md` and every registered worktree's `.spectra/touched/<change>.json` before delegation. Success requires the requested checkbox to flip `[ ] → [x]` in the current root, the current touched sidecar to record that task, and every foreign snapshot to remain unchanged. `MUTATION_POSTCONDITION` is a hard STOP; **NEVER** mirror-flip a checkbox, copy foreign state, or modify Spectra SQLite after a failed proof.
+
+     **Interrupted `task done` recovery（唯一合法路徑）**：先確認 current worktree 的具名 checkbox 已是 `[x]`，再依 current touched sidecar 對該 ordinal 的 record 數量執行 guard recovery；**NEVER** 直接呼叫 closed-source `spectra`：
+
+     - 恰有 1 筆 record（checkbox + sidecar 都已 partial mutate）→ `node scripts/spectra-target-guard.ts --change "<name>" -- task recover-done <task-id>`
+     - 恰有 0 筆 record（只有 checkbox 被翻轉）→ `node scripts/spectra-target-guard.ts --change "<name>" -- task recover-done --checkbox-only <task-id>`
+     - malformed / wrong-change sidecar、record 數量不是對應模式、checkbox 未勾、或任何 `RECOVERY_*` error → hard STOP；**NEVER** 改用另一模式試撞、手動翻 checkbox、手動補／刪／複製 sidecar、修改 Spectra SQLite、從 focus 推 target，或動 foreign worktree
+
+     Recovery 成功只把該 task 恢復成可重跑 bookkeeping 的狀態；重新執行 guarded `task done` 前，該 task 的真實 product diff **MUST** 重新成為 current working-tree diff，讓 touched-file recording 能觀察到它。用 git-history-safe 的 scoped uncommit／重建方式恢復真實 diff；**NEVER** 做 no-op semantic edit 欺騙 touched recording。
    - Continue to next task
 
    **Parallel task dispatch**: When consecutive `[P]`-marked tasks are found and `parallel_tasks: true` is configured (see Step 5), dispatch them as parallel agents in a single message. If any `[P]` task fails, pause and report.
