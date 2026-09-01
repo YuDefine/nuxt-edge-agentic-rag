@@ -447,6 +447,17 @@ If there is no AskUserQuestion tool available, present options as plain text and
      - malformed / wrong-change sidecar、record 數量不是對應模式、checkbox 未勾、或任何 `RECOVERY_*` error → hard STOP；**NEVER** 改用另一模式試撞、手動翻 checkbox、手動補／刪／複製 sidecar、修改 Spectra SQLite、從 focus 推 target，或動 foreign worktree
 
      Recovery 成功只把該 task 恢復成可重跑 bookkeeping 的狀態；重新執行 guarded `task done` 前，該 task 的真實 product diff **MUST** 重新成為 current working-tree diff，讓 touched-file recording 能觀察到它。用 git-history-safe 的 scoped uncommit／重建方式恢復真實 diff；**NEVER** 做 no-op semantic edit 欺騙 touched recording。
+
+     **Verification-only completion（唯一例外）**：若 task 只驗證已完成的 product paths、沒有自己的新 product diff，而且 guarded `task done` 已以 `MUTATION_POSTCONDITION` 明確證明「checkbox 有翻轉但 current sidecar 沒有新增 requested task record」並完成 rollback，才可改用 wrapper-owned completion：
+
+     ```bash
+     node scripts/spectra-target-guard.ts --change "<name>" -- \
+       task verify-done --change "<name>" <numeric-ordinal> --verification-only \
+       --evidence-path <already-attributed-path> [--evidence-path <path> ...] -- \
+       <verification-command> [args...]
+     ```
+
+     這條路徑要求 current worktree clean、task 尚未勾選、驗證命令（executable 取 basename）逐字匹配 task 描述中的反引號 command、每個 evidence path 都是 current worktree 內的 tracked file 且已由**其他** task 的 touched record 歸屬、命令直接執行（不經 shell）並 exit 0，且不得改動 worktree、evidence files、tasks 或任何 registered worktree sidecar；全部通過後才原子勾選 task 並追加標準 `{task_id, task_desc, files}` record。任一 `VERIFICATION_*` error 都是 hard STOP。**NEVER** 用於有未歸屬 product diff 的 implementation task、未先取得上述精確 `MUTATION_POSTCONDITION` 的 task、手改 checkbox／sidecar、或把任意 no-op command 當 evidence。
    - Continue to next task
 
    **Parallel task dispatch**: When consecutive `[P]`-marked tasks are found and `parallel_tasks: true` is configured (see Step 5), dispatch them as parallel agents in a single message. If any `[P]` task fails, pause and report.
