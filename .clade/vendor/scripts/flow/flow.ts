@@ -32,7 +32,8 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSy
 import { dirname, join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 
-import { findConsumerRoot } from '../claim-helper.ts'
+import { readRuntimeState } from '../ai-control-plane-runtime.ts'
+import { findConsumerRoot, gitToplevel } from '../claim-helper.ts'
 import { fleetRoots, syncDecisions, syncFleet } from './decision-sync.ts'
 import { syncWork, syncWorkFleet, type WorkSyncResult } from './work-sources.ts'
 import {
@@ -106,6 +107,7 @@ import {
 import type { Stall } from './stall.ts'
 import {
   DEFAULT_STALL_MINUTES,
+  findLeaseStalls,
   findOwnershipStalls,
   findStalls,
   findUnfiledAnswerStalls,
@@ -291,13 +293,15 @@ const USAGE = `Usage: flow <open|link|done|eta|accept|drop|park|ask|pending|answ
   viz timeline [<work_id>]        span waterfall for a work item (default: most recent)
   viz --md [<work_id>] [--out P]  write docs/flow/<work_id>.md (mermaid graph + gantt)
   viz --fleet [--waves N]         write docs/flow/fleet.md from the propagate ledger
-  brief [--pm] [--json]           the board: 待你 / 受阻 / 進行中 / 擱置 / 已收, under a hard
+  brief [--pm] [--json] [--all]   the board: 待你 / 受阻 / 進行中 / 擱置 / 已收, under a hard
         [--work-id W]             token budget. Without --work-id it is the session-opening
                                   overview; with one it is that work item's dossier (state, lane,
                                   origin, last 10 events, pending decisions, dispatch trail,
                                   session chain, stall + action). Same lane function /board reads.
                                   --pm re-groups the SAME lanes by origin for a PM/client
                                   reader: named work only, orphan activity counted not listed.
+                                  --all expands the pi-call fold: by default a pi dispatch's own
+                                  card is folded into a「N pi calls」chip on its parent's row.
   who [--json] [--transcripts]    one line per contended resource (dirty path / worktree /
                                   stash) with an owner verdict + a named action. Reads
                                   write-time evidence, not declared fields (TD-664).
@@ -1511,9 +1515,50 @@ function workingTreeStalls(spans: Span[]): Stall[] {
     .map((s) => s.span_id)
   return [
     ...findOwnershipStalls(buildWhoRows(root)),
+    // The WORKTREE, not the consumer root. `.clade/flow/` is per-worktree (emit resolves it with
+    // `gitTopLevel`) and an attempt hangs off a span, so its lease MUST be looked up beside the
+    // spine that holds that span. Reading it from `root` instead — which is what the git ownership
+    // rows above correctly use — silently reports zero leases from inside every linked worktree.
+    ...findRuntimeLeaseStalls(gitToplevel() ?? root),
     ...findUnfiledAnswerStalls(spans, spanIdsFiledInRepo(root, answered)),
   ]
 }
+
+/**
+ * Dead holders read from the runtime lease store (plan section 9.8).
+ *
+ * Fail-open, and quiet about it: a stall query that dies on an unreadable telemetry journal would
+ * report "nothing is stalled", which is the one answer it must never invent. Absent journal is the
+ * normal case in every repo that has never dispatched through the runtime, and it is not an error.
+ */
+function findRuntimeLeaseStalls(root: string): Stall[] {
+  try {
+    if (!existsSync(join(root, '.clade', 'ai-control-plane', 'runtime-events.jsonl'))) return []
+    const state = readRuntimeState(root)
+    const attempts = new Map(state.attempts.map((attempt) => [attempt.attempt_id, attempt]))
+    return findLeaseStalls(
+      state.leases.map((lease) => {
+        const attempt = attempts.get(lease.attempt_id)
+        return {
+          work_id: lease.work_id,
+          attempt_id: lease.attempt_id,
+          lease_id: lease.lease_id,
+          engine: attempt?.engine ?? 'runtime',
+          worker_id: lease.worker_id,
+          pane_id: attempt?.pane_id ?? null,
+          expires_at: lease.expires_at,
+          released_at: lease.released_at,
+          attempt_active: ACTIVE_LEASE_ATTEMPT.has(attempt?.state ?? ''),
+        }
+      }),
+    )
+  } catch {
+    return []
+  }
+}
+
+/** The attempt states the runtime itself counts as active (`ACTIVE_ATTEMPT` in the runtime). */
+const ACTIVE_LEASE_ATTEMPT = new Set(['leased', 'running', 'paused'])
 
 if (cmd === 'status') {
   const events = readEvents()
@@ -1665,7 +1710,10 @@ if (cmd === 'brief') {
     ...(process.env.CLADE_FLOW_EVENTS ? [] : workingTreeStalls(spans)),
   ]
   const workItems = buildWorkItems(spans)
-  const board = buildBoardLanes(workItems, stalls, spans)
+  // `--all` expands the pi-call fold (plan section 9.8 rule 4). Default folds: a dispatch is a
+  // delegation and gets its own card, and without the fold a work item that made twelve model
+  // calls would occupy thirteen rows on the one view whose whole contract is a token budget.
+  const board = buildBoardLanes(workItems, stalls, spans, { all: args.all === true })
 
   const workId = strFlag(args['work-id'])
   if (workId) {

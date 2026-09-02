@@ -417,6 +417,82 @@ export function renderStalls(stalls: Stall[]): string {
  */
 export const STASH_RESIDUE_MINUTES = 30
 
+/**
+ * One runtime lease, flattened to the fields a stall verdict needs.
+ *
+ * Deliberately structural rather than an import of `RuntimeLease`: this module is pure — every
+ * predicate in it is a function of its arguments and `now`, with no store behind it — and taking a
+ * type from the 4k-line runtime would put a dependency edge here that exists only to be read.
+ */
+export interface LeaseRow {
+  work_id: string
+  attempt_id: string
+  lease_id: string
+  /** `pi:<model>` / `herdr:<launcher>` — printed so the action names what died. */
+  engine: string
+  worker_id: string
+  pane_id: string | null
+  expires_at: string
+  released_at: string | null
+  /** True while the attempt is still one the runtime considers active (leased/running/paused). */
+  attempt_active: boolean
+}
+
+/**
+ * Dead holders, read from the runtime lease (plan section 9.8).
+ *
+ * PREFERRED over the process probe, not a replacement for it. `findOwnershipStalls` answers the
+ * same question for a dirty working-tree path by asking whether its writer's process still exists;
+ * a lease answers it for a dispatch, and answers it better: a killed dispatch leaves a lease that
+ * simply stops being renewed, which is observable without probing anything and stays observable
+ * after the machine reboots. Where no lease exists — every dispatch made before this wiring, and
+ * every substrate that has none — the probe remains the only answer, and it is untouched.
+ *
+ * An expired lease on a still-active attempt is the whole predicate. NEVER add "and no process is
+ * alive" to it: the lease IS the liveness claim, and a second condition would mean a dispatch whose
+ * process was reaped by something the probe cannot see stays invisible — the exact failure the
+ * lease was introduced to remove.
+ */
+export function findLeaseStalls(
+  leases: LeaseRow[],
+  { now = Date.now() }: { now?: number } = {},
+): Stall[] {
+  const stalls: Stall[] = []
+  for (const lease of leases) {
+    if (lease.released_at !== null || !lease.attempt_active) continue
+    const expiresAt = Date.parse(lease.expires_at)
+    if (!Number.isFinite(expiresAt) || expiresAt > now) continue
+    stalls.push({
+      shape: 'dead-holder',
+      span_id: `lease:${lease.lease_id}`,
+      work_id: lease.work_id,
+      substrate: lease.engine,
+      kind: 'runtime-lease',
+      actor: lease.worker_id,
+      age_minutes: Math.floor((now - expiresAt) / 60_000),
+      since: lease.expires_at,
+      label: lease.attempt_id,
+      pane_id: lease.pane_id,
+      // A lease is not a dispatch record — it names the attempt, and the dispatch id lives on the
+      // span. Explicit null, NEVER the attempt id wearing the other field's name.
+      dispatch_id: null,
+      // No reconcile command is named on purpose: `reconcileRuntimeOrphans` is a library entry with
+      // no CLI in front of it, and pointing at one that does not exist is worse than pointing at
+      // nothing. Adjudicating the work is the action a reader can actually take.
+      // Two engines, two adjudications, and the difference is whether anything renews the lease.
+      // A pi lease is held BY the pi process and dies with it, so an expired one is a dead holder
+      // outright. A Herdr lease has no renewal at all (plan section 9.8 rule 7): the dispatcher
+      // exits once the pane is up and nothing heartbeats after that, so expiry proves the clock
+      // ran out — never that the pane is gone. Telling a reader to terminalize a session that is
+      // still working would be the reverse of NEVER 盲等 and just as expensive.
+      action: lease.engine.startsWith('herdr:')
+        ? `runtime lease expired on a Herdr dispatch holding ${lease.work_id} (attempt ${lease.attempt_id}). A Herdr lease has no renewal, so expiry is the clock running out, NOT proof the pane died: check pane liveness first (herdr agent list / node vendor/scripts/herdr-patrol.ts). Alive → it is still working, leave it; gone → NEVER 盲等, establish what that work did and terminalize it`
+        : `runtime lease expired and was never released — the dispatch holding ${lease.work_id} is gone (attempt ${lease.attempt_id}). NEVER 盲等: establish what that work did and terminalize it`,
+    })
+  }
+  return stalls
+}
+
 export function findOwnershipStalls(
   rows: WhoRow[],
   {
