@@ -63,7 +63,7 @@
     "rules/self-hosted-runner.md": "eb6cbd5ae8492c53",
     "rules/service-url-locality.md": "abd01a78e829754b",
     "rules/session-claims.md": "bf03a4b35a407417",
-    "rules/session-tasks.md": "292746ca290c0824",
+    "rules/session-tasks.md": "d671266d92838025",
     "rules/session-tasks.operations.md": "6853b2902ce9129e",
     "rules/shared-file-concurrent-write.md": "c10f861818c9e2a5",
     "rules/shell-script-safety.md": "579e8f8685b55ca0",
