@@ -15,6 +15,11 @@ import { basename, dirname, join, relative } from 'node:path'
 
 import { atomicWriteText } from './lib/atomic-file.ts'
 import {
+  assertBindingCommittedIfGoverned,
+  controlPlaneIntentPath,
+  toOpenSpecAlias,
+} from './ai-control-plane-profile.ts'
+import {
   endSpan,
   markWorkDone,
   openWork,
@@ -69,7 +74,12 @@ export interface NormalizedOpsxChange {
   artifact_type: 'normalized.change'
   schema_version: 1
   change_id: string
-  source_profile: 'opsx-v2'
+  /**
+   * Provenance, not authority. `spectra-v1` appears only on the read path
+   * (`readWorkflowChange`); every writer in this module still requires an `opsx-v2`
+   * assignment, so widening this does not widen who may write.
+   */
+  source_profile: 'spectra-v1' | 'opsx-v2'
   source_revision: string
   source_digest: Digest
   intent_revision: number
@@ -84,6 +94,64 @@ export interface OpsxChangeSource {
   profile_assignment: Record<string, any>
   native_artifacts: Array<Record<string, any>>
   normalized_change?: Record<string, any>
+}
+
+/**
+ * A change that is still owned by Spectra. Its artifacts are preserved verbatim under
+ * `legacy_artifacts` and pinned by `preserved_evidence_digest`, so normalization is a pure
+ * read: nothing rewrites a legacy change in place, and the legacy reader stays available
+ * until every Spectra-owned change is archived (retirement gate 8).
+ */
+export interface SpectraLegacySource {
+  profile_assignment: Record<string, any>
+  legacy_source: {
+    artifact_root: string
+    preserved_evidence_digest: Digest
+    legacy_artifacts: Array<Record<string, any>>
+  }
+  normalized_change?: Record<string, any>
+  projector_input?: Record<string, any>
+}
+
+export type WorkflowChangeSource = OpsxChangeSource | SpectraLegacySource
+
+/**
+ * One append-only entry in a change's intent revision ledger.
+ *
+ * The ledger lives beside the intent source but under its own directory so that it stays a
+ * machine-local fact: `.clade/ai-control-plane/intent/` is tracked canonical state (TD-849),
+ * and a revision ledger that grows on every read would not belong in that set.
+ */
+export interface IntentRevisionRecord {
+  artifact_type: 'intent.revision'
+  schema_version: 1
+  change_id: string
+  revision: number
+  intent_revision: number
+  source_digest: Digest
+  source_revision: string
+  recorded_at: string
+  previous_record_digest: Digest | null
+}
+
+export interface IntentArchiveResult {
+  changeId: string
+  sourcePath: string
+  preserved: true
+}
+
+/**
+ * The storage seam of §10.3. The filesystem/git implementation below is the reliable path;
+ * OpenSpec Stores beta would be a second implementation of the same five methods, proven
+ * equivalent by contract tests. Work, decision and evidence history never depends solely on
+ * a beta store — those ledgers stay in `.clade/ai-control-plane/`.
+ */
+export interface IntentStore {
+  create(source: WorkflowChangeSource): Promise<string>
+  read(changeId: string): { source: WorkflowChangeSource; normalized: NormalizedOpsxChange }
+  list(): string[]
+  profile(changeId: string): 'spectra-v1' | 'opsx-v2' | null
+  archive(changeId: string): IntentArchiveResult
 }
 
 export interface EvidenceReference {
@@ -362,6 +430,63 @@ export function readOpsxChange(
   }
 }
 
+/**
+ * Reduce any workflow source to the one shape the normalizer understands.
+ *
+ * A Spectra source is read *through* its preserved artifacts rather than re-derived: the
+ * digest pins exactly what was preserved, so a legacy change cannot drift under the reader.
+ * The synthesized assignment is a local value, never written anywhere — profile ownership
+ * still comes only from the committed intent binding.
+ */
+export function canonicalOpsxSource(source: WorkflowChangeSource): {
+  source: OpsxChangeSource
+  profile: 'spectra-v1' | 'opsx-v2'
+} {
+  const assignment = source.profile_assignment
+  if (assignment?.profile === 'opsx-v2') {
+    return { source: source as OpsxChangeSource, profile: 'opsx-v2' }
+  }
+  if (assignment?.profile !== 'spectra-v1' || !('legacy_source' in source)) {
+    throw new Error(`unsupported workflow profile: ${JSON.stringify(assignment?.profile)}`)
+  }
+  const legacy = (source as SpectraLegacySource).legacy_source
+  const preserved = requireDigest(
+    'legacy preserved_evidence_digest',
+    legacy.preserved_evidence_digest,
+  )
+  if (!Array.isArray(legacy.legacy_artifacts) || legacy.legacy_artifacts.length === 0) {
+    throw new Error('legacy normalization requires preserved legacy_artifacts')
+  }
+  if (sha256(canonical(legacy.legacy_artifacts)) !== preserved) {
+    throw new Error('legacy preserved evidence digest does not match legacy_artifacts')
+  }
+  return {
+    profile: 'spectra-v1',
+    source: {
+      profile_assignment: { ...assignment, profile: 'opsx-v2', source_digest: preserved },
+      native_artifacts: legacy.legacy_artifacts,
+    },
+  }
+}
+
+/**
+ * Workflow-neutral read (§10.2): legacy and OPSX changes normalize into the same canonical
+ * contract, differing only in the provenance recorded on `source_profile` / `source_revision`.
+ * Every projector and reader downstream of this function is profile-blind, which is what
+ * makes retirement gate 3 (equivalent projections) checkable rather than aspirational.
+ */
+export function readWorkflowChange(source: WorkflowChangeSource): NormalizedOpsxChange {
+  const canonicalSource = canonicalOpsxSource(source)
+  const normalized = readOpsxChange(canonicalSource.source)
+  if (canonicalSource.profile === 'opsx-v2') return normalized
+  const legacy = (source as SpectraLegacySource).legacy_source
+  return {
+    ...normalized,
+    source_profile: 'spectra-v1',
+    source_revision: `legacy:${legacy.artifact_root}:r${normalized.intent_revision}`,
+  }
+}
+
 export function readOpsxChangeFile(path: string): {
   source: OpsxChangeSource
   normalized: NormalizedOpsxChange
@@ -397,6 +522,11 @@ export function materializeWork(input: {
   now?: string | Date
 }): { work_id: string; span_id: string } {
   const normalized = readOpsxChange(input.source)
+  // Before `readEvents`, and so before `openWork` can mint a card: item 2's refusal covers the
+  // flow spine too (ruling (f)). Gating only at `ensureRuntimeWork` still refused the work, but
+  // left a `work.open` event behind — a card on `/board` with no runtime behind it, which is
+  // exactly the half-real state the refusal exists to prevent.
+  assertBindingCommittedIfGoverned(input.repoRoot, normalized.change_id)
   const plan = workPlan(input.source)
   const spec = plan.work_specs.find((candidate: any) => candidate.work_spec_id === input.workSpecId)
   if (!spec) throw new Error(`unknown work_spec_id: ${input.workSpecId}`)
@@ -1036,13 +1166,10 @@ export function reconcileAttemptFlowBoundary(
 }
 
 export function intentSourcePath(repoRoot: string, changeId: string): string {
-  return join(
-    repoRoot,
-    '.clade',
-    'ai-control-plane',
-    'intent',
-    `${requireId('change', changeId)}.json`,
-  )
+  // Delegates for real: the guard, the binding check and the projector must not be able to
+  // drift onto two different files. Identifier validation is this layer's own addition —
+  // the leaf deliberately accepts the looser runtime alphabet.
+  return controlPlaneIntentPath(repoRoot, requireId('change', changeId))
 }
 
 export async function persistOpsxChangeSource(
@@ -1070,6 +1197,169 @@ export function readPersistedOpsxChange(
   changeId: string,
 ): { source: OpsxChangeSource; normalized: NormalizedOpsxChange } {
   return readOpsxChangeFile(intentSourcePath(repoRoot, changeId))
+}
+
+/**
+ * Append-only intent revision ledger.
+ *
+ * Deliberately *not* under `.clade/ai-control-plane/intent/`: that directory is tracked
+ * canonical state (TD-849, §12.3), and a ledger that grows on every revision read would put
+ * machine-local churn into every consumer's git history.
+ */
+export function intentRevisionLedgerPath(repoRoot: string, changeId: string): string {
+  return join(
+    repoRoot,
+    '.clade',
+    'ai-control-plane',
+    'intent-revisions',
+    `${requireId('change', changeId)}.jsonl`,
+  )
+}
+
+export function readIntentRevisions(repoRoot: string, changeId: string): IntentRevisionRecord[] {
+  const path = intentRevisionLedgerPath(repoRoot, changeId)
+  if (!existsSync(path)) return []
+  return readFileSync(path, 'utf8')
+    .split('\n')
+    .filter(Boolean)
+    .map((line) => JSON.parse(line) as IntentRevisionRecord)
+}
+
+/**
+ * Record one intent revision. Chained by `previous_record_digest` so a truncated or
+ * reordered ledger is detectable; re-recording an identical revision is a no-op, which
+ * makes the writer safe to re-run after a crash.
+ */
+export function recordIntentRevision(input: {
+  repoRoot: string
+  source: WorkflowChangeSource
+  now?: string | Date
+}): IntentRevisionRecord {
+  const normalized = readWorkflowChange(input.source)
+  const existing = readIntentRevisions(input.repoRoot, normalized.change_id)
+  const sourceDigest = sha256(canonical(input.source))
+  const last = existing.at(-1) ?? null
+  if (last?.source_digest === sourceDigest) return last
+  const record: IntentRevisionRecord = {
+    artifact_type: 'intent.revision',
+    schema_version: 1,
+    change_id: normalized.change_id,
+    revision: existing.length + 1,
+    intent_revision: normalized.intent_revision,
+    source_digest: sourceDigest,
+    source_revision: normalized.source_revision,
+    recorded_at: new Date(input.now ?? Date.now()).toISOString(),
+    previous_record_digest: last ? sha256(canonical(last)) : null,
+  }
+  const path = intentRevisionLedgerPath(input.repoRoot, normalized.change_id)
+  mkdirSync(dirname(path), { recursive: true })
+  appendFileSync(path, `${JSON.stringify(record)}\n`)
+  return record
+}
+
+/**
+ * Where a change's generated artifacts live, for both profiles.
+ *
+ * For `opsx-v2` the answer is arithmetic — the alias is a total function of the change id
+ * (§10.6 naming amendment) — so there is no binding file to read, nothing to keep in sync,
+ * and no state that can disagree with the directory. For `spectra-v1` the legacy source
+ * carries its own `artifact_root`.
+ */
+export function resolveWorkflowProjectionBinding(
+  repoRoot: string,
+  source: WorkflowChangeSource,
+): { alias: string; artifactRoot: string; repositoryRelative: string } {
+  const assignment = source.profile_assignment
+  const alias =
+    assignment?.profile === 'spectra-v1'
+      ? basename(String((source as SpectraLegacySource).legacy_source.artifact_root))
+      : toOpenSpecAlias(requireId('change', assignment?.change_id))
+  if (!/^[A-Za-z0-9._-]+$/.test(alias) || alias === 'archive' || alias.includes('..')) {
+    throw new Error(`invalid workflow projection alias: ${JSON.stringify(alias)}`)
+  }
+  const repositoryRelative = join('openspec', 'changes', alias)
+  return { alias, artifactRoot: join(repoRoot, repositoryRelative), repositoryRelative }
+}
+
+/**
+ * Filesystem/git implementation of the intent store (§10.3).
+ *
+ * `create` is delegated to the bound OpenSpec adapter for `opsx-v2` because creation is not
+ * a file write — it is the binding commit of §10.6 item 2, and only the adapter knows how to
+ * make one. Everything else here is a read.
+ */
+export class FilesystemIntentStore implements IntentStore {
+  private readonly repoRoot: string
+  private readonly opsxAdapter: {
+    create(source: OpsxChangeSource): Promise<string>
+    archive(changeId: string): IntentArchiveResult
+  } | null
+
+  constructor(
+    repoRoot: string,
+    opsxAdapter: {
+      create(source: OpsxChangeSource): Promise<string>
+      archive(changeId: string): IntentArchiveResult
+    } | null = null,
+  ) {
+    this.repoRoot = repoRoot
+    this.opsxAdapter = opsxAdapter
+  }
+
+  async create(source: WorkflowChangeSource): Promise<string> {
+    const assignment = source.profile_assignment
+    if (assignment?.profile !== 'opsx-v2') {
+      throw new Error('the intent store creates opsx-v2 changes only; Spectra owns its own slugs')
+    }
+    if (!this.opsxAdapter) {
+      throw new Error('OPSX creation requires the bound OpenSpec adapter (binding commit)')
+    }
+    const expected = intentSourcePath(this.repoRoot, requireId('change', assignment.change_id))
+    const sourcePath = await this.opsxAdapter.create(source as OpsxChangeSource)
+    if (sourcePath !== expected) {
+      throw new Error('bound OPSX adapter returned a foreign intent source path')
+    }
+    return sourcePath
+  }
+
+  read(changeId: string): { source: WorkflowChangeSource; normalized: NormalizedOpsxChange } {
+    const path = intentSourcePath(this.repoRoot, changeId)
+    const source = JSON.parse(readFileSync(path, 'utf8')) as WorkflowChangeSource
+    return { source, normalized: readWorkflowChange(source) }
+  }
+
+  list(): string[] {
+    const root = join(this.repoRoot, '.clade', 'ai-control-plane', 'intent')
+    if (!existsSync(root)) return []
+    return readdirSync(root)
+      .filter((name) => name.endsWith('.json'))
+      .map((name) => name.slice(0, -'.json'.length))
+      .toSorted()
+  }
+
+  profile(changeId: string): 'spectra-v1' | 'opsx-v2' | null {
+    const path = intentSourcePath(this.repoRoot, changeId)
+    if (!existsSync(path)) return null
+    const source = JSON.parse(readFileSync(path, 'utf8')) as WorkflowChangeSource
+    const profile = source.profile_assignment?.profile
+    return profile === 'opsx-v2' || profile === 'spectra-v1' ? profile : null
+  }
+
+  archive(changeId: string): IntentArchiveResult {
+    const sourcePath = intentSourcePath(this.repoRoot, changeId)
+    if (!existsSync(sourcePath)) throw new Error(`intent source not found for ${changeId}`)
+    if (this.profile(changeId) !== 'opsx-v2') {
+      throw new Error('Spectra archive stays with Spectra during coexistence (§10.2)')
+    }
+    if (!this.opsxAdapter) throw new Error('OPSX archive requires the bound OpenSpec adapter')
+    const result = this.opsxAdapter.archive(changeId)
+    if (result.changeId !== changeId || result.sourcePath !== sourcePath || !result.preserved) {
+      throw new Error('bound OPSX adapter returned an invalid archive result')
+    }
+    // Archive never deletes canonical facts (§10.5): the intent source survives the move.
+    if (!existsSync(sourcePath)) throw new Error('archive removed the canonical intent source')
+    return result
+  }
 }
 
 export function evidenceLedgerPath(repoRoot: string): string {
@@ -2086,6 +2376,75 @@ export async function rebuildControlPlaneProjection(input: {
   })
 }
 
+/**
+ * Re-derive one change's `tasks.md` from the tracked intent source, without writing
+ * anything.
+ *
+ * Returns `unreconstructible` when the tracked facts are not there to rebuild from — that
+ * is the only case where a missing sidecar is still a violation, because then nothing in
+ * the repository explains where the generated file came from.
+ */
+function rebuildJudgementFromTrackedFacts(
+  repoRoot: string,
+  alias: string,
+  tasksPath: string,
+): { verdict: 'current' | 'drift' | 'unreconstructible'; reason: string } {
+  const changeId = readControlPlaneChangeId(tasksPath)
+  if (!changeId || !existsSync(intentSourcePath(repoRoot, changeId))) {
+    return { verdict: 'unreconstructible', reason: 'missing projection sidecar' }
+  }
+  try {
+    const persisted = readPersistedOpsxChange(repoRoot, changeId)
+    const bound = resolveWorkflowProjectionBinding(repoRoot, persisted.source).alias
+    if (bound !== alias) {
+      return {
+        verdict: 'unreconstructible',
+        reason: `intent source binds ${bound}, not the directory it was found in`,
+      }
+    }
+    const built = buildProjectorInput({
+      repoRoot,
+      source: persisted.source,
+      projectionCurrent: true,
+    })
+    const tasks = renderTasks(
+      {
+        profile: 'opsx-v2',
+        title: built.title,
+        change_id: built.normalized.change_id,
+        intent_revision: built.normalized.intent_revision,
+        source_digest: built.normalized.source_digest,
+        requirements: built.normalized.requirements,
+        work_records: built.projectorInput.work_records,
+        attempts: built.attempts,
+        runtime_topology: built.runtimeTopology,
+        evidence: built.evidence,
+        impact_matrix: built.impactMatrix,
+        human_gates: built.humanGates,
+        attention_cards: built.attentionCards,
+        feature_map_refs: built.featureMapRefs,
+        archive_readiness: built.archiveReadiness,
+      },
+      built.projectorInput.through_cursor,
+      built.projectorInput.facts_digest as Digest,
+    )
+    return sha256(tasks) === sha256(readFileSync(tasksPath, 'utf8'))
+      ? { verdict: 'current', reason: '' }
+      : { verdict: 'drift', reason: '' }
+  } catch (error) {
+    // The reason travels with the verdict, because the two unreconstructible cases are not
+    // the same problem and the operator's next move differs. "The tracked facts are not
+    // there" is a fresh clone missing its intent source; "the tracked facts refuse to
+    // normalize" is acceptance 4 — someone changed `workflow_profile` in a committed intent
+    // source. Reporting both as `missing projection sidecar` sent the second one looking for
+    // a file that was never the problem.
+    return {
+      verdict: 'unreconstructible',
+      reason: error instanceof Error ? error.message : 'canonical facts are unreconstructible',
+    }
+  }
+}
+
 export function validateControlPlaneProjections(
   repoRoot: string,
 ): Array<{ path: string; reason: string }> {
@@ -2107,7 +2466,19 @@ export function validateControlPlaneProjections(
       continue
     }
     if (!projection) {
-      violations.push({ path: relative(repoRoot, tasksPath), reason: 'missing projection sidecar' })
+      // Fresh clone: the sidecar lives under ignored machine-local state, while the intent
+      // source and the change directory are tracked (TD-849). Judging on the sidecar's
+      // absence would fail every clone of a healthy repository, so rebuild from the tracked
+      // facts and compare against the committed `tasks.md` instead.
+      const rebuilt = rebuildJudgementFromTrackedFacts(repoRoot, entry.name, tasksPath)
+      if (rebuilt.verdict === 'unreconstructible') {
+        violations.push({ path: relative(repoRoot, tasksPath), reason: rebuilt.reason })
+      } else if (rebuilt.verdict === 'drift') {
+        violations.push({
+          path: relative(repoRoot, tasksPath),
+          reason: 'generated projection differs from canonical facts; rebuild required',
+        })
+      }
     } else if (!projection.archive_readiness.predicates.projection_cursors_current) {
       violations.push({
         path: relative(repoRoot, tasksPath),
