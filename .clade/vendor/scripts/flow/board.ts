@@ -83,6 +83,23 @@ export interface ChildProgress {
 }
 
 /**
+ * The pi calls made under one work item, as one chip instead of N rows (plan section 9.8 rule 4).
+ *
+ * A pi dispatch is a delegation and gets its own card (rule 1) — the runtime's one-work-one-lease
+ * invariant leaves no other honest place to record it. But a card per model call would put a row
+ * on the board for every tool invocation, which is the objection rule 1 overruled rather than
+ * answered. It is answered HERE: the child is folded onto its parent's row and counted.
+ *
+ * `failed` is carried separately because it is the only half a reader acts on. 「12 pi calls」 is
+ * background; 「12 pi calls, 5 failed」 is a routing problem — and a chip that reported only the
+ * total would hide the failures behind the very fold that was supposed to hide only the noise.
+ */
+export interface PiCallChip {
+  total: number
+  failed: number
+}
+
+/**
  * One child's output, kept under that child's own name.
  *
  * THE `work_id`/`title` PAIR IS THE POINT. A parent's output view that flattened every child's
@@ -235,6 +252,12 @@ export interface BoardCard {
   /** Null when this work item has no children at all — NEVER a zeroed record, which reads as「有子卡但都沒動」. */
   children: ChildProgress | null
   /**
+   * The folded pi calls under this card. Null when there are none, and null on every card when the
+   * board was built with `all: true` — there the calls have their own rows, and a chip counting
+   * rows the reader can already see would report the same fact twice.
+   */
+  pi_calls: PiCallChip | null
+  /**
    * What the direct children produced, kept apart from `artifacts`. Null when there are no children,
    * for the same reason `children` is: an empty record reads as「有子卡但什麼都沒交付」.
    */
@@ -337,6 +360,11 @@ export interface Board {
 }
 
 const HIDDEN_RECENT_DAYS = 7
+
+/** One work item's stalls. Used before `stallsByWork` exists — the fold decides who renders. */
+function stallsFor(stalls: readonly Stall[], workId: string): Stall[] {
+  return stalls.filter((s) => s.work_id === workId)
+}
 
 function ageMinutes(ts: string | null | undefined, now: number): number {
   if (!ts) return 0
@@ -655,6 +683,40 @@ function num(v: unknown): number | null {
 }
 
 /**
+ * The pi-call fold: which work items disappear into a chip, and what each parent's chip says.
+ *
+ * One function for both halves on purpose. They are two views of a single decision, and computing
+ * them apart is how a board ends up folding a row away without counting it anywhere — the failure
+ * this whole rule exists to prevent, arriving through the fix for it.
+ *
+ * `eligibleParents` is the set of work ids the caller will actually RENDER. Both halves of the
+ * predicate are required: `origin_kind === 'pi'` alone would fold a call whose parent lives in
+ * another repo's spine, was never opened, or sits below the entry threshold — and a folded child
+ * with no visible parent is a work item that vanishes, which is strictly worse than an extra row.
+ */
+export function piCallFold(
+  items: readonly WorkItem[],
+  eligibleParents: ReadonlySet<string>,
+): { folded: Set<string>; chips: Map<string, PiCallChip> } {
+  const folded = new Set<string>()
+  const chips = new Map<string, PiCallChip>()
+  for (const item of items) {
+    const parent = item.parent_work_id
+    if (item.origin_kind !== 'pi') continue
+    if (!parent || parent === item.work_id || !eligibleParents.has(parent)) continue
+    folded.add(item.work_id)
+    const held = chips.get(parent) ?? { total: 0, failed: 0 }
+    held.total += 1
+    // The child's own card state, not the attempt's: a pi call whose dispatch exited non-zero
+    // settles its work item as `failed`, and that is the state a reader would have seen had the
+    // row been rendered. Counting anything else would make the chip disagree with `--all`.
+    if (item.state === 'failed') held.failed += 1
+    chips.set(parent, held)
+  }
+  return { folded, chips }
+}
+
+/**
  * Direct children per parent, counted by the state the child's own card would show.
  *
  * Self-parenting is skipped rather than counted: `work.link` is last-write-wins, so `A → A` is a
@@ -757,6 +819,22 @@ export function childSummary(kids: ChildProgress): string {
   if (kids.blocked > 0) parts.push(`${kids.blocked} ${laneLabel('blocked')}`)
   if (kids.parked > 0) parts.push(`${kids.parked} ${laneLabel('parked')}`)
   return `子卡 ${kids.total} 件中 ${kids.closed} 件${laneLabel('closed')}${parts.length ? ` · ${parts.join(' · ')}` : ''}`
+}
+
+/**
+ * The folded pi calls, as the one clause the fold owes its reader (plan section 9.8 rule 4).
+ *
+ * `failed` is printed only when it is non-zero, and the total always. A chip that read
+ * 「3 pi calls, 0 failed」 would spend a clause saying nothing happened; one that dropped the
+ * failures to stay short would make the fold a way of hiding them.
+ *
+ * Lives here, beside `childSummary`, because BOTH renderers say it: `flow brief` on the agent side
+ * and `/board` on the human side. A second spelling in the page would let the two surfaces disagree
+ * about how many calls a card folded away — which is the fold's own failure mode, arriving through
+ * the fix for it.
+ */
+export function piCallSummary(chip: PiCallChip): string {
+  return `${chip.total} pi calls${chip.failed > 0 ? `, ${chip.failed} failed` : ''}`
 }
 
 /** A span that IS a dispatch: a pi/codex row (it carries the ledger join key) or a Herdr pane. */
@@ -966,6 +1044,7 @@ function makeCard(
   kids: ChildProgress | null,
   kidArts: ChildArtifacts | null,
   mySpans: readonly Span[],
+  piCalls: PiCallChip | null = null,
 ): BoardCard {
   const { lane, reason, action } = classify(item, stalls, pending, now, kids)
   return {
@@ -990,6 +1069,7 @@ function makeCard(
     eta: etaFor(item, baselines, now),
     parent_work_id: item.parent_work_id,
     children: kids,
+    pi_calls: piCalls,
     child_artifacts: kidArts,
     dispatches: dispatchesOf(mySpans),
     progress: progressOf(mySpans),
@@ -1017,15 +1097,26 @@ export function cardFor(
   // NEVER a silent blank, and NEVER a median over a population of one. The same argument carries
   // the child counts: a caller holding one work item sees `children: null`, which reads as「沒有
   // 子卡」 and is exactly right for the set it was handed.
+  // The dossier is asked for BY work id, so it renders the card even for a work item the board
+  // folds away — a reader who named a pi call has already said it is the thing they want to see.
+  // The chip is still computed, because a dossier of the PARENT should say how many calls it made.
+  const { folded, chips } = piCallFold(items, new Set(items.map((i) => i.work_id)))
+  // …and the child counts are computed over what is left AFTER the fold, exactly as
+  // `buildBoardLanes` does it. Counting the folded calls here too would report one delegation twice
+  // on one card — once as 「pi 呼叫 N 次」 and once inside 「子卡 N 件」 — and the dossier is the
+  // page where the two numbers sit closest together, so the double count is most visible and least
+  // explicable there. NEVER let these two populations drift apart: they are one decision.
+  const shown = folded.size === 0 ? items : items.filter((i) => !folded.has(i.work_id))
   return makeCard(
     item,
     mine,
     pending,
     now,
     durationBaselines(items),
-    childProgress(items).get(item.work_id) ?? null,
-    childArtifacts(items).get(item.work_id) ?? null,
+    childProgress(shown).get(item.work_id) ?? null,
+    childArtifacts(shown).get(item.work_id) ?? null,
     spans.filter((s) => s.work_id === item.work_id),
+    chips.get(item.work_id) ?? null,
   )
 }
 
@@ -1099,8 +1190,24 @@ export function buildBoardLanes(
   {
     now = Date.now(),
     hiddenRecentDays = HIDDEN_RECENT_DAYS,
-  }: { now?: number; hiddenRecentDays?: number } = {},
+    all = false,
+  }: { now?: number; hiddenRecentDays?: number; all?: boolean } = {},
 ): Board {
+  // Plan section 9.8 rule 4. Folded rather than hidden: `hidden` counts what the ENTRY THRESHOLD
+  // kept out, and a pi call is kept out by a different decision that the parent's chip states in
+  // full. Putting them in `hidden` would make「隱藏 N 件無名靜置活動」count named, attributed,
+  // fully accounted-for work.
+  const eligibleParents = new Set(
+    workItems
+      .filter((item) => passesEntryThreshold(item, stallsFor(stalls, item.work_id)))
+      .map((item) => item.work_id),
+  )
+  const { folded, chips } = all
+    ? { folded: new Set<string>(), chips: new Map<string, PiCallChip>() }
+    : piCallFold(workItems, eligibleParents)
+  // The child counts are computed over what the board is SHOWING. A folded pi call counted in both
+  // the chip and 「子卡 N 件」 would report one delegation twice, in two vocabularies, on one row.
+  const shown = folded.size === 0 ? workItems : workItems.filter((i) => !folded.has(i.work_id))
   const stallsByWork = new Map<string, Stall[]>()
   for (const s of stalls) {
     const held = stallsByWork.get(s.work_id) ?? []
@@ -1112,8 +1219,8 @@ export function buildBoardLanes(
   // recomputing it per card would make a 500-work board quadratic for an identical answer.
   const baselines = durationBaselines(workItems)
   // One pass each, for the same reason as the baselines: both are properties of the population.
-  const kidsByParent = childProgress(workItems)
-  const kidArtsByParent = childArtifacts(workItems)
+  const kidsByParent = childProgress(shown)
+  const kidArtsByParent = childArtifacts(shown)
   const spansByWork = new Map<string, Span[]>()
   for (const s of spans) {
     const held = spansByWork.get(s.work_id) ?? []
@@ -1138,6 +1245,7 @@ export function buildBoardLanes(
   }
 
   for (const item of workItems) {
+    if (folded.has(item.work_id)) continue
     const itemStalls = stallsByWork.get(item.work_id) ?? []
     if (!passesEntryThreshold(item, itemStalls)) {
       hidden.count += 1
@@ -1155,6 +1263,7 @@ export function buildBoardLanes(
       kidsByParent.get(item.work_id) ?? null,
       kidArtsByParent.get(item.work_id) ?? null,
       spansByWork.get(item.work_id) ?? [],
+      chips.get(item.work_id) ?? null,
     )
     byLane.get(card.lane)?.cards.push(card)
   }

@@ -20,6 +20,7 @@ import {
   type BoardLane,
   cardFor,
   laneLabel,
+  piCallSummary,
   shortOrigin,
 } from './board.ts'
 import { artifactsOf } from './nodes/lib/artifacts.ts'
@@ -84,9 +85,17 @@ const LISTED: BoardLane[] = ['awaiting-you', 'blocked', 'in-flight']
  */
 const TRIM_ORDER: BoardLane[] = ['closed', 'parked', 'in-flight', 'blocked', 'awaiting-you']
 
+/** The chip's leading separator is this renderer's; the words themselves are `board.ts`'s. */
+function piChip(card: BoardCard): string {
+  return card.pi_calls ? `  · ${piCallSummary(card.pi_calls)}` : ''
+}
+
 function cardLines(card: BoardCard, actionMax: number): string[] {
   const name = card.title ?? '(無名)'
-  const lines = [`  ${card.work_id}  ${name}  ${hours(card.age_minutes)}`, `      ${card.reason}`]
+  const lines = [
+    `  ${card.work_id}  ${name}  ${hours(card.age_minutes)}${piChip(card)}`,
+    `      ${card.reason}`,
+  ]
   if (card.action) lines.push(`      → ${clamp(card.action, actionMax)}`)
   return lines
 }
@@ -176,6 +185,9 @@ function compactCard(card: BoardCard) {
     title: card.title,
     state: card.state,
     origin_ref: card.origin_ref,
+    // Null on most cards, and null on EVERY card under `--all`. A JSON reader that never saw this
+    // field would have no way to tell a card with no pi calls from a board that expanded them.
+    pi_calls: card.pi_calls,
     reason: card.reason,
     action: card.action,
     age_minutes: card.age_minutes,
