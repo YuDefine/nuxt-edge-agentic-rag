@@ -47,7 +47,7 @@ Verify that an implementation matches the change artifacts (specs, tasks, design
    Include the schema used for each change if available.
    Mark changes with incomplete tasks as "(In Progress)".
 
-   **IMPORTANT**: Do NOT guess or auto-select a change. Always let the user choose.
+   Do NOT guess a change when more than one active change matches — 恰好一條時依 Claude fork context 自動選取，其餘情況把候選清單交回主線。
 
 2. **Check status to understand the schema**
 

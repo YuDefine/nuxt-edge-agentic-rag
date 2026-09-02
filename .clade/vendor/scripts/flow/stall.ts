@@ -25,6 +25,7 @@
 // store, no bookkeeping file, and nothing to keep in sync.
 
 import { isOffRepoCarrier } from './carrier-ref.ts'
+import type { PipelineRow } from './coordination.ts'
 import type { Span } from './spine.ts'
 import type { WhoRow } from './who.ts'
 
@@ -36,6 +37,9 @@ export type StallShape =
   | 'stash-residue'
   | 'clarification-requested'
   | 'answer-not-filed'
+  | 'pipeline-stalled'
+  | 'pipeline-handoff-open'
+  | 'pipeline-aborted'
 
 export interface Stall {
   shape: StallShape
@@ -614,4 +618,135 @@ export function findUnfiledAnswerStalls(
     })
   }
   return stalls
+}
+
+/**
+ * How long a publish may sit in one phase before it stops being "in progress".
+ *
+ * A whole publish (24 gates + bump + tag) runs in single-digit minutes; the slowest single phase
+ * measured is the gate pool at ~4 min. 30 min in one phase is not slow, it is stopped.
+ */
+export const PIPELINE_PHASE_STALL_MINUTES = 30
+
+/**
+ * How long the push↔propagate handover window may stay open.
+ *
+ * Deliberately the SAME threshold, and deliberately a separate constant: the two shapes are read by
+ * the same person for opposite reasons, and tuning one must not silently tune the other.
+ */
+export const PIPELINE_HANDOFF_STALL_MINUTES = 30
+
+/**
+ * Publish/propagate state, read from the coordination receipt.
+ *
+ * NEVER re-derive any of this from `pgrep`. The prose rule this replaces spends four paragraphs on
+ * why the process probe cannot answer the question — measured 2026-08-29, one publish run has three
+ * windows in which both processes are absent (queued, handing over, finished) and the probe returns
+ * 0 in all three. The journal separates them because it records what was DONE, not what is running:
+ *
+ *   - `in-flight` past the phase threshold → `pipeline-stalled`. A holder claimed the pipeline and
+ *     never wrote another entry. It names the phase, so the reader knows whether a tag exists.
+ *   - `handoff` past the handover threshold → `pipeline-handoff-open`. This is the window that ate
+ *     `4207a8fc`: the tag is new, both processes are gone, and a commit landing here rides out with
+ *     a release that no gate covered. A reader who checks the tag alone gets a green light here.
+ *   - `aborted` at ANY age → `pipeline-aborted`. No threshold, and that is the point: the other two
+ *     shapes wait because somebody might still be working, and an `aborted` receipt is the record
+ *     that nobody is. A killed publish leaves tag, version files and consumers possibly disagreeing,
+ *     and the next actor has to choose between resuming and writing it off — waiting 30 minutes to
+ *     say so only widens the window in which a commit lands on top of it.
+ *
+ * `settled` produces nothing, and a resource with no journal row produces nothing. Never having run
+ * and having finished are different facts; neither is a stall.
+ */
+export function findCoordinationStalls(
+  rows: PipelineRow[],
+  {
+    now = Date.now(),
+    phaseStallMinutes = PIPELINE_PHASE_STALL_MINUTES,
+    handoffStallMinutes = PIPELINE_HANDOFF_STALL_MINUTES,
+  }: { now?: number; phaseStallMinutes?: number; handoffStallMinutes?: number } = {},
+): Stall[] {
+  const stalls: Stall[] = []
+  for (const row of rows) {
+    const age = ageMinutes(row.since, now)
+    if (age === null) continue
+    const operation = row.operation ?? 'publish/propagate'
+    const phase = row.phase ?? '?'
+    if (row.state === 'in-flight' && age >= phaseStallMinutes) {
+      stalls.push({
+        shape: 'pipeline-stalled',
+        span_id: `coordination:${row.resource}`,
+        work_id: row.resource,
+        substrate: 'pipeline',
+        kind: operation,
+        actor: row.identity?.session ?? row.identity?.pane ?? 'unknown',
+        age_minutes: age,
+        since: row.since,
+        label: phase,
+        pane_id: row.identity?.pane ?? null,
+        dispatch_id: null,
+        action:
+          `${operation} claimed ${row.resource} and has written nothing since phase \`${phase}\` — ` +
+          `state comes from the receipt journal, NEVER from pgrep (a probe returns 0 for a queued, ` +
+          `a handing-over and a finished run alike). ` +
+          (row.identity?.pane
+            ? `Ask the holder: herdr agent read ${row.identity.pane}. `
+            : `Holder registered no Herdr pane (cron / CI / plain shell). `) +
+          `Then: node scripts/propagate.ts --status, and --takeover only after proving it is dead`,
+      })
+      continue
+    }
+    if (row.state === 'aborted') {
+      // The resume command is operation-specific because a wrong one is worse than none: publish is
+      // bump-last, so re-running it from the top is the resume; propagate has `--resume`, which
+      // skips only consumers it can VERIFY finished at this version.
+      const resume = (row.operation ?? '').startsWith('propagate')
+        ? 'node scripts/propagate.ts --resume'
+        : 'node scripts/publish.ts <bump>（bump-last：死在 bump 之前的那趟是 no-op，重跑安全）'
+      stalls.push({
+        shape: 'pipeline-aborted',
+        span_id: `coordination:${row.resource}`,
+        work_id: row.resource,
+        substrate: 'pipeline',
+        kind: operation,
+        actor: row.identity?.session ?? row.identity?.pane ?? 'unknown',
+        age_minutes: age,
+        since: row.since,
+        label: phase,
+        pane_id: row.identity?.pane ?? null,
+        dispatch_id: null,
+        action:
+          `${operation} 在 phase \`${phase}\` 中止（收到 aborted receipt），沒有人會接著跑。` +
+          `NEVER 把它讀成「跑完了」——中止的那一刻 tag / 版號檔 / consumer 三者可能互相對不上。` +
+          `二選一，兩條都靜音這一列，只有第二條在紀錄上留下決定：` +
+          `續跑 ${resume}；` +
+          `或寫掉 node scripts/propagate.ts --drop-pending --reason '<為什麼不會再跑>'`,
+      })
+      continue
+    }
+    if (row.state === 'handoff' && age >= handoffStallMinutes) {
+      stalls.push({
+        shape: 'pipeline-handoff-open',
+        span_id: `coordination:${row.resource}`,
+        work_id: row.resource,
+        substrate: 'pipeline',
+        kind: operation,
+        actor: row.identity?.session ?? row.identity?.pane ?? 'unknown',
+        age_minutes: age,
+        since: row.since,
+        label: row.awaiting ?? phase,
+        pane_id: row.identity?.pane ?? null,
+        dispatch_id: null,
+        action:
+          `${operation} finished at phase \`${phase}\` and the pipeline still owes ` +
+          `\`${row.awaiting ?? '?'}\` — the handover window is open, so a new tag exists while ` +
+          `nothing is running. NEVER read the fresh tag as "the run finished" and NEVER read the ` +
+          `absent process as "it aborted": both are true here. Finish it: ` +
+          `node scripts/propagate.ts — or, if it will never be finished, write that off on the ` +
+          `record: node scripts/propagate.ts --drop-pending --reason '<why>'. Both silence this ` +
+          `row; only the second one leaves evidence of the decision`,
+      })
+    }
+  }
+  return stalls.toSorted((a, b) => b.age_minutes - a.age_minutes)
 }

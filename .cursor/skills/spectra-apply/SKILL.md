@@ -339,7 +339,7 @@ If there is no AskUserQuestion tool available, present options as plain text and
 
    **C 類 phase dispatch 執行**：**每一個** C 類 phase 派工前 **MUST** 完整讀 `references/pi-phase-dispatch.md`——classifier execution 欄位、eligible Luna read-only prescan、shadow-only marker、共用 template／output schema、background Pi dispatcher invocation、Pi Watch Protocol，以及 notification 後的 **MUST checks**（commit boundary / view-layer drift double-check / scope cross-check / gate replay）。**NEVER** 憑記憶派工、退回 raw `codex exec`、自行覆寫 classifier 或跳過 post-notification checks；主線收報後 re-classify 下一個 phase。
 
-   6. After ALL C 類 phases complete → **本次 apply session 內 MUST 完成**所有 A、B 類 phases：**每一個 B 類 phase** 依 Step 6b 的 B 類派工形狀派 `--model grok-xai` 實作（瑣碎 UI 修照 Step 6b 主線直做），收回後主線跑 Step 6c / 6d；**A 類（Design Review）主線自己做**——**直接 invoke Skill tool** 跑 `/design improve`、`/impeccable audit`、`review-screenshot` 等 AI Agent first-class skill，完整跑完該 phase 所有 tasks 並標 `[x]`。
+   6. After ALL C 類 phases complete → **本次 apply session 內 MUST 完成**所有 A、B 類 phases：**每一個 B 類 phase** 由主線自己實作（形狀見 Step 6b B 類；瑣碎 UI 修同理），實作完主線跑 Step 6c / 6d；**A 類（Design Review）主線自己做**——**直接 invoke Skill tool** 跑 `/design improve`、`/impeccable audit`、`review-screenshot` 等 AI Agent first-class skill，完整跑完該 phase 所有 tasks 並標 `[x]`。
 
       **Hard rule — Design Review 內含完成義務**：
       - **MUST** 在 apply flow 內自行 invoke 並完成 Design Review phase 的全部工作（`/design improve` → `/impeccable audit` → screenshot），**不是**停下來告訴 user「接手 session 請跑 /design improve」
