@@ -14,6 +14,7 @@ import {
 } from 'node:fs'
 import { dirname, join } from 'node:path'
 
+import { assertBindingCommittedIfGoverned } from './ai-control-plane-profile.ts'
 import { redactPayload } from '../signals/redact.ts'
 
 export type RuntimeDigest = `sha256:${string}`
@@ -2370,6 +2371,14 @@ export function ensureRuntimeWork(input: {
 }): RuntimeWork {
   const workId = requirePattern('work_id', input.workId, WORK_ID)
   const changeId = requirePattern('change_id', input.changeId, CHANGE_ID)
+  // §10.6 item 2: a control-plane change whose binding is not durable refuses **every**
+  // adapter operation, `work.created` included — and this is that write entry. The check is
+  // here rather than in the adapter because this function is exported and directly callable;
+  // gating only the adapter would leave the journal reachable around the side of the gate.
+  //
+  // It runs before `mutateRuntime` on purpose: refusing must not take the journal lock, so a
+  // refusal cannot serialize behind, or interfere with, a healthy writer.
+  assertBindingCommittedIfGoverned(input.repoRoot, changeId)
   const recordedAt = iso(input.now)
   return mutateRuntime(input.repoRoot, (state) => {
     const authorizationAt = trustedAuthorizationTimestamp()

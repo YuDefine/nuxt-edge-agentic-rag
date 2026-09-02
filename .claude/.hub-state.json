@@ -3,7 +3,7 @@
   "rulesProjection": "symlink",
   "checksums": {
     "rules/agent-routing.keepalive-wake.md": "95b17852ec6bc4a0",
-    "rules/agent-routing.md": "ca5aa3fc70acfdaa",
+    "rules/agent-routing.md": "1e52bac9dd55c1b9",
     "rules/agent-routing.pi-input-intercept.md": "6f92e6911ba17440",
     "rules/agent-routing.pi-watch-protocol.md": "b09b9a49ec901d79",
     "rules/agent-routing.routing-table-rationale.md": "ea74107032baf401",
@@ -109,7 +109,7 @@
     "scripts/codex-review-safe.sh": "60aaf5cedd6b2ca3",
     "scripts/commit-lock.mjs": "30d29b2de28ec734",
     "scripts/gh-ci-watch.sh": "0f0d7dc8eff3d7cc",
-    "scripts/spectra-target-guard.ts": "e0fda59e9a84f6ff",
+    "scripts/spectra-target-guard.ts": "906146ba211a2b92",
     "skills/commit/SKILL.md": "211c2725c579bf25",
     "skills/commit/gates.md": "82dca72df01c72cb",
     "skills/commit/handoff-steps.md": "077debc06f18fbcd",
