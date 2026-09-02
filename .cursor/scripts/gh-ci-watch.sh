@@ -101,7 +101,7 @@ bump_err() { # $1 = context, $2 = raw output
 if [[ "$MODE" == "workflow" ]]; then
   # gh run list -c 只認**完整 40 碼 SHA**：傳縮寫 SHA 會靜默回空陣列（rc=0、不報錯），
   # 於是上面「查無 run = pending 繼續等」的設計把它當成 run 尚未建立，一路等到
-  # WATCH_TIMEOUT。2026-07-31 <consumer-i> 實證：`--commit e1738305`（8 碼）等滿 3600s 回
+  # WATCH_TIMEOUT。2026-07-31 <consumer-h> 實證：`--commit e1738305`（8 碼）等滿 3600s 回
   # run=unresolved，同一條 run 換完整 SHA 立刻查得到、而且早在 watcher 啟動後一分鐘
   # 內就 success。展不開就 fail fast，NEVER 讓 caller 白等一小時。
   # --tag 是 post-push 場景的正解：發版 tag 是**不可變的 ref**，指向你剛推的那個 commit。

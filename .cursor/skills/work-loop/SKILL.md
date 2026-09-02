@@ -297,7 +297,7 @@ fi
 
 **`notes` 的型別是 string，寫入方式是改寫、不是累加。** 它存的**只有**「下一輪仍然成立的 sandbox / 環境事實」——無外網、某個 CLI 缺 binary、某條路徑在本機解不到。每一輪都是把整段**重寫**成當下仍成立的版本：已經不成立的句子刪掉，新的事實寫進同一段散文。
 
-- **NEVER 把 `notes` 寫成 object**，也 **NEVER** 在它底下開 `notes.r<N>` / `notes.round42` 這類逐輪 key。實測（2026-08-12 round 59，<consumer-i> round=38）：object 型 `notes` 長到 **27787 B**，佔該 runtime 三個累積欄位的 88%；同期兩個 string 型 runtime 停在 1.3–1.7 KB，而其中一家的輪數還更高——驅動因素是**型別**不是輪數。object 形態讓「每輪 append 一個新 key」變成最省事的寫法，string 形態逼人改寫既有句子。
+- **NEVER 把 `notes` 寫成 object**，也 **NEVER** 在它底下開 `notes.r<N>` / `notes.round42` 這類逐輪 key。實測（2026-08-12 round 59，<consumer-h> round=38）：object 型 `notes` 長到 **27787 B**，佔該 runtime 三個累積欄位的 88%；同期兩個 string 型 runtime 停在 1.3–1.7 KB，而其中一家的輪數還更高——驅動因素是**型別**不是輪數。object 形態讓「每輪 append 一個新 key」變成最省事的寫法，string 形態逼人改寫既有句子。
 - **NEVER 拿 `notes` 記本輪發生過什麼**——那是 `sessionNote` 的職責，且它有 retention 接住。事件記進 `notes` 就永遠不會有人來刪，因為讀者分不出哪一條還成立。
 - **NEVER 記進 `notes` 留給下一輪處理**：本輪看到的收斂義務（§ Retention 的 `STATE_OVERSIZE`）**當輪**就要做掉。
 
@@ -397,7 +397,7 @@ predicate）、代號 NEVER 回收再用的理由、以及 runner child 為什�
 Foreground 路徑**不**寫 `inFlight`、不建 background task、也不 arm keepalive：結果已在同一 tool call
 回來，沒有未來 notification 可收割。**NEVER** 在 runner child 對 decision-linked dispatch 使用
 `run_in_background=true`——`claude --print` 回覆後 process 退出，background task ownership 隨之消失；
-2026-08-14 <consumer-i> round 46 的 log 只留下 `task ba6yk67mk`，state 停在 round 45。
+2026-08-14 <consumer-h> round 46 的 log 只留下 `task ba6yk67mk`，state 停在 round 45。
 
 ---
 
@@ -555,7 +555,7 @@ ELSE:
   → 走原 bucket routing
 ```
 
-**`bucket=ready` 不等於 user-bound；`bucket=applyBlocked` 不等於 Claude 無事可做**（impl 卡 blocker ≠ review items 也卡）。2026-07-21 <consumer-i> 實證：5 個 issued items 被 `ready` bucket 掩蓋，loop 宣告 user-bound 然後 30min idle，user 在 review-gui 等一個不會來的接手。**「所有 change 卡 user action」這句話在 `issued>0` 時就是錯誤判斷。**
+**`bucket=ready` 不等於 user-bound；`bucket=applyBlocked` 不等於 Claude 無事可做**（impl 卡 blocker ≠ review items 也卡）。2026-07-21 <consumer-h> 實證：5 個 issued items 被 `ready` bucket 掩蓋，loop 宣告 user-bound 然後 30min idle，user 在 review-gui 等一個不會來的接手。**「所有 change 卡 user action」這句話在 `issued>0` 時就是錯誤判斷。**
 
 ### 3.1b 非 spectra source — 分類表
 
@@ -766,7 +766,7 @@ node ~/offline/clade/vendor/scripts/work-loop-verdict.ts \
 讀 `productive` 一欄：`true` → 生產輪，`false` → 非生產輪，**`null` → script 判不出來**
 （缺基線 sha、`git diff` 失敗，或 P3 的憑證不在 diff 裡）。`null` **MUST** 當「未判定」處理：
 補齊缺的輸入重跑，或把 `p1`–`p4` 各自的 `basis` 逐字回報。**NEVER 把 `null` 讀成 `false`**——
-「判準沒涵蓋這個 repo」與「本輪沒交付」是兩件事，把前者當後者正是 2026-08-19 <consumer-i> r54 誤停的形狀。
+「判準沒涵蓋這個 repo」與「本輪沒交付」是兩件事，把前者當後者正是 2026-08-19 <consumer-h> r54 誤停的形狀。
 
 四條 predicate 的定義如下（**SoT 是 script**，本表是給人讀的說明；兩者不一致時以 script 為準並回報）：
 

@@ -3,7 +3,7 @@
 //
 // Single source of truth for `vite.config.ts` lint/fmt rules across:
 //   - clade itself
-//   - <consumer-i> / <consumer-b> / nuxt-edge-agentic-rag / <consumer-l> / <consumer-h>
+//   - <consumer-h> / <consumer-b> / nuxt-edge-agentic-rag / <consumer-k> / <consumer-g>
 //
 // Consumer usage:
 //
@@ -45,7 +45,7 @@
 //   `vp lint` / `vp fmt` 對「輸入路徑全被 ignore」回 **exit 1**，而投影層本來就在上面兩個
 //   ignorePatterns 內。所以只要 staged 檔裡有一個投影檔、而 hook 沒把它濾掉，整個
 //   pre-commit 就掛 —— 症狀是 `No files found to lint`，看起來像路徑打錯，不像被 ignore。
-//   手寫平行清單必然漂移：<consumer-h> 的 staged filter 排了 `.claude/skills/`
+//   手寫平行清單必然漂移：<consumer-g> 的 staged filter 排了 `.claude/skills/`
 //   `.agents/` `.codex/` 卻漏掉 `vendor/`，連續擋掉 clade v1.4.388 / v1.4.389 / v1.4.409
 //   三次交付（TD-310）。這裡的 `PROJECTION_EXCLUDES` 一改，所有讀它的 consumer 自動跟上。
 //
@@ -55,7 +55,7 @@
 // Why a preset (not inline rule duplication):
 //   `rules/core/code-style.md` § MUST documents these fields as required, but
 //   text-only governance does not lock structure — 5 consumers had drifted
-//   (trailingComma 'es5' vs 'all', missing categories/plugins on <consumer-l>, etc.).
+//   (trailingComma 'es5' vs 'all', missing categories/plugins on <consumer-k>, etc.).
 //   This preset turns the rule into an importable artifact; changing the
 //   baseline = edit this file in clade + propagate.
 
@@ -67,9 +67,9 @@
  * make; leaving it to each consumer means whichever consumer forgets to
  * re-inline the list gets a red CI it has no way to resolve locally.
  *
- * 2026-07-28: that is exactly how `<consumer-h>` Template CI broke on
+ * 2026-07-28: that is exactly how `<consumer-g>` Template CI broke on
  * `vp fmt --check` over `vendor/snippets/manual-review-enforcement/patterns.json`
- * — <consumer-j> and <consumer-f> had each independently patched `vendor/**`
+ * — <consumer-i> and co-purchase had each independently patched `vendor/**`
  * into their own vite.config.ts, which hid the gap instead of closing it.
  * `scripts/audit-governance-drift.ts` check 10 now fails on any config that
  * re-inlines one of these, so the next gap surfaces before a consumer does.
@@ -164,7 +164,7 @@ export function toRepoRelative(file: string): string {
  * 型別必須寫成 TS 註記，NEVER 只留 JSDoc `@param {string}`：本檔副檔名是 `.ts`，
  * JSDoc 型別只有 `.js` 檔（allowJs + checkJs）才會被採納。consumer 端跑
  * `noImplicitAny` 的 typecheck 時，未標註的參數一律 TS7006，投影過去就把對方的
- * pre-push 擋死（v1.11.86 實際擋住 <consumer-i>）。
+ * pre-push 擋死（v1.11.86 實際擋住 <consumer-h>）。
  *
  * @param file staged 檔路徑（相對或絕對皆可）
  */
@@ -183,7 +183,7 @@ export function isProjectionPath(file: string): boolean {
  * 為什麼一定要濾：`vp lint` / `vp fmt` 對「輸入路徑**全部**被 ignore」回 exit 1，訊息是
  * `No files found to lint`，長得像路徑打錯。而 `propagate.ts` 走
  * `git commit --only -- <clade-paths>`，它 commit 的**必然全是投影檔** —— 沒濾的 consumer
- * 每一趟 propagate 都站在觸發線上（2026-08-26 v1.11.84：<consumer-f> 整個 pre-commit 掛，
+ * 每一趟 propagate 都站在觸發線上（2026-08-26 v1.11.84：co-purchase 整個 pre-commit 掛，
  * propagate 回 failed，TD-670）。
  *
  * **NEVER 在這裡加 `'*.md'` 那一格**：`fmtBase.ignorePatterns` 含 `'**\/*.md'`，所以
@@ -250,11 +250,11 @@ export const lintBase = {
     // stylistic noise here. Explicit pin off prevents CI lint drift on oxlint
     // version bumps (same pattern as no-underscore-dangle below).
     'unicorn/consistent-function-scoping': 'off',
-    // <consumer-i> 2026-05-14: oxlint ^0.1.21 patch upgrade flipped this from warn→error.
+    // <consumer-h> 2026-05-14: oxlint ^0.1.21 patch upgrade flipped this from warn→error.
     // Explicit pin keeps `_serviceClient` / fixture private prefix conventions
     // from breaking CI lint gate on lockfile regen. `allow` covers:
     //   __dirname / __filename — Node ESM reconstructions (via fileURLToPath)
-    //   _serviceClient — Supabase admin-client private convention (<consumer-i> / <consumer-l>)
+    //   _serviceClient — Supabase admin-client private convention (<consumer-h> / <consumer-k>)
     //   _samples / _corrupt / _evlogFlushPromise — internal audit/digest fields
     //     in vendor/scripts/*, plugins/hub-core/scripts/commit-lock.mjs, and
     //     vendor/snippets/evlog-drain-pipeline/* (all propagate to consumers).

@@ -1159,7 +1159,7 @@ export function reviseDecisionEvent({
  * THE REASON THIS EXISTS: the spine is append-only, and a question's options live in the payload
  * of its `start` event. So when the thing that PRODUCED that payload is fixed — a parser that
  * could not read the bold shape the fleet actually writes — every question already on the queue
- * keeps the payload the broken parser wrote, forever. Measured 2026-08-27: <consumer-i>'s `TD-585` shows
+ * keeps the payload the broken parser wrote, forever. Measured 2026-08-27: <consumer-h>'s `TD-585` shows
  * zero options on `/decisions` while `HANDOFF.md` carries a clean A/B two feet away.
  *
  * The obvious repair is the forbidden one. `source_id` dedup is a DELIBERATE CONTRACT — a

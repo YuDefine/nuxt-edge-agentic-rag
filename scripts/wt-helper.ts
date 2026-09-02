@@ -266,7 +266,7 @@ function parseWorktreeList(porcelain) {
  * 「main checkout 不在 main 上」時分岔 —— 這是長命 feature branch（`feat/*`、release
  * branch、fork 的預設分支不叫 main）的常態，不是邊角。
  *
- * 實證（2026-08-22 <consumer-g>）：main checkout 在 `feat/self-host-evlog-admin`
+ * 實證（2026-08-22 <consumer-f>）：main checkout 在 `feat/self-host-evlog-admin`
  * （領先 `main` 16 個 commit），`wt-helper add` 從 stale `main` fork 出來的 worktree
  * 缺 `openspec/`、`app/`、`DESIGN.md` —— 而 merge-back 會 land 回 `feat/...`。
  * 症狀出現在 worktree 內（檔案不見了），根因在 fork 端，中間隔了整個 session。
@@ -663,7 +663,7 @@ function runOxfmtStdin(text, filePath, cwd) {
 // That leaves every worktree permanently showing ` M` on one of them,
 // which the pre-flight then reports as user WIP and refuses to merge-back on
 // — i.e. wt-helper's own bootstrap blocks wt-helper's own landing path
-// (<consumer-i> TD-252, hit by all 4 lanes on 2026-07-26).
+// (<consumer-h> TD-252, hit by all 4 lanes on 2026-07-26).
 //
 // It must NOT go through the auto-commit branch either: committing it would
 // carry `install` into main, silently flipping main's pnpm behaviour. Since
@@ -2172,7 +2172,7 @@ export function classifyUnmergedSafety(consumerRoot, conflicted) {
 // those paths and restores the prior index afterward. Crucially the bare
 // `git commit -m` previously used here committed the WHOLE index, so any
 // OTHER-session WIP already pre-staged in main's index got folded into the
-// pre-fork baseline commit (<consumer-i> per-client-module-isolation hit this: main's
+// pre-fork baseline commit (<consumer-h> per-client-module-isolation hit this: main's
 // index had badge-wt salary/overtime staged). `--only` isolates exactly
 // scopePaths, aligning with rules/core/commit.md «Ad-hoc commit 必走
 // git commit --only». Used by pre-fork baseline guard's `commit` strategy.
@@ -2317,7 +2317,7 @@ function detectUnlandedFiles(consumerRoot, branchName) {
 
   // 檔案集 MUST 取 `merge-base..branch`（branch **自己**改過的檔），NEVER 取
   // `main..branch`。後者是 main tip 與 branch tip 的兩點 diff —— branch 落後 main N 個
-  // commit 時，那 N 個 commit 動過的檔全部被算進來，而 branch 從沒碰過它們。實測 <consumer-i>
+  // commit 時，那 N 個 commit 動過的檔全部被算進來，而 branch 從沒碰過它們。實測 <consumer-h>
   // `app-drawer-form-footer`（behind 488 / ahead 1、自身只改 6 個檔）被報成 1900 個
   // 「內容不在 main」，其中 1894 個是 main 自己往前走的結果。
   //
@@ -2353,7 +2353,7 @@ function detectUnlandedFiles(consumerRoot, branchName) {
 //
 // 內容比對補不了這個洞：land 之後 main 通常還會再改（manual review fix、後續 commit），
 // 於是 branch 版本與 main 版本既非 byte-equal、三方合併也會在同一批行上衝突。2026-08-22
-// 於 <consumer-i> 實測兩條**已確認 land** 的 branch：`git merge-tree --write-tree` 兩條都非
+// 於 <consumer-h> 實測兩條**已確認 land** 的 branch：`git merge-tree --write-tree` 兩條都非
 // main^{tree}，逐檔三方吸收測試 14 個檔有 8 個 CONFLICT。「已 land」在 squash 之後是
 // **不可由內容反推**的，這不是實作不夠好，是資訊已經被 squash 丟掉了。
 //
@@ -3376,7 +3376,7 @@ async function cmdCleanup(slug, opts) {
   // merge-back breaks in half: cmdMergeBack squashes successfully, then calls cmdCleanup,
   // which still counts that file as uncommitted and refuses. Result is
   // "absorbed into main (cleanup skipped/failed)" on **every** lane, each needing a manual
-  // --force-discard-uncommitted to finish (<consumer-i>'s 4 lanes, 2026-07-26).
+  // --force-discard-uncommitted to finish (<consumer-h>'s 4 lanes, 2026-07-26).
   //
   // Only `modified` is filtered: isToolManagedDrift compares against HEAD, which an
   // untracked file has no version of.
@@ -3391,7 +3391,7 @@ async function cmdCleanup(slug, opts) {
   // merge-back 自己呼叫的 cleanup（它只傳 force + forceDiscardUnland，**沒有**傳
   // forceDiscardUncommitted）必然失敗，atomic 收尾再次斷成兩半 —— 正是上面 TD-252 那段
   // 註解所描述、且明寫「兩道 gate MUST agree」的同一個斷法，只是換成投影檔觸發。
-  // 2026-08-22 於 <consumer-i> 實測：20 個 session worktree 有 8 個的髒檔 100% 屬於這一類。
+  // 2026-08-22 於 <consumer-h> 實測：20 個 session worktree 有 8 個的髒檔 100% 屬於這一類。
   //
   // 豁免範圍嚴格等於 merge-back 的判準，**NEVER** 放寬成「髒檔一律豁免」：真 user WIP
   // （未 commit 的 openspec 提案、`.env*.example`、scratch script）照舊擋 —— 另外 12 個

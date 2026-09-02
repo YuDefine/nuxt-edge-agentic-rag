@@ -75,7 +75,7 @@ Local edits will be reverted by the next sync.
 
 ## Step 0c.5 — Main-side unpark + commit-to-git（理由、四步流程、failure handling）
 
-      **理由**：Spectra v3 的 guarded `park` lifecycle command 把 artifacts 從 disk 搬進 `.git/spectra-app/spectra.db` SQLite blob（**不在 git tracked file**）；後續 guarded `unpark` lifecycle command 會 restore artifacts 到 cwd 的 worktree disk 並把 SQLite parked 條目刪除。若 unpark 在 Claude Code `Agent` tool dispatched subagent 的 ephemeral cwd（`.claude/worktrees/agent-*/`，session 結束 GC）跑 → artifacts 寫進去就被 GC 清掉、SQLite 也沒了 → **永久遺失**（<consumer-f> 已撞，99 tasks + 5 specs + proposal 蒸發）。
+      **理由**：Spectra v3 的 guarded `park` lifecycle command 把 artifacts 從 disk 搬進 `.git/spectra-app/spectra.db` SQLite blob（**不在 git tracked file**）；後續 guarded `unpark` lifecycle command 會 restore artifacts 到 cwd 的 worktree disk 並把 SQLite parked 條目刪除。若 unpark 在 Claude Code `Agent` tool dispatched subagent 的 ephemeral cwd（`.claude/worktrees/agent-*/`，session 結束 GC）跑 → artifacts 寫進去就被 GC 清掉、SQLite 也沒了 → **永久遺失**（co-purchase 已撞，99 tasks + 5 specs + proposal 蒸發）。
 
       因此 **MUST** 在 dispatch subagent **之前**，由主線在 main worktree（**或** Step 0c 剛 fork 出的 session worktree — 兩者都是 persistent disk，非 ephemeral）跑 unpark + commit-to-git，artifacts 落 git tracked file，subagent fork 出去後天然帶過、不再依賴 SQLite blob。
 

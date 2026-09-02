@@ -282,7 +282,7 @@ function findLandedBlock(
  * anywhere at all". It MUST stay this function rather than a bare `text.includes(spanId)`: a span
  * id also appears in prose ABOUT a decision — a TD entry describing a bug, a HANDOFF line
  * narrating what was decided — and counting those as filed is how a lost answer reads as a safe
- * one. Measured on <consumer-i> `ee92949d75fa703c`: after the loss was written up by hand, a substring
+ * one. Measured on <consumer-h> `ee92949d75fa703c`: after the loss was written up by hand, a substring
  * search found the id in two files, neither of which held the answer.
  *
  * `ambiguous` counts as present. More than one copy is a different problem (the rewrite path
@@ -416,7 +416,7 @@ function replaceOnCarrier(
     // whole file from its own buffer while the answer was being given. Refusing here was the
     // ORIGINAL contract and it lost the answer silently: `ok:true`, `landed:false`, a `reason`
     // handed back to review-gui and read by nobody, while the agent the answer was for went on
-    // re-asking the same question. Measured 2026-08-29 on <consumer-i> span `ee92949d75fa703c` — answered
+    // re-asking the same question. Measured 2026-08-29 on <consumer-h> span `ee92949d75fa703c` — answered
     // once and revised twice, none of the three ever reached `HANDOFF.md`.
     //
     // Appending is NOT the guessing this file refuses elsewhere. `ambiguous` still refuses,

@@ -144,7 +144,7 @@ SKILL.md Step 6.3 留的是一句話對照表。**機械 SoT 是 `vendor/scripts
 | P4 | 新決策 packaging | `awaiting[]` 新增**先前未出現過的 id** 的完整條目（含 options）。**單輪 P4 至多貢獻一次**——三條 packaging 不等於三輪份的生產 |
 
 **P2 為什麼是排除集而不是路徑白名單**：白名單只可能列出寫規約那一刻手上那個 repo 的交付路徑。
-2026-08-19 <consumer-i> r54 實證——舊白名單逐字寫 `rules/core/`／`rules/modules/`／`vendor/`／
+2026-08-19 <consumer-h> r54 實證——舊白名單逐字寫 `rules/core/`／`rules/modules/`／`vendor/`／
 `plugins/hub-core/`／`scripts/`，那是 **clade 自己**的交付形狀；consumer 的交付落在 `packages/**`／
 `app/**`／`test/**`，**字面一條都不中**。那一輪關掉一條 TD（三條 HTTP 探測）並 land 一次 refactor
 （100 tests 全綠、已 merge-back），P1–P4 仍全部不成立 → `nonProductiveRounds` 進 2、整個 loop 停掉。

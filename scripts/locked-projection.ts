@@ -75,7 +75,7 @@ export const LOCKED_PROJECTION_RE = new RegExp(
       // Improvement-loop infra (.clade/)
       // `scripts` / `registry` 於 2026-08-24 補上（TD-639）：兩者都是 improvement-loop
       // 投影的整目錄（`.clade/scripts/` 五支 + `.clade/registry/consumers.json`），
-      // 抽查 <consumer-i> / <consumer-b> / <consumer-c> / <consumer-j> 四台，目錄內**沒有**任何 consumer
+      // 抽查 <consumer-h> / <consumer-b> / <consumer-c> / <consumer-i> 四台，目錄內**沒有**任何 consumer
       // 自家檔——與 `scripts/lib/` 那種混住的目錄不同，可以整目錄匹配。
       String.raw`\.clade/(bin|signals|vendor|scripts|registry)/`,
       // Vendored script entry points (scripts/)
@@ -88,7 +88,7 @@ export const LOCKED_PROJECTION_RE = new RegExp(
       String.raw`scripts/(spectra-advanced|pre-commit|pre-push|checks)/`,
       // Vendored helpers under scripts/lib/ — MUST stay an explicit filename list.
       // NEVER widen to `scripts/lib/`: consumers author their own files there
-      // (<consumer-i> `common.sh` / `read-infra-manifest.mjs`, <consumer-l> `vue-component-resolution.ts`),
+      // (<consumer-h> `common.sh` / `read-infra-manifest.mjs`, <consumer-k> `vue-component-resolution.ts`),
       // and matching the whole dir would mark those clade-managed → auto-reset clobbers them.
       String.raw`scripts/lib/(evidence-store|detect-runtime|wt-env-bootstrap-runner|dev-workspace|json-unknown|worktree-dev-port)\.(mjs|mts|ts)$`,
       // json-unknown.ts 第二條 dest：vendor/review-rules/scan.ts 以

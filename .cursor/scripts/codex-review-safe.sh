@@ -210,7 +210,7 @@ trap 'rm -rf "$WORK_DIR"' EXIT
 #
 # 不一致時**先歸因再判定**（2026-08-22）：原本的全樹二值比對讓 exit 6 在 consumer 上
 # 幾乎必然觸發 —— clade bootstrap 每 20–40 分鐘 auto-commit 一次投影層，一次 review 要
-# 5–15 分鐘，兩者必然賽跑。<consumer-i> 單一 session 六輪撞三次，三次的變更明細全部只有
+# 5–15 分鐘，兩者必然賽跑。<consumer-h> 單一 session 六輪撞三次，三次的變更明細全部只有
 # `.clade/` / `.claude/` / `scripts/wt-helper.ts` / `vendor/snippets/`，受審 changeset
 # 一個檔都沒被動到。每次都紅的檢查，讀的人學會的是重跑 —— gate 對真訊號失去鑑別力。
 #
@@ -316,7 +316,7 @@ fi
 # Generated / build-artifact 路徑。它們照樣在 changeset 裡（呼叫端接下來會 commit 它們），
 # 但**填 budget 的順序排在原始碼後面**。
 #
-# 2026-08-24 <consumer-f> 實測：`coverage/` 被納入版控，`vitest --coverage` 每跑一次就重寫
+# 2026-08-24 co-purchase 實測：`coverage/` 被納入版控，`vitest --coverage` 每跑一次就重寫
 # 整棵目錄，44 個 HTML 檔 5999 行剛好填滿 6000 行 budget —— 該次 review 一行產品程式碼都
 # 沒讀到，卻照樣輸出了一份外觀完全正常的 verdict。這是「證據無鑑別力」的教科書形態：
 # 通過與沒讀到在輸出上長得一樣。
@@ -324,7 +324,7 @@ fi
 # 兩件事一起修：(1) 原始碼先填 budget，產物撿剩下的；(2) 一個原始碼檔都沒嵌到就 fail-loud。
 #
 # clade 投影層（.claude/rules|skills|agents|commands）同樣排在原始碼後面：它們的源檔在
-# ~/offline/clade，在 consumer 端改了會被下次 sync 還原。2026-08-24 <consumer-f> 實測的
+# ~/offline/clade，在 consumer 端改了會被下次 sync 還原。2026-08-24 co-purchase 實測的
 # 兩條 finding 就落在投影層（TD-005），對 consumer 而言是不可執行的建議。
 GENERATED_RE='^(coverage|dist|build|\.output|\.nuxt|\.void|\.wrangler|node_modules)/|^[^ ]*/(coverage|dist|\.output|\.nuxt)/|^\.claude/(rules|skills|agents|commands)/|\.min\.(js|css)$|\.map$|(^|/)(pnpm-lock\.yaml|package-lock\.json|yarn\.lock)$'
 
