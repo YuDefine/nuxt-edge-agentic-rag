@@ -837,7 +837,7 @@ if (cmd === 'pending') {
       }
       /*
        * 這一桶原本只印 near-miss，於是 `belongs-on-review` 在它最常出現的地方是隱形的——
-       * 措施實例（<consumer-g> product-save-hardening）正是落在 `## 需要 Charles 執行`。
+       * 措施實例（<consumer-f> product-save-hardening）正是落在 `## 需要 Charles 執行`。
        * 退回的文字寄到 span 上沒有用，讀這一頁的人看不到 clarification note；要嘛印在這裡，
        * 要嘛這條 lint 對這一桶等於不存在。
        */

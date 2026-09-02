@@ -316,7 +316,7 @@ function beforeAnnotation(text: string): string {
  *
  * CLOSED is the shape the 2026-08-27 widening left half-read, and it failed WORSE than a refusal:
  * the letter matched, so the option was offered — with the bold's own closing `**` and the
- * separator still glued to the front of its text. Measured on <consumer-i>'s `HANDOFF.md` the same day,
+ * separator still glued to the front of its text. Measured on <consumer-h>'s `HANDOFF.md` the same day,
  * `- **A（推薦）**：保留區分…` rendered on the phone as `A. ：保留區分…（推薦）`. A refusal shows a
  * blank box and says so; this drew a button whose label started with a stray colon, and nothing
  * anywhere reported a problem. The `(?:\*\*)?` is the whole fix: the closing `**` may sit between
@@ -344,7 +344,7 @@ const OPTION_GAP_LIMIT = 6
  *
  * An option is one bullet, and a bullet whose text is longer than the editor's width arrives here
  * as several lines. Reading only the first one does not shorten the option — it CUTS it, mid
- * sentence, with no ellipsis and no signal: <consumer-i>'s `- **A（推薦）**：…改記到 TD-296 —— 折進去要動`
+ * sentence, with no ellipsis and no signal: <consumer-h>'s `- **A（推薦）**：…改記到 TD-296 —— 折進去要動`
  * ended there on the phone, and the clause that said what that costs was on the next line. Somebody
  * picking between two options is picking between the halves they were shown.
  *
@@ -689,13 +689,13 @@ function splitSections(text: string): Section[] {
  * folding it into `ruling` to paper over that (which is what `bucketOf` used to do) does not
  * remove the row, it relabels a standing pointer as a question waiting on Charles. 2026-08-27
  * measured: 15 of 40 rows in the live queue arrived this way, four whole sections' worth
- * (<consumer-i> `跨 repo（clade 規約洞，本 repo 不修）`, <consumer-b> `跨 repo`, <consumer-l> `跨 repo 待處理` and
+ * (<consumer-h> `跨 repo（clade 規約洞，本 repo 不修）`, <consumer-b> `跨 repo`, <consumer-k> `跨 repo 待處理` and
  * `跨 repo 已登記（不用再開）`), one of which was a section HEADING rendered as a question.
  *
  * `Blocked` yields nothing either, since 2026-08-28, for the same shape of reason.
  *
  * A Blocked section narrates WHY WORK IS STOPPED — its ball is, by the fleet's own convention,
- * not in the reader's hand. <consumer-i>'s review heading spells the convention out (`Ready for review
+ * not in the reader's hand. <consumer-h>'s review heading spells the convention out (`Ready for review
  *（球在 Charles 手上，非 agent 可推）`); Blocked is the *other* section. Measured 2026-08-28:
  * 9 of the 15 rows in the live 「不可逆／人類 gate」 bucket came off Blocked headings, and every
  * single one was a signal-wait (`維護期 cutover 日期（signal-wait）`, merge-backs waiting on a
@@ -745,7 +745,7 @@ const REVIEW_EPOCH = '@r2'
 /**
  * Status markers, which is how the fleet actually says "done" without a checkbox.
  *
- * <consumer-i>'s `HANDOFF.md` uses a coloured lamp on every bullet — `- 🟡 **…**` open, `- ✅ **…**`
+ * <consumer-h>'s `HANDOFF.md` uses a coloured lamp on every bullet — `- 🟡 **…**` open, `- ✅ **…**`
  * already ruled on — and never a checkbox. Reading only `- [ ]` there surfaces nothing at all
  * while the section is full of live items; reading every `- ` there re-asks nine questions
  * Charles has already answered, twice with the answer quoted in the bullet itself.
@@ -846,7 +846,7 @@ function openBullets(body: string): SectionItem[] {
 /**
  * `### ` sub-sections of a section, each one an item.
  *
- * <consumer-i> writes `## Blocked` as a container of `### 🟡 <one blocker>` and <consumer-b> writes
+ * <consumer-h> writes `## Blocked` as a container of `### 🟡 <one blocker>` and <consumer-b> writes
  * `## 🟢 Ready for review` the same way. A container heading is not a question; its children are.
  */
 function subSections(body: string): SectionItem[] {
@@ -888,8 +888,8 @@ function stripContainerPrefix(heading: string): string {
  * The live change slugs under `openspec/changes/`, archive excluded.
  *
  * Archive is excluded for the same reason `scanTasks` excludes it, and the exclusion is what
- * keeps the `deferred-user-only` route intact: <consumer-i>'s `#5 True-device verification` and
- * <consumer-g>'s iPad-Safari row both name an ARCHIVED change, and both legitimately belong on
+ * keeps the `deferred-user-only` route intact: <consumer-h>'s `#5 True-device verification` and
+ * <consumer-f>'s iPad-Safari row both name an ARCHIVED change, and both legitimately belong on
  * /decisions because /review has no surface for a change that is already closed.
  */
 function liveChangeNames(repoRoot: string): string[] {
@@ -937,7 +937,7 @@ function liveChangeNames(repoRoot: string): string[] {
  *
  * So the verdict is the same either way and the lint says one thing: fix the change, delete the
  * row. NEVER weaken this to "flag only when the change is already on the inbox" — the measured
- * instance (<consumer-g> `product-save-hardening`, 2026-08-28) was the second case, and it is the
+ * instance (<consumer-f> `product-save-hardening`, 2026-08-28) was the second case, and it is the
  * second case precisely BECAUSE the author could not get it onto /review.
  */
 function restatesManualReview(
@@ -949,7 +949,7 @@ function restatesManualReview(
    * Ground truth first, prose second.
    *
    * The prose test below asks whether the AUTHOR happened to type 「人工檢查」. That is a
-   * property of the writing, not of the change — and the four measured <consumer-i> rows (2026-08-29:
+   * property of the writing, not of the change — and the four measured <consumer-h> rows (2026-08-29:
    * `retire-legacy-employee-route-cluster`, `employee-backpay-request`,
    * `manager-my-approval-inbox`, `line-messaging-interaction`) all escaped it while naming a
    * change whose `tasks.md` still had every `[review:ui]` item unticked. All four were answered
@@ -1025,7 +1025,7 @@ export function scanHandoff(repoRoot: string): SourceItem[] {
     /**
      * Three shapes, tried in this order, and the FIRST one that yields anything wins.
      *
-     * Falling through after a shape produced items would double-ask: <consumer-i>'s `## Blocked` holds
+     * Falling through after a shape produced items would double-ask: <consumer-h>'s `## Blocked` holds
      * `### ` children that themselves contain bullets, and reading both levels files the same
      * blocker twice under two different ids — which then needs two answers to clear one thing.
      */
@@ -1041,7 +1041,7 @@ export function scanHandoff(repoRoot: string): SourceItem[] {
       // The `other-repo` exemption that used to sit here is GONE with the bucket. It let a bare
       // cross-repo heading become an item on the grounds that such a section is "a standing
       // pointer, never phrased as a question" — which is the reason to DROP it, not to admit it.
-      // What that exemption actually shipped was <consumer-l>'s `跨 repo 待處理（非本 repo，**NEVER** 在本
+      // What that exemption actually shipped was <consumer-k>'s `跨 repo 待處理（非本 repo，**NEVER** 在本
       // repo 改）` rendered as a question with a radio under it, asking Charles to rule on a
       // heading whose own text says the work is not here.
       const first = firstMeaningfulLine(section.body)
@@ -1062,7 +1062,7 @@ export function scanHandoff(repoRoot: string): SourceItem[] {
       //
       // …except when the verdict is not this surface's to take. A row that restates a live
       // change's manual review gets NO synthesised 通過／退回 pair: the pair is what let four
-      // <consumer-i> rows be closed with one tap while the browser checks they stood for stayed
+      // <consumer-h> rows be closed with one tap while the browser checks they stood for stayed
       // unticked. Without it the row stays visible (NEVER hidden — decision-authoring is
       // explicit that hiding finished work is worse than a row sitting there) but it renders
       // like any other option-less item, and the lint note says where the verdict actually
@@ -1243,7 +1243,7 @@ export function scanTasks(repoRoot: string): SourceItem[] {
     /**
      * Only the OUTERMOST deferred task, never its children.
      *
-     * The marker propagates down: <consumer-i>'s `#5 True-device verification` carries it and so does
+     * The marker propagates down: <consumer-h>'s `#5 True-device verification` carries it and so does
      * every one of its seventeen `#5.x` sub-steps, because they are all the same phone in the
      * same hand. Emitting each one turns a single "go verify on your phone" into seventeen queue
      * rows and seventeen push notifications for one errand.

@@ -45,7 +45,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CHECKS_DIR="$SCRIPT_DIR/checks"
 # PROJECT_ROOT 允許被 CLADE_PROJECT_ROOT 覆寫。meta-monorepo（app root 在子目錄，例如
-# <consumer-h> 的 template/）的 app root ≠ git toplevel，而各 check 的 auto-detect 是
+# <consumer-g> 的 template/）的 app root ≠ git toplevel，而各 check 的 auto-detect 是
 # 「找不到 nuxt.config 就 exit 0」，直接用 toplevel 會讓那幾道 check 全部靜默 no-op。
 # 未設 CLADE_PROJECT_ROOT 時行為與過去完全一致（既有 consumer 零影響）。
 #
@@ -95,7 +95,7 @@ done
 
 # --- path relevance（決定哪幾支 check 與本次 push 無關）-----------------------
 # 8 支 check 原本只靠 auto-detect nuxt.config.* 決定跑不跑，沒有一支看 diff 範圍：推一筆
-# 只動 docs/** 的 commit 照樣跑一次 full project typecheck ＋ 6 支全站 .vue 掃描。<consumer-i>
+# 只動 docs/** 的 commit 照樣跑一次 full project typecheck ＋ 6 支全站 .vue 掃描。<consumer-h>
 # 2026-08-29 實測：12 筆純文件 commit 分兩次 push，每次 >14 分鐘，而 diff 裡一個 .ts /
 # .vue 都沒有——那些 check 在結構上不可能有發現。
 #

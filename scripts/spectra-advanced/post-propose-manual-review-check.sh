@@ -214,14 +214,14 @@ group_block_for() {
 # grep the consumer's `.env*` for TUNNEL_HOSTNAME so the remediation carries the
 # concrete tunnel host the author should swap in. Different model from
 # run_page_display_check: this one can also SUPPRESS the hit when the consumer
-# has no tunnel configured (e.g. <consumer-l>) — return exit 1 → main loop
+# has no tunnel configured (e.g. <consumer-k>) — return exit 1 → main loop
 # `continue`s past the hit. Returns evidence string on stdout + exit 0 when the
 # hit should fire; exits 1 when the hit should be suppressed.
 run_tunnel_check() {
   local line="$1"
   local host=""
   local source_env=""
-  # Scan common env file names + any `.env.<app>` for multi-app consumers (<consumer-i>).
+  # Scan common env file names + any `.env.<app>` for multi-app consumers (<consumer-h>).
   local candidates=("$REPO_ROOT/.env.local" "$REPO_ROOT/.env" "$REPO_ROOT/.env.development" "$REPO_ROOT/.env.dev")
   while IFS= read -r ef; do
     candidates+=("$ef")
@@ -297,7 +297,7 @@ PATTERN_COUNT=$(jq '.patterns | length' "$PATTERNS_FILE")
 # The pattern loop below is patterns × lines. Doing the checkbox test, the
 # annotation strip, the bypass probe and the kind-marker extraction inside it
 # forked 4–5 subprocesses per (pattern, line) pair — ~5,000 forks for a
-# 92-line ## 人工檢查 block (<consumer-i> line-messaging-interaction: 41 s idle, past
+# 92-line ## 人工檢查 block (<consumer-h> line-messaging-interaction: 41 s idle, past
 # 120 s under manual-review-audit fan-out). Everything that depends only on the
 # line is computed here with bash builtins (plus one batched sed), and each
 # pattern then runs a single grep over the whole block.
@@ -491,7 +491,7 @@ for i in $(seq 0 $((PATTERN_COUNT - 1))); do
 
     # v1.6.0: UI_URL_LOCALHOST_WITH_TUNNEL_AVAILABLE — cross-file env check.
     # Suppress when consumer has no TUNNEL_HOSTNAME (legitimate localhost-only
-    # consumers like <consumer-l>); enrich when tunnel exists.
+    # consumers like <consumer-k>); enrich when tunnel exists.
     if [ "$CODE" = "UI_URL_LOCALHOST_WITH_TUNNEL_AVAILABLE" ]; then
       if ! tunnel_evidence=$(run_tunnel_check "$line"); then
         continue

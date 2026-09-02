@@ -3,7 +3,7 @@
 //
 // The spine records that a question was answered. It cannot record that the answer SURVIVED: the
 // landing writes a file, and a file on a shared working tree can be overwritten by the next
-// session that rewrites the same section from its own buffer. Measured 2026-08-29 on <consumer-i> span
+// session that rewrites the same section from its own buffer. Measured 2026-08-29 on <consumer-h> span
 // `ee92949d75fa703c` — answered once, revised twice, and `git log -S` over `HANDOFF.md` came back
 // empty for all three. The human found it by opening `/decisions` and not seeing his own answer.
 //
@@ -31,7 +31,7 @@ import { landedBlockPresent } from './answer.ts'
  *
  * Skipping the second stage was the first draft, and it was wrong in the direction that matters:
  * once a lost answer gets written up by hand — a TD entry quoting the span id, a HANDOFF line
- * narrating it — a substring search finds it and the loss reads as filed. Measured on <consumer-i>
+ * narrating it — a substring search finds it and the loss reads as filed. Measured on <consumer-h>
  * `ee92949d75fa703c`: two files named it, neither held the answer.
  *
  * `--untracked` is load-bearing too. The answer lands in the WORKING TREE and is committed later,

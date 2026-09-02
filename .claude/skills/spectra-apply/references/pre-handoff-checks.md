@@ -21,9 +21,9 @@ Defense in depth：primary catches 是 propose / ingest / archive；apply Step 8
 
 ---
 
-## Step 8a.6 — 理由（<consumer-i> app-status-badge-extraction 2026-05-24 實證）
+## Step 8a.6 — 理由（<consumer-h> app-status-badge-extraction 2026-05-24 實證）
 
-The user must not be the **first** to discover trivial UX/data defects in the GUI. <consumer-i> `app-status-badge-extraction`（2026-05-24）handed 9 fabricated `(verified-ui:)` annotations + an all-「-」員工 column straight to the user because nothing between Step 8a and the GUI re-checked the change. Step 8a.6 is that re-check.
+The user must not be the **first** to discover trivial UX/data defects in the GUI. <consumer-h> `app-status-badge-extraction`（2026-05-24）handed 9 fabricated `(verified-ui:)` annotations + an all-「-」員工 column straight to the user because nothing between Step 8a and the GUI re-checked the change. Step 8a.6 is that re-check.
 
 ---
 

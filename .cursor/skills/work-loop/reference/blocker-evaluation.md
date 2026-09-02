@@ -44,7 +44,7 @@ Local edits will be reverted by the next sync.
 
 4. **Impl blocked ≠ review items blocked（hard rule）**：即使 impl 仍 blocked，**MUST** 檢查 `## 人工檢查` 區是否有 Claude-actionable items（`issued > 0` / `verifyClaudePendingCount > 0` / `discussPendingCount > 0` / review-gui 顯示「🤖 等 Claude 接手」）。有 → 走 § 3a/3b/3c 處理 review items，**NEVER** 因為 impl blocked 就整條 change 跳過。人工檢查 lifecycle 獨立於 impl lifecycle。
 
-   **為什麼**（2026-07-21 <consumer-i> 實證）：`ops-deploy-safety` bucket=`applyBlocked`（4.1-4.3 卡 TD-002），但 review-gui 顯示「🤖 等 Claude 接手」有 1 個 Claude-actionable discuss item。loop 看到 `applyBlocked` 就整條跳過，review-gui 的 Claude-ball 永遠沒人接。
+   **為什麼**（2026-07-21 <consumer-h> 實證）：`ops-deploy-safety` bucket=`applyBlocked`（4.1-4.3 卡 TD-002），但 review-gui 顯示「🤖 等 Claude 接手」有 1 個 Claude-actionable discuss item。loop 看到 `applyBlocked` 就整條跳過，review-gui 的 Claude-ball 永遠沒人接。
 
 ### 視覺 blocker 的 capability probe（unattended 一樣要跑）
 
@@ -69,9 +69,9 @@ HANDOFF：那句話描述的是**沒有量測**，不是量測結果。
 **NEVER** 寫「需 attended」這種形容詞——形容詞每一輪都會被重新「發現」一次，而 predicate 有解除條件、
 可以進 [blocker-ledger.md](blocker-ledger.md) 查表，下一輪不必重判。
 
-#### 2026-08-22 端到端實測（<consumer-j>）——為什麼現在只剩三條
+#### 2026-08-22 端到端實測（<consumer-i>）——為什麼現在只剩三條
 
-首版有 probe 1–3（第 3 條量 dispatcher binary），2026-08-22 在 <consumer-j>
+首版有 probe 1–3（第 3 條量 dispatcher binary），2026-08-22 在 <consumer-i>
 （`shape: canonical`、`emailRequired: false`、`stackHint: libsql-drizzle`）跑完整鏈路：
 
 - **鏈路本身是通的**：dev-session 起 3050 → 手組 items（2 個真 `[verify:ui]` item）→ collector

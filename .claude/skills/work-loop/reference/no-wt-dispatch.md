@@ -33,7 +33,7 @@ node vendor/scripts/wt-helper.ts merge-back <slug>             # 4. squash 進 m
 
 路徑全在 [[commit.detail]] 白名單 → `git commit --only -m "…" -- <paths>`。
 任一路徑不在（source / migration / plugin / 任何程式碼）→ **MUST** `Skill invoke: /commit`。
-**NEVER** 用 `git commit --only` 送白名單外的檔——那是 2026-08-24/25 <consumer-i> 五筆無 `Via: /commit` 擋住 `git push` 的成因。
+**NEVER** 用 `git commit --only` 送白名單外的檔——那是 2026-08-24/25 <consumer-h> 五筆無 `Via: /commit` 擋住 `git push` 的成因。
 卡 `/commit` 人工檢查 → packaging，**NEVER** `--only` 繞過。
 
 ## 驗收不打折

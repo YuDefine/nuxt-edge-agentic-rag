@@ -26,7 +26,7 @@
  *      號碼的專屬區段，與所有 base、dev-router 的 control/backend 區（3300–3510）完全不重疊。
  *
  * 兩池都排掉三件事：mapped port 落到別人的地盤、mapped port 撞到本 consumer 另一個宣告 port
- * （<consumer-i> 宣告 3040 + 3045）、offset 已被 sibling worktree 佔用。
+ * （<consumer-h> 宣告 3040 + 3045）、offset 已被 sibling worktree 佔用。
  *
  * 分配紀錄寫在 `~/.cache/clade/dev-port/<consumer>/<slug>.json`，**不**進 repo：`.clade/` 在
  * 多數 consumer 沒被 gitignore，寫進去等於每條 worktree 帶一個 untracked 檔進 merge-back /
@@ -80,7 +80,7 @@ export function devPortStateDir(consumerRoot: string): string {
 /**
  * base 池：1..9 之中最小的可用 offset，需同時滿足
  *   - 每個 mapped port 都在 `[base, base+9]` 內 —— 不會踩到下一個 consumer 的 base
- *   - mapped port 不等於本 consumer 另一個宣告 port（<consumer-i> 宣告 3040 + 3045，offset 5 會讓
+ *   - mapped port 不等於本 consumer 另一個宣告 port（<consumer-h> 宣告 3040 + 3045，offset 5 會讓
  *     `<client-a>` 蓋掉 `shared`）
  *   - offset 沒被 sibling worktree 佔用
  * 池滿回 null（由 band 池接手）。

@@ -566,7 +566,7 @@ export function findOwnershipStalls(
  * Why it is a stall and not a write error: the write reported success. The answer was appended,
  * and then the file was rewritten from another session's buffer with the block gone — nothing
  * failed, nothing was logged, and the agent waiting on the answer went on re-asking the question.
- * Measured 2026-08-29 on <consumer-i> `ee92949d75fa703c`: three writes, zero survivors, found two hours
+ * Measured 2026-08-29 on <consumer-h> `ee92949d75fa703c`: three writes, zero survivors, found two hours
  * later by a human who opened `/decisions` and could not see his own answer.
  *
  * A decision with no carrier is NOT reported. `no-carrier` is a legitimate outcome — the answer
@@ -588,7 +588,7 @@ export function findUnfiledAnswerStalls(
     if (!span.end_ts || dismissed.has(span.span_id)) continue
     // A retracted close is not an answer. `flow sources` closes a file-scan question the moment
     // its source row leaves the file — the item WAS settled, in the prose that no longer mentions
-    // it, and no landing block was ever written or wanted. Measured on <consumer-i> 2026-08-29: 54 of the
+    // it, and no landing block was ever written or wanted. Measured on <consumer-h> 2026-08-29: 54 of the
     // 76 closed decision spans are this shape, and reporting them turned a 1-line finding into a
     // 55-line wall. A surface that cries wolf is not a louder surface, it is a silent one.
     if (span.payload?.retracted === true) continue

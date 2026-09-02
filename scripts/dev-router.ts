@@ -2,7 +2,7 @@
 // 🔒 LOCKED — managed by clade · Source: vendor/scripts/dev-router.ts · 改這裡無效，下次 propagate 會覆寫；請改 $CLADE_HOME/vendor/scripts/dev-router.ts
 // Dev router — 常駐 L4 TCP proxy + worktree backend switcher（consumer-agnostic，clade vendor）.
 //
-// 為什麼存在：tunnel（<consumer-i>-<client-a>-dev.<maintainer-domain>）固定指向一個公開 port，
+// 為什麼存在：tunnel（<consumer-h>-<client-a>-dev.<maintainer-domain>）固定指向一個公開 port，
 // 但開發時常在多個 git worktree 之間切換。每切一次 dir + 重啟 nuxt dev + 重啟
 // tunnel 很煩。dev-router 用 L4 TCP proxy 佔住公開 port（3040 / 3045），背後把
 // 流量整段雙向 pipe 到「當前 active worktree backend 的 nuxt dev server」。切換
@@ -22,7 +22,7 @@
 //   node scripts/dev-router.ts use <slug>       # 切 active backend
 //   node scripts/dev-router.ts stop <slug>      # 停某 backend（active 拒絕）
 //
-// control UI：http://127.0.0.1:<controlPort>（controlPort = publicPort + 300；<consumer-i> <client-a> 3040→3340）
+// control UI：http://127.0.0.1:<controlPort>（controlPort = publicPort + 300；<consumer-h> <client-a> 3040→3340）
 
 import { parseArgs } from 'node:util'
 import net from 'node:net'

@@ -105,7 +105,7 @@ export interface AskedDecision {
    * human, so the flag deliberately does not try to tell them apart. What it MUST NOT do is
    * assert the first cause, because that assertion has already been wrong once at fleet scale:
    * the 2026-08-27 measurement of 1-of-38 rulings carrying options was taken while the parser
-   * only accepted bold hugging the letter, and <consumer-i>'s TD-584 and TD-585 — both written out as
+   * only accepted bold hugging the letter, and <consumer-h>'s TD-584 and TD-585 — both written out as
    * A/B/C — sat in the 37.
    *
    * `\my` requires every ruling to carry 2–4 ordered options plus 推薦, and `extractOptions`
