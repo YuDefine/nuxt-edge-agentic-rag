@@ -54,9 +54,9 @@ Main worktree 的 staged / modified / untracked / unmerged **完全不影響**�
 
    本 skill 的 draft 階段有三條可選路徑。**Step 0 開頭 MUST 用 AskUserQuestion 跳三選一選單**讓使用者選（除非使用者已明確指定路徑，見下方捷徑）：
 
-   - **A. Pi flow（預設 / 推薦，選單第一項）** — GPT-5.6-sol via Pi（effort: max）負責 draft + 主線 Claude Fable 5（effort: xhigh）負責 cross-check。draft + cross-check 比擇一穩，wall-clock 最短。
-   - **B. 三模型交叉 pipeline** — Claude Fable 5（effort: xhigh）負責 draft → GPT-5.6-sol via Pi（effort: max）負責 review（fresh session、只出 findings、不改檔）→ 主線 Claude Fable 5（effort: xhigh）負責 final check。三模型交叉（Fable draft + Pi review + Fable final）比擇一穩，wall-clock 較長（多一層背景等待）。
-   - **C. 純 Claude** — 主線 Claude Fable 5（effort: xhigh）直接走 Step 1~11（含 Step 8 補 7 步 Design Review check）。
+   - **A. Pi flow（預設 / 推薦，選單第一項）** — GPT-5.6-sol via Pi（effort: max）負責 draft + 主線 Claude Fable 5.1（effort: xhigh）負責 cross-check。draft + cross-check 比擇一穩，wall-clock 最短。
+   - **B. 三模型交叉 pipeline** — Claude Fable 5.1（effort: xhigh）負責 draft → GPT-5.6-sol via Pi（effort: max）負責 review（fresh session、只出 findings、不改檔）→ 主線 Claude Fable 5.1（effort: xhigh）負責 final check。三模型交叉（Fable draft + Pi review + Fable final）比擇一穩，wall-clock 較長（多一層背景等待）。
+   - **C. 純 Claude** — 主線 Claude Fable 5.1（effort: xhigh）直接走 Step 1~11（含 Step 8 補 7 步 Design Review check）。
 
    選單寫法：option A label 標「(預設/推薦)」並排第一（使用者按 Enter 即走現狀）。
 
@@ -83,7 +83,7 @@ Main worktree 的 staged / modified / untracked / unmerged **完全不影響**�
 
    選 B 後 **MUST** 完整讀 `references/dispatch-option-b.md` 並依序執行三段背景 pipeline：
 
-   - **Phase B-0a**：沿用選項 A draft prompt 範本寫 `-draft-prompt.md` → 背景 `claude -p --model claude-fable-5 --effort xhigh` → notification-only watch。
+   - **Phase B-0a**：沿用選項 A draft prompt 範本寫 `-draft-prompt.md` → 背景 `claude -p --model claude-fable-5-1 --effort xhigh` → notification-only watch。
    - **Phase B-0b**：Fable draft 完成 → 寫 `-review-prompt.md`（**只出 findings、禁止改檔**）→ 背景 Pi review（max）。
    - **Phase B-0c**：主線整合 findings + 跑選項 A Phase 0b step 3–9 全套 cross-check，主線自己 Edit 修。
 

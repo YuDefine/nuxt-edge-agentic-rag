@@ -148,9 +148,9 @@ Update an existing Spectra change — from a plan file or conversation context.
 
    **Step 4b 開頭 MUST 用 AskUserQuestion 跳三選一選單**讓使用者選（除非使用者已明確指定路徑，見下方捷徑）：
 
-   - **A. Pi flow（預設 / 推薦，選單第一項）** — GPT-5.6-sol via Pi（effort: max）在背景更新 artifacts + 主線 Claude Fable 5（effort: xhigh）負責 cross-check。
-   - **B. Fable flow** — Claude Fable 5（effort: xhigh）在背景更新 artifacts + 主線 Claude Fable 5（effort: xhigh）負責 cross-check。
-   - **C. 純 Claude** — 主線 Claude Fable 5（effort: xhigh）直接走 Step 5~9。
+   - **A. Pi flow（預設 / 推薦，選單第一項）** — GPT-5.6-sol via Pi（effort: max）在背景更新 artifacts + 主線 Claude Fable 5.1（effort: xhigh）負責 cross-check。
+   - **B. Fable flow** — Claude Fable 5.1（effort: xhigh）在背景更新 artifacts + 主線 Claude Fable 5.1（effort: xhigh）負責 cross-check。
+   - **C. 純 Claude** — 主線 Claude Fable 5.1（effort: xhigh）直接走 Step 5~9。
 
    **明確指定捷徑（跳過選單）**：
    - 「用 pi」「用 codex」「照舊」→ **選項 A**
@@ -227,7 +227,7 @@ Update an existing Spectra change — from a plan file or conversation context.
       選項 B：
       ```bash
       cd <consumer-repo-root> && claude -p \
-        --model claude-fable-5 \
+        --model claude-fable-5-1 \
         --effort xhigh \
         < /tmp/fable-spectra-ingest-<change-name>-prompt.md 2>&1
       ```
