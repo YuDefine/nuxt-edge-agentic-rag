@@ -46,7 +46,6 @@ export type SummarySource = 'transcript-parse' | 'session-start-stamp'
 export const KNOWN_SKILL_MODES: Record<string, string[]> = {
   handoff: ['park', 'relay', 'fanout', 'next'],
   'clade-health': ['layers', 'enforcement', 'conformance', 'full'],
-  'codex-drive': ['plan', 'dispatch', 'verify', 'status'],
   'notion-board': ['scan', 'triage', 'sync', 'reconcile', 'report'],
   bp: ['plan'],
   'code-review': ['ultra'],
