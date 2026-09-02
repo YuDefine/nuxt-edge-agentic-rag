@@ -326,6 +326,28 @@ const REQUIRED_PAYLOAD: Record<string, PayloadRule[]> = {
       why: 'dispatch.verdict needs payload.reason on the same basis work.accept and work.drop do — a closure with no stated basis is a silent delete, and this one closes something its own author never ran',
     },
   ],
+  // A scenario verdict is the one fact on this stream whose whole purpose is to be un-fakeable:
+  // section 7.5 exists because an implementing agent's account of its own red test is exactly the
+  // evidence that cannot be trusted. So the three fields that make a verdict a verdict are refused
+  // when absent rather than defaulted — a record that says an evaluator ran, without saying what it
+  // judged or how it ruled, is the shape this event was added to replace.
+  'scenario.verdict.recorded': [
+    {
+      field: 'scenario_id',
+      code: 'scenario-id-required',
+      why: 'scenario.verdict.recorded needs payload.scenario_id — plan section 4.5 carries it in the envelope stream_id, which this envelope has no column for, so a verdict without it attaches to nothing',
+    },
+    {
+      field: 'phase',
+      code: 'phase-required',
+      why: 'scenario.verdict.recorded needs payload.phase (RED_VALIDITY | GREEN | REFACTOR) — the same scenario has a different verdict in each, and one that names no phase silently overwrites the reader of both',
+    },
+    {
+      field: 'gate_verdict',
+      code: 'gate-verdict-required',
+      why: 'scenario.verdict.recorded needs payload.gate_verdict (PASS | FAIL) — a verdict event that states no verdict records that somebody looked, not what they concluded',
+    },
+  ],
   'work.link': [
     {
       field: 'parent_work_id',

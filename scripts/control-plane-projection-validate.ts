@@ -1,146 +1,62 @@
 #!/usr/bin/env node
 // 🔒 LOCKED — managed by clade · Source: vendor/scripts/control-plane-projection-validate.ts · 改這裡無效，下次 propagate 會覆寫；請改 $CLADE_HOME/vendor/scripts/control-plane-projection-validate.ts
 
-import { createHash } from 'node:crypto'
-import { existsSync, readdirSync, readFileSync } from 'node:fs'
-import { join, relative, resolve } from 'node:path'
+/**
+ * Commit-gate 用的 control-plane 投影校驗 CLI。
+ *
+ * **這支不自己判定。** digest / cursor 的推導只有一份，住在 `ai-control-plane.ts` 的
+ * `validateControlPlaneProjections()`；本檔只負責解析出那份 library 的位置、呼叫它、
+ * 把 violation 印成 gate 讀得懂的形狀。
+ *
+ * 成因（TD-843，2026-09-02 <consumer-c> 實測）：本檔原本自己重算 `input_digest` 與
+ * `through_cursor`，是 library 判定的第二份 matcher。Phase 3.5 把 library 的 inputFacts
+ * 加上 `runtime_events`、cursor 加上 `runtime:` 段之後，這一份沒跟上 —— 於是對**每一份
+ * 正確的**投影都判 drift，任何 consumer 只要 working tree 有 control-plane 生成的
+ * tasks.md，所有 `git commit` 一律被擋。**NEVER 在這裡再寫一次 canonical / sha256 /
+ * cursor 的推導**：兩份判定只要能各自演化，就會再漂一次。
+ */
+
+import { existsSync } from 'node:fs'
+import { dirname, join, resolve } from 'node:path'
+import { fileURLToPath, pathToFileURL } from 'node:url'
+
+interface ProjectionViolation {
+  path: string
+  reason: string
+}
 
 const repoRoot = resolve(process.argv[2] ?? process.cwd())
-const changesRoot = join(repoRoot, 'openspec', 'changes')
-const controlPlaneRoot = join(repoRoot, '.clade', 'ai-control-plane')
-const violations: Array<{ path: string; reason: string }> = []
+const here = dirname(fileURLToPath(import.meta.url))
 
-function canonical(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`
-  if (value !== null && typeof value === 'object') {
-    return `{${Object.entries(value as Record<string, unknown>)
-      .toSorted(([left], [right]) => left.localeCompare(right))
-      .map(([key, child]) => `${JSON.stringify(key)}:${canonical(child)}`)
-      .join(',')}}`
-  }
-  return JSON.stringify(value)
+// clade 端：本檔住 `vendor/scripts/`，library 是同層 sibling。
+// consumer 端：本檔投影到 `scripts/`，library 投影到 `.clade/vendor/scripts/`
+// （`scripts/lib/vendor-targets.ts` 的 flow closure 那一組）。
+const candidates = [
+  join(here, 'ai-control-plane.ts'),
+  join(here, '..', '.clade', 'vendor', 'scripts', 'ai-control-plane.ts'),
+]
+const libraryPath = candidates.find((candidate) => existsSync(candidate))
+
+if (!libraryPath) {
+  // **NEVER 靜默 exit 0**：判定器不在，代表這個 repo 的投影根本沒被驗過，
+  // 而那與「驗過且乾淨」在 gate 眼中完全同形。
+  process.stderr.write('control-plane projection validator cannot resolve its judgement library\n')
+  for (const candidate of candidates) process.stderr.write(`  missing: ${candidate}\n`)
+  process.exit(2)
 }
 
-function sha256(value: string | unknown): string {
-  return `sha256:${createHash('sha256')
-    .update(typeof value === 'string' ? value : canonical(value))
-    .digest('hex')}`
+const library = (await import(pathToFileURL(libraryPath).href)) as {
+  validateControlPlaneProjections?: (root: string) => ProjectionViolation[]
 }
 
-function parseJsonRecord(raw: string): Record<string, any> {
-  const value: unknown = JSON.parse(raw)
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    throw new Error('expected JSON object')
-  }
-  return value as Record<string, any>
-}
-
-function readJsonLines(path: string): Array<Record<string, any>> {
-  if (!existsSync(path)) return []
-  return readFileSync(path, 'utf8')
-    .split('\n')
-    .filter(Boolean)
-    .map((line) => parseJsonRecord(line))
-}
-
-function canonicalInputs(changeId: string): {
-  digest: string
-  intentRevision: number
-  flowCount: number
-  evidenceCount: number
-  decisionCount: number
-} {
-  const source = parseJsonRecord(
-    readFileSync(join(controlPlaneRoot, 'intent', `${changeId}.json`), 'utf8'),
+if (typeof library.validateControlPlaneProjections !== 'function') {
+  process.stderr.write(
+    `control-plane judgement library does not export validateControlPlaneProjections: ${libraryPath}\n`,
   )
-  const allEvents = readJsonLines(join(repoRoot, '.clade', 'flow', 'events.jsonl'))
-  const workIds = new Set(
-    allEvents
-      .filter((event) => event.kind === 'work.open' && event.payload?.change_id === changeId)
-      .map((event) => event.work_id),
-  )
-  const flowEvents = allEvents.filter((event) => event.work_id && workIds.has(event.work_id))
-  const evidence = readJsonLines(join(controlPlaneRoot, 'evidence.jsonl')).filter(
-    (row) => row.change_id === changeId,
-  )
-  const decisions = readJsonLines(join(controlPlaneRoot, 'human-decisions.jsonl')).filter(
-    (row) => row.change_id === changeId,
-  )
-  const plan = source.native_artifacts?.find(
-    (artifact: Record<string, any>) => artifact.artifact_type === 'intent.work_plan',
-  )
-  if (!plan) throw new Error('persisted intent is missing intent.work_plan')
-  return {
-    digest: sha256({
-      source,
-      flow_events: flowEvents,
-      evidence,
-      human_decisions: decisions,
-    }),
-    intentRevision: Number(plan.intent_revision),
-    flowCount: flowEvents.length,
-    evidenceCount: evidence.length,
-    decisionCount: decisions.length,
-  }
+  process.exit(2)
 }
 
-if (existsSync(changesRoot)) {
-  for (const entry of readdirSync(changesRoot, { withFileTypes: true })) {
-    if (!entry.isDirectory() || entry.name === 'archive') continue
-    const tasksPath = join(changesRoot, entry.name, 'tasks.md')
-    if (!existsSync(tasksPath)) continue
-    const content = readFileSync(tasksPath, 'utf8')
-    const changeId = content.match(/^<!-- control-plane-change-id: (chg_[A-Za-z0-9]+) -->$/m)?.[1]
-    if (!changeId) continue
-    const relativeTasksPath = relative(repoRoot, tasksPath)
-    const lockPath = join(controlPlaneRoot, 'locks', `${changeId}.lock`)
-    if (existsSync(lockPath)) {
-      violations.push({
-        path: relativeTasksPath,
-        reason: 'projection write is in progress or requires recovery',
-      })
-      continue
-    }
-    const sidecarPath = join(controlPlaneRoot, 'projections', `${changeId}.json`)
-    if (!existsSync(sidecarPath)) {
-      violations.push({ path: relativeTasksPath, reason: 'missing projection sidecar' })
-      continue
-    }
-    try {
-      const projection = parseJsonRecord(readFileSync(sidecarPath, 'utf8')) as {
-        change_id?: string
-        checkpoint?: Record<string, any>
-      }
-      const checkpoint = projection.checkpoint
-      const inputs = canonicalInputs(changeId)
-      const expectedCursor = `intent:${inputs.intentRevision};flow:${inputs.flowCount};evidence:${inputs.evidenceCount};decision:${inputs.decisionCount}`
-      const latestCheckpoint = readJsonLines(
-        join(controlPlaneRoot, 'projection-events.jsonl'),
-      ).findLast((row) => row.change_id === changeId)
-      if (
-        projection.change_id !== changeId ||
-        checkpoint?.change_id !== changeId ||
-        checkpoint?.projector !== 'ai-control-plane/tasks-v1' ||
-        checkpoint?.output_path !== relativeTasksPath ||
-        checkpoint?.output_digest !== sha256(content) ||
-        checkpoint?.input_digest !== inputs.digest ||
-        checkpoint?.through_cursor !== expectedCursor ||
-        !latestCheckpoint ||
-        canonical(latestCheckpoint) !== canonical(checkpoint)
-      ) {
-        violations.push({
-          path: relativeTasksPath,
-          reason: 'generated projection differs from canonical facts; rebuild required',
-        })
-      }
-    } catch {
-      violations.push({
-        path: relativeTasksPath,
-        reason: 'projection inputs or sidecar are unreadable; rebuild required',
-      })
-    }
-  }
-}
+const violations = library.validateControlPlaneProjections(repoRoot)
 
 if (violations.length === 0) {
   process.stdout.write('control-plane projections current\n')

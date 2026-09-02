@@ -402,6 +402,7 @@ baseline 內容（自 `vendor/oxc-shared/preset.ts`）：
 `pnpm-lock.yaml` 自 v0.39.2 後重生兩次，oxlint 在 `^0.1.21` 內升 patch，把 `no-underscore-dangle` rule level 從 warn 升 error。各 consumer 都吃 clade 同一份 oxlint dep range — preset 已 pin 此 rule 為 `['warn', { allow: ['__dirname', '__filename'] }]`，import 即享 single source of truth。
 <!-- starter:strip-end -->
 
+```bash
 # Lint（修復可自動修復的問題）
 pnpm vp lint --fix
 

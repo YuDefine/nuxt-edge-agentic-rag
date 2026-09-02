@@ -107,12 +107,14 @@ import {
 import type { Stall } from './stall.ts'
 import {
   DEFAULT_STALL_MINUTES,
+  findCoordinationStalls,
   findLeaseStalls,
   findOwnershipStalls,
   findStalls,
   findUnfiledAnswerStalls,
   renderStalls,
 } from './stall.ts'
+import { readPipelineRows } from './coordination.ts'
 import { spanIdsFiledInRepo } from './carrier-presence.ts'
 import { readWaves, renderFleetMarkdown, renderWorkMarkdown } from './viz-md.ts'
 import { buildBoardLanes, durationBaselines, etaFor } from './board.ts'
@@ -1521,6 +1523,11 @@ function workingTreeStalls(spans: Span[]): Stall[] {
     // rows above correctly use — silently reports zero leases from inside every linked worktree.
     ...findRuntimeLeaseStalls(gitToplevel() ?? root),
     ...findUnfiledAnswerStalls(spans, spanIdsFiledInRepo(root, answered)),
+    // Publish/propagate state, read from the receipt journal. NEVER from `pgrep`: a process probe
+    // returns 0 for a queued run, a handing-over run and a finished run alike (measured 2026-08-29),
+    // and two of those three have a fresh tag. Same root as the git ownership rows — the journal is
+    // written by whichever process holds the repo's release pipeline.
+    ...findCoordinationStalls(readPipelineRows(root)),
   ]
 }
 
