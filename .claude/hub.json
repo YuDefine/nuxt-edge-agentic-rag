@@ -4,8 +4,8 @@
   "consumer_id": "nuxt-edge-agentic-rag",
   "modules": {
     "auth": "better-auth",
-    "db-schema": "supabase",
-    "db-runtime": "cf-workers",
+    "db-schema": "cf-d1",
+    "db-runtime": "none",
     "runtime": "cf-workers",
     "framework": "nuxt",
     "domain": [],

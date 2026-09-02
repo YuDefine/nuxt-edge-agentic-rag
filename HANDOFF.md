@@ -61,6 +61,18 @@
 - [ ] **adopt-evlog-nuxthub-ai-t3** (5/39 tasks, 13%)
   - 早期階段，尚未大量推進；獨立可平行
 
+## Ready for review
+
+- [ ] [2026-09-02] **hub.json db 軸修正：`db-schema: supabase` / `db-runtime: cf-workers` → `cf-d1` / `none`**
+  - 改了什麼：`.claude/hub.json` 兩軸改宣告；`hub:prune` 拿掉 9 份 Supabase 專用投影（database-access / storage / unused-features / mcp-remote / audit-schema / migration / rls-policy / trigger / query-optimization），新投影 `data-layer-d1.md`；project-scope plugin 換成 `hub-db-schema-cf-d1`，卸 `hub-db-schema-supabase` 與 `hub-db-runtime-cf-workers`
+  - 證據：repo 只有 `drizzle-orm` / `drizzle-kit` / `@nuxthub/core`，`wrangler.jsonc` 綁 D1，無 `@supabase/supabase-js`；`db-runtime` enum 只有 supabase-* / cf-workers（README 明寫 cf-workers = Supabase 存取）/ none，rental-scout 同為 cf-d1 + `none`；`pnpm hub:check` 綠（no drift, no orphans）
+  - 退回會怎樣：18.8 KB Supabase client 規約會在每次動 `server/**` 時被注入，而 D1 / Drizzle 的 hard rule（subquery alias、dev binding 鎖死、DROP TABLE cascade）一條都不載
+  - **需要 clade 判斷的缺口**：`db-runtime` 軸沒有 D1 / Drizzle 存取層的值，`none` 只是「不要 Supabase 規約」的替代寫法。若 clade 認為 D1 存取層值得獨立 variant（例：`cf-d1`），需要新增；若認為 `db-schema/cf-d1/data-layer-d1.md` 已涵蓋存取層，建議 `db-runtime/README.md` 補一句「D1 track 宣告 `none`」。另：rental-scout 宣告 `none` 卻仍留著 cf-workers 的 Supabase 投影（未 prune），是同型錯配
+  - 附帶：`hub.json` 的 `localHooks: post-migration-gen-types.sh` 指向的檔案不存在（`.claude/hooks/` 只有 `_bootstrap-check.sh`），本次未動，待判要不要移除
+  - 未達成的 gate：commit 0-A.1 跨模型 review 未跑（codex 池與 cursor 池同時配額耗盡，cursor 於 2026-09-16 重置；exit 4 payload 指示主線自審＋登記待補）。0-C 的 lint 紅燈全部來自另一 session 的 untracked e2e spec，test 失敗為 propagate 併行時的 nuxt hook timeout，皆與本批 json / symlink / md 無關
+  - 教訓：hub.json 的 modules 改動 MUST 在下一次 clade propagate 前 commit——propagate 的 main flow 會把 `.claude/hub.json` 與投影層 reset 到 HEAD 再 bump（本次 19:57 被 v1.12.0 propagate 還原一次，重做後才落地）
+  - 已 commit 未 push：main 本來就領先 origin 30+ commit，deploy-trigger-check 回 `status=unconfirmable`，push 由持有 main 的人統一處理
+
 ## Blocked / Waiting
 
 - ~~TD-071~~ **done** — v0.57.1 production deployed

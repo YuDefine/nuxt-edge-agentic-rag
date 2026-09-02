@@ -1,1 +1,0 @@
-../../.clade/runtime/rules/mcp-remote.md
