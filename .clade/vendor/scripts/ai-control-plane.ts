@@ -12,6 +12,7 @@ import {
   readFileSync,
   statSync,
   unlinkSync,
+  writeFileSync,
 } from 'node:fs'
 import { basename, dirname, join, relative, resolve as resolvePath } from 'node:path'
 
@@ -216,6 +217,17 @@ export interface EvidenceReceipt {
   recorded_by: string
 }
 
+/**
+ * One evidence receipt as the projection reports it.
+ *
+ * `superseded_by` is **computed**, never stored: `EvidenceReceipt` is append-only with no
+ * retraction field (ruling (l)), so what changed after a requirement revision is the reading of
+ * history, not history. Non-null names the later, current receipt that took this one's place.
+ */
+export interface ProjectedEvidenceReceipt extends EvidenceReceipt {
+  superseded_by: string | null
+}
+
 export interface ArchivePredicates {
   current_intent_valid: boolean
   impacts_current_and_consistent: boolean
@@ -360,7 +372,7 @@ export interface ControlPlaneProjection {
       | 'superseded'
   }>
   runtime_topology: Omit<RuntimeState, 'events'> & { event_count: number }
-  evidence: EvidenceReceipt[]
+  evidence: ProjectedEvidenceReceipt[]
   impact_matrix: ImpactProjection[]
   human_gates: HumanGateProjection[]
   attention_cards: HumanGateProjection[]
@@ -1013,13 +1025,84 @@ export function finishAttempt(input: {
  */
 export const UNMANAGED_DISPATCH_CHANGE = 'chg_unmanageddispatch'
 
-/** Runtime journal writes are machine-local telemetry, never repo content. */
-function ensureRuntimeIgnored(repoRoot: string): void {
+/**
+ * First line of every `.gitignore` this module owns.
+ *
+ * Ownership has to be readable from the file itself: the upgrade below rewrites the file, and
+ * rewriting one a human wrote would be the same class of damage TD-875 is about. Deleting this
+ * line hands the file back to the repository and this module stops touching it.
+ */
+const RUNTIME_IGNORE_MARKER = '# managed-by: clade ai-control-plane (TD-875)'
+
+/**
+ * The shape written before TD-875: everything under the directory, unconditionally.
+ *
+ * Recognised so a consumer that already has one gets upgraded rather than left broken. It has
+ * no marker because the version that wrote it had none, and it is the only unmarked content
+ * this module will ever overwrite.
+ */
+const LEGACY_RUNTIME_IGNORE = '*\n'
+
+/**
+ * What the directory's `.gitignore` must say.
+ *
+ * A deny list, NEVER a blanket `*`. A subdirectory `.gitignore` outranks the root one, so the
+ * `*` this used to write silently overrode the root `!.clade/ai-control-plane/intent/` that
+ * TD-849 added — the intent source was never tracked, and `bindingIsCommitted` was therefore
+ * false by construction in every consumer that had ever dispatched (TD-875). `intent/` and
+ * `human-decisions.jsonl` are tracked canonical state (TD-849, plan section 12.3); everything
+ * else here is machine-local telemetry.
+ */
+function runtimeIgnoreBody(): string {
+  return [
+    RUNTIME_IGNORE_MARKER,
+    '# Runtime products only. `intent/` and `human-decisions.jsonl` are tracked canonical state.',
+    'captures/',
+    'intent-revisions/',
+    'locks/',
+    'projections/',
+    'quarantine/',
+    'reports/',
+    'archive.jsonl',
+    'evidence.jsonl',
+    '*-events.jsonl',
+    '*.lock',
+    '!intent/',
+    '!human-decisions.jsonl',
+    '',
+  ].join('\n')
+}
+
+export type RuntimeIgnoreState = 'installed' | 'upgraded' | 'unchanged' | 'foreign'
+
+/**
+ * Keep the runtime products ignored and the canonical state tracked.
+ *
+ * Called from every path that writes the intent source, plus the dispatch adapter — not from
+ * every path that writes into the directory: the evidence and projection writers produce files
+ * this file already ignores, and repairing it there would buy nothing. The two callers are the
+ * ones whose product has to be *tracked*, and the one that got there first, historically, was
+ * a dispatch that nobody was watching.
+ *
+ * `foreign` is a report, not a repair: a file with no marker and content that is not the
+ * legacy blanket belongs to whoever wrote it.
+ */
+export function ensureRuntimeIgnored(repoRoot: string): RuntimeIgnoreState {
   const dir = join(repoRoot, '.clade', 'ai-control-plane')
   const ignore = join(dir, '.gitignore')
-  if (existsSync(ignore)) return
+  const body = runtimeIgnoreBody()
+  if (existsSync(ignore)) {
+    const current = readFileSync(ignore, 'utf8')
+    if (current === body) return 'unchanged'
+    if (current === LEGACY_RUNTIME_IGNORE || current.startsWith(RUNTIME_IGNORE_MARKER)) {
+      writeFileSync(ignore, body)
+      return 'upgraded'
+    }
+    return 'foreign'
+  }
   mkdirSync(dir, { recursive: true })
-  atomicWriteText(ignore, '*\n')
+  writeFileSync(ignore, body)
+  return 'installed'
 }
 
 export interface DispatchAttemptRef {
@@ -1481,11 +1564,25 @@ export function assertIntentRevisionStep(input: {
  * after a crash and finds different bytes on disk is refused here too, and reporting that as
  * `revise` would send the operator to a revision path the change never took.
  */
+export interface PersistOpsxChangeSourceResult {
+  /** Absolute path of the tracked intent source. */
+  path: string
+  /**
+   * What `ensureRuntimeIgnored` did on the way in.
+   *
+   * Carried out rather than discarded because `foreign` is the one value nobody downstream can
+   * re-derive: a consumer-owned `.gitignore` that swallows `intent/` produces a `bound: false`
+   * whose `binding_failure` is the raw `git add` text, and that text never names the file that
+   * caused it (TD-875 W6).
+   */
+  runtime_ignore: RuntimeIgnoreState
+}
+
 export async function persistOpsxChangeSource(
   repoRoot: string,
   source: OpsxChangeSource,
   options: { previousSourceDigest?: string; operation?: OpenSpecOperation } = {},
-): Promise<string> {
+): Promise<PersistOpsxChangeSourceResult> {
   const operation = options.operation ?? 'revise'
   const normalized = readOpsxChange(source)
   const path = intentSourcePath(repoRoot, normalized.change_id)
@@ -1493,8 +1590,12 @@ export async function persistOpsxChangeSource(
   if (existsSync(path)) {
     const current = readFileSync(path, 'utf8')
     // Idempotent re-write, including a re-run after a crash: identical bytes are not a
-    // revision, so they neither need a digest nor consume a revision number.
-    if (sha256(current) === sha256(content)) return path
+    // revision, so they neither need a digest nor consume a revision number. The `.gitignore`
+    // is still repaired: the reason a re-run happens at all may be that the first one left the
+    // source untracked.
+    if (sha256(current) === sha256(content)) {
+      return { path, runtime_ignore: ensureRuntimeIgnored(repoRoot) }
+    }
     const actual = sha256(current)
     if (!options.previousSourceDigest) {
       throw new ControlPlaneFailure({
@@ -1520,8 +1621,12 @@ export async function persistOpsxChangeSource(
       next: source,
     })
   }
+  // After every refusal above (ruling (f)), before the write that the binding commit will stage:
+  // a stale blanket `.gitignore` here is what makes `git add` a no-op and the binding
+  // structurally impossible (TD-875).
+  const runtimeIgnore = ensureRuntimeIgnored(repoRoot)
   await atomicWriteText(path, content)
-  return path
+  return { path, runtime_ignore: runtimeIgnore }
 }
 
 export function readPersistedOpsxChange(
@@ -2281,7 +2386,7 @@ export function buildProjectorInput(input: {
   title: string
   projectorInput: Record<string, any>
   attempts: ControlPlaneProjection['attempts']
-  evidence: EvidenceReceipt[]
+  evidence: ProjectedEvidenceReceipt[]
   impactMatrix: ImpactProjection[]
   humanGates: HumanGateProjection[]
   attentionCards: HumanGateProjection[]
@@ -2383,7 +2488,49 @@ export function buildProjectorInput(input: {
     human_decisions: decisions,
   }
   const cursor = `intent:${normalized.intent_revision};flow:${events.length};runtime:${runtimeEvents.length};evidence:${evidence.length};decision:${decisions.length}`
-  const evidenceCurrent = evidence.every(evidenceIsCurrent)
+  // Ruling (l). A receipt whose requirement has moved on is **superseded**, not stale, once a
+  // later current receipt covers the same requirement and the same work. Without this,
+  // a change-wide `every(... is current)` charged a change for its own history forever: the first
+  // post-execution requirement revision made every earlier receipt permanently non-current, so
+  // `no_stale_evidence` could never come back and the change could never archive — gate 5 was
+  // unsatisfiable by construction. What it must NOT do is make a revision free: the per-work
+  // predicate below still demands a current receipt, so a revision always costs a re-run.
+  // Parsed, not compared as text: `recorded_at` is a date-time and the ledger holds both
+  // `...:00Z` and `...:00.000Z` renderings of the same instant, which sort against each other by
+  // their punctuation. `evidence_id` breaks a tie so the order is total.
+  const receiptOrder = (receipt: EvidenceReceipt): string =>
+    `${String(Date.parse(receipt.recorded_at) || 0).padStart(16, '0')}\u0000${receipt.evidence_id}`
+  // `<`/`>` on the composed key, the same comparison the filter above makes. `localeCompare`
+  // is a different order — the ICU collator can ignore the `\u0000` separator and case — so
+  // using one to filter and the other to sort could pick a receipt the filter had excluded.
+  const byReceiptOrder = (left: EvidenceReceipt, right: EvidenceReceipt): number => {
+    const a = receiptOrder(left)
+    const b = receiptOrder(right)
+    return a < b ? -1 : a > b ? 1 : 0
+  }
+  const supersederOf = (receipt: EvidenceReceipt): string | null => {
+    if (evidenceIsCurrent(receipt)) return null
+    return (
+      evidence
+        .filter(
+          (candidate) =>
+            candidate.evidence_id !== receipt.evidence_id &&
+            candidate.requirement_id === receipt.requirement_id &&
+            candidate.work_id === receipt.work_id &&
+            receiptOrder(candidate) > receiptOrder(receipt) &&
+            evidenceIsCurrent(candidate),
+        )
+        .toSorted(byReceiptOrder)
+        .at(-1)?.evidence_id ?? null
+    )
+  }
+  const projectedEvidence: ProjectedEvidenceReceipt[] = evidence.map((receipt) => ({
+    ...receipt,
+    superseded_by: supersederOf(receipt),
+  }))
+  const staleEvidence = projectedEvidence.filter(
+    (receipt) => receipt.superseded_by === null && !evidenceIsCurrent(receipt),
+  )
   const runtimeWorkIds = new Set(
     runtime.works
       .filter((work) => work.change_id === normalized.change_id)
@@ -2405,15 +2552,19 @@ export function buildProjectorInput(input: {
             requirement.revision === impact.requirement_revision,
         ),
     ),
-    required_work_terminal_with_current_evidence:
-      workRecords.every(
-        (work: any) =>
-          work.state === 'done' &&
-          work.evidence_ids.length > 0 &&
-          work.evidence_ids.every((id: string) =>
-            evidence.some((receipt) => receipt.evidence_id === id),
-          ),
-      ) && evidenceCurrent,
+    required_work_terminal_with_current_evidence: workRecords.every(
+      (work: any) =>
+        work.state === 'done' &&
+        work.evidence_ids.length > 0 &&
+        work.evidence_ids.every((id: string) =>
+          evidence.some((receipt) => receipt.evidence_id === id),
+        ) &&
+        // Per required work item, unchanged by ruling (l): archive needs a receipt that is
+        // current *now*, so a requirement revision always costs a re-run. This used to read
+        // the change-wide `every(... is current)` reading, which said the same thing for
+        // a change with one work item and something much stronger for every other one.
+        work.latest_valid_evidence_id !== null,
+    ),
     required_gates_terminal: humanGates.every((gate) => gate.state !== 'open'),
     no_active_attempt_or_lease:
       runtime.attempts
@@ -2432,7 +2583,7 @@ export function buildProjectorInput(input: {
     projection_cursors_current: input.projectionCurrent === true,
     single_writer:
       !duplicateMaterialization && new Set(input.activeWriters ?? ['flow-controller']).size === 1,
-    no_stale_evidence: evidenceCurrent,
+    no_stale_evidence: staleEvidence.length === 0,
   }
   const blockingReasons = Object.entries(predicates)
     .filter(([, value]) => !value)
@@ -2468,7 +2619,7 @@ export function buildProjectorInput(input: {
       archive_predicates: predicates,
     },
     attempts,
-    evidence,
+    evidence: projectedEvidence,
     impactMatrix: impacts,
     humanGates,
     attentionCards,
