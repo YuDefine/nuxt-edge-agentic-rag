@@ -43,22 +43,58 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { scanDecisionSources, type SourceItem } from './decision-sources.ts'
-import {
-  EVIDENCE_REQUEST_TEXT,
-  OPTIONS_REQUEST_TEXT,
-  REVIEW_SURFACE_REQUEST_TEXT,
-} from './decisions.ts'
+import { LINT_NOTES, scanDecisionSources, type SourceItem } from './decision-sources.ts'
 import {
   amendDecision,
-  answerClarification,
   pendingDecisions,
   readEvents,
-  requestClarification,
   requestDecision,
   resolveDecision,
   workIdFromIdentity,
 } from './emit.ts'
+
+/**
+ * 寫法不合契約就**不鑄 span**（TD-904，Charles 2026-09-03 拍板）。
+ *
+ * 這兩碼的共同點不是「寫得不夠好」，是**這一列在佇列上不成立**：一條沒有選項的拍板題渲染出來
+ * 是一個空白輸入框，一條沒有三欄的驗收題渲染出來是一顆按得下去的「通過」配零證據。兩者都不是
+ * 問題，是**沒寫完的問題**，而佇列的收件人是一個拿著手機、無法補件的人。
+ *
+ * 在這之前的做法是**先鑄再退**：開好 span，再用兩個固定模板（要選項／要三欄證據）對著它寫一則
+ * `decision.clarify`，要求某個 agent 回來補。Charles 逐字的裁定是「這是治標」——
+ * 那個做法把一條寫壞的 bullet 變成**手機上一張不是他打的字**，而佇列本來就只該有他要回答的東西。
+ * 2026-09-03 實測 /decisions 上這類注入文字的量已經多過真正的題。
+ *
+ * 所以退件發生在 ingest：不鑄 span、不寫任何事件，改由 `flow sources` 與 `handoff-scan` 對
+ * **來源檔的作者**印一行「哪一條、在哪一行、缺什麼」。收件人從此是能修的那個人。
+ *
+ * `belongs-on-review` 刻意不在這裡。那一碼是**路由**錯誤不是寫法錯誤——列本身寫得好好的，只是
+ * 該由 /review 收；它照樣鑄 span（否則那列會靜默消失），只是不再被注入任何文字，`lint` 帶著的
+ * `LINT_NOTES` 已經在兩個渲染端說清楚了。
+ *
+ * `near-miss-option-line` 同樣不在這裡：它是**評語**，一條差一點就解析成功的寫法。它單獨出現時
+ * 那一列仍然可答（非 ruling 的桶），拿它擋 ingest 會把評語升級成拒收。
+ */
+export const REJECTING_LINTS = ['no-options-under-ruling', 'missing-evidence'] as const
+
+/** 一條被 ingest 退回的來源條目 —— 它**不在**佇列上，所以這裡是它唯一的載體。 */
+export interface RejectedItem {
+  source_id: string
+  question: string
+  category: string
+  /** Repo-relative carrier path. */
+  carrier: string
+  /** 1-based line in `carrier`, or 0 when the source is not a file (see `SourceItem.line`). */
+  line: number
+  /** 命中的退件碼。 */
+  lint: string[]
+  /** 那幾碼對作者說的話 —— 借 `LINT_NOTES`，**NEVER** 在這裡重寫一份。 */
+  notes: string[]
+}
+
+function rejectingLintsOf(item: SourceItem): string[] {
+  return (REJECTING_LINTS as readonly string[]).filter((code) => item.lint.includes(code as never))
+}
 
 export interface SyncAction {
   type: 'open' | 'retract' | 'amend' | 'self-closed'
@@ -112,35 +148,17 @@ export interface SyncResult {
    */
   amended: number
   /**
-   * Rulings opened this run that arrived with no options, and were handed straight back.
+   * 這一趟被 ingest 退回、**因此沒有進佇列**的來源條目（TD-904）。
    *
-   * `\my` requires every ruling to carry 2–4 ordered options, and `extractOptions` refuses to
-   * guess from prose. A bullet written without them therefore lands on the queue unanswerable —
-   * and the page's free-text box makes that look like a question rather than an unfinished one.
-   * Opening it and immediately asking for options puts the ball where the missing work is, at the
-   * moment the gap appears, instead of leaving it for whoever next opens the page on a phone.
+   * 逐條而不是只給數字：這一格取代的是三個舊計數（`options_requested` / `evidence_requested` /
+   * `review_surface_requested`），而那三個數字的收件人**根本不會看到它們** —— 它們數的是寫進
+   * 別人手機的注入文字，讀 stdout 的是跑 `flow sources` 的 agent。現在收件人對了（就是那個編
+   * 來源檔的人），所以要給的是他修得動的東西：哪一條、第幾行、缺什麼。
    *
-   * Counted rather than silent: a number that stays high means entries keep being written against
-   * the contract, which is a writing problem no amount of asking will fix.
+   * 空陣列是常態。**NEVER** 讓它靜默 —— 一條被拒收的條目在佇列上沒有任何載體，這裡不印就等於
+   * 它從所有畫面上消失了，而那是比一列寫壞的題更糟的失敗。
    */
-  options_requested: number
-  /**
-   * Reviews opened this run that arrived with no openable evidence, and were handed straight back.
-   *
-   * The review-side twin of `options_requested`, and read the same way: a number that stays high
-   * means entries keep being written against the contract, which is a writing problem no amount
-   * of asking will fix — escalate to the rule, not to more requests.
-   */
-  evidence_requested: number
-  /**
-   * Rows opened this run that restated a live change's `## 人工檢查`, and were handed straight back.
-   *
-   * Unlike its two siblings this one counts a ROUTING mistake, not a writing one: the row is not
-   * badly written, it is filed on a surface that cannot act on it. A number that stays high means
-   * changes keep failing to reach the /review inbox and authors keep routing around that — so the
-   * thing to fix is the bucket the changes are stuck in, NEVER the wording of the rows.
-   */
-  review_surface_requested: number
+  rejected: RejectedItem[]
   /** Reasons this repo produced nothing, when that is not simply "nothing to do". */
   skipped: string | null
 }
@@ -209,16 +227,6 @@ function answeredSourceIds(repoRoot: string): Set<string> {
   }
   return answered
 }
-
-/**
- * The other half of `OPTIONS_REQUEST_TEXT`: the options asked for are now there.
- *
- * Written as a RESPONSE on the same thread rather than as silence. The request that stands next
- * to it says 「這題沒有選項，我答不了」, and `needsOptions` treats a pending request as "ball on
- * the agent side" — so a question that quietly grew options would keep rendering as blocked on
- * somebody else while being perfectly answerable.
- */
-const OPTIONS_FILLED_TEXT = '選項已補上（來源檔重掃後解析出 A/B/C）。這題現在可以直接回覆選項字母。'
 
 /**
  * What, if anything, an open question is rendering that its source no longer says.
@@ -291,9 +299,7 @@ export function syncDecisions({
     suppressed: 0,
     self_closed: 0,
     amended: 0,
-    options_requested: 0,
-    evidence_requested: 0,
-    review_surface_requested: 0,
+    rejected: [],
     skipped: null,
   }
 
@@ -320,10 +326,33 @@ export function syncDecisions({
    * 而漂掉的那一次是一題該問的被吞掉，而它不會有任何訊號。
    */
   const selfClosed = new Map<string, SourceItem>()
+  const rejected = new Map<string, SourceItem>()
   const bySourceId = new Map<string, SourceItem>()
   for (const item of items) {
-    if (item.lint.includes('self-closed')) selfClosed.set(item.source_id, item)
-    else bySourceId.set(item.source_id, item)
+    if (item.lint.includes('self-closed')) {
+      selfClosed.set(item.source_id, item)
+      continue
+    }
+    /**
+     * 寫法不合契約 → **不鑄 span**（TD-904）。判準借 `item.lint`，**NEVER** 在這裡重判一次
+     * 「有沒有選項」「有沒有三欄」：`lintOf` / `hasReviewEvidence` 是唯一的偵測器，第二份會漂，
+     * 而漂掉的那一次是一條該被退回的題悄悄進了佇列，或一條寫得好好的題被悄悄擋在門外。
+     */
+    const codes = rejectingLintsOf(item)
+    if (codes.length > 0) {
+      rejected.set(item.source_id, item)
+      result.rejected.push({
+        source_id: item.source_id,
+        question: item.question,
+        category: item.category,
+        carrier: item.carrier,
+        line: item.line,
+        lint: codes,
+        notes: codes.map((code) => LINT_NOTES[code as keyof typeof LINT_NOTES]),
+      })
+      continue
+    }
+    bySourceId.set(item.source_id, item)
   }
   result.self_closed = selfClosed.size
 
@@ -365,25 +394,6 @@ export function syncDecisions({
           cwd: repoRoot,
         })
         written = amendment.written === true
-        /**
-         * An amendment that FILLS IN the options is the moment a handed-back ruling becomes
-         * answerable. Say so on the thread: the outstanding request is 「這題沒有選項，我答不了」,
-         * and leaving it standing next to a question that now has options makes the ball look
-         * like it is still on the agent side when it is not.
-         */
-        if (
-          written &&
-          item.category === 'ruling' &&
-          item.options.length > 0 &&
-          (alreadyOpen.rendered.options as unknown[] | undefined)?.length === 0
-        ) {
-          answerClarification({
-            spanId: alreadyOpen.span_id,
-            text: OPTIONS_FILLED_TEXT,
-            actor,
-            cwd: repoRoot,
-          })
-        }
       }
       if (!written) {
         result.unwritten.push(item.source_id)
@@ -435,60 +445,6 @@ export function syncDecisions({
         cwd: repoRoot,
       })
       spanId = handle.span_id
-
-      /**
-       * A ruling with no options is unanswerable the moment it opens — hand it back now.
-       *
-       * NEVER wait for somebody to notice on the page: the page is read on a phone, and the one
-       * move that helps (ask for options) is the one that costs the most to type there. Doing it
-       * here means the gap is worked while the writing is still fresh, and the person who opens
-       * the queue next sees either options or a visible "球在 agent 手上", never a text box
-       * pretending the question is finished.
-       *
-       * Only `ruling`: the other buckets are states, and options on a state would be an answer
-       * sheet for something nobody asked.
-       */
-      if (item.category === 'ruling' && item.options.length === 0) {
-        const asked = requestClarification({
-          spanId,
-          text: OPTIONS_REQUEST_TEXT,
-          actor,
-          cwd: repoRoot,
-        })
-        if (asked.written) result.options_requested += 1
-      }
-
-      /*
-       * Same move for a review that arrived with nothing to look at.
-       *
-       * Keyed on the LINT the scan already computed, never on a second evidence check here — one
-       * detector, one verdict. `lintOf` is the only thing that decides what "has evidence" means.
-       */
-      if (item.category === 'review' && item.lint.includes('missing-evidence')) {
-        const asked = requestClarification({
-          spanId,
-          text: EVIDENCE_REQUEST_TEXT,
-          actor,
-          cwd: repoRoot,
-        })
-        if (asked.written) result.evidence_requested += 1
-      }
-
-      /*
-       * And for a row that belongs on /review. Keyed on the lint for the same reason as above —
-       * one detector, one verdict — and deliberately NOT gated on category: the restatement is a
-       * routing mistake, and it is the same mistake whether its author filed it as a doing
-       * (`## 需要 Charles 執行`) or as a thing to sign off (`## Ready for review`).
-       */
-      if (item.lint.includes('belongs-on-review')) {
-        const asked = requestClarification({
-          spanId,
-          text: REVIEW_SURFACE_REQUEST_TEXT,
-          actor,
-          cwd: repoRoot,
-        })
-        if (asked.written) result.review_surface_requested += 1
-      }
     }
     result.actions.push({
       type: 'open',
@@ -502,6 +458,20 @@ export function syncDecisions({
   // 2. Gone from the files —— 或者還在，但條目自己說它已經結案了。
   for (const [sourceId, { span_id }] of openBySourceId) {
     if (bySourceId.has(sourceId)) continue
+    /**
+     * 被退件的條目**不撤回它既有的 span**。
+     *
+     * 它還在檔案裡，所以「來源已消失」是假的；而 ingest 這一支從來沒有「因為寫得不好就把人正在
+     * 看的一題收掉」的授權。TD-904 (4) 把存量交給一次性清理腳本
+     * （`purge-injected-decisions.ts`，人下 `--apply`、寫 `decision.dismiss`、carrier 標
+     * `dismissed:`），因為那是一個**帶理由、可稽核、一次性**的動作，而不是每 60 秒跑一次的
+     * 自動收斂。
+     *
+     * 代價寫在這裡以免下一個人以為是漏的：一條先前帶著選項開了 span、之後被作者改到剩零個選項
+     * 的題，會停在佇列上顯示舊選項。它不會增生（`source_id` 去重照舊），而讓 ingest 有權關掉
+     * 人正在讀的題，比這個代價貴得多。
+     */
+    if (rejected.has(sourceId)) continue
     const closed = selfClosed.get(sourceId)
     if (!dryRun) {
       resolveDecision(span_id, {
@@ -588,9 +558,7 @@ export function syncFleet({
         suppressed: 0,
         self_closed: 0,
         amended: 0,
-        options_requested: 0,
-        evidence_requested: 0,
-        review_surface_requested: 0,
+        rejected: [],
         skipped: error instanceof Error ? error.message : String(error),
       }
     }
