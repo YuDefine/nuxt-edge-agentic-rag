@@ -63,7 +63,7 @@
 
 ## Ready for review
 
-- [ ] [2026-09-02] **hub.json db 軸修正：`db-schema: supabase` / `db-runtime: cf-workers` → `cf-d1` / `none`**
+- [ ] ✅ dismissed: [2026-09-02] **hub.json db 軸修正：`db-schema: supabase` / `db-runtime: cf-workers` → `cf-d1` / `none`**
   - 改了什麼：`.claude/hub.json` 兩軸改宣告；`hub:prune` 拿掉 9 份 Supabase 專用投影（database-access / storage / unused-features / mcp-remote / audit-schema / migration / rls-policy / trigger / query-optimization），新投影 `data-layer-d1.md`；project-scope plugin 換成 `hub-db-schema-cf-d1`，卸 `hub-db-schema-supabase` 與 `hub-db-runtime-cf-workers`
   - 證據：repo 只有 `drizzle-orm` / `drizzle-kit` / `@nuxthub/core`，`wrangler.jsonc` 綁 D1，無 `@supabase/supabase-js`；`db-runtime` enum 只有 supabase-* / cf-workers（README 明寫 cf-workers = Supabase 存取）/ none，rental-scout 同為 cf-d1 + `none`；`pnpm hub:check` 綠（no drift, no orphans）
   - 退回會怎樣：18.8 KB Supabase client 規約會在每次動 `server/**` 時被注入，而 D1 / Drizzle 的 hard rule（subquery alias、dev binding 鎖死、DROP TABLE cascade）一條都不載
