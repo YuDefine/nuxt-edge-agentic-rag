@@ -123,6 +123,17 @@ export interface RuntimeWork {
    * attempt FAILED, and a handover is not a failure. Bounded by `CONTINUATION_HANDOVER_BUDGET`.
    */
   handover_count: number
+  /**
+   * How many times this work has been REOPENED out of `done` (plan section 10.6 ruling (m)).
+   *
+   * A third counter beside `retry_limit` and `handover_count` because it answers a third question:
+   * a reopen is neither a failed attempt nor a live handover, it is a delivery that was accepted
+   * and then stopped being enough — because the requirement moved, or because readiness judged its
+   * evidence insufficient. Counted rather than flagged so `/board` can tell a change that was
+   * reopened once from one that has been reopened five times; nothing budgets on it, and
+   * `retry_limit` is deliberately NOT reset when it increments.
+   */
+  reopen_count: number
   created_at: string
   updated_at: string
 }
@@ -149,6 +160,19 @@ export interface RuntimeAttempt {
   requirement_revision: number | null
   scenario_id: string | null
   code_revision: string | null
+  /**
+   * The code revision each verification phase actually ran against (TD-885).
+   *
+   * One attempt spans RED_VALIDITY, GREEN and mutation (ruling 5b), and those genuinely run on
+   * different trees: RED runs against the baseline in a `--code-worktree`, GREEN after the
+   * implementation lands. A single `code_revision` therefore answered a question nobody asked —
+   * it could describe at most one of them. `code_revision` is kept and now means the LAST revision
+   * a phase was recorded against, which at finish is the one the delivery stands on.
+   *
+   * Keyed by `VerificationPhase`, `{}` on an attempt that never recorded one (and on every attempt
+   * written before this field existed).
+   */
+  phase_revisions: Record<string, string>
   intent_revision: number | null
   resumes_attempt_id: string | null
   supersedes_attempt_id: string | null
@@ -297,9 +321,47 @@ export interface RuntimeState {
   messages: RuntimeMessage[]
   pauses: RuntimePause[]
   trace_observations: RuntimeTraceObservation[]
+  /**
+   * Work ids reopened since their last attempt was leased (ruling (m)).
+   *
+   * Exposed rather than kept private to the fold because `validateAttemptAdmission` needs the SAME
+   * answer: two derivations of "has this been reopened since the last lease" drift, and the drift
+   * is unrecoverable — admission accepting a linkless attempt the fold then refuses (or the
+   * reverse) leaves the work with no attempt shape it can take at all. One producer, two readers.
+   */
+  reopened_since_last_lease: string[]
 }
 
 const TERMINAL_WORK = new Set<MachineWorkState>(['done', 'exhausted', 'cancelled', 'superseded'])
+
+/**
+ * The verification phases a single attempt runs through (plan section 4.5, section 7.7 ruling 5b).
+ *
+ * The SAME vocabulary as the BDD verdict event, and deliberately not a second one:
+ * `docs/contracts/bdd/v1/scenario-verdict-event.schema.json` holds the enum, `bdd/evaluate.ts` holds
+ * the `Phase` type, and `test/ai-control-plane-phase4.test.ts` pins this list against that schema so
+ * the three cannot drift. A receipt tagged with a phase the verdict event cannot express would be
+ * evidence for a gate that never ran.
+ *
+ * Mutation is not a fourth entry: it is the sensitivity check that runs from GREEN onward, judged
+ * inside whichever phase requested it, not a phase of its own.
+ */
+export const VERIFICATION_PHASES = ['RED_VALIDITY', 'GREEN', 'REFACTOR'] as const
+export type VerificationPhase = (typeof VERIFICATION_PHASES)[number]
+
+/** Ruling (m): the two, and only two, reasons a delivered work item goes back in the queue. */
+export const REOPEN_CAUSES = ['revision', 'evidence_insufficient'] as const
+export type ReopenCause = (typeof REOPEN_CAUSES)[number]
+
+/**
+ * The one readiness predicate an `evidence_insufficient` reopen may cite.
+ *
+ * A literal shared by the runtime's validator and `ai-control-plane.ts`'s CLI rather than a free
+ * string, because the whole point of the field is that the reopen is answerable: a reader has to be
+ * able to go back to readiness and re-run the same judgement. A reopen citing a predicate readiness
+ * does not compute is a claim nobody can check.
+ */
+export const EVIDENCE_READINESS_PREDICATE = 'required_work_terminal_with_current_evidence'
 
 const ACTIVE_ATTEMPT = new Set<AttemptState>(['leased', 'running', 'paused'])
 const WORK_TRANSITIONS: Record<MachineWorkState, MachineWorkState[]> = {
@@ -308,7 +370,12 @@ const WORK_TRANSITIONS: Record<MachineWorkState, MachineWorkState[]> = {
   leased: ['running', 'retry_wait', 'exhausted', 'cancelled', 'superseded', 'quarantined'],
   running: ['retry_wait', 'done', 'exhausted', 'cancelled', 'superseded', 'quarantined'],
   retry_wait: ['queued', 'cancelled', 'superseded', 'quarantined'],
-  done: [],
+  // `done` is left by exactly ONE event (ruling (m)): the `queued` edge here is what the reopen
+  // rides on, and the fold refuses it unless the immediately preceding event is `work.reopened`
+  // for this same work at this same instant. The edge and the guard are two halves of one rule —
+  // NEVER add a second producer of this transition without going through `reopenRuntimeWork`,
+  // because the edge alone reads as "done is retryable", which is exactly what it is not.
+  done: ['queued'],
   exhausted: [],
   cancelled: [],
   superseded: [],
@@ -365,11 +432,24 @@ const RUNTIME_EVENT_PAYLOAD_KEYS: Record<string, { required: string[]; optional?
   'engine.registered': { required: ['engine'] },
   'work.created': { required: ['work'] },
   'work.state': { required: ['from', 'state', 'reason'] },
+  'work.reopened': {
+    required: ['cause', 'reopen_count', 'reason'],
+    optional: [
+      'revision_commit',
+      'requirement_revision',
+      'readiness_predicate',
+      'receipt_ids',
+      'spine_written',
+    ],
+  },
   'attempt.leased': { required: ['attempt', 'lease'] },
   'attempt.state': { required: ['from', 'state', 'reason'] },
   'attempt.flow': { required: ['from', 'state', 'pending_outcome'] },
   'attempt.flow_recovered': { required: ['from', 'state', 'pending_outcome', 'reason'] },
-  'lease.heartbeat': { required: ['lease_id', 'expires_at'] },
+  // `phase` / `code_revision` ride the heartbeat rather than a verb of their own: ruling 5b says
+  // the phases are one attempt's internal sequence and adds NO new runtime verb, and a heartbeat is
+  // already what an attempt sends when it crosses from one phase to the next.
+  'lease.heartbeat': { required: ['lease_id', 'expires_at'], optional: ['phase', 'code_revision'] },
   'lease.released': { required: ['lease_id', 'reason'] },
   'resume.recorded': { required: ['record'] },
   'resume.consumed': { required: ['resume_record_id'] },
@@ -656,6 +736,7 @@ function validateRuntimeWork(work: RuntimeWork): void {
     'state',
     'retry_limit',
     'handover_count',
+    'reopen_count',
     'created_at',
     'updated_at',
   ])
@@ -672,6 +753,9 @@ function validateRuntimeWork(work: RuntimeWork): void {
   }
   if (!Number.isInteger(work.handover_count) || work.handover_count < 0) {
     throw new Error('runtime work handover_count must be >= 0')
+  }
+  if (!Number.isInteger(work.reopen_count) || work.reopen_count < 0) {
+    throw new Error('runtime work reopen_count must be >= 0')
   }
   if (work.parent_work_id !== null) requirePattern('parent work_id', work.parent_work_id, WORK_ID)
   if (work.created_by_grant_digest !== null) {
@@ -704,6 +788,7 @@ function validateRuntimeAttempt(attempt: RuntimeAttempt): void {
     'requirement_revision',
     'scenario_id',
     'code_revision',
+    'phase_revisions',
     'intent_revision',
     'resumes_attempt_id',
     'supersedes_attempt_id',
@@ -733,6 +818,13 @@ function validateRuntimeAttempt(attempt: RuntimeAttempt): void {
   requireNullableString('runtime attempt requirement_id', attempt.requirement_id)
   requireNullableString('runtime attempt scenario_id', attempt.scenario_id)
   requireNullableString('runtime attempt code_revision', attempt.code_revision)
+  requireRecord('runtime attempt phase_revisions', attempt.phase_revisions)
+  for (const [phase, revision] of Object.entries(attempt.phase_revisions)) {
+    if (!VERIFICATION_PHASES.includes(phase as VerificationPhase)) {
+      throw new Error(`unknown verification phase: ${phase}`)
+    }
+    requireNonEmptyString(`phase_revisions.${phase}`, revision)
+  }
   if (!(attempt.state in ATTEMPT_TRANSITIONS)) throw new Error('invalid runtime attempt state')
   if (!['pending_start', 'started', 'pending_end', 'ended'].includes(attempt.flow_state)) {
     throw new Error('invalid runtime attempt flow state')
@@ -1007,6 +1099,57 @@ function validateNestedEventPayload(event: RuntimeEvent): void {
     }
     requireNonEmptyString('runtime work state reason', payload.reason)
   }
+  if (event.kind === 'work.reopened') {
+    if (!REOPEN_CAUSES.includes(payload.cause)) {
+      throw new Error(`invalid work reopen cause: ${String(payload.cause)}`)
+    }
+    if (!Number.isInteger(payload.reopen_count) || payload.reopen_count < 1) {
+      throw new Error('work reopen reopen_count must be >= 1')
+    }
+    requireNonEmptyString('work reopen reason', payload.reason)
+    // Present ONLY to record that the paired spine write did not land, so `false` is the only value
+    // it may carry: a `true` here would be a claim about another ledger made by the ledger that
+    // cannot see it.
+    if ('spine_written' in payload && payload.spine_written !== false) {
+      throw new Error('work reopen spine_written is written only as false')
+    }
+    // Each cause carries the thing that makes it checkable, and carries ONLY that: a revision
+    // reopen points at the commit that moved the requirement, an evidence reopen at the readiness
+    // predicate that named the work and the receipts it judged. Accepting either field under
+    // either cause would let a caller present an unrelated commit as a readiness verdict.
+    if (payload.cause === 'revision') {
+      requirePattern('work reopen revision_commit', payload.revision_commit, /^[0-9a-f]{7,40}$/)
+      // The revision the work is being sent back to answer. Optional on the shape but written by
+      // the only emitter, because `materializeWork` reads it: without it, re-materializing the work
+      // spec after a revision compares the plan's r2 against the r1 frozen into `work.open` and
+      // refuses the work spec as stale — the reopen would put the work back in the queue and
+      // nothing could take it out again.
+      if ('requirement_revision' in payload) {
+        if (
+          !Number.isInteger(payload.requirement_revision) ||
+          (payload.requirement_revision as number) < 1
+        ) {
+          throw new Error('work reopen requirement_revision must be a positive integer')
+        }
+      }
+      if ('readiness_predicate' in payload || 'receipt_ids' in payload) {
+        throw new Error('a revision reopen carries a revision commit, not a readiness verdict')
+      }
+    } else {
+      if ('requirement_revision' in payload) {
+        throw new Error('an evidence reopen does not move the requirement, so it names no revision')
+      }
+      if (payload.readiness_predicate !== EVIDENCE_READINESS_PREDICATE) {
+        throw new Error(
+          `an evidence reopen must name ${EVIDENCE_READINESS_PREDICATE}, not ${String(payload.readiness_predicate)}`,
+        )
+      }
+      requireStringList('work reopen receipt_ids', payload.receipt_ids)
+      if ('revision_commit' in payload) {
+        throw new Error('an evidence reopen carries the receipts it judged, not a revision commit')
+      }
+    }
+  }
   if (event.kind === 'attempt.leased') {
     validateRuntimeAttempt(payload.attempt)
     validateRuntimeLease(payload.lease)
@@ -1051,6 +1194,18 @@ function validateNestedEventPayload(event: RuntimeEvent): void {
   if (event.kind === 'lease.heartbeat') {
     requirePattern('lease_id', payload.lease_id, /^lse_[A-Za-z0-9]+$/)
     iso(payload.expires_at)
+    // Both or neither (TD-885). A phase with no revision records that something happened without
+    // recording what it happened to, which is the exact gap this field exists to close; a revision
+    // with no phase has nowhere to be filed.
+    if ('phase' in payload !== 'code_revision' in payload) {
+      throw new Error('a heartbeat records a phase together with the revision it ran against')
+    }
+    if ('phase' in payload) {
+      if (!VERIFICATION_PHASES.includes(payload.phase)) {
+        throw new Error(`unknown verification phase: ${String(payload.phase)}`)
+      }
+      requireNonEmptyString('heartbeat code_revision', payload.code_revision)
+    }
   }
   if (event.kind === 'lease.released') {
     requirePattern('lease_id', payload.lease_id, /^lse_[A-Za-z0-9]+$/)
@@ -1136,15 +1291,45 @@ function validateEvent(event: RuntimeEvent, expectedSequence?: number): void {
  * dispatch silently records nothing. A default of 0 is not a guess: no journal written before the
  * field existed could contain a handover, because the verb did not exist either.
  *
- * NEVER grow this into a general "fill in whatever is missing" pass. It defaults exactly one field,
- * for exactly the kind that carries it, and a field whose absence is NOT provably equivalent to a
- * known value does not belong here — it belongs in a refusal.
+ * NEVER grow this into a general "fill in whatever is missing" pass. Every entry in the table below
+ * is one field, on the one kind that carries it, whose absence is PROVABLY equivalent to the value
+ * it is given — because the verb that could have set it did not exist when the journal was written.
+ * A field whose absence is not provably equivalent to a known value does not belong here; it
+ * belongs in a refusal.
  */
+const EVENT_BACKFILL: Record<string, { key: string; fields: Record<string, unknown> }> = {
+  'work.created': {
+    key: 'work',
+    fields: {
+      // Plan section 9.8 rule 8. No journal written before the verb existed can contain a handover.
+      handover_count: 0,
+      // Ruling (m). Same argument, same shape: `work.reopened` did not exist, so no journal
+      // written before it can describe a work item that had ever been reopened.
+      reopen_count: 0,
+    },
+  },
+  'attempt.leased': {
+    key: 'attempt',
+    // TD-885. There was no way to record a phase revision, so an attempt written before this field
+    // recorded none — `{}` is what it held, not a guess at what it might have held.
+    fields: { phase_revisions: {} },
+  },
+}
+
 function migrateReadEvent(event: RuntimeEvent): RuntimeEvent {
-  if (event.kind !== 'work.created') return event
-  const work = event.payload.work as Record<string, unknown> | undefined
-  if (!work || typeof work !== 'object' || 'handover_count' in work) return event
-  return { ...event, payload: { ...event.payload, work: { ...work, handover_count: 0 } } }
+  const rule = EVENT_BACKFILL[event.kind]
+  if (!rule) return event
+  const target = event.payload[rule.key] as Record<string, unknown> | undefined
+  if (!target || typeof target !== 'object') return event
+  const missing = Object.entries(rule.fields).filter(([key]) => !(key in target))
+  if (missing.length === 0) return event
+  return {
+    ...event,
+    payload: {
+      ...event.payload,
+      [rule.key]: { ...target, ...Object.fromEntries(missing) },
+    },
+  }
 }
 
 export function readRuntimeEvents(repoRoot: string): RuntimeEvent[] {
@@ -1254,6 +1439,16 @@ export function foldRuntimeEvents(events: RuntimeEvent[]): RuntimeState {
   const observations = new Map<string, RuntimeTraceObservation>()
   const eventIds = new Set<string>()
   const rootTraceIds = new Set<string>()
+  /**
+   * Work items reopened since their last attempt was leased (ruling (m)).
+   *
+   * The fold is the authority — a rule enforced only in `validateAttemptAdmission` would be
+   * enforced only for events this process emitted — and it publishes the answer on `RuntimeState`
+   * so admission reads it instead of re-deriving it. Cleared on the lease it authorizes, so a
+   * reopen buys exactly one linkless attempt and the retry after it says why it exists like every
+   * other retry.
+   */
+  const reopenedSinceLastLease = new Set<string>()
   const spanIds = new Set<string>()
 
   events.forEach((event, index) => {
@@ -1358,6 +1553,31 @@ export function foldRuntimeEvents(events: RuntimeEvent[]): RuntimeState {
       }
       works.set(event.work_id, payload.work)
     }
+    if (event.kind === 'work.reopened') {
+      const work = works.get(event.work_id!)
+      if (!work) throw new Error(`runtime work reopen references unknown work: ${event.work_id}`)
+      if (event.attempt_id !== null) {
+        throw new Error('work reopen is a work-level event and carries no attempt')
+      }
+      // `done` and nothing else. `exhausted` / `cancelled` / `superseded` are terminal for reasons
+      // a reopen does not answer, and ruling (m) names exactly one state it lets go of.
+      if (work.state !== 'done') {
+        throw new Error(`work reopen requires a done work item, not ${work.state}: ${work.work_id}`)
+      }
+      if (payload.reopen_count !== work.reopen_count + 1) {
+        throw new Error(
+          `work reopen count must step +1 from ${work.reopen_count}, got ${payload.reopen_count}`,
+        )
+      }
+      works.set(event.work_id!, {
+        ...work,
+        // `retry_limit` is untouched, on purpose (ruling (m)). A reopen is not a retry, and
+        // refilling the retry budget here would let a change buy attempts by revising itself.
+        reopen_count: payload.reopen_count,
+        updated_at: event.recorded_at,
+      })
+      reopenedSinceLastLease.add(event.work_id!)
+    }
     if (event.kind === 'work.state') {
       const work = works.get(event.work_id!)
       if (!work) throw new Error(`runtime work state references unknown work: ${event.work_id}`)
@@ -1392,6 +1612,20 @@ export function foldRuntimeEvents(events: RuntimeEvent[]): RuntimeState {
         if (!parentTerminalRecovery) {
           throw new Error('work terminal transition requires attempt causality')
         }
+      }
+      // The other half of `WORK_TRANSITIONS.done: ['queued']`. Anything that reaches this edge
+      // without a `work.reopened` immediately before it — a hand-written journal line, a caller
+      // that emitted `work.state` directly, a future emitter that forgot — is refused here, so
+      // "done is left by exactly one event" is a property of the fold rather than of the callers.
+      if (
+        payload.from === 'done' &&
+        payload.state === 'queued' &&
+        (!previousEvent ||
+          previousEvent.kind !== 'work.reopened' ||
+          previousEvent.work_id !== event.work_id ||
+          previousEvent.recorded_at !== event.recorded_at)
+      ) {
+        throw new Error('work reopen transition lacks work.reopened causality')
       }
       if (
         payload.from === 'created' &&
@@ -1548,11 +1782,14 @@ export function foldRuntimeEvents(events: RuntimeEvent[]): RuntimeState {
         (candidate) => candidate.work_id === work.work_id,
       )
       const links = [attempt.resumes_attempt_id, attempt.supersedes_attempt_id].filter(Boolean)
-      if (
-        (previousAttempts.length === 0 && links.length !== 0) ||
-        (previousAttempts.length > 0 && links.length !== 1)
-      ) {
-        throw new Error('attempt must have exactly one causal link after the first attempt')
+      const reopened = reopenedSinceLastLease.delete(work.work_id)
+      const requiredLinks = previousAttempts.length === 0 || reopened ? 0 : 1
+      if (links.length !== requiredLinks) {
+        throw new Error(
+          requiredLinks === 0 && reopened
+            ? 'the first attempt after a reopen carries no causal link; the reopen is the causality'
+            : 'attempt must have exactly one causal link after the first attempt',
+        )
       }
       if (attempt.supersedes_attempt_id !== null) {
         const superseded = attempts.get(attempt.supersedes_attempt_id)
@@ -1797,6 +2034,17 @@ export function foldRuntimeEvents(events: RuntimeEvent[]): RuntimeState {
         heartbeat_at: event.recorded_at,
         expires_at: payload.expires_at,
       })
+      if ('phase' in payload) {
+        attempts.set(attempt.attempt_id, {
+          ...attempt,
+          phase_revisions: { ...attempt.phase_revisions, [payload.phase]: payload.code_revision },
+          // `code_revision` follows the last phase recorded, so at finish it holds the revision the
+          // delivery actually stands on. Set at `attempt.leased` it described the tree the RED
+          // phase ran against and then silently stopped being true.
+          code_revision: payload.code_revision,
+          updated_at: event.recorded_at,
+        })
+      }
     }
     if (event.kind === 'lease.released') {
       const lease = leases.get(payload.lease_id)
@@ -2115,6 +2363,7 @@ export function foldRuntimeEvents(events: RuntimeEvent[]): RuntimeState {
     messages: [...messages.values()],
     pauses: [...pauses.values()],
     trace_observations: [...observations.values()],
+    reopened_since_last_lease: [...reopenedSinceLastLease],
   }
 }
 
@@ -2443,6 +2692,7 @@ export function ensureRuntimeWork(input: {
       state: 'created',
       retry_limit: retryLimit,
       handover_count: 0,
+      reopen_count: 0,
       created_at: recordedAt,
       updated_at: recordedAt,
     }
@@ -2650,13 +2900,132 @@ function validateAttemptAdmission(
   }
   const priorAttempts = state.attempts.filter((attempt) => attempt.work_id === input.workId)
   const causalLinks = [input.resumesAttemptId, input.supersedesAttemptId].filter(Boolean)
-  if (
-    (priorAttempts.length === 0 && causalLinks.length !== 0) ||
-    (priorAttempts.length > 0 && causalLinks.length !== 1)
-  ) {
-    throw new Error('attempt must have exactly one causal link after the first attempt')
+  // A reopen IS the causality (ruling (m)), and it lives on the work rather than on any attempt.
+  // The link rule exists so that a second attempt always says why it exists; after a reopen the
+  // answer is the `work.reopened` event, and demanding a link anyway would force the caller to
+  // name the succeeded attempt as resumed or superseded — neither of which it is. Its receipt
+  // stays valid history that a later one supersedes by being read, not by being overwritten.
+  //
+  // READ off the fold (`reopened_since_last_lease`), NEVER re-derived here. The obvious local
+  // derivation — is there a `work.reopened` at or after the last attempt's `started_at` — answers a
+  // different question the moment the two land in the same millisecond, because the fold reads
+  // event ORDER and a timestamp comparison reads the clock. When they disagree the work has no
+  // legal attempt shape at all: admission demands a causal link the fold refuses, or the reverse,
+  // and it sits in `queued` forever.
+  const reopenedSinceLastAttempt = state.reopened_since_last_lease.includes(input.workId)
+  const requiredLinks = priorAttempts.length === 0 || reopenedSinceLastAttempt ? 0 : 1
+  if (causalLinks.length !== requiredLinks) {
+    throw new Error(
+      requiredLinks === 0
+        ? 'the first attempt after a reopen carries no causal link; the reopen is the causality'
+        : 'attempt must have exactly one causal link after the first attempt',
+    )
   }
   return work
+}
+
+/**
+ * Reopen a `done` work item so it can be executed again (plan section 10.6 ruling (m)).
+ *
+ * `done` is left by exactly one event, and this is its only emitter. Two causes, and they are not
+ * interchangeable:
+ *
+ * - `revision` — the requirement this work delivered has moved, so what it delivered no longer
+ *   answers the current intent. Emitted by `reviseOpsxChange` for every required work whose
+ *   requirement stepped, carrying the revision commit as its causality.
+ * - `evidence_insufficient` — the requirement is unchanged, but readiness judged the receipts on
+ *   record insufficient under `required_work_terminal_with_current_evidence`. Emitted explicitly,
+ *   carrying the receipt ids the judgement was made on (an empty list is legitimate: "no receipt at
+ *   all" is precisely the shape <consumer-h>'s `W-2026-09-02-wsp-leavesubmitguard` had, driven to `done`
+ *   by a RED-only attempt).
+ *
+ * What it deliberately does NOT do: mint a second work item for the same work spec (`materializeWork`
+ * refuses that, and ruling (m) keeps it refusing), and reset `retry_limit`. Reopening is not free
+ * retries — a work item that has spent its retries reopens with none left, and that is the honest
+ * reading: the reason it needs running again is not that its attempts failed.
+ */
+export function reopenRuntimeWork(input: {
+  repoRoot: string
+  workId: string
+  cause: ReopenCause
+  reason: string
+  /** Required for `cause: 'revision'`: the commit that moved the requirement. */
+  revisionCommit?: string | null
+  /** For `cause: 'revision'`: the revision the requirement moved TO. See the payload validator. */
+  requirementRevision?: number | null
+  /** Required for `cause: 'evidence_insufficient'`: the receipts readiness judged. */
+  receiptIds?: string[] | null
+  /**
+   * Write the same fact on the flow spine, returning whether it landed.
+   *
+   * Called INSIDE the mutation, after every precondition has passed and before the journal events
+   * are built, so that `spine_written: false` can be recorded on the runtime event itself rather
+   * than reported to a caller that may not look. Two ledgers, one fact (TD-884): the spine is where
+   * every read side asks whether a work item is finished, so a reopen that only reached the runtime
+   * leaves `/board`, `flow ask` and the projector all reading a standing `work.done`.
+   *
+   * Ordering is deliberate and is the lesser of two exposures. Spine-first can leave a spine reopen
+   * behind if the journal append then fails; runtime-first cannot record whether the spine write
+   * succeeded, and a fail-open telemetry write that nothing can observe is the failure this
+   * parameter exists to end. `mutateRuntime` runs its callback exactly once inside the lock, so
+   * this is never invoked twice for one reopen.
+   */
+  recordOnSpine?: () => boolean
+  actor?: string
+  now?: string | Date
+}): RuntimeWork {
+  const workId = requirePattern('work_id', input.workId, WORK_ID)
+  const recordedAt = iso(input.now)
+  if (!REOPEN_CAUSES.includes(input.cause)) {
+    throw new Error(`invalid work reopen cause: ${String(input.cause)}`)
+  }
+  requireNonEmptyString('work reopen reason', input.reason)
+  return mutateRuntime(input.repoRoot, (state) => {
+    const work = state.works.find((candidate) => candidate.work_id === workId)
+    if (!work) throw new Error(`unknown runtime work: ${workId}`)
+    if (work.state !== 'done') {
+      throw new Error(`only a done work item can be reopened, ${workId} is ${work.state}`)
+    }
+    const reopenCount = work.reopen_count + 1
+    const spineWritten = input.recordOnSpine ? input.recordOnSpine() : true
+    const payload: Record<string, unknown> =
+      input.cause === 'revision'
+        ? {
+            cause: input.cause,
+            reopen_count: reopenCount,
+            reason: input.reason,
+            revision_commit: input.revisionCommit,
+            ...(input.requirementRevision === undefined || input.requirementRevision === null
+              ? {}
+              : { requirement_revision: input.requirementRevision }),
+          }
+        : {
+            cause: input.cause,
+            reopen_count: reopenCount,
+            reason: input.reason,
+            readiness_predicate: EVIDENCE_READINESS_PREDICATE,
+            receipt_ids: [...(input.receiptIds ?? [])],
+          }
+    // Only when it FAILED. A `spine_written: true` on every reopen would be a field nobody reads;
+    // the absence of this one is the normal case, and its presence is the incident.
+    if (!spineWritten) payload.spine_written = false
+    const actor = input.actor ?? 'flow-controller'
+    return {
+      value: { ...work, state: 'queued', reopen_count: reopenCount, updated_at: recordedAt },
+      events: [
+        makeEvent({ kind: 'work.reopened', actor, recordedAt, workId, payload }),
+        // Same instant, immediately after: the fold matches on exactly that adjacency, so these
+        // two are one write or neither. `mutateRuntime` appends the batch atomically.
+        makeEvent({
+          kind: 'work.state',
+          actor,
+          recordedAt,
+          workId,
+          payload: { from: 'done', state: 'queued', reason: `reopened: ${input.cause}` },
+        }),
+      ],
+    }
+  })
 }
 
 export function assertRuntimeAttemptCanStart(input: {
@@ -2800,6 +3169,7 @@ export function beginRuntimeAttempt(input: {
       requirement_revision: input.requirementRevision ?? null,
       scenario_id: input.scenarioId ?? null,
       code_revision: input.codeRevision ?? null,
+      phase_revisions: {},
       intent_revision: input.intentRevision ?? null,
       resumes_attempt_id: input.resumesAttemptId ?? null,
       supersedes_attempt_id: input.supersedesAttemptId ?? null,
@@ -2932,10 +3302,22 @@ export function prepareRuntimeAttemptFinish(input: {
   })
 }
 
+/**
+ * Extend an attempt's lease, optionally recording the verification phase it just crossed into.
+ *
+ * The phase arguments are how ruling 5b's "one attempt, three phases" becomes readable: RED, GREEN
+ * and mutation run under one lease, and the heartbeat between them is already the message that says
+ * the attempt is still alive. Passing `phase` without `codeRevision` is refused — see the payload
+ * validator for why.
+ */
 export function heartbeatRuntimeAttempt(input: {
   repoRoot: string
   attemptId: string
   leaseDurationMs?: number
+  /** The verification phase this heartbeat opens; requires `codeRevision`. */
+  phase?: VerificationPhase
+  /** The code revision that phase runs against; requires `phase`. */
+  codeRevision?: string
   actor?: string
   now?: string | Date
 }): RuntimeLease {
@@ -2972,7 +3354,15 @@ export function heartbeatRuntimeAttempt(input: {
           recordedAt,
           workId: attempt.work_id,
           attemptId,
-          payload: { lease_id: lease.lease_id, expires_at: updated.expires_at },
+          payload: {
+            lease_id: lease.lease_id,
+            expires_at: updated.expires_at,
+            // Each key only when it has a value: writing `code_revision: undefined` would make
+            // `'code_revision' in payload` true and let the both-or-neither check pass on a
+            // half-recorded phase, which is the one thing it exists to refuse.
+            ...(input.phase === undefined ? {} : { phase: input.phase }),
+            ...(input.codeRevision === undefined ? {} : { code_revision: input.codeRevision }),
+          },
         }),
       ],
     }

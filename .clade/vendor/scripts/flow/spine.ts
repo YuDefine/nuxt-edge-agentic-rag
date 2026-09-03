@@ -62,6 +62,15 @@ export interface WorkItem {
   work_id: string
   spans: number
   in_flight: number
+  /**
+   * 尚未 end 的 `session_transport` span 數 —— 亦即「派出去的 pane 還沒回報」。
+   *
+   * 與 `in_flight` 分開數，因為兩者回答的不是同一個問題。`in_flight` 對**任何**沒 end 的 span
+   * 計數，包含一個沒人答的 `decision.request`；用它當「dispatch 還沒回來」的閘門，會讓一件工作
+   * 因為底下掛著一題沒人回的拍板題而**永久**從驗收列消失（2026-09-03 實測：
+   * `W-2026-09-02-tech-debt-td-474-811-849` 的唯一 open span 是 TD-474 那題）。
+   */
+  transport_in_flight: number
   failed: number
   first_ts: string
   last_ts: string
@@ -82,6 +91,14 @@ export interface WorkItem {
   done_ts: string | null
   verification: string | null
   verified_by: string | null
+  /**
+   * When the last `work.reopened` withdrew a claim of completion, or null if none ever did.
+   *
+   * A row can carry BOTH this and `done_ts` / `terminal_ts`: those record that the claim was made,
+   * this records that it was taken back. Which one holds is `state`'s job, decided by order in the
+   * stream rather than by comparing these two timestamps — see `buildWorkItems`.
+   */
+  reopened_ts: string | null
   /** The human verdict, once given. Terminal: nothing after it changes the state. */
   terminal: 'accepted' | 'dropped' | null
   terminal_ts: string | null
@@ -119,6 +136,17 @@ export interface WorkItem {
    * unreadable.
    */
   artifact_waiver: string | null
+  /**
+   * 最後一次 `work.done` 登記的 `commit` artifact 在本機驗不出「已經 push 到 origin」。
+   *
+   * 由 `flow done` 當下量（`git cat-file -e` ＋ `git branch -r --contains`），量不到就標記——
+   * **NEVER** 擋下 `work.done` 本身：telemetry 的硬契約是它 NEVER 改變被觀測工作的 outcome，
+   * 而一個「憑證還沒推上去」的完成宣稱仍然是一個真的完成宣稱。
+   *
+   * 讀者只有兩個，而且都不是把它當錯誤看：驗收佇列據此不排那一列（沒有東西可驗），
+   * `stall.ts` 的 `done-unverified` 在它躺過 24 小時之後出聲。
+   */
+  unverified_artifact: boolean
   /**
    * The DECLARED delivery estimate (`work.eta`), last write wins. Null when nobody declared one —
    * the derived fallback is computed by whoever renders, and NEVER stored here: a percentile over
@@ -224,6 +252,18 @@ export function buildWorkItems(spans: Span[]): WorkItem[] {
   const lastLinkTs = new Map<string, string>()
   /** Same tiebreak for the delivery estimate, and a local map for the same reason. */
   const lastEtaTs = new Map<string, string>()
+  /**
+   * Which came last on each work item: the claim of completion, or the reopen that withdrew it.
+   *
+   * ORDER in the stream, not a timestamp comparison, and for the reason the control plane's own
+   * admission gate documents: a reopen and the `work.done` it withdraws legitimately land in the
+   * same millisecond, and two readers disagreeing about that instant is how a work item ends up
+   * with no consistent state at all. Tracked separately for the `work.done` claim and for the
+   * human verdict, because a reopen after `work.accept` withdraws a different claim than a reopen
+   * after `work.done` and only the matching one should fall.
+   */
+  const lastDoneClaim = new Map<string, 'done' | 'reopened'>()
+  const lastTerminalClaim = new Map<string, 'terminal' | 'reopened'>()
   for (const s of spans) {
     if (s.is_point || !s.start_ts) continue
     if ((lastRealStart.get(s.work_id) ?? '') < s.start_ts) lastRealStart.set(s.work_id, s.start_ts)
@@ -234,6 +274,7 @@ export function buildWorkItems(spans: Span[]): WorkItem[] {
       work_id: s.work_id,
       spans: 0,
       in_flight: 0,
+      transport_in_flight: 0,
       failed: 0,
       first_ts: s.start_ts ?? '',
       last_ts: '',
@@ -245,6 +286,7 @@ export function buildWorkItems(spans: Span[]): WorkItem[] {
       done_ts: null,
       verification: null,
       verified_by: null,
+      reopened_ts: null,
       terminal: null,
       terminal_ts: null,
       terminal_reason: null,
@@ -252,6 +294,7 @@ export function buildWorkItems(spans: Span[]): WorkItem[] {
       parent_work_id: null,
       artifacts: [],
       artifact_waiver: null,
+      unverified_artifact: false,
       eta_target: null,
       eta_basis: null,
       eta_declared_ts: null,
@@ -259,6 +302,7 @@ export function buildWorkItems(spans: Span[]): WorkItem[] {
     }
     cur.spans += 1
     if (!s.end_ts) cur.in_flight += 1
+    if (!s.end_ts && !s.is_point && s.kind === 'session_transport') cur.transport_in_flight += 1
     if (s.outcome === 'fail') cur.failed += 1
     if (s.kind === 'work.open') {
       if (typeof s.payload?.slug === 'string') cur.slug = s.payload.slug
@@ -277,6 +321,14 @@ export function buildWorkItems(spans: Span[]): WorkItem[] {
     const at = s.start_ts ?? ''
     // Last write wins on each of these: re-doing a work item after rework, or a human overriding
     // their own earlier verdict, both read naturally as "the most recent one is the one that holds".
+    if (s.kind === 'work.reopened') {
+      cur.reopened_ts = at
+      lastDoneClaim.set(s.work_id, 'reopened')
+      lastTerminalClaim.set(s.work_id, 'reopened')
+    }
+    if (s.kind === 'work.done') lastDoneClaim.set(s.work_id, 'done')
+    if (s.kind === 'work.accept' || s.kind === 'work.drop')
+      lastTerminalClaim.set(s.work_id, 'terminal')
     if (s.kind === 'work.done' && at >= (cur.done_ts ?? '')) {
       cur.done_ts = at
       cur.verification = str(s.payload?.verification)
@@ -284,6 +336,9 @@ export function buildWorkItems(spans: Span[]): WorkItem[] {
       // Read off the LATEST claim only. A waiver explains one claim of completion; carrying an old
       // one forward would let a superseded excuse stand in for output the current claim never had.
       cur.artifact_waiver = str(s.payload?.artifact_waiver)
+      // 同一個 last-write-wins：一次新的完成宣稱帶著自己的憑證狀態，把舊的那次帶過來會讓
+      // 「上次推不上去、這次推上去了」讀成仍然推不上去。
+      cur.unverified_artifact = s.payload?.unverified_artifact === true
     }
     // Every span, not just the terminal ones: output is produced by the work, and the claim that
     // the work is finished is a different event from the work that produced anything.
@@ -350,8 +405,15 @@ export function buildWorkItems(spans: Span[]): WorkItem[] {
     // `done_ts` and `verification` stay on the row regardless: they record that the claim WAS made,
     // which is exactly what a reviewer needs to see when asking why the work came back.
     const claimStands =
-      item.done_ts !== null && (lastRealStart.get(item.work_id) ?? '') <= item.done_ts
-    item.state = item.terminal
+      item.done_ts !== null &&
+      (lastRealStart.get(item.work_id) ?? '') <= item.done_ts &&
+      lastDoneClaim.get(item.work_id) !== 'reopened'
+    // A verdict a reopen came after is no longer the verdict on the current state either. It stays
+    // on the row (`terminal`, `terminal_ts`, `terminal_reason`) for the same reason `done_ts` does:
+    // a reviewer asking why the work came back needs to see what was accepted.
+    const verdictStands =
+      item.terminal !== null && lastTerminalClaim.get(item.work_id) !== 'reopened'
+    item.state = verdictStands
       ? item.terminal
       : claimStands
         ? 'done'

@@ -37,6 +37,7 @@ export type StallShape =
   | 'stash-residue'
   | 'clarification-requested'
   | 'answer-not-filed'
+  | 'done-unverified'
   | 'pipeline-stalled'
   | 'pipeline-handoff-open'
   | 'pipeline-aborted'
@@ -191,6 +192,15 @@ export const CLARIFICATION_REQUESTED_ACTION =
  * that opens afterwards.
  */
 export const ANSWER_FILING_GRACE_MINUTES = 10
+
+/**
+ * `done-unverified` 的寬限期：24 小時。
+ *
+ * 上下限各自有名字。低於一天會在 worktree → merge-back → push 這個完全正常的節奏中間出聲，
+ * 而那是誤報；高過一天則讓一件宣稱做完的工作整整兩天不在任何清單上。一天也是「人回到這件事上」
+ * 的自然刻度：收到它的那個 session 就是隔天第一個開工的 session。
+ */
+export const UNVERIFIED_ARTIFACT_GRACE_MINUTES = 24 * 60
 
 /**
  * Takes the span id because the caller has it: a remediation printed with `<span_id>` still in it
@@ -626,6 +636,61 @@ export function findUnfiledAnswerStalls(
  * A whole publish (24 gates + bump + tag) runs in single-digit minutes; the slowest single phase
  * measured is the gate pool at ~4 min. 30 min in one phase is not slow, it is stopped.
  */
+/**
+ * 完成宣稱的憑證躺著沒推上去（R4）。
+ *
+ * `flow done` 在登記當下量了「這個 sha 已經 push 了嗎」，量不到就標 `unverified_artifact`
+ * （`landing.ts` 的 `unverifiedCommitArtifacts`），而**那個標記自己不會出聲**：驗收佇列據此
+ * 不排那一列，於是這件工作從人的畫面上安靜地消失了。安靜是對的——推憑證是幾秒鐘的事，剛打完
+ * `flow done` 的人已經在 stderr 收到那一行了。但如果一天之後它還在那裡，安靜就變成了掩蓋：
+ * 一件宣稱做完的工作，既不在待驗收清單上、也沒有任何地方說它為什麼不在。
+ *
+ * 為什麼門檻是 24 小時而不是分鐘級：這裡等的不是一次寫入完成（那是 `answer-not-filed` 的十分鐘），
+ * 是**一個人回到這件事上**。worktree 裡做完、隔天 merge-back 才 push，是完全正常的節奏，
+ * 而在那段時間內出聲的偵測器每一次都是誤報——一個天天誤報的偵測器等於一個沒有人讀的偵測器。
+ *
+ * 純 spine 函式，不碰 git：這裡問的是「那個標記躺了多久」，不是「現在推上去了沒」。後者要
+ * spawn git，而 `serve.ts` 那一端逐字是 READ-ONLY。真的推上去之後由**下一次** `flow done`
+ * 清掉標記（fold 是 last-write-wins），而這一行印的正是那個指令。
+ */
+export function findUnverifiedDoneStalls(
+  spans: Span[],
+  {
+    now = Date.now(),
+    graceMinutes = UNVERIFIED_ARTIFACT_GRACE_MINUTES,
+  }: { now?: number; graceMinutes?: number } = {},
+): Stall[] {
+  // 一個 work item 一列，取最後一次 `work.done`——中間那幾次的憑證狀態已經被 fold 覆蓋掉了，
+  // 逐筆報等於把同一件事講很多遍，而其中每一遍講的都是過期的話。
+  const last = new Map<string, Span>()
+  for (const span of spans) {
+    if (span.kind !== 'work.done') continue
+    const prev = last.get(span.work_id)
+    if (!prev || (span.start_ts ?? '') >= (prev.start_ts ?? '')) last.set(span.work_id, span)
+  }
+  const stalls: Stall[] = []
+  for (const span of last.values()) {
+    if (span.payload?.unverified_artifact !== true) continue
+    const age = ageMinutes(span.start_ts, now)
+    if (age === null || age < graceMinutes) continue
+    stalls.push({
+      shape: 'done-unverified',
+      span_id: span.span_id,
+      work_id: span.work_id,
+      substrate: span.substrate,
+      kind: span.kind,
+      actor: span.actor,
+      age_minutes: age,
+      since: span.start_ts ?? '',
+      label: labelOf(span),
+      pane_id: null,
+      dispatch_id: null,
+      action: `完成憑證還沒 push，驗收列因此排不出來：push 之後重跑 node vendor/scripts/flow/flow.ts done ${span.work_id} --verification '<同一句>'`,
+    })
+  }
+  return stalls
+}
+
 export const PIPELINE_PHASE_STALL_MINUTES = 30
 
 /**

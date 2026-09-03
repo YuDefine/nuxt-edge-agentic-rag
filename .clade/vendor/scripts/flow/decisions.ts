@@ -27,6 +27,7 @@ import type { LintCode } from './decision-sources.ts'
 import { LINT_NOTES } from './decision-sources.ts'
 import type { QuestionPageRef } from '../review-gui.question-page.ts'
 import { readQuestionPageRef } from '../review-gui.question-page.ts'
+import type { LandingEvidence } from './landing.ts'
 import type { Span, WorkItem } from './spine.ts'
 import { buildWorkItems } from './spine.ts'
 import { AWAITING_ATTENDED_ACTION, lastStartByWork } from './stall.ts'
@@ -661,9 +662,19 @@ const ACCEPT_ACTION =
   '驗收前重跑選項上那段 verification 指的驗證——spine 記得住「宣稱過」，記不住「現在仍為真」'
 
 /** 合成一列。`repo` 由呼叫端帶，因為 `WorkItem` 是 per-repo fold 出來的，自己不知道自己在哪。 */
-function acceptRow(item: WorkItem, repo: string | null, now: number): AskedDecision {
+function acceptRow(
+  item: WorkItem,
+  repo: string | null,
+  now: number,
+  held: WorkItem[] = [],
+): AskedDecision {
   const name = item.title ?? item.slug ?? item.work_id
   const verification = item.verification?.trim() ? item.verification : null
+  // held 那一段接在 verification 之後。件數不到合併門檻時沒有合併卡可以承載它，而被擋住的那幾件
+  // 需不需要被看見與這一批有幾件無關——per `transportHeldLines`，兩條路徑共用同一份文字。
+  const heldLines = transportHeldLines(held)
+  const context =
+    [...(verification === null ? [] : [verification]), ...heldLines].join('\n') || null
   return {
     span_id: acceptSpanId(item.work_id),
     work_id: item.work_id,
@@ -680,7 +691,7 @@ function acceptRow(item: WorkItem, repo: string | null, now: number): AskedDecis
     action: ACCEPT_ACTION,
     carrier: null,
     // 「問題全文」那一格要的就是這個。選項那份會被 `VERIFICATION_MAX` 截，這一份不會。
-    context: verification,
+    context,
     // Truthy，因為這一列**有**耐久的家（脊椎上的 `work.done`），不是只存在於對話裡。
     source_kind: 'work-accept',
     clarifications: [],
@@ -695,9 +706,221 @@ function acceptRow(item: WorkItem, repo: string | null, now: number): AskedDecis
   }
 }
 
+/**
+ * 「這件 `done` 的工作已經出版了嗎」的探測器，由呼叫端注入。
+ *
+ * 注入而不是在這裡直接呼叫 `landingEvidenceFor`：這支函式是**純投影**，`/decisions` 那一頁走的
+ * `buildServeSnapshot` 逐字是 READ-ONLY 且跑在 review-gui 的單一 event loop 上，而出版證據要 spawn
+ * git。誰付得起那個成本由呼叫端決定（`flow pending` 付得起，那一頁不行），判準只有一份。
+ * 沒注入就是「不知道」，而不知道時照樣問人——per `landing.ts` 的 fail-closed。
+ */
+export type LandingProbe = (item: WorkItem, repo: string | null) => LandingEvidence | null
+
+/**
+ * 還需要人裁決的 `done` work items。三道扣掉的閘門各自對應一個實測過的失效型態：
+ *
+ *   1. **已出版**（R1）：隨版本 tag 出去、propagate 零失敗。再問人的不是決定，是已發生的事實。
+ *   2. **artifact 還沒到 origin**（R4）：`flow done` 收下但標了 `unverified_artifact`。憑證指向
+ *      一個別人 fetch 不到的 sha，驗收在此刻沒有可驗的東西。
+ *   3. **還有 span 沒收**（R4 的另一半）：dispatch 出去的 pane 仍在跑（`session_transport` 未 end）。
+ *      `work.done` 與 dispatch 的完成握手是兩個獨立寫入，所以卡片會在工作還在跑時就 `done`——
+ *      2026-09-03 實測 `<consumer-h>/d7-phase5b-closeout` 在 worker 派出去 6 分鐘後就出現在佇列上。
+ *
+ * 三道都是「證據還不成立」而不是「判斷不通過」。**NEVER** 在這裡加任何一條需要讀懂內容的過濾——
+ * 那就是 agent 代人驗收，正是 `acceptRow` 檔頭那條硬約束擋的東西。
+ *
+ * 寫入端（`answer.ts` 處理「全收」）與渲染端共用這一支，**NEVER** 各自再過濾一次：兩份會漂，
+ * 而漂掉的那一次是人按下「全收 N 件」卻收到 N±k 件。
+ */
+export function pendingAcceptItems(
+  spans: Span[],
+  { landed, repo = null }: { landed?: LandingProbe; repo?: string | null } = {},
+): WorkItem[] {
+  const out: WorkItem[] = []
+  for (const item of buildWorkItems(spans)) {
+    if (item.state !== 'done') continue
+    if (item.unverified_artifact) continue
+    // **`transport_in_flight`，NEVER `in_flight`。** 規約（`flow-work-tracking.md` § dispatch
+    // 還沒回報時）寫的是「`session_transport` 未 end 即未回報」，而 `in_flight` 對**任何**沒 end
+    // 的 span 計數。差別不是嚴格程度，是**對象**：一件工作底下掛著一題沒人回的 `decision.request`
+    // 時，用 `in_flight` 會讓它的驗收列永久消失，而且沒有任何 stall shape 指名這件事
+    // （`unharvested` 只涵蓋 dispatch record 還在的情形）。2026-09-03 replay 實測命中一件。
+    if (item.transport_in_flight > 0) continue
+    if (landed?.(item, repo)) continue
+    out.push(item)
+  }
+  return out
+}
+
+/**
+ * 因為「dispatch 還沒回報」而暫時不排進驗收列的那幾件。
+ *
+ * 存在的理由只有一個：一列從佇列上消失而沒有任何東西說它為什麼消失，與從來沒被掃到長得一模一樣
+ * （同 `decision.dismiss` 檔頭那條）。這一格擋掉的是**還在跑**的工作，那是暫時的；但如果那個
+ * transport span 永遠不 end（被棄的 pane），這一件就會永久靜默 —— 所以合併卡 MUST 印出來。
+ *
+ * 判準與 `pendingAcceptItems` 逐條互補（同樣扣掉 `unverified_artifact` 與已出版），**NEVER**
+ * 讓兩邊各自再寫一份 `done` 的定義。
+ */
+export function transportHeldItems(
+  spans: Span[],
+  { landed, repo = null }: { landed?: LandingProbe; repo?: string | null } = {},
+): WorkItem[] {
+  const out: WorkItem[] = []
+  for (const item of buildWorkItems(spans)) {
+    if (item.state !== 'done') continue
+    if (item.unverified_artifact) continue
+    if (item.transport_in_flight === 0) continue
+    if (landed?.(item, repo)) continue
+    out.push(item)
+  }
+  return out
+}
+
+/**
+ * 「另有 N 件被 transport 擋住」那一段的文字。**一份**，合併卡與單件列共用。
+ *
+ * 為什麼是函式不是各自寫一次：這段話的存在理由是「一件被擋住的工作與一件不存在的工作在畫面上
+ * 長得一樣」（見 `transportHeldItems` 檔頭）。兩份文字會漂，而漂掉的那一次，其中一條路徑上的
+ * 那幾件工作就回到完全靜默——正好是這段話要消滅的狀態。
+ *
+ * 沒有 held 時回空陣列，呼叫端 `...` 展開就是零成本。
+ */
+export function transportHeldLines(held: WorkItem[]): string[] {
+  if (held.length === 0) return []
+  return [
+    `另有 ${held.length} 件做完了但派出去的 pane 還沒回報，暫不排入：`,
+    ...held.map((h) => `· ${h.title ?? h.slug ?? h.work_id}`),
+  ]
+}
+
+/** 合併卡的 span id 前綴。與 `accept:` 分開，因為寫入端對兩者做的事完全不同。 */
+export const ACCEPT_BATCH_PREFIX = 'accept-batch:'
+
+/** 幾件以上才合併。2 —— 一件事沒有「批次」可言，而兩件已經是「又是同一種題」。 */
+export const ACCEPT_BATCH_MIN = 2
+
+export function acceptBatchSpanId(repo: string | null): string {
+  return `${ACCEPT_BATCH_PREFIX}${repo ?? 'this-repo'}`
+}
+
+/** 反解。非合併卡回 null，呼叫端一個 if 就分流得掉。 */
+export function parseAcceptBatchSpanId(spanId: string): string | null {
+  if (!spanId.startsWith(ACCEPT_BATCH_PREFIX)) return null
+  return spanId.slice(ACCEPT_BATCH_PREFIX.length).trim() || null
+}
+
+/**
+ * 人選過「逐條」的 work id。
+ *
+ * 載體是 `kind: 'other'` 的 point 事件，payload `{ marker: 'accept-batch-expand', work_ids }`。
+ * **NEVER 為它新增一個 `kind`**：spine 的 kind 是 append-only 的共用詞彙，而這件事要記的只是
+ * 「人對這一批說過『分開問』」——`other` 正是為這種一次性的、沒有下游語意的事實留的。
+ *
+ * 為什麼要落一筆而不是讓合併卡自己消失：一列從佇列上消失而沒有任何東西寫下來，與從來沒被掃到
+ * 長得一模一樣（同 `decision.dismiss` 檔頭那條）。人選了「逐條」之後下一輪佇列會長出 N 題，
+ * 而沒有這筆紀錄的話那 N 題看起來像是系統自己抽風重問。
+ */
+export function acceptBatchExpandedIds(spans: Span[]): Set<string> {
+  const out = new Set<string>()
+  for (const span of spans) {
+    if (span.kind !== 'other') continue
+    if (span.payload?.marker !== 'accept-batch-expand') continue
+    const ids = span.payload?.work_ids
+    if (!Array.isArray(ids)) continue
+    for (const id of ids) out.add(String(id))
+  }
+  return out
+}
+
+/** 合併卡的選項。判讀端只用 `acceptBatchVerdictOf`，渲染端只讀不寫——同 `acceptOptions`。 */
+export function acceptBatchOptions(count: number): string[] {
+  return [
+    `全收 —— ${count} 件一起 accept，這一批從佇列上消失`,
+    `逐條 —— 展開成 ${count} 題，下次佇列一件一列分開問`,
+    '還沒 —— 什麼都不寫，下次還會問',
+  ]
+}
+
+export type AcceptBatchVerdict = 'all' | 'expand' | 'defer'
+
+/** 人的答案 → 判決。認字母也認詞，理由同 `acceptVerdictOf`；認不出來回 null，NEVER 猜。 */
+export function acceptBatchVerdictOf(answer: string): AcceptBatchVerdict | null {
+  const text = String(answer ?? '').trim()
+  if (!text) return null
+  const letter = /^([ABCabc])\b[.．、)）]?/u.exec(text)?.[1]?.toUpperCase()
+  if (letter === 'A') return 'all'
+  if (letter === 'B') return 'expand'
+  if (letter === 'C') return 'defer'
+  if (text.startsWith('全收')) return 'all'
+  if (/^(逐條|分開|展開)/u.test(text)) return 'expand'
+  if (/^(還沒|defer|等等|先不)/u.test(text)) return 'defer'
+  return null
+}
+
+/**
+ * 一個 repo 的驗收合併卡。
+ *
+ * 為什麼合併：2026-09-03 實測 41 條待拍板裡 18 條是同一句「X 驗收？」，而人在手機上逐條回 18 次
+ * 與回 1 次的差別不是效率，是**會不會回**。合併卡把「這一批要不要收」問成一題，同時保留逐條的
+ * 出路（選項 B），所以它 NEVER 是「幫人一次收掉」——它是把同一個問題問一次。
+ *
+ * 每一件的名字都列進 `context`，因為「全收」是一個終態：按下去之前 MUST 看得到自己收的是哪幾件。
+ */
+function acceptBatchRow(
+  items: WorkItem[],
+  repo: string | null,
+  now: number,
+  held: WorkItem[] = [],
+): AskedDecision {
+  const names = items.map((i) => i.title ?? i.slug ?? i.work_id)
+  const oldest = items.reduce(
+    (acc, i) => (acc === null || (i.done_ts ?? '') < acc ? (i.done_ts ?? acc) : acc),
+    null as string | null,
+  )
+  const options = acceptBatchOptions(items.length)
+  return {
+    span_id: acceptBatchSpanId(repo),
+    // 一張卡對應好幾件工作，沒有一個 work id 是它的。挑其中一個當代表會讓每一個下游讀者
+    // （鎖、stall、board）以為這一題只關於那一件。
+    work_id: '',
+    repo,
+    asked_at: oldest ?? '',
+    actor: 'system',
+    substrate: 'synthetic',
+    age_minutes: ageMinutes(oldest, now),
+    question: `${repo ?? '本 repo'} 有 ${items.length} 件做完等驗收`,
+    options,
+    recommended: options[0] ?? null,
+    category: 'review',
+    bucket: 'review',
+    action: ACCEPT_ACTION,
+    carrier: null,
+    // held 那一行印在名單**之後**：它講的不是這一批要收什麼，是這一頁**沒有**列出什麼。
+    // NEVER 靜默——per `transportHeldItems` 檔頭，一件被擋住的工作與一件不存在的工作在畫面上
+    // 長得一樣，而它們的下一步完全相反（去把那個 pane 收掉 vs 什麼都不用做）。
+    context: [
+      ...names.map((n, i) => `${i + 1}. ${n}`),
+      ...(held.length > 0 ? ['', ...transportHeldLines(held)] : []),
+    ].join('\n'),
+    source_kind: 'work-accept-batch',
+    clarifications: [],
+    awaiting_clarification: false,
+    needs_options: false,
+    question_page: null,
+    // 合併卡自己不是「缺證據」的那一種：每一件的 verification 在展開後的個別列上。
+    needs_evidence: false,
+    lint: [],
+  }
+}
+
 export function buildDecisionQueue(
   spans: (Span & { repo?: string })[],
-  { now = Date.now() }: { now?: number } = {},
+  {
+    now = Date.now(),
+    landed,
+    audience = 'charles',
+  }: { now?: number; landed?: LandingProbe; audience?: 'charles' | 'all' } = {},
 ): DecisionQueue {
   const asked: AskedDecision[] = []
   const gated: GatedWork[] = []
@@ -763,6 +986,19 @@ export function buildDecisionQueue(
        * event with a required reason, so the write-off is auditable.
        */
       if (writtenOff.has(span.span_id)) continue
+      /**
+       * 問 coordinator 的題不進人的預設佇列（R3）。
+       *
+       * 它**仍然是一個 span**，所以 `answer-not-filed`、stall、`flow answers` 全部照樣看得到它
+       * ——被隱藏的只有「Charles 的那一頁」。這是刻意的分工：一題沒人回的偵測與一題該不該出現
+       * 在人的手機上，是兩個問題，而把前者拿掉換後者是這整個佇列最貴的一種簡化。
+       *
+       * 缺欄視為 `charles`：脊椎 append-only，既有的 blocked 題全部沒有這個欄位，把「沒寫」讀成
+       * coordinator 會讓它們在這個判斷上線那一刻集體消失。
+       */
+      const payload0 = span.payload ?? {}
+      const askedOf = typeof payload0.audience === 'string' ? payload0.audience : 'charles'
+      if (audience !== 'all' && askedOf === 'coordinator') continue
       const payload = applyAmendment(span.payload ?? {}, amendments.get(span.span_id))
       const notes = clarifications.get(span.span_id) ?? []
       const category = str(payload.category, 'ruling')
@@ -826,10 +1062,21 @@ export function buildDecisionQueue(
     //
     // 放在最後、與另外兩桶同一層：它是第三個「什麼還沒發生」的來源，不是第一桶的變體。
     // 它不讀 `asked` 也不被 `asked` 讀——被裁決之後 `state` 就不是 `done`，這一列自己消失。
-    for (const item of buildWorkItems(repoSpans)) {
-      if (item.state !== 'done') continue
-      asked.push(acceptRow(item, repo, now))
+    const pendingAccepts = pendingAcceptItems(repoSpans, { landed, repo })
+    const expanded = acceptBatchExpandedIds(repoSpans)
+    const collapsible = pendingAccepts.filter((item) => !expanded.has(item.work_id))
+    const held = transportHeldItems(repoSpans, { landed, repo })
+    const batched = collapsible.length >= ACCEPT_BATCH_MIN
+    // 沒有合併卡時 held 掛在**第一列**驗收列上——掛每一列會把同一段話印 N 次，而那段話講的是
+    // 這一頁沒有列出什麼，與是哪一件無關。件數 0 時這一段沒有載體：一個 repo 只有被擋住的工作、
+    // 連一列驗收都沒有時，出聲的是 `flow status --stalled` 的 `unharvested`，不是這一頁。
+    let heldAttached = batched
+    for (const item of pendingAccepts) {
+      if (batched && !expanded.has(item.work_id)) continue
+      asked.push(acceptRow(item, repo, now, heldAttached ? [] : held))
+      heldAttached = true
     }
+    if (batched) asked.push(acceptBatchRow(collapsible, repo, now, held))
   }
 
   return {

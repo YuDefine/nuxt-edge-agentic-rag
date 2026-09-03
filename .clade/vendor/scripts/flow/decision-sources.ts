@@ -132,6 +132,7 @@ export type LintCode =
   | 'near-miss-option-line'
   | 'missing-evidence'
   | 'belongs-on-review'
+  | 'self-closed'
 
 /**
  * The three fields a `review` row owes its reader, and the shape that makes them machine-checkable.
@@ -186,6 +187,90 @@ export const LINT_NOTES: Record<LintCode, string> = {
     '這條等驗收，但沒寫齊「改了什麼 / 證據 / 退回會怎樣」三欄，證據要可點（見 decision-authoring）',
   'belongs-on-review':
     '這條指向的 change 還有沒勾的 `[review:ui]`——那是要人在瀏覽器逐條驗的，verdict 落在 /review inbox 與 tasks.md 的 checkbox，不是這裡的一句「通過」（見 decision-authoring）',
+  'self-closed':
+    '這條自己寫著已經結案了，卻還留在待拍板段——它不會進佇列，請搬到參考段或刪掉（見 decision-authoring）',
+}
+
+/**
+ * 「這條自己說它已經結案了」。
+ *
+ * 掃描端一直只看 heading 分桶、不讀內容，於是一條逐字寫著「**已拍板 A**」「已完結，供後續參考」
+ * 的 bullet 照樣被鑄成一題送到手機上。2026-09-03 實測 41 條待拍板裡有 3 條是這個形狀，而它們
+ * 沒有任何出路：`flow dismiss` 當時對 carrier 衍生 span 回 `no-such-span`（R2 的另一半修掉它），
+ * 答又答不了——沒有裁決可下，因為裁決已經下過了。
+ *
+ * **只看第一段**（標題 ＋ 空行之前的內文）。整條 body 搜的話，一條真的在問「要不要照上次那樣
+ * 已拍板的做法辦」的題會因為引用了自己的歷史而被判成結案——而被誤判的代價是一題**永遠不會被
+ * 問**，比多問一題重得多。
+ *
+ * 兩道否決同樣是「代價不對稱」：還有沒勾的 checkbox、或還有沒答的選項，就代表**有東西還沒完**，
+ * 不論那一段話寫得多像結論。
+ */
+const SELF_CLOSED = /已拍板|已裁決|已完結|已處置|已[^\n]{0,12}?(?:落地|land\b)|供後續參考/u
+const UNCHECKED_BOX = /^[\s>]*[-*]\s*\[ \]/mu
+
+/**
+ * 「這一段還在問東西」。命中就不是結案，不論它前面寫了多少像結論的字。
+ *
+ * 2026-09-03 實測的假陽性全是這個形狀：「Sentry 額度 —— 已拍板 A，**接下來要決定** B / C 怎麼
+ * 收費」「要不要照上次**已拍板**的做法辦？」。一條條目同時帶著「上一題的結論」與「這一題的問題」
+ * 是常態——`decision-authoring.md` 逐字寫過「一條寫著『已拍板 A，接下來要決定 B / C』的條目仍然
+ * 是題目」，而原本的判準只有在它剛好帶選項 bullet 時才擋得住，純文字問句一律被吃掉。
+ *
+ * **只掃結案語之後、而且同一行內的文字**（見 `isSelfClosed`）。兩道收窄各擋一種誤讀：
+ *
+ *   - 結案語**之前**的疑問詞描述的是被結掉的那個題目本身。<consumer-h> 的「當場查 Sentry error 額度
+ *     **是否**恢復 —— 已拍板 A（等帳期自然重置）」整條讀下來是「那個問題已經有答案了」。
+ *   - 結案語**之後但換行**的文字是背景與作法，那裡的疑問詞多半在描述要去確認什麼。同一條 <consumer-h>
+ *     的內文逐字寫「看 `categories.errors.usageExceeded` **是否**轉 `false`」——那是一個動作的
+ *     描述，不是在問讀者。HANDOFF 的一條 bullet 真的還在問時，問句就寫在那一行上。
+ *
+ * 跨行仍然算數的只有 `STILL_ASKING_STRONG`：那幾個詞沒有描述性的讀法，出現就是「這裡還有一題」。
+ */
+const STILL_ASKING = /要不要|是否|哪一|還是|[?？]/u
+
+/**
+ * 明說「還有一題沒決定」的寫法。**跨行也算數**，因為它們沒有第二種讀法。
+ *
+ * `decision-authoring.md` 逐字寫過「一條寫著『已拍板 A，接下來要決定 B / C』的條目仍然是題目」，
+ * 而那句話與它寫在第幾行無關——上面那道「同一行」的收窄是給有歧義的疑問詞用的，不是給這幾個。
+ *
+ * `等你拍板` / `由你決定` 與 `待你拍板` 同義，只是台灣口語更常用的寫法；漏掉它們的代價與漏掉
+ * `待你拍板` 完全相同——那一條被判成結案，於是**永遠不會被問**。
+ */
+const STILL_ASKING_STRONG =
+  /接下來要決定|(?:待|等)(?:你)?(?:決定|拍板|裁決)|由你(?:決定|拍板|裁決)|請(?:你)?(?:決定|拍板|裁決)/u
+
+/**
+ * 否定式：「還沒落地」「尚未拍板」。
+ *
+ * `已[^\n]{0,12}?(?:落地|land\b)` 這一條會跨過中間的否定詞——「**已**經有 PR 但**還沒落地**」
+ * 命中的是「已…落地」。所以在結案語**之前** 8 字內找否定詞，找得到就否決。
+ *
+ * **只看前向**（否定詞在結案語之前）。反向那半（`落地…沒有`）曾經存在，而它吃掉的是
+ * 「已落地，**沒有**問題」這種最常見的結案寫法——「沒有」在中文裡緊接在結論之後多半是在說
+ * 「沒有問題 / 沒有例外」，不是在否定那個結論。真正的否定式語序是否定詞在前，反向那半換來的
+ * 只有假陽性。
+ */
+const NEGATED = /(?:還沒|尚未|沒有|不曾|未)[^\n]{0,8}?(?:落地|land\b|拍板|裁決|完結|處置)/u
+
+export function isSelfClosed(title: string, body: string, options: string[]): boolean {
+  if (options.length > 0) return false
+  if (UNCHECKED_BOX.test(body)) return false
+  const firstParagraph = body.split(/\n\s*\n/u)[0] ?? ''
+  const head = `${title}\n${firstParagraph}`
+  const closing = SELF_CLOSED.exec(head)
+  if (!closing) return false
+  // 否定式對整段 head 生效（標題與第一段一樣會引用歷史）。
+  if (NEGATED.test(head)) return false
+  // 題目訊號只掃結案語**之後**，有歧義的那幾個再限縮到**同一行**（理由見 `STILL_ASKING`）。
+  // 代價不對稱：多問一題的成本是讀一行，少問一題的成本是那題**永遠不會被問**——所以跨行那半
+  // 只收沒有第二種讀法的詞，NEVER 因為「反正整段掃比較保險」把描述性的疑問詞也算進去，
+  // 那正是 2026-09-03 把一條已結案的 <consumer-h> 條目留在佇列上的那一次。
+  const tail = head.slice(closing.index + closing[0].length)
+  if (STILL_ASKING.test(tail.split('\n')[0] ?? '')) return false
+  if (STILL_ASKING_STRONG.test(tail)) return false
+  return true
 }
 
 /**
@@ -203,8 +288,12 @@ function lintOf(
   options: string[],
   nearMiss: boolean,
   body: string,
+  title = '',
 ): LintCode[] {
   const codes: LintCode[] = []
+  // 排在最前面而且**不 return**：一條自述結案的條目照樣可以缺選項、缺證據，而那些碼是給下一個
+  // 編這份檔的人看的評語。這一碼決定的是它進不進佇列（`decision-sync` 讀它），不是它寫得好不好。
+  if (isSelfClosed(title, body, options)) codes.push('self-closed')
   /*
    * Evidence is ORTHOGONAL to options, so it MUST be judged before the short-circuit below.
    * A review row can carry a cleanly parsed 通過／退回 pair and still be unreviewable because
@@ -1084,7 +1173,7 @@ export function scanHandoff(repoRoot: string): SourceItem[] {
         carrier: rel,
         fingerprint: fingerprint(item.title, item.body),
         lint: [
-          ...lintOf(category, options, nearMiss, item.body),
+          ...lintOf(category, options, nearMiss, item.body, item.title),
           ...(belongsOnReview ? (['belongs-on-review'] as LintCode[]) : []),
         ],
       })
@@ -1150,7 +1239,7 @@ export function scanTechDebt(repoRoot: string): SourceItem[] {
         carrier: rel,
         fingerprint: fingerprint(tdId, question, body),
         lint: [
-          ...lintOf('ruling', options, nearMiss, body),
+          ...lintOf('ruling', options, nearMiss, body, question),
           ...(restatesManualReview(body, liveChanges, openManualReview)
             ? (['belongs-on-review'] as LintCode[])
             : []),

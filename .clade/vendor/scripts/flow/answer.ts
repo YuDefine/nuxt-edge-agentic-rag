@@ -38,12 +38,21 @@ import {
   parseRef,
   tasksRef,
 } from './carrier-ref.ts'
-import type { AcceptVerdict } from './decisions.ts'
-import { acceptVerdictOf, parseAcceptSpanId } from './decisions.ts'
+import type { AcceptBatchVerdict, AcceptVerdict } from './decisions.ts'
+import {
+  acceptBatchVerdictOf,
+  acceptVerdictOf,
+  parseAcceptBatchSpanId,
+  parseAcceptSpanId,
+  pendingAcceptItems,
+} from './decisions.ts'
 import type { DecisionLock, LockCandidate } from './emit.ts'
 import {
   acceptWork,
   computeDecisionLock,
+  dismissGated,
+  emitEvent,
+  newSpanId,
   decisionAnswerHistory,
   dropWork,
   readEvents,
@@ -87,6 +96,12 @@ export type AnswerFailure =
   | 'accept-write-failed'
   /** 驗收合成題：判決不是可改寫的答案。翻案走下一次判決，不走 revise。 */
   | 'accept-not-revisable'
+  /** 驗收合併卡：這個 repo 現在沒有待裁決的 `done`，整批已經被別人處理掉了。 */
+  | 'accept-batch-empty'
+  /** 寫掉：carrier 上找不到那一條的來源行，沒有猜。事件已寫，檔案沒改。 */
+  | 'carrier-item-missing'
+  /** 寫掉：carrier 上有不只一行長得像它，拒絕猜是哪一行。 */
+  | 'carrier-item-ambiguous'
 
 export interface AnswerDecisionInput {
   spanId: string
@@ -527,7 +542,7 @@ export function reviseDecision({
   // 驗收合成題不走改答案這條路：它沒有 `decision.request` 可改寫，而它的「答案」是 work item
   // 的終態。要翻案就再下一次判決（`flow accept` / `flow drop` 最後一筆生效），NEVER 讓這裡
   // 靜靜地掉進下面的 `no-such-decision`——那會把一個不支援的操作說成一題不存在。
-  if (parseAcceptSpanId(spanId)) {
+  if (parseAcceptSpanId(spanId) || parseAcceptBatchSpanId(spanId)) {
     return {
       ...base,
       ok: false,
@@ -720,6 +735,154 @@ function answerAcceptGate({
 }
 
 /**
+ * 驗收合併卡的三種答案。
+ *
+ * 「全收」對**現在**還待裁決的那一批逐件 `work.accept`——重算而不是相信卡片上那份名單：卡片是
+ * 上一次渲染的產物，這中間別的 session 可能已經收掉幾件、或又有新的做完。名單與寫入各算一次的
+ * 話，人按下的「全收 8 件」會寫成 7 件或 9 件，而畫面上看不出差別。判準與渲染端共用
+ * `pendingAcceptItems`，**NEVER** 在這裡自己再過濾一次。
+ *
+ * 「逐條」落一筆 `kind: 'other'` 的展開標記（見 `acceptBatchExpandedIds`），所以下一輪佇列會把
+ * 這一批攤開成 N 題，而且**寫得下來**——一列自己消失而沒有紀錄，與從來沒被掃到長得一樣。
+ *
+ * 「還沒」什麼都不寫，同 `answerAcceptGate` 的理由：那是一個真的答案，而它的內容是不要寫。
+ */
+function answerAcceptBatch({
+  spanId,
+  answer,
+  answeredBy,
+  via,
+  repoRoot,
+  dryRun,
+}: {
+  spanId: string
+  answer: string
+  answeredBy: string
+  via: string
+  repoRoot: string
+  dryRun: boolean
+}): AnswerDecisionResult {
+  const base = { resolved: false, landed: false, carrier: null, carrierPath: null, block: '' }
+  const spans = foldSpans(readEvents(repoRoot))
+  // landing probe 刻意不注入：它要 spawn git，而這條路徑是人按下按鈕之後的寫入路徑。少了它
+  // 的後果是「已出版但還沒對帳」的那幾件也被收下——那正是人按「全收」的意思，不是誤收。
+  const items = pendingAcceptItems(spans)
+  if (items.length === 0) {
+    return {
+      ...base,
+      ok: false,
+      reason: 'accept-batch-empty',
+      detail: `${repoRoot} 現在沒有待裁決的 done——這一批已經被處理掉了`,
+    }
+  }
+  const verdict: AcceptBatchVerdict | null = acceptBatchVerdictOf(answer)
+  if (verdict === null) {
+    return {
+      ...base,
+      ok: false,
+      reason: 'accept-unreadable',
+      detail: `讀不出「${answer}」是 A（全收）、B（逐條）還是 C（還沒）——沒有猜，什麼都沒寫`,
+    }
+  }
+
+  const names = items.map((i) => i.title ?? i.slug ?? i.work_id)
+  const preview =
+    verdict === 'all'
+      ? `${items.length} 件 → work.accept\n${names.map((n) => `  - ${n}`).join('\n')}\n（${via}）`
+      : verdict === 'expand'
+        ? `${items.length} 件下次分開問\n${names.map((n) => `  - ${n}`).join('\n')}`
+        : `${items.length} 件留在佇列上，什麼都不寫`
+  if (dryRun) return { ...base, ok: true, block: preview, reason: null, detail: null }
+
+  if (verdict === 'defer') {
+    return {
+      ...base,
+      ok: true,
+      block: preview,
+      reason: 'accept-deferred',
+      detail: '這一批留在佇列上，下次 `flow pending` 還會問',
+    }
+  }
+
+  if (verdict === 'expand') {
+    const written = emitEvent({
+      // 一批工作沒有共同的 work id。挑第一件當代表是最省事也最錯的做法——它會讓這筆標記在
+      // 每一個以 work id 為軸的讀者（board、stall、鎖）底下變成「那一件工作發生了什麼」。
+      // 這裡借第一件的 id 但 payload 逐字列出整批，讀者一律讀 `work_ids`。
+      work_id: items[0]?.work_id ?? null,
+      span_id: newSpanId(),
+      parent_span: null,
+      phase: 'point',
+      kind: 'other',
+      actor: answeredBy,
+      substrate: 'manual',
+      payload: {
+        marker: 'accept-batch-expand',
+        work_ids: items.map((i) => i.work_id),
+        gate: spanId,
+        via,
+      },
+      outcome: 'ok',
+      cwd: repoRoot,
+    })
+    if (written.written !== true) {
+      return {
+        ...base,
+        ok: false,
+        block: preview,
+        reason: 'accept-write-failed',
+        detail: `展開標記沒能落檔：${written.errors?.map((e) => e.code).join(',') ?? 'unknown'}`,
+      }
+    }
+    return {
+      ...base,
+      ok: true,
+      resolved: true,
+      block: preview,
+      reason: 'no-carrier',
+      detail: `下一輪佇列會把這 ${items.length} 件分開問`,
+    }
+  }
+
+  const failed: string[] = []
+  let accepted = 0
+  for (const item of items) {
+    const res = acceptWork({
+      work_id: item.work_id,
+      reason: answer,
+      by: answeredBy,
+      substrate: 'manual',
+      payload: { via, gate: spanId, batch: true },
+      cwd: repoRoot,
+    })
+    if (res.written === true) accepted += 1
+    else failed.push(item.work_id)
+  }
+  if (accepted === 0) {
+    return {
+      ...base,
+      ok: false,
+      block: preview,
+      reason: 'accept-write-failed',
+      detail: `${failed.length} 件判決都沒能落檔`,
+    }
+  }
+  return {
+    ...base,
+    ok: true,
+    resolved: true,
+    block: preview,
+    reason: 'no-carrier',
+    // 部分失敗照實說。`ok: true` 講的是「這次點擊有寫進東西」，而沒寫進去的那幾件下一輪還會問
+    // ——把它靜靜吞掉的話，人會以為整批都收了。
+    detail:
+      failed.length === 0
+        ? `已寫入 ${accepted} 筆 work.accept；驗收判決的落點是 work item 自己的終態，沒有 carrier 檔`
+        : `已寫入 ${accepted} 筆 work.accept，${failed.length} 筆沒能落檔（${failed.join(', ')}）——那幾件下一輪還會問`,
+  }
+}
+
+/**
  * Answer one decision: close its span, then file the answer on its carrier.
  *
  * `dryRun` runs the identical resolution — same carrier, same block, same containment and
@@ -767,6 +930,11 @@ export function answerDecision({
     })
   }
 
+  // 合併卡同理，而且它連 `work_id` 都沒有——它問的是一整批。
+  if (parseAcceptBatchSpanId(spanId)) {
+    return answerAcceptBatch({ spanId, answer, answeredBy, via, repoRoot, dryRun })
+  }
+
   const decision = lookupDecision(spanId, repoRoot)
   if (!decision) {
     return {
@@ -807,6 +975,193 @@ export function answerDecision({
   // recorded and the queue will stop showing the question. `landed:false` + `reason` says what
   // still needs a human — NEVER report that as a failed answer.
   return { ...preview, ok: true, resolved: true, landed, reason, detail }
+}
+
+/** 寫掉一條之後，來源行上留下的那個前綴。人打開檔案時看得到，掃描端不讀它。 */
+export const DISMISSED_MARK = '✅ dismissed: '
+
+/**
+ * 比對用的正規化：拿掉 list marker、粗體、反引號與空白差異。
+ *
+ * span 上的 `question` 是 `plainTitle()` 之後的字，carrier 上的那一行還帶著原始 markdown，
+ * 所以兩邊都壓成同一種形狀才比得起來。**NEVER** 改成模糊比對（去掉標點、取前 N 個字）——
+ * 這個函式的輸出決定要在**別人的登記簿**上改哪一行，比錯了就是改到別條。
+ */
+function normalizeForMatch(line: string): string {
+  return (
+    line
+      .replace(/^\s*[-*]\s*\[[ xX]\]\s*/u, '')
+      .replace(/^\s*[-*#]+\s+/u, '')
+      // 燈號與 `✅ dismissed:` 前綴都在行首、都不屬於條目的識別。span 上的 `question` 是
+      // `plainTitle()` 之後的字（燈號已經被剝掉），所以這一側不剝的話兩邊永遠對不上。
+      .replace(/^(?:[⏳✅🟢🚨🔴🟡🟠🔵⛔🔶🔷❓]|⚠️?|\s)+/u, '')
+      .replace(/^dismissed:\s*/u, '')
+      .replace(/^(?:[⏳✅🟢🚨🔴🟡🟠🔵⛔🔶🔷❓]|⚠️?|\s)+/u, '')
+      .replaceAll('**', '')
+      .replaceAll('`', '')
+      .replace(/\s+/gu, '')
+      .trim()
+  )
+}
+
+/**
+ * 在 carrier 上把那一條標成已寫掉，找不到或找到不只一行就拒絕。
+ *
+ * fail closed 的理由與 `findLandedBlock` 一字不差：carrier 是 `HANDOFF.md` / `docs/tech-debt.md`
+ * 這種別的 session 也在寫的共用登記簿，猜一行改下去的代價是**改到別人的條目**，而人要花十秒
+ * 才修得好的東西不值得用猜的換。
+ *
+ * 只加前綴、不刪行：條目本文（包含它為什麼結案那句話）留在原地，因為那正是下一個讀的人要的。
+ */
+function markDismissedOnCarrier(
+  carrier: string | null,
+  path: string | null,
+  question: string,
+  repoRoot: string,
+  dryRun: boolean,
+): { landed: boolean; reason: AnswerFailure | null; detail: string | null; block: string } {
+  if (!carrier) {
+    return {
+      landed: false,
+      reason: 'no-carrier',
+      detail: '這題沒有指定落點，寫掉的紀錄只會留在 flow spine 上',
+      block: '',
+    }
+  }
+  if (!path) {
+    return {
+      landed: false,
+      reason: 'carrier-outside-repo',
+      detail: `落點 ${carrier} 解析到 repo 之外，拒絕寫入`,
+      block: '',
+    }
+  }
+  if (!existsSync(path)) {
+    return {
+      landed: false,
+      reason: 'carrier-missing',
+      detail: `落點 ${carrier} 對應的檔案不存在`,
+      block: '',
+    }
+  }
+  const text = readFileSync(path, 'utf8')
+  const needle = normalizeForMatch(question)
+  const lines = text.split('\n')
+  const hits: number[] = []
+  if (needle.length > 0) {
+    lines.forEach((line, i) => {
+      const flat = normalizeForMatch(line)
+      if (flat.length > 0 && (flat === needle || flat.startsWith(needle))) hits.push(i)
+    })
+  }
+  if (hits.length === 0) {
+    return {
+      landed: false,
+      reason: 'carrier-item-missing',
+      detail: `${carrier} 上找不到「${question.slice(0, 40)}」那一行——沒有猜。事件已寫進 spine，檔案請自己標`,
+      block: '',
+    }
+  }
+  if (hits.length > 1) {
+    return {
+      landed: false,
+      reason: 'carrier-item-ambiguous',
+      detail: `${carrier} 上有 ${hits.length} 行長得像它，拒絕猜是哪一行`,
+      block: '',
+    }
+  }
+  const index = hits[0] as number
+  const original = lines[index] as string
+  // 冪等：已經標過的不再標一次。重跑一遍不該長出第二個前綴。
+  const marked = original.includes(DISMISSED_MARK)
+    ? original
+    : original.replace(/^(\s*(?:[-*]\s*(?:\[[ xX]\]\s*)?)?)/u, `$1${DISMISSED_MARK}`)
+  if (dryRun) return { landed: true, reason: null, detail: null, block: marked }
+  lines[index] = marked
+  writeFileSync(path, lines.join('\n'))
+  return { landed: true, reason: null, detail: null, block: marked }
+}
+
+/**
+ * 寫掉一條待拍板：spine 記一筆 `decision.dismiss`，carrier 上那一行標 `✅ dismissed:`。
+ *
+ * 在這之前 `flow dismiss` 只對**本 repo** 的 span 有效（`dismissGated` 用 `process.cwd()`），
+ * 而佇列是跨 repo 的——於是每一條從 consumer 的 HANDOFF 掃進來的題，agent 想代收都拿到
+ * `no-such-span`：一個「這一題不存在」的訊息，而它就在畫面上。2026-09-03 實測，<consumer-h> 那 3 條
+ * 自述結案的條目就是這樣卡著的。
+ *
+ * 順序與 `answerDecision` 一字不差、理由也一樣：**先收 span，再改檔**。反過來的最壞情況是檔案
+ * 說寫掉了、佇列還在問，而兩邊都不知道哪一邊過期。
+ */
+export function dismissDecision({
+  spanId,
+  reason,
+  repoRoot,
+  dismissedBy = 'human',
+  dryRun = false,
+}: {
+  spanId: string
+  reason: string
+  repoRoot: string
+  dismissedBy?: string
+  dryRun?: boolean
+}): AnswerDecisionResult {
+  const base = { resolved: false, landed: false, carrier: null, carrierPath: null, block: '' }
+  if (spineOverrideBlocks(repoRoot)) {
+    return {
+      ...base,
+      ok: false,
+      reason: 'spine-override',
+      detail: `CLADE_FLOW_EVENTS 指向 ${process.env.CLADE_FLOW_EVENTS}，不在 ${repoRoot} 內；寫入會落到別的 spine`,
+    }
+  }
+  // 合成列沒有 span 可寫掉：它是投影，`state` 一變它自己就消失。
+  if (parseAcceptSpanId(spanId) || parseAcceptBatchSpanId(spanId)) {
+    return {
+      ...base,
+      ok: false,
+      reason: 'accept-not-revisable',
+      detail: '驗收合成列不是脊椎上的 span；要它消失請下判決（收／drop）',
+    }
+  }
+  const decision = lookupDecision(spanId, repoRoot)
+  const path = decision ? carrierPath(decision.carrier, repoRoot) : null
+  const preview = {
+    carrier: decision?.carrier ?? null,
+    carrierPath: path,
+  }
+  if (dryRun) {
+    const marked = decision
+      ? markDismissedOnCarrier(decision.carrier, path, decision.question, repoRoot, true)
+      : { landed: false, reason: null, detail: null, block: '' }
+    return { ...base, ...preview, ok: true, ...marked }
+  }
+
+  const written = dismissGated({ spanId, reason, dismissedBy, cwd: repoRoot })
+  if (!written.written) {
+    return {
+      ...base,
+      ...preview,
+      ok: false,
+      reason: 'no-such-decision',
+      detail: `${repoRoot} 的 spine 上寫不掉 span ${spanId}：${written.errors?.map((e) => e.code).join(',') ?? 'unknown'}`,
+    }
+  }
+  if (!decision) {
+    // blocked span（gated 桶）沒有 carrier，這是它的正常形狀，不是失敗。
+    return {
+      ...base,
+      ...preview,
+      ok: true,
+      resolved: true,
+      reason: 'no-carrier',
+      detail: '已寫進 spine；這條沒有來源檔可標',
+    }
+  }
+  const marked = markDismissedOnCarrier(decision.carrier, path, decision.question, repoRoot, false)
+  // span 收掉了就是 ok，即使檔案沒標到——同 `answerDecision` 的收尾：`landed:false` ＋ reason
+  // 說明還缺什麼，NEVER 把它報成一次失敗的寫掉。
+  return { ...base, ...preview, ok: true, resolved: true, ...marked }
 }
 
 /**
