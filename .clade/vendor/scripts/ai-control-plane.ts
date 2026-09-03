@@ -4,6 +4,7 @@ import {
   appendFileSync,
   closeSync,
   existsSync,
+  lstatSync,
   mkdirSync,
   openSync,
   readdirSync,
@@ -16,6 +17,7 @@ import { basename, dirname, join, relative } from 'node:path'
 import { atomicWriteText } from './lib/atomic-file.ts'
 import {
   assertBindingCommittedIfGoverned,
+  ControlPlaneFailure,
   controlPlaneIntentPath,
   toOpenSpecAlias,
 } from './ai-control-plane-profile.ts'
@@ -413,34 +415,53 @@ const SPECTRA_SLUG = /^[a-z0-9][a-z0-9-]*$/
  * under the root contributes `<repo-relative posix path> -> sha256(bytes)`, canonicalised by
  * path, so the value is stable across filesystems and directory-read order.
  *
- * Two shapes are refused rather than digested. A symlink anywhere under the root has no bytes
- * of its own, so whatever it points at could change without the digest moving — silently
- * skipping it would pin a value that does not cover the tree it claims to. A root holding no
- * regular file at all digests to the empty map, which is the same value for every such root:
- * the relation would verify against a target that has nothing in it. Both throw with the path.
+ * Three shapes are refused rather than digested, all as `SUPERSEDES_TARGET_MISSING` so that a
+ * relation nobody can pin fails create the same way as one pointing at nothing (TD-873). A
+ * symlink anywhere under the root has no bytes of its own, so whatever it points at could
+ * change without the digest moving — silently skipping it would pin a value that does not
+ * cover the tree it claims to. A root that is *itself* a symlink is the same hole one level
+ * up, and `statSync` in the caller follows it, so only an `lstat` here sees it. A root holding
+ * no regular file at all digests to the empty map, which is the same value for every such
+ * root: the relation would verify against a target that has nothing in it.
+ *
+ * The failures carry no `operation` or `change` — this function is also the declaration-time
+ * entry, where there is no create in flight. `assertSupersedesTargets` re-raises them with
+ * that context when the caller is a create.
  */
 export function supersedesTargetDigest(repoRoot: string, artifactRoot: string): Digest {
   const root = join(repoRoot, artifactRoot)
+  const repoRelative = (full: string): string => relative(repoRoot, full).replaceAll('\\', '/')
+  const refuse = (message: string, path: string): never => {
+    throw new ControlPlaneFailure({
+      code: 'SUPERSEDES_TARGET_MISSING',
+      message: `${message}: ${path}`,
+      diagnostics: [path],
+    })
+  }
+  if (lstatSync(root).isSymbolicLink())
+    refuse('supersedes target root is itself a symlink, which pins no content', repoRelative(root))
   const files: Record<string, string> = {}
   const walk = (directory: string): void => {
     for (const entry of readdirSync(directory, { withFileTypes: true }).toSorted((a, b) =>
       a.name.localeCompare(b.name),
     )) {
       const full = join(directory, entry.name)
-      if (entry.isSymbolicLink()) {
-        throw new Error(
-          `supersedes target contains a symlink, which pins no content: ${relative(repoRoot, full).replaceAll('\\', '/')}`,
+      if (entry.isSymbolicLink())
+        refuse(
+          'supersedes target contains a symlink entry, which pins no content',
+          repoRelative(full),
         )
-      }
       if (entry.isDirectory()) walk(full)
       else if (entry.isFile())
         files[relative(root, full).replaceAll('\\', '/')] = sha256(readFileSync(full))
     }
   }
   walk(root)
-  if (Object.keys(files).length === 0) {
-    throw new Error(`supersedes target holds no regular file to digest: ${artifactRoot}`)
-  }
+  if (Object.keys(files).length === 0)
+    refuse(
+      'supersedes target is an empty artifact root, holding no regular file to digest',
+      artifactRoot,
+    )
   return sha256(canonical(files))
 }
 
