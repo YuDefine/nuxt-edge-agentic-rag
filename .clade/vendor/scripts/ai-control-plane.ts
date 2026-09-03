@@ -1,4 +1,5 @@
 // 🔒 LOCKED — managed by clade · Source: vendor/scripts/ai-control-plane.ts · 改這裡無效，下次 propagate 會覆寫；請改 $CLADE_HOME/vendor/scripts/ai-control-plane.ts
+import { spawnSync } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
 import {
   appendFileSync,
@@ -12,13 +13,17 @@ import {
   statSync,
   unlinkSync,
 } from 'node:fs'
-import { basename, dirname, join, relative } from 'node:path'
+import { basename, dirname, join, relative, resolve as resolvePath } from 'node:path'
 
 import { atomicWriteText } from './lib/atomic-file.ts'
 import {
   assertBindingCommittedIfGoverned,
   ControlPlaneFailure,
   controlPlaneIntentPath,
+  git,
+  BINDING_TRAILER,
+  INTENT_REVISION_TRAILER,
+  type OpenSpecOperation,
   toOpenSpecAlias,
 } from './ai-control-plane-profile.ts'
 import {
@@ -1329,21 +1334,191 @@ export function intentSourcePath(repoRoot: string, changeId: string): string {
   return controlPlaneIntentPath(repoRoot, requireId('change', changeId))
 }
 
+/**
+ * The `change_revision` a source declares, read off the one artifact that carries it.
+ *
+ * `intent.intake_batch.change_revision` and not the work plan's `intent_revision`: the two
+ * count different things (a plan can be regenerated against an unchanged intake) and only the
+ * intake's is the revision of the *change*, which is what ruling (k) increments.
+ */
+export function readIntakeChangeRevision(source: OpsxChangeSource): number {
+  const value = Number(artifact(source, 'intent.intake_batch').change_revision)
+  if (!Number.isInteger(value) || value < 1) {
+    throw new Error(`intent.intake_batch.change_revision must be a positive integer, got ${value}`)
+  }
+  return value
+}
+
+/**
+ * The `intent_revision` the work plan declares — the number every reader actually shows.
+ *
+ * `normalized.intent_revision`, the projection's `Intent revision: rN`, the projection cursor,
+ * the generated `tasks.md` header and each ledger row all key on this field, not on the
+ * intake's `change_revision`. Ruling (k) part 4 therefore steps the two together: a source
+ * that moved only the intake would land a commit whose trailer says r2 while every reader
+ * still says r1, which is the exact split TD-874 exists to close.
+ */
+export function readPlanIntentRevision(source: OpsxChangeSource): number {
+  const value = Number(artifact(source, 'intent.work_plan').intent_revision)
+  if (!Number.isInteger(value) || value < 1) {
+    throw new Error(`intent.work_plan.intent_revision must be a positive integer, got ${value}`)
+  }
+  return value
+}
+
+/**
+ * What a profile assignment may *not* change across a revision (ruling (k) part 1).
+ *
+ * `source_digest` is excluded because it pins the native artifacts, and rewriting those is
+ * precisely what a revision is; everything else on the assignment — who assigned the profile,
+ * which profile, under which assignment id — is the ownership record, and a revision that
+ * moved it would be an in-place profile switch, which §10.5 has no path for.
+ */
+function assignmentIdentity(source: OpsxChangeSource): string {
+  const { source_digest: _pinned, ...identity } = source.profile_assignment ?? {}
+  return canonical(identity)
+}
+
+/**
+ * Is `next` a legal revision of `current`?
+ *
+ * Shared by the writer (`persistOpsxChangeSource`) and the reader that judges a landed commit
+ * (`validateIntentRevisionCommits`) so the rule has one implementation. A second copy in the
+ * validator would agree on the day it was written and drift afterwards — and the drift would
+ * surface as a commit the writer produced and the validator refuses, with nothing to say which
+ * of the two is right.
+ *
+ * Returns the new `change_revision` so callers do not re-derive it.
+ */
+export function assertIntentRevisionStep(input: {
+  changeId: string
+  current: OpsxChangeSource
+  next: OpsxChangeSource
+}): number {
+  const { changeId, current, next } = input
+  const refuse = (message: string, diagnostics: string[] = []): never => {
+    throw new ControlPlaneFailure({
+      code: 'INTENT_REVISION_CONFLICT',
+      operation: 'revise',
+      change: changeId,
+      diagnostics,
+      message,
+    })
+  }
+  const currentNormalized = readOpsxChange(current)
+  if (currentNormalized.change_id !== changeId) {
+    refuse(`the intent source at this path is ${currentNormalized.change_id}, not ${changeId}`, [
+      currentNormalized.change_id,
+    ])
+  }
+  if (current.profile_assignment?.profile !== next.profile_assignment?.profile) {
+    refuse(
+      `a revision cannot change workflow_profile (${current.profile_assignment?.profile} -> ${next.profile_assignment?.profile}); §10.5 has no in-place profile switch`,
+    )
+  }
+  if (assignmentIdentity(current) !== assignmentIdentity(next)) {
+    refuse(
+      'a revision cannot change the profile assignment; only profile_assignment.source_digest moves with the artifacts',
+    )
+  }
+  const currentRevision = readIntakeChangeRevision(current)
+  const nextRevision = readIntakeChangeRevision(next)
+  if (nextRevision !== currentRevision + 1) {
+    refuse(`change_revision must be exactly ${currentRevision + 1}, got ${nextRevision}`, [
+      `current r${currentRevision}`,
+      `declared r${nextRevision}`,
+    ])
+  }
+  // Ruling (k) part 4: the intake's `change_revision` and the work plan's `intent_revision`
+  // step together or not at all. Checked as two separate refusals rather than one equality so
+  // the message names the field that did not move — an author who bumped one of them is
+  // looking at a source that reads, to the eye, entirely revised.
+  const currentPlanRevision = readPlanIntentRevision(current)
+  const nextPlanRevision = readPlanIntentRevision(next)
+  if (nextPlanRevision !== currentPlanRevision + 1) {
+    refuse(
+      `work_plan.intent_revision must be exactly ${currentPlanRevision + 1}, got ${nextPlanRevision}; it is the field every reader counts`,
+      [`current r${currentPlanRevision}`, `declared r${nextPlanRevision}`],
+    )
+  }
+  if (nextPlanRevision !== nextRevision) {
+    refuse(
+      `work_plan.intent_revision (${nextPlanRevision}) and change_revision (${nextRevision}) must agree; the trailer would declare one and every reader would show the other`,
+    )
+  }
+  // Monotone and verbatim: `supersedes` is the only record of what a rebuilt change replaced
+  // (§10.5), so a revision that dropped or rewrote a relation would erase a rollback boundary
+  // while looking like an ordinary amendment. Growing it is the amendment TD-874 exists for.
+  const kept = new Set(
+    readChangeSupersessions(next, changeId).map((relation) => canonical(relation)),
+  )
+  for (const relation of readChangeSupersessions(current, changeId)) {
+    if (!kept.has(canonical(relation))) {
+      refuse(
+        `a revision may only add supersedes relations; ${relation.ref.id} was dropped or rewritten`,
+        [relation.artifact_root],
+      )
+    }
+  }
+  return nextRevision
+}
+
+/**
+ * Write the tracked intent source.
+ *
+ * Same path on create and on revision (ruling (k) part 1): a revision that landed beside the
+ * source rather than on it would leave every reader — the projector, the drift check, the
+ * fresh-clone rebuild — reading r1 while the ledger held r2, which is the state TD-874 found
+ * in the <consumer-h> canary.
+ *
+ * `previousSourceDigest` is what makes the overwrite safe without a lock: the caller states
+ * which bytes it read before composing the revision, and a source that moved underneath it is
+ * refused rather than silently replaced. Omitting it is not a shortcut — an overwrite nobody
+ * pinned is refused with the same code, so "I did not know there was a file there" can never
+ * become "I replaced it".
+ *
+ * `operation` is the entry that called in, not the shape of the write. A create that resumes
+ * after a crash and finds different bytes on disk is refused here too, and reporting that as
+ * `revise` would send the operator to a revision path the change never took.
+ */
 export async function persistOpsxChangeSource(
   repoRoot: string,
   source: OpsxChangeSource,
+  options: { previousSourceDigest?: string; operation?: OpenSpecOperation } = {},
 ): Promise<string> {
+  const operation = options.operation ?? 'revise'
   const normalized = readOpsxChange(source)
   const path = intentSourcePath(repoRoot, normalized.change_id)
   const content = `${JSON.stringify(source, null, 2)}\n`
   if (existsSync(path)) {
     const current = readFileSync(path, 'utf8')
-    if (sha256(current) !== sha256(content)) {
-      throw new Error(
-        `intent source is immutable for ${normalized.change_id}; append a revision instead`,
-      )
+    // Idempotent re-write, including a re-run after a crash: identical bytes are not a
+    // revision, so they neither need a digest nor consume a revision number.
+    if (sha256(current) === sha256(content)) return path
+    const actual = sha256(current)
+    if (!options.previousSourceDigest) {
+      throw new ControlPlaneFailure({
+        code: 'INTENT_REVISION_CONFLICT',
+        operation,
+        change: normalized.change_id,
+        diagnostics: [`actual ${actual}`],
+        message: `the intent source for ${normalized.change_id} already exists; a revision must pin the digest it amends (previousSourceDigest)`,
+      })
     }
-    return path
+    if (options.previousSourceDigest !== actual) {
+      throw new ControlPlaneFailure({
+        code: 'INTENT_REVISION_CONFLICT',
+        operation,
+        change: normalized.change_id,
+        diagnostics: [`declared ${options.previousSourceDigest}`, `actual ${actual}`],
+        message: `the intent source for ${normalized.change_id} moved since it was read; re-read it and compose the revision against what is there now`,
+      })
+    }
+    assertIntentRevisionStep({
+      changeId: normalized.change_id,
+      current: JSON.parse(current) as OpsxChangeSource,
+      next: source,
+    })
   }
   await atomicWriteText(path, content)
   return path
@@ -2534,6 +2709,276 @@ export async function rebuildControlPlaneProjection(input: {
   })
 }
 
+export interface IntentRevisionCommitViolation {
+  commit: string
+  change: string | null
+  path: string
+  reason: string
+}
+
+/**
+ * Where the tracked intent sources live, as a repo-relative pathspec.
+ *
+ * Derived from `intentSourcePath` with a throwaway id rather than restated as a literal: the
+ * directory is the one thing the writer, the durability pathspec and this validator must agree
+ * on, and a literal here would keep agreeing right up until the day the layout moved.
+ */
+function intentRootPathspec(root: string): string {
+  return relative(root, dirname(intentSourcePath(root, 'chg_probe'))).replaceAll('\\', '/')
+}
+
+/**
+ * Are these bytes a return to something this history already held, and if so, to whose version?
+ *
+ * Ruling (k) part 5 in its only checkable form. `git revert` writes no trailer and there is no
+ * way to make it write one without wrapping the command, so a revert and a hand edit arrive at
+ * the validator looking identical — except that a revert's result is byte-for-byte an earlier
+ * commit's version of the same path, and a hand edit's, in general, is not. Blob ids are
+ * compared rather than contents because git has already hashed both.
+ *
+ * The matching commit is returned rather than a boolean: when the bytes it restored turn out
+ * not to be a readable intent source, the operator needs to be sent at *that* commit, and
+ * "somewhere in this history" is not an address.
+ */
+function returnsToAncestorContent(root: string, commitish: string, path: string): string | null {
+  const target = git(root, ['rev-parse', `${commitish}:${path}`]).stdout.trim()
+  if (!target) return null
+  const ancestors = git(root, ['rev-list', `${commitish}^`, '--', path])
+  if (ancestors.status !== 0) return null
+  for (const sha of ancestors.stdout.split('\n').filter(Boolean)) {
+    if (git(root, ['rev-parse', `${sha}:${path}`]).stdout.trim() === target) return sha
+  }
+  return null
+}
+
+/**
+ * Judge one intent source transition, given the two versions of it.
+ *
+ * Shared by the landed-commit validator and the staged-index one so a revision cannot be legal
+ * at `git commit` time and illegal once it lands. Returns `null` when the step is legal.
+ */
+function judgeIntentTransition(input: {
+  currentText: string
+  nextText: string
+  /** The commit whose version of this path these bytes return to, or `null` if they return to none. */
+  revertOf: string | null
+}): { reason: string } | null {
+  let next: OpsxChangeSource
+  let current: OpsxChangeSource
+  try {
+    next = JSON.parse(input.nextText) as OpsxChangeSource
+    current = JSON.parse(input.currentText) as OpsxChangeSource
+  } catch (error) {
+    return { reason: error instanceof Error ? error.message : 'intent source is not JSON' }
+  }
+  if (input.revertOf) {
+    // The same try the revision branch below has, for the same reason: these readers throw on a
+    // source that is not shaped like one, and the bytes here came out of history rather than out
+    // of a writer. A history that already holds one illegal intent source — the commit that put
+    // it there was refused, but `--no-verify` lands it anyway — would otherwise take the gate
+    // down with an uncaught exception, and the hook reports an exception as "the projection is
+    // stale, rebuild it": a repair for a defect that is not the one standing.
+    try {
+      // A revert steps *down* by exactly one, which is ruling (k) part 3 read backwards. The
+      // paired fields still have to move together: a "revert" that walked the intake back and
+      // left the work plan at the higher number is the same reader split, in the other direction.
+      const currentRevision = readIntakeChangeRevision(current)
+      const nextRevision = readIntakeChangeRevision(next)
+      if (nextRevision !== currentRevision - 1) {
+        return {
+          reason: `commit returns the intent source to earlier bytes but change_revision moved ${currentRevision} -> ${nextRevision}; a revert is exactly -1`,
+        }
+      }
+      if (readPlanIntentRevision(next) !== nextRevision) {
+        return {
+          reason: `reverted source declares work_plan.intent_revision ${readPlanIntentRevision(next)} against change_revision ${nextRevision}`,
+        }
+      }
+      return null
+    } catch (error) {
+      return {
+        reason: `commit returns the intent source to the version held by ${input.revertOf}, which is not a readable intent source: ${error instanceof Error ? error.message : String(error)}`,
+      }
+    }
+  }
+  try {
+    assertIntentRevisionStep({ changeId: readOpsxChange(next).change_id, current, next })
+    return null
+  } catch (error) {
+    return { reason: error instanceof Error ? error.message : 'revision step is illegal' }
+  }
+}
+
+/**
+ * Judge what a commit did to the tracked intent sources it touched.
+ *
+ * The rule has two halves and the second one is what makes the first enforceable: a commit
+ * carrying `Control-Plane-Intent-Revision` must be a legal `+1` step, and a commit that changed
+ * an intent source *without* that trailer is refused unless it is a revert. Without the second
+ * half the whole revision rule is opt-in — an author who edits the file and commits it plainly
+ * would move `change_revision` by any amount, or not at all, and every reader downstream would
+ * read the result as canonical.
+ *
+ * `assertIntentRevisionStep` is the same predicate the writer runs, called here rather than
+ * restated: a validator with its own copy of the rule can only ever disagree with the writer,
+ * and a disagreement between the two says nothing about which is right.
+ *
+ * Known limit, deliberately not papered over: `git diff-tree` without `-m` prints nothing for a
+ * merge commit, so an intent change that arrives by merge is not judged here. Revisions land by
+ * fast-forward or squash; a merge that carried one would need `-m` and a rule for which parent
+ * is "current", and inventing that rule ahead of a case that produced it would be guesswork.
+ */
+export function validateIntentRevisionCommits(
+  repoRoot: string,
+  commitish = 'HEAD',
+): IntentRevisionCommitViolation[] {
+  const root = resolvePath(repoRoot)
+  const changed = git(root, [
+    'diff-tree',
+    '--no-commit-id',
+    '--name-status',
+    '-r',
+    commitish,
+    '--',
+    intentRootPathspec(root),
+  ])
+  if (changed.status !== 0) return []
+  const sha = git(root, ['rev-parse', commitish]).stdout.trim() || commitish
+  const trailers = git(root, [
+    'show',
+    '-s',
+    `--format=%(trailers:key=${INTENT_REVISION_TRAILER},valueonly)%x1f%(trailers:key=${BINDING_TRAILER},valueonly)`,
+    commitish,
+  ]).stdout
+  const [declaredRevision, declaredBinding] = trailers.split('\x1f').map((value) => value.trim())
+  const violations: IntentRevisionCommitViolation[] = []
+  const add = (path: string, change: string | null, reason: string) =>
+    violations.push({ commit: sha, change, path, reason })
+
+  for (const line of changed.stdout.split('\n').filter(Boolean)) {
+    const [status, path] = line.split('\t')
+    if (!path || !path.endsWith('.json')) continue
+    const changeId = path.slice(path.lastIndexOf('/') + 1, -'.json'.length)
+    // A delete is a revert of the create binding, which is the one thing item 7 already
+    // covers end to end: the id is spent and `CHANGE_ID_REUSED` guards every entry. Nothing
+    // for this validator to add.
+    if (status.startsWith('D')) continue
+    const nextText = git(root, ['show', `${commitish}:${path}`]).stdout
+    const previous = git(root, ['show', `${commitish}^:${path}`])
+    const isCreate = previous.status !== 0
+    if (isCreate) {
+      if (declaredRevision) {
+        add(
+          path,
+          changeId,
+          `commit adds ${path} yet carries ${INTENT_REVISION_TRAILER}: ${declaredRevision}; a revision amends a source that is already tracked`,
+        )
+      }
+      continue
+    }
+    const revertOf = declaredRevision ? null : returnsToAncestorContent(root, commitish, path)
+    if (!declaredRevision && !revertOf) {
+      add(
+        path,
+        changeId,
+        `commit changes ${path} without a ${INTENT_REVISION_TRAILER} trailer; an intent source only moves by a declared revision, or by a revert back to bytes this history already held`,
+      )
+      continue
+    }
+    const verdict = judgeIntentTransition({
+      currentText: previous.stdout,
+      nextText,
+      revertOf,
+    })
+    if (verdict) {
+      add(path, changeId, verdict.reason)
+      continue
+    }
+    if (revertOf) continue
+    const revision = readIntakeChangeRevision(JSON.parse(nextText) as OpsxChangeSource)
+    if (Number(declaredRevision) !== revision) {
+      add(
+        path,
+        changeId,
+        `${INTENT_REVISION_TRAILER}: ${declaredRevision} does not match the source's change_revision ${revision}`,
+      )
+    }
+    // The binding trailer keeps the bare id (ruling (h)): a revision commit that decorated or
+    // dropped it would stop counting as a binding, and the change would read as never bound.
+    const bareId = readOpsxChange(JSON.parse(nextText) as OpsxChangeSource).change_id
+    if (declaredBinding !== bareId) {
+      add(
+        path,
+        changeId,
+        `revision commit carries ${BINDING_TRAILER}: ${JSON.stringify(declaredBinding)}, not the bare ${bareId}`,
+      )
+    }
+  }
+  return violations
+}
+
+/**
+ * The same rule, one commit earlier: staged intent sources against `HEAD`.
+ *
+ * The commit gate runs *before* there is a commit message, so the trailer the landed validator
+ * insists on does not exist yet — `reviseOpsxChange` writes it as part of the commit it makes.
+ * What can be judged at this point is the step itself, and that is the half worth catching
+ * early: a hand-staged source that skipped a revision, or moved only one of the two paired
+ * fields, is refused before it becomes history rather than after.
+ */
+export function validateStagedIntentRevisions(repoRoot: string): IntentRevisionCommitViolation[] {
+  const root = resolvePath(repoRoot)
+  const head = git(root, ['rev-parse', '--verify', 'HEAD'])
+  if (head.status !== 0) return []
+  const staged = git(root, [
+    'diff',
+    '--cached',
+    '--name-status',
+    '-r',
+    'HEAD',
+    '--',
+    intentRootPathspec(root),
+  ])
+  if (staged.status !== 0) return []
+  const violations: IntentRevisionCommitViolation[] = []
+  for (const line of staged.stdout.split('\n').filter(Boolean)) {
+    const [status, path] = line.split('\t')
+    if (!path || !path.endsWith('.json')) continue
+    // Adds and deletes are the create and rollback paths; neither is a revision step.
+    if (!status.startsWith('M')) continue
+    const changeId = path.slice(path.lastIndexOf('/') + 1, -'.json'.length)
+    const nextText = git(root, ['show', `:${path}`]).stdout
+    const previous = git(root, ['show', `HEAD:${path}`])
+    if (previous.status !== 0) continue
+    const verdict = judgeIntentTransition({
+      currentText: previous.stdout,
+      nextText,
+      revertOf: stagedReturnsToAncestor(root, path, nextText),
+    })
+    if (verdict) {
+      violations.push({ commit: 'index', change: changeId, path, reason: verdict.reason })
+    }
+  }
+  return violations
+}
+
+/** Which earlier commit's version of this path do the staged bytes match, if any? */
+function stagedReturnsToAncestor(root: string, path: string, nextText: string): string | null {
+  const hashed = spawnSync('git', ['hash-object', '--stdin'], {
+    cwd: root,
+    input: nextText,
+    encoding: 'utf8',
+  })
+  const target = (hashed.stdout ?? '').trim()
+  if (!target) return null
+  const ancestors = git(root, ['rev-list', 'HEAD', '--', path])
+  if (ancestors.status !== 0) return null
+  for (const sha of ancestors.stdout.split('\n').filter(Boolean)) {
+    if (git(root, ['rev-parse', `${sha}:${path}`]).stdout.trim() === target) return sha
+  }
+  return null
+}
+
 /**
  * Re-derive one change's `tasks.md` from the tracked intent source, without writing
  * anything.
@@ -2607,9 +3052,19 @@ function rebuildJudgementFromTrackedFacts(
 export function validateControlPlaneProjections(
   repoRoot: string,
 ): Array<{ path: string; reason: string }> {
-  const changesRoot = join(repoRoot, 'openspec', 'changes')
-  if (!existsSync(changesRoot)) return []
   const violations: Array<{ path: string; reason: string }> = []
+  // Ruling (k): the revision rule is consumed by the commit gate through this one entry, so
+  // there is no second place a repository can be judged compliant from. Both halves run —
+  // `HEAD` for the trailer a landed revision must carry, the index for the step a revision
+  // about to be committed must take, since at that moment its commit message does not exist.
+  for (const revision of [
+    ...validateIntentRevisionCommits(repoRoot, 'HEAD'),
+    ...validateStagedIntentRevisions(repoRoot),
+  ]) {
+    violations.push({ path: revision.path, reason: revision.reason })
+  }
+  const changesRoot = join(repoRoot, 'openspec', 'changes')
+  if (!existsSync(changesRoot)) return violations
   for (const entry of readdirSync(changesRoot, { withFileTypes: true })) {
     if (!entry.isDirectory() || entry.name === 'archive') continue
     const tasksPath = join(changesRoot, entry.name, 'tasks.md')
