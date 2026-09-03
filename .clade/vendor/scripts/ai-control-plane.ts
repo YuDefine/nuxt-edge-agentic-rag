@@ -10,11 +10,13 @@ import {
   openSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   statSync,
   unlinkSync,
   writeFileSync,
 } from 'node:fs'
 import { basename, dirname, join, relative, resolve as resolvePath } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 import { atomicWriteText } from './lib/atomic-file.ts'
 import {
@@ -32,6 +34,7 @@ import {
   markWorkDone,
   openWork,
   readEvents,
+  reopenWork,
   startSpan,
   type SpanHandle,
 } from './flow/emit.ts'
@@ -50,7 +53,12 @@ import {
   reconcileRuntimeEngine,
   registerCapabilityGrant,
   registerWorkerProfile,
+  reopenRuntimeWork,
+  EVIDENCE_READINESS_PREDICATE,
+  VERIFICATION_PHASES,
+  type VerificationPhase,
   type CapabilityGrant,
+  type ReopenCause,
   type RuntimeDigest,
   type RuntimeState,
   type WorkerProfile,
@@ -211,6 +219,16 @@ export interface EvidenceReceipt {
   span_id: string
   verification_policy: string
   evidence_kind: EvidenceReference['kind']
+  /**
+   * The verification phase this receipt is evidence for (TD-885), or absent on one that predates
+   * the field.
+   *
+   * Ruling 5b runs RED_VALIDITY, GREEN and mutation under ONE attempt against ONE work item, so
+   * `attempt_id` no longer separates the receipts a delivery produces — without this, readiness
+   * could only count receipts, and three RED receipts looked exactly like a completed sequence.
+   * The vocabulary is the verdict event's (section 4.5), shared through `VERIFICATION_PHASES`.
+   */
+  phase?: VerificationPhase
   subject_digest: Digest
   references: EvidenceReference[]
   recorded_at: string
@@ -346,6 +364,13 @@ export interface ControlPlaneProjection {
     evidence_ids: string[]
     blocking_gate_ids: string[]
     latest_valid_evidence_id: string | null
+    /**
+     * Required verification phases with no current receipt (TD-885), newest reading each time.
+     *
+     * Always present and empty when the work spec's `verification_policy` declares no phases, so a
+     * reader never has to tell "nothing missing" from "nothing asked" by the field's absence.
+     */
+    missing_phases: string[]
     human_disposition: 'none' | 'waiting' | 'resolved'
   }>
   attempts: Array<{
@@ -705,7 +730,8 @@ export function materializeWork(input: {
   const spec = plan.work_specs.find((candidate: any) => candidate.work_spec_id === input.workSpecId)
   if (!spec) throw new Error(`unknown work_spec_id: ${input.workSpecId}`)
   const requirement = spec.requirement_refs?.[0]
-  const existing = readEvents(input.repoRoot).filter(
+  const spine = readEvents(input.repoRoot)
+  const existing = spine.filter(
     (event) =>
       event.kind === 'work.open' &&
       event.payload?.change_id === normalized.change_id &&
@@ -722,9 +748,34 @@ export function materializeWork(input: {
         `work_spec_id ${input.workSpecId} is already materialized as ${currentWorkId}`,
       )
     }
+    // The revision this materialization is bound to NOW, which is not always the one frozen into
+    // `work.open`. A `revision` reopen (TD-884 ruling (m)) moves the binding forward and says so in
+    // its payload: the work item is the same item, sent back to answer the requirement's new
+    // revision, and re-materializing it is how the next attempt gets a card to run against.
+    //
+    // Without this the two features cancel each other out. The reopen puts the work in `queued`,
+    // and then the very next `materializeWork` — the first step of running it again — reads r1 off
+    // `work.open`, compares it against the plan's r2 and refuses the whole work spec as stale. The
+    // work is reachable by nothing: `startAttempt` cannot lease what is not materialized, minting a
+    // second work spec is refused above, and the receipt has to land on THIS work id for
+    // `superseded_by` to pair it with the r1 receipt (it matches on requirement × work).
+    //
+    // Read in stream order, last reopen wins, and ONLY `cause: 'revision'` counts: an
+    // `evidence_insufficient` reopen says the record was short, not that the requirement moved, so
+    // it leaves the binding exactly where it was.
+    const openIndex = spine.indexOf(current)
+    const boundRevision = spine
+      .slice(openIndex + 1)
+      .findLast(
+        (event) =>
+          event.kind === 'work.reopened' &&
+          event.work_id === currentWorkId &&
+          event.payload?.cause === 'revision' &&
+          Number.isInteger(event.payload?.requirement_revision),
+      )?.payload?.requirement_revision as number | undefined
     if (
       current.payload?.requirement_id !== requirement?.id ||
-      current.payload?.requirement_revision !== Number(requirement?.revision) ||
+      (boundRevision ?? current.payload?.requirement_revision) !== Number(requirement?.revision) ||
       current.payload?.verification_policy !== String(spec.verification_policy)
     ) {
       throw new Error(`existing materialization is stale for work_spec_id: ${input.workSpecId}`)
@@ -1930,6 +1981,9 @@ function validateEvidence(receipt: EvidenceReceipt): void {
     throw new Error('requirement_revision must be a positive integer')
   }
   if (!receipt.verification_policy) throw new Error('verification_policy is required')
+  if (receipt.phase !== undefined && !VERIFICATION_PHASES.includes(receipt.phase)) {
+    throw new Error(`unknown verification phase: ${String(receipt.phase)}`)
+  }
   if (receipt.references.length === 0)
     throw new Error('at least one evidence reference is required')
   for (const ref of receipt.references) requireDigest('reference digest', ref.digest)
@@ -2058,6 +2112,9 @@ function correlatedRuntimeState(repoRoot: string, changeId: string): RuntimeStat
     pauses,
     trace_observations: state.trace_observations.filter((observation) =>
       attemptIds.has(observation.attempt_id),
+    ),
+    reopened_since_last_lease: state.reopened_since_last_lease.filter((workId) =>
+      workIds.has(workId),
     ),
   }
 }
@@ -2376,6 +2433,288 @@ export function recordHumanDecision(
   })
 }
 
+/**
+ * `required_work_terminal_with_current_evidence`, for ONE work item.
+ *
+ * Lifted out of the change-wide `every(...)` because a reopen has to ask the same question of a
+ * single work: `work reopen --cause evidence_insufficient` is only legitimate when readiness would
+ * name this work, and a second hand-written copy of the condition is the thing that would drift
+ * apart from the predicate it claims to cite. One function, two callers, no second matcher.
+ *
+ * Per required work item, unchanged by ruling (l): archive needs a receipt that is current *now*,
+ * so a requirement revision always costs a re-run. This used to read the change-wide
+ * `every(... is current)` reading, which said the same thing for a change with one work item and
+ * something much stronger for every other one.
+ */
+/** One work item put back in the queue, as `reopenWorkFor*` reports it. */
+export interface WorkReopenResult {
+  work_spec_id: string
+  work_id: string
+  cause: ReopenCause
+  reopen_count: number
+}
+
+/**
+ * The work id a work spec was materialized as, or null when it never was.
+ *
+ * `work.open` on the flow spine is the mapping — `materializeWork` writes exactly one per
+ * `change_id x work_spec_id` and refuses a second, so a single match is the contract rather than a
+ * lucky read.
+ */
+function materializedWorkId(repoRoot: string, changeId: string, workSpecId: string): string | null {
+  const opened = readEvents(repoRoot).filter(
+    (event) =>
+      event.kind === 'work.open' &&
+      event.payload?.change_id === changeId &&
+      event.payload?.work_spec_id === workSpecId,
+  )
+  return opened.length === 1 ? (opened[0].work_id as string) : null
+}
+
+/**
+ * The highest requirement revision each work spec is bound to, keyed by work spec id.
+ *
+ * Read through the NORMALIZED requirements, not off `requirement_refs` alone. The refs are what the
+ * work plan declares; `normalized.requirements` is what the `requirement.impact` artifacts actually
+ * say, and a revision that moves an impact without rewriting every work spec's ref is still a
+ * requirement that moved — that is precisely the shape `evidenceIsCurrent` invalidates receipts on.
+ * The ref's own revision is the fallback for a requirement no impact covers.
+ */
+function referencedRequirementRevisions(source: OpsxChangeSource): Map<string, number> {
+  const plan = artifact(source, 'intent.work_plan')
+  const byRequirement = new Map(
+    readOpsxChange(source).requirements.map((requirement) => [
+      requirement.requirement_id,
+      requirement.revision,
+    ]),
+  )
+  return new Map(
+    (plan.work_specs ?? []).map((spec: any) => [
+      String(spec.work_spec_id),
+      Math.max(
+        0,
+        ...(spec.requirement_refs ?? []).map(
+          // `|| 0`, not `?? 0`: `Number('')` is NaN rather than nullish, and a NaN reaching
+          // `Math.max` makes the whole comparison NaN — which compares unequal to itself, so every
+          // work spec would look changed on every revision.
+          (ref: any) => byRequirement.get(String(ref.id)) ?? (Number(ref.revision) || 0),
+        ),
+      ),
+    ]),
+  )
+}
+
+/**
+ * Record on the spine that a work item the runtime just reopened is no longer finished.
+ *
+ * Two ledgers, one fact: `reopenRuntimeWork` owns the runtime journal (the counted, guarded
+ * `done -> queued` edge), and this owns the spine, where `markWorkDone` filed the claim that is
+ * being withdrawn. Without it the projector reads a standing `work.done` and reports the work
+ * `done` while the runtime has it `queued` — and `required_work_terminal_with_current_evidence`
+ * asks `state === 'done'` first, so a reopened work would keep passing the very predicate the
+ * reopen exists to fail.
+ *
+ * Fail-open, like every other spine write on this path: telemetry NEVER changes the outcome of the
+ * work it observes, and the runtime journal is the authority either way. Fail-open is NOT
+ * fail-silent, though — it returns whether the event landed, and `reopenRuntimeWork` records a
+ * `spine_written: false` on the runtime event when it did not. `CLADE_FLOW_OFF` is the ordinary way
+ * that happens: with it set, every read side keeps reading a standing `work.done` for a work item
+ * the runtime has back in the queue, and before this returned anything that state was reachable
+ * with no trace in either ledger.
+ */
+function recordSpineReopen(input: {
+  repoRoot: string
+  workId: string
+  cause: ReopenCause
+  reason: string
+  actor: string
+  payload?: Record<string, unknown>
+}): boolean {
+  try {
+    // `emitEvent` already fails open for every path below it — a refused payload, a failed append
+    // and `CLADE_FLOW_OFF` all come back as `written: false` rather than as a throw. This catch is
+    // for what happens ABOVE it (id validation in `workPoint`), and it is the only reason one is
+    // still here.
+    const result = reopenWork({
+      work_id: input.workId,
+      cause: input.cause,
+      reason: input.reason,
+      actor: input.actor,
+      substrate: 'claude-code',
+      payload: input.payload ?? {},
+      cwd: input.repoRoot,
+    })
+    if (result?.written === true) return true
+    process.stderr.write(
+      `[ai-control-plane] spine reopen not written for ${input.workId} (${String(
+        (result as { skipped?: string })?.skipped ?? 'rejected',
+      )}); the runtime journal records spine_written: false\n`,
+    )
+    return false
+  } catch (error) {
+    process.stderr.write(
+      `[ai-control-plane] spine reopen failed for ${input.workId}: ${(error as Error).message}\n`,
+    )
+    return false
+  }
+}
+
+/**
+ * Reopen every `done` required work whose requirement the revision moved (ruling (m), `revision`).
+ *
+ * Called from `reviseOpsxChange` after the revision commit lands, because the commit IS the
+ * causality the event carries: a reopen with no commit behind it is a claim that the requirement
+ * moved, made by nothing. A revision run with `commit: false` therefore reopens nothing and says so
+ * by returning an empty list — the work is left `done` and readiness reports it as lacking current
+ * evidence, which is true and is the pre-existing behaviour.
+ *
+ * Work that is not `done` is skipped rather than refused: `queued` / `running` work already picks
+ * the revision up on its next attempt, and reopening it would be a second edge into a state it is
+ * already in.
+ */
+export function reopenWorkForRevision(input: {
+  repoRoot: string
+  previousSource: OpsxChangeSource
+  source: OpsxChangeSource
+  revisionCommit: string
+  actor?: string
+  now?: string | Date
+}): WorkReopenResult[] {
+  const changeId = readOpsxChange(input.source).change_id
+  const before = referencedRequirementRevisions(input.previousSource)
+  const after = referencedRequirementRevisions(input.source)
+  const runtime = readRuntimeState(input.repoRoot)
+  const results: WorkReopenResult[] = []
+  for (const [workSpecId, revision] of after) {
+    if (before.get(workSpecId) === revision) continue
+    const workId = materializedWorkId(input.repoRoot, changeId, workSpecId)
+    if (!workId) continue
+    const work = runtime.works.find((candidate) => candidate.work_id === workId)
+    if (!work || work.state !== 'done') continue
+    const reason = `requirement moved to revision ${revision} for ${workSpecId}`
+    const reopened = reopenRuntimeWork({
+      repoRoot: input.repoRoot,
+      workId,
+      cause: 'revision',
+      reason,
+      revisionCommit: input.revisionCommit,
+      // The revision this work is being sent back to answer, on BOTH ledgers: `materializeWork`
+      // reads it off the spine to know that the r1 in `work.open` is history rather than staleness.
+      requirementRevision: revision,
+      actor: input.actor ?? 'intent-controller',
+      now: input.now,
+      recordOnSpine: () =>
+        recordSpineReopen({
+          repoRoot: input.repoRoot,
+          workId,
+          cause: 'revision',
+          reason,
+          actor: input.actor ?? 'intent-controller',
+          payload: { requirement_revision: revision },
+        }),
+    })
+    results.push({
+      work_spec_id: workSpecId,
+      work_id: workId,
+      cause: 'revision',
+      reopen_count: reopened.reopen_count,
+    })
+  }
+  return results
+}
+
+/**
+ * Reopen one `done` work whose evidence readiness judges insufficient (ruling (m), the other cause).
+ *
+ * The requirement has not moved; what is wrong is the record. <consumer-h>'s
+ * `W-2026-09-02-wsp-leavesubmitguard` is the first case: a RED-only attempt finished `ok` and drove
+ * the work to `done` with no GREEN receipt behind it, and nothing could run it again.
+ *
+ * Refused when readiness does NOT name the work, and that refusal is the whole safety of this
+ * entry. Without it `--cause evidence_insufficient` is a free "make this runnable again" button,
+ * and the counted, caused reopen ruling (m) describes becomes a formality. The judgement is not
+ * re-derived here: `workEvidenceIsSufficient` is the same function readiness calls.
+ */
+export function reopenWorkForInsufficientEvidence(input: {
+  repoRoot: string
+  source: OpsxChangeSource
+  workId: string
+  reason: string
+  actor?: string
+  now?: string | Date
+}): WorkReopenResult {
+  const workId = requireId('work', input.workId)
+  const built = buildProjectorInput({ repoRoot: input.repoRoot, source: input.source })
+  const work = built.projectorInput.work_records.find((row) => row.work_id === workId)
+  if (!work) throw new Error(`${workId} is not a required work item of this change`)
+  if (workEvidenceIsSufficient(work, built.evidence)) {
+    throw new Error(
+      `${EVIDENCE_READINESS_PREDICATE} is satisfied for ${workId}; there is nothing to reopen`,
+    )
+  }
+  const reopened = reopenRuntimeWork({
+    repoRoot: input.repoRoot,
+    workId,
+    cause: 'evidence_insufficient',
+    reason: input.reason,
+    receiptIds: work.evidence_ids,
+    actor: input.actor ?? 'flow-controller',
+    now: input.now,
+    recordOnSpine: () =>
+      recordSpineReopen({
+        repoRoot: input.repoRoot,
+        workId,
+        cause: 'evidence_insufficient',
+        reason: input.reason,
+        actor: input.actor ?? 'flow-controller',
+      }),
+  })
+  return {
+    work_spec_id: work.work_spec_id,
+    work_id: workId,
+    cause: 'evidence_insufficient',
+    reopen_count: reopened.reopen_count,
+  }
+}
+
+export function workEvidenceIsSufficient(
+  work: {
+    state: string
+    evidence_ids: string[]
+    latest_valid_evidence_id: string | null
+    missing_phases?: string[]
+  },
+  evidence: EvidenceReceipt[],
+): boolean {
+  return (
+    work.state === 'done' &&
+    work.evidence_ids.length > 0 &&
+    work.evidence_ids.every((id: string) =>
+      evidence.some((receipt) => receipt.evidence_id === id),
+    ) &&
+    work.latest_valid_evidence_id !== null &&
+    (work.missing_phases ?? []).length === 0
+  )
+}
+
+/**
+ * The verification phases a work spec's policy requires evidence for, or `null` when it declares none.
+ *
+ * `verification_policy` is a free string the work plan author writes, so this reads a CONVENTION
+ * rather than a contract: a policy that names BDD is running section 7.5's gates and owes a receipt
+ * for each of RED_VALIDITY, GREEN and REFACTOR (ruling 5b's three-phase sequence, mutation judged
+ * inside the last two). Anything else declares no phases, and readiness falls back to what it asked
+ * before TD-885 — at least one current receipt.
+ *
+ * `null` and `[]` are NOT the same answer and must not be collapsed: `null` is "this policy does not
+ * speak about phases", `[]` would be "it requires none", and only the first may fall back.
+ */
+export function requiredVerificationPhases(
+  verificationPolicy: string,
+): readonly VerificationPhase[] | null {
+  return /(^|[^a-z])bdd([^a-z]|$)/i.test(verificationPolicy) ? VERIFICATION_PHASES : null
+}
+
 export function buildProjectorInput(input: {
   repoRoot: string
   source: OpsxChangeSource
@@ -2418,9 +2757,14 @@ export function buildProjectorInput(input: {
     duplicateMaterialization ||= openings.length > 1
     const open = openings.length === 1 ? openings[0] : null
     const workId = open?.work_id ?? null
-    const done = workId
-      ? events.find((event) => event.kind === 'work.done' && event.work_id === workId)
-      : null
+    // A `work.done` stands only while nothing withdrew it. `work.reopened` is the one event that
+    // does (TD-884), so the question is which came LAST rather than whether a done exists at all:
+    // a reopened work read as `done` here would keep satisfying
+    // `required_work_terminal_with_current_evidence`, which asks `state === 'done'` first.
+    const workSpine = workId ? events.filter((event) => event.work_id === workId) : []
+    const lastDone = workSpine.findLastIndex((event) => event.kind === 'work.done')
+    const lastReopen = workSpine.findLastIndex((event) => event.kind === 'work.reopened')
+    const done = lastDone >= 0 && lastDone > lastReopen ? workSpine[lastDone] : null
     const workAttempts = workId ? attempts.filter((attempt) => attempt.work_id === workId) : []
     const evidenceIds = workId
       ? evidence
@@ -2451,6 +2795,7 @@ export function buildProjectorInput(input: {
       evidence_ids: evidenceIds.toSorted(),
       blocking_gate_ids: blockingGateIds.toSorted(),
       latest_valid_evidence_id: null,
+      missing_phases: [] as string[],
       human_disposition:
         blockingGateIds.length > 0 ? 'waiting' : relatedGates.length > 0 ? 'resolved' : 'none',
     }
@@ -2474,11 +2819,21 @@ export function buildProjectorInput(input: {
     )
   }
   for (const work of workRecords) {
+    const current = evidence.filter(
+      (receipt) => receipt.work_id === work.work_id && evidenceIsCurrent(receipt),
+    )
     work.latest_valid_evidence_id =
-      evidence
-        .filter((receipt) => receipt.work_id === work.work_id && evidenceIsCurrent(receipt))
-        .toSorted((left, right) => left.recorded_at.localeCompare(right.recorded_at))
-        .at(-1)?.evidence_id ?? null
+      current.toSorted((left, right) => left.recorded_at.localeCompare(right.recorded_at)).at(-1)
+        ?.evidence_id ?? null
+    // TD-885. Ruling 5b puts all three phases on ONE attempt against ONE work item, so counting
+    // receipts stopped being able to tell a finished sequence from three runs of the same phase.
+    // Only when the policy declares its phases: a policy that does not speak about them keeps the
+    // pre-TD-885 reading, and says so by leaving this empty rather than by naming phases it never
+    // asked for.
+    const required = requiredVerificationPhases(work.verification_policy)
+    work.missing_phases = required
+      ? required.filter((phase) => !current.some((receipt) => receipt.phase === phase))
+      : []
   }
   const inputFacts = {
     source: input.source,
@@ -2552,18 +2907,8 @@ export function buildProjectorInput(input: {
             requirement.revision === impact.requirement_revision,
         ),
     ),
-    required_work_terminal_with_current_evidence: workRecords.every(
-      (work: any) =>
-        work.state === 'done' &&
-        work.evidence_ids.length > 0 &&
-        work.evidence_ids.every((id: string) =>
-          evidence.some((receipt) => receipt.evidence_id === id),
-        ) &&
-        // Per required work item, unchanged by ruling (l): archive needs a receipt that is
-        // current *now*, so a requirement revision always costs a re-run. This used to read
-        // the change-wide `every(... is current)` reading, which said the same thing for
-        // a change with one work item and something much stronger for every other one.
-        work.latest_valid_evidence_id !== null,
+    required_work_terminal_with_current_evidence: workRecords.every((work: any) =>
+      workEvidenceIsSufficient(work, evidence),
     ),
     required_gates_terminal: humanGates.every((gate) => gate.state !== 'open'),
     no_active_attempt_or_lease:
@@ -2670,6 +3015,29 @@ export function completeControlPlaneWork(input: {
   const open = events.find((event) => event.kind === 'work.open' && event.work_id === input.workId)
   if (open?.payload?.verification_policy !== receipt.verification_policy) {
     throw new Error('evidence verification policy does not match the materialized work')
+  }
+  // The runtime says whether this work is delivered; the spine records the claim. Two ledgers, one
+  // fact — and this is the half TD-884 left single-written. The reopen path writes both, so a
+  // `done` written here over a runtime `queued` puts them back out of step in the opposite
+  // direction: the runtime has the work reopened and unleased while the projection reads `done` and
+  // `required_work_terminal_with_current_evidence` passes, so the change archives on work nobody
+  // has run since the requirement moved.
+  //
+  // `done` is reached by finishing an attempt, and by nothing else. So this is not a second gate on
+  // the same question — it is the statement that a completion claim is made ABOUT a run, and after
+  // a reopen the run has to happen again before there is anything to claim.
+  const runtimeWork = readRuntimeState(input.repoRoot).works.find(
+    (candidate) => candidate.work_id === input.workId,
+  )
+  if (runtimeWork && runtimeWork.state !== 'done') {
+    throw new ControlPlaneFailure({
+      code: 'WORK_NOT_TERMINAL_IN_RUNTIME',
+      message: `${input.workId} is ${runtimeWork.state} in the runtime journal, not done; lease an attempt and finish it before claiming completion`,
+      diagnostics: [
+        `runtime_state=${runtimeWork.state}`,
+        `reopen_count=${runtimeWork.reopen_count}`,
+      ],
+    })
   }
   return markWorkDone({
     work_id: input.workId,
@@ -3326,3 +3694,92 @@ export function readControlPlaneProjection(
     return projection
   })
 }
+
+// ── CLI: `work reopen` (plan section 10.6 ruling (m)) ─────────────────────────────────────────
+//
+// The `evidence_insufficient` cause has no automatic emitter and must not get one: the judgement
+// "the receipts on record are not enough" is made by reading readiness, and a background process
+// that reopened work whenever the predicate went false would fight every in-flight run. So it is a
+// command someone types, and this is it. `revision` is deliberately absent here — that cause is
+// emitted by `reviseOpsxChange` from the commit that caused it, and a hand-typed one would be a
+// claim about a commit with nothing behind it.
+
+function reopenUsage(): string {
+  return [
+    'usage: ai-control-plane.ts work reopen --change-id <chg_...> --work-id <W-...>',
+    '                                       --cause evidence_insufficient --reason <text>',
+    '                                       [--repo-root <path>] [--json]',
+    '',
+    'Reopens a done work item that readiness names under',
+    `${EVIDENCE_READINESS_PREDICATE}. Refused when readiness is satisfied for it.`,
+  ].join('\n')
+}
+
+export function main(argv: string[] = process.argv.slice(2)): number {
+  const flags = new Map<string, string>()
+  let asJson = false
+  if (argv[0] !== 'work' || argv[1] !== 'reopen') {
+    process.stderr.write(`${reopenUsage()}\n`)
+    return 2
+  }
+  for (let i = 2; i < argv.length; i += 1) {
+    const flag = argv[i]
+    if (flag === '--json') {
+      asJson = true
+      continue
+    }
+    const value = argv[i + 1]
+    if (!flag.startsWith('--') || value === undefined || value.startsWith('--')) {
+      process.stderr.write(`${flag} needs a value\n${reopenUsage()}\n`)
+      return 2
+    }
+    flags.set(flag.slice(2), value)
+    i += 1
+  }
+  const repoRoot = resolvePath(flags.get('repo-root') ?? process.cwd())
+  const changeId = flags.get('change-id')
+  const workId = flags.get('work-id')
+  const cause = flags.get('cause')
+  const reason = flags.get('reason')
+  if (!changeId || !workId || !reason) {
+    process.stderr.write(`--change-id, --work-id and --reason are required\n${reopenUsage()}\n`)
+    return 2
+  }
+  // Spelled out rather than defaulted: a caller who omits `--cause` is not asking for the only one
+  // this command implements, they have not said which of ruling (m)'s two they mean.
+  if (cause !== 'evidence_insufficient') {
+    process.stderr.write(
+      `--cause must be evidence_insufficient; a revision reopen is emitted by the revision itself\n`,
+    )
+    return 2
+  }
+  try {
+    const { source } = readPersistedOpsxChange(repoRoot, changeId)
+    const result = reopenWorkForInsufficientEvidence({ repoRoot, source, workId, reason })
+    process.stdout.write(
+      asJson
+        ? `${JSON.stringify(result, null, 2)}\n`
+        : `reopened ${result.work_id} (${result.work_spec_id}) — reopen_count ${result.reopen_count}\n`,
+    )
+    return 0
+  } catch (error) {
+    process.stderr.write(`${(error as Error).message}\n`)
+    return 1
+  }
+}
+
+/**
+ * TD-460: node realpath-s `import.meta.url` but leaves `process.argv[1]` as written, so comparing
+ * them raw makes the CLI vanish when the script is reached through a symlink.
+ */
+function invokedAsCli(): boolean {
+  const entry = process.argv[1]
+  if (!entry) return false
+  try {
+    return realpathSync(entry) === realpathSync(fileURLToPath(import.meta.url))
+  } catch {
+    return entry === fileURLToPath(import.meta.url)
+  }
+}
+
+if (invokedAsCli()) process.exit(main())

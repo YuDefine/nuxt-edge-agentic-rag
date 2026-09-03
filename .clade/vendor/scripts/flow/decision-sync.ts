@@ -61,7 +61,7 @@ import {
 } from './emit.ts'
 
 export interface SyncAction {
-  type: 'open' | 'retract' | 'amend'
+  type: 'open' | 'retract' | 'amend' | 'self-closed'
   source_id: string
   span_id: string | null
   question: string
@@ -93,6 +93,14 @@ export interface SyncResult {
    * source bullets — a different problem than the one this suppression fixes.
    */
   suppressed: number
+  /**
+   * 來源條目自己寫著已經結案，卻還留在待拍板段（`self-closed` lint）。
+   *
+   * 與 `suppressed` 分開數，因為要做的事不同：`suppressed` 是人已經答過了、只是 bullet 沒刪，
+   * 那是**答題端**的殘留；這一格是**寫的人**把一段結論留在了問題區，而它會一直被重新掃到。
+   * 數字報出來的收件人是下一個編那份檔的 agent，`handoff-scan` 逐字轉述它。
+   */
+  self_closed: number
   /**
    * Open questions whose rendered payload was corrected in place this run (`driftOf`).
    *
@@ -281,6 +289,7 @@ export function syncDecisions({
     actions: [],
     unwritten: [],
     suppressed: 0,
+    self_closed: 0,
     amended: 0,
     options_requested: 0,
     evidence_requested: 0,
@@ -303,8 +312,20 @@ export function syncDecisions({
   const items = scanDecisionSources(repoRoot)
   result.scanned = items.length
 
+  /**
+   * 自述結案的條目**不進佇列**（R2）。
+   *
+   * 掃描端一路以來只看 heading 分桶、不讀內容，所以一條逐字寫著「已拍板 A」的 bullet 照樣被鑄成
+   * 一題。判準在 `decision-sources.ts` 的 `isSelfClosed`——**NEVER** 在這裡再寫一份：兩份會漂，
+   * 而漂掉的那一次是一題該問的被吞掉，而它不會有任何訊號。
+   */
+  const selfClosed = new Map<string, SourceItem>()
   const bySourceId = new Map<string, SourceItem>()
-  for (const item of items) bySourceId.set(item.source_id, item)
+  for (const item of items) {
+    if (item.lint.includes('self-closed')) selfClosed.set(item.source_id, item)
+    else bySourceId.set(item.source_id, item)
+  }
+  result.self_closed = selfClosed.size
 
   // `pendingDecisions` already folds amendments, so `rendered` is what the page shows right now,
   // not what the start event said. That is what makes the drift check idempotent: once amended,
@@ -323,8 +344,8 @@ export function syncDecisions({
 
   const answered = answeredSourceIds(repoRoot)
 
-  // 1. New in the files.
-  for (const item of items) {
+  // 1. New in the files. 自述結案的那幾條不在這個集合裡，所以它們一開始就不會被鑄成題。
+  for (const item of bySourceId.values()) {
     const alreadyOpen = openBySourceId.get(item.source_id)
     if (alreadyOpen) {
       // 1b. Open already, but rendering something the files no longer say.
@@ -478,24 +499,31 @@ export function syncDecisions({
     })
   }
 
-  // 2. Gone from the files.
+  // 2. Gone from the files —— 或者還在，但條目自己說它已經結案了。
   for (const [sourceId, { span_id }] of openBySourceId) {
     if (bySourceId.has(sourceId)) continue
+    const closed = selfClosed.get(sourceId)
     if (!dryRun) {
       resolveDecision(span_id, {
-        answer: '(來源條目已從檔案消失)',
+        answer: closed ? '(來源條目自述已結案)' : '(來源條目已從檔案消失)',
         answeredBy: actor,
         // NOT an answer. Every reader that reports "what did Charles decide" MUST check this.
-        payload: { retracted: true, retracted_source: sourceId },
+        //
+        // `self_closed` 與 `retracted` 一起帶：既有的每一個讀者都是查 `retracted`（答案清單、
+        // stall），而它們對這兩種情形要做的事一模一樣——不要把它當成 Charles 的裁決。多帶的那個
+        // 旗標只回答「為什麼不見了」，NEVER 讓任何讀者改讀它來決定要不要顯示。
+        payload: closed
+          ? { retracted: true, retracted_source: sourceId, self_closed: true }
+          : { retracted: true, retracted_source: sourceId },
         cwd: repoRoot,
       })
     }
     result.actions.push({
-      type: 'retract',
+      type: closed ? 'self-closed' : 'retract',
       source_id: sourceId,
       span_id,
-      question: '',
-      category: '',
+      question: closed?.question ?? '',
+      category: closed?.category ?? '',
     })
   }
 
@@ -558,6 +586,7 @@ export function syncFleet({
         actions: [],
         unwritten: [],
         suppressed: 0,
+        self_closed: 0,
         amended: 0,
         options_requested: 0,
         evidence_requested: 0,

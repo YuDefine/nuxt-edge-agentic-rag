@@ -22,7 +22,7 @@ import { existsSync, mkdirSync, readFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { redactPayload, validateFlowEvent } from '../../signals/redact.ts'
+import { redactPayload, validateFlowEvent, workReopenCauses } from '../../signals/redact.ts'
 import { appendRaw } from '../../signals/ledger-writer.ts'
 import { detectConsumer } from '../../signals/shim-core.ts'
 import { normalizeArtifacts } from './nodes/lib/artifacts.ts'
@@ -252,6 +252,8 @@ interface PayloadRule {
   code: string
   why: string
   nullable?: boolean
+  /** The values this field may take. Checked only when the field is present and non-empty. */
+  oneOf?: readonly string[]
 }
 
 /*
@@ -280,6 +282,25 @@ const REQUIRED_PAYLOAD: Record<string, PayloadRule[]> = {
       field: 'reason',
       code: 'reason-required',
       why: 'work.drop needs payload.reason — a drop with no stated basis is a silent delete',
+    },
+  ],
+  // A reopen UNDOES a `work.done` on this stream, so it owes at least as much as the claim it
+  // withdraws: `cause` says which of the two admissible reasons it is, `reason` says it in prose.
+  // A reopen nobody can check turns `work.done` back into a claim that can be silently retracted.
+  'work.reopened': [
+    {
+      field: 'cause',
+      code: 'cause-required',
+      why: "work.reopened needs payload.cause (revision | evidence_insufficient) — the two are not interchangeable, and a reopen that cannot say which it is cannot be audited against the requirement's history",
+      // Read off `$defs.work_reopen_cause`, the same list `validateFlowEvent` checks. Presence
+      // alone was never the claim: a `cause: 'whatever'` says as little as no cause at all while
+      // passing every gate, and the description this rule prints already names the two values.
+      oneOf: workReopenCauses(),
+    },
+    {
+      field: 'reason',
+      code: 'reason-required',
+      why: 'work.reopened needs payload.reason — withdrawing a done with no stated basis is a silent retraction',
     },
   ],
   'work.eta': [
@@ -371,6 +392,18 @@ function requiredPayloadError(kind: string, payload: Record<string, unknown>) {
     // that keeps this widening from silently becoming a hole in the one fail-closed gate.
     if (rule.nullable && value === null && Object.hasOwn(payload ?? {}, rule.field)) continue
     return { code: rule.code, message: rule.why }
+  }
+  // A second pass, so that a MISSING field is always reported before a wrong one: "you left cause
+  // out" and "cause says something the vocabulary does not know" are different mistakes, and the
+  // first is the one to say when both are true of the same payload.
+  for (const rule of rules) {
+    const value = payload?.[rule.field]
+    if (!rule.oneOf || typeof value !== 'string') continue
+    if (rule.oneOf.includes(value)) continue
+    return {
+      code: `${rule.code.replace(/-required$/, '')}-unknown`,
+      message: `${kind} payload.${rule.field} must be one of ${rule.oneOf.join(' | ')}, got ${JSON.stringify(value)}`,
+    }
   }
   return null
 }
@@ -762,9 +795,17 @@ const CLOSED_WORK_KINDS = new Set(['work.done', 'work.accept', 'work.drop'])
  */
 function workHasClosedClaim(workId: string, cwd?: string): boolean {
   try {
-    return readEvents(cwd).some(
-      (e) => e.work_id === workId && CLOSED_WORK_KINDS.has(String(e.kind)),
+    // The LAST of the two, not "is there one anywhere": `work.reopened` withdraws the claim
+    // `work.done` filed (TD-884 ruling (m)), and a reopened work is open again by definition —
+    // scanning for any closed kind ever would mint an orphan for a question asked about work that
+    // is, right now, running. Order in the file, not `ts_utc`: a reopen and the done it withdraws
+    // legitimately land in the same millisecond, and `readEvents` preserves append order.
+    const claims = readEvents(cwd).filter(
+      (e) =>
+        e.work_id === workId &&
+        (CLOSED_WORK_KINDS.has(String(e.kind)) || String(e.kind) === 'work.reopened'),
     )
+    return CLOSED_WORK_KINDS.has(String(claims.at(-1)?.kind))
   } catch {
     return false
   }
@@ -1630,6 +1671,53 @@ export function dropWork({
     substrate,
     session_id,
     payload: { reason: String(reason ?? '').trim(), dropped_by: by, ...payload },
+    cwd,
+  })
+}
+
+export interface ReopenWorkInput {
+  work_id: string
+  /** `revision` (the requirement moved) or `evidence_insufficient` (the receipts are not enough). */
+  cause: string
+  /** Why, in one line. Required — see REQUIRED_PAYLOAD. */
+  reason: string
+  actor?: string
+  substrate?: string
+  session_id?: string | null
+  payload?: Record<string, unknown>
+  cwd?: string
+}
+
+/**
+ * A delivered work item is running again — the counterpart of `markWorkDone` on this stream.
+ *
+ * The control plane's runtime journal already records the reopen in full (`work.reopened` plus the
+ * `done -> queued` transition, ai-control-plane-runtime.ts). This event exists because the SPINE is
+ * where every read side asks whether a work item is finished, and there a lone `work.done` reads as
+ * finished forever: a reopened work would be drawn `done` on the board while its runtime state is
+ * `queued`. A point event rather than a state edge, for the same reason `work.done` is one — it is
+ * a fact about the work, not about whichever pane noticed.
+ */
+export function reopenWork({
+  work_id,
+  cause,
+  reason,
+  actor = 'unknown',
+  substrate = 'manual',
+  session_id = null,
+  payload = {},
+  cwd,
+}: ReopenWorkInput) {
+  return workPoint('work.reopened', {
+    work_id,
+    actor,
+    substrate,
+    session_id,
+    payload: {
+      cause: String(cause ?? '').trim(),
+      reason: String(reason ?? '').trim(),
+      ...payload,
+    },
     cwd,
   })
 }

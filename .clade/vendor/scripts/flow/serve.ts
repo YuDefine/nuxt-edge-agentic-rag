@@ -20,7 +20,12 @@ import { findConsumerRoot } from '../claim-helper.ts'
 import { eventsPath, readEvents } from './emit.ts'
 import { buildFleetSnapshot } from './fleet.ts'
 import { buildWorkItems, foldSpans } from './spine.ts'
-import { DEFAULT_STALL_MINUTES, findOwnershipStalls, findStalls } from './stall.ts'
+import {
+  DEFAULT_STALL_MINUTES,
+  findOwnershipStalls,
+  findStalls,
+  findUnverifiedDoneStalls,
+} from './stall.ts'
 import { buildWhoRows } from './who.ts'
 
 export interface ServeOptions {
@@ -94,6 +99,10 @@ export function buildSnapshot(cwd = process.cwd(), stallMinutes = DEFAULT_STALL_
     stalls: [
       ...findStalls(spans, { thresholdMinutes: stallMinutes }),
       ...findOwnershipStalls(ownership.rows),
+      // 純 spine，所以這一端付得起（它逐字 READ-ONLY，不 spawn 任何東西）。放這裡而不是靠
+      // `flow status` 獨占：驗收列消失是**在這一頁上**看得到的事，解釋它為什麼消失的那一行
+      // 也該在這一頁上。
+      ...findUnverifiedDoneStalls(spans),
     ].map((s) => ({
       ...s,
       repo: name,

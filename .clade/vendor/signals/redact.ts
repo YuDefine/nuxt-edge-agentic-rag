@@ -296,10 +296,46 @@ function flowKindWorkIdError(record) {
   return null
 }
 
+/**
+ * The two admissible causes of a `work.reopened`, read from `$defs.work_reopen_cause`.
+ *
+ * Exported so the flow emitter refuses an unknown cause at ITS door too, off this same list. The
+ * emitter's own check is not redundant with the one below: it reports a named error code before the
+ * envelope is ever built, which is what a caller of `reopenWork()` sees, while this one is what
+ * `flow emit --kind work.reopened` hits.
+ */
+export function workReopenCauses() {
+  return loadSchema().$defs?.work_reopen_cause?.enum ?? []
+}
+
+/**
+ * `work.reopened` carries a cause the vocabulary recognises.
+ *
+ * A cross-field rule rather than a payload subschema because `compileStructuralValidator` reads
+ * top-level properties only — an enum written under `properties.payload` would validate nothing
+ * while reading as though it did. The value matters: `revision` and `evidence_insufficient` are not
+ * interchangeable (one says the requirement moved, the other says the record was short), and a
+ * reopen carrying neither cannot be audited against the requirement's history at all. Presence is
+ * already enforced at the emitter; this is the half that checks WHICH.
+ */
+function flowReopenCauseError(record) {
+  if (record?.kind !== 'work.reopened') return null
+  const allowed = workReopenCauses()
+  const cause = record?.payload?.cause
+  if (allowed.includes(cause)) return null
+  return {
+    code: 'reopen-cause-unknown',
+    field: 'payload.cause',
+    allowed,
+    got: cause,
+    message: `work.reopened payload.cause must be one of ${allowed.join(' | ')}`,
+  }
+}
+
 /** Same validator, same redaction enforcement, applied to $defs.flow_envelope. */
 export function validateFlowEvent(record) {
   const result = validateAgainst(record, 'flow_envelope')
-  const cross = flowKindWorkIdError(record)
-  if (!cross) return result
-  return { ok: false, errors: [...result.errors, cross] }
+  const cross = [flowKindWorkIdError(record), flowReopenCauseError(record)].filter(Boolean)
+  if (cross.length === 0) return result
+  return { ok: false, errors: [...result.errors, ...cross] }
 }

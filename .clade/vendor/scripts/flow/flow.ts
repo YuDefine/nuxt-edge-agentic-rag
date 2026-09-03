@@ -9,7 +9,7 @@
 //   flow open <slug> [--actor <a>]      mint W-<date>-<slug>, emit the work.open point event
 //   flow emit --kind K --actor A        one point event from any shell (the CI action's door)
 //   flow ask --question Q [--option ...]    put a question on the decision queue
-//   flow pending [--json] [--repo-only]  the decision queue as `\my` renders it in chat
+//   flow pending [--json] [--repo-only] [--audience all]  the decision queue as `\my` renders it
 //   flow sources [--apply] [--all]     read HANDOFF / TD / state.json / tasks into the queue
 //   flow ask-options <span_id>          hand a ruling back: it arrived with no options
 //   flow clarify <span_id> --text T     answer a "this question needs more detail" request
@@ -39,7 +39,6 @@ import { syncWork, syncWorkFleet, type WorkSyncResult } from './work-sources.ts'
 import {
   acceptWork,
   answerClarification,
-  dismissGated,
   dropWork,
   amendDecision,
   emitEvent,
@@ -62,9 +61,18 @@ import {
   spanHandleFromSpine,
   spanIsClosed,
 } from './emit.ts'
-import { REF_SCHEMES, answerDecision, parseRef, relandDecision } from './answer.ts'
-import { LINT_NOTES, OPTIONS_REQUEST_TEXT, buildDecisionQueue } from './decisions.ts'
+import { REF_SCHEMES, answerDecision, dismissDecision, parseRef, relandDecision } from './answer.ts'
+import {
+  LINT_NOTES,
+  type LandingProbe,
+  OPTIONS_REQUEST_TEXT,
+  buildDecisionQueue,
+} from './decisions.ts'
+import { makeLandingProbe, reconcileLandedAccepts, unverifiedCommitArtifacts } from './landing.ts'
 import { isAnswerable } from './decision-sources.ts'
+
+/** `flow pending --audience` 的值域。同 `ASK_CATEGORIES`：無效值 fail closed，NEVER 靜默降級。 */
+const PENDING_AUDIENCES = ['charles', 'coordinator', 'all'] as const
 
 /** `flow ask --category` 的驗收。無效值 fail closed，NEVER 靜默降級成 `ruling`。 */
 const ASK_CATEGORIES = [
@@ -112,6 +120,7 @@ import {
   findOwnershipStalls,
   findStalls,
   findUnfiledAnswerStalls,
+  findUnverifiedDoneStalls,
   renderStalls,
 } from './stall.ts'
 import { readPipelineRows } from './coordination.ts'
@@ -194,6 +203,7 @@ const { values: args, positionals } = parseArgs({
     // `pending` flag. Fleet is the default there (a question in a consumer repo is still a
     // question for the same human), so the flag has to be the one that NARROWS.
     'repo-only': { type: 'boolean', default: false },
+    audience: { type: 'string' },
     // `answer` flags — 同 `emit` 那段的理由。這裡漏宣告的代價特別高：`--answer <text>` 變成
     // true 之後答案本文會落進 positionals，而 span_id 也在 positionals 裡。
     answer: { type: 'string' },
@@ -249,7 +259,8 @@ const USAGE = `Usage: flow <open|link|done|eta|accept|drop|park|ask|pending|answ
       [--recommended R]            問句本文自己寫了 (A)/(B) 卻沒帶選項時，ask 會拒絕：那樣
       [--carrier PATH]             /decisions 只畫得出一個空白輸入框。
       [--category C] [--actor A]
-  pending [--json]                the decision queue, rendered the way \`\\my\` reads it in chat:
+  pending [--json] [--audience all]  the decision queue, rendered the way \`\\my\` reads it in chat
+                                  (\`--audience all\` also shows questions asked of the coordinator):
           [--repo-only]           only \`ruling\` gets a Qn, the other buckets are bullets, and the
                                   現況量測 line is measured live. Fleet by default. exit 2 = empty.
   answer <span_id>                answer one pending decision the way /decisions does — same
@@ -269,7 +280,7 @@ const USAGE = `Usage: flow <open|link|done|eta|accept|drop|park|ask|pending|answ
                                    already right, the file is what lost it. Re-running is a no-op,
                                    never a duplicate. status --stalled prints this command for
                                    every answer-not-filed line.
-  dismiss <span_id> --reason R    write off a decision span that no longer needs anyone — blocked
+  dismiss <span_id> --reason R [--repo R]  write off a decision span that no longer needs anyone — blocked
                                   and settled another way, or asked but never really a question.
                                   Clears it from /decisions and --stalled.
   amend-options <span_id>         supply the options a ruling should have arrived with, without
@@ -542,6 +553,22 @@ if (WORK_VERBS.has(cmd)) {
           `or --no-artifact --reason '<why there is none>'`,
       )
     }
+    /*
+     * 憑證有沒有真的到 origin（R4）。量，但 NEVER 擋。
+     *
+     * 一個指向本機才有的 sha 的完成宣稱，對驗收的人來說是一張 fetch 不到的收據——2026-09-03
+     * 實測 `<consumer-h>/d7-phase5b-closeout`：worker 派出去 6 分鐘、work 已經 `done`、驗收列已經在
+     * 佇列上，而那個 sha 當時只存在於 worker 的 worktree 裡。
+     *
+     * 標記而不是拒收，理由與 `--no-artifact` 那段是同一條：telemetry NEVER 改變被觀測工作的
+     * outcome。「憑證還沒推上去」是一個真的完成宣稱的一個真的屬性，不是一次無效的登記——
+     * 而擋下它只會教人先 push 一個空 commit 再回來打 `flow done`。
+     *
+     * 量**這一次登記看得到的全部** commit artifact（既有 ＋ 這次帶的），不只這次帶的那幾個：
+     * fold 對 `unverified_artifact` 是 last-write-wins（`spine.ts`），所以這一筆記的必須是
+     * 「此刻這件工作的憑證狀態」，而不是「這一行指令打了什麼」。
+     */
+    const unverified = unverifiedCommitArtifacts(repoRoot(), [...existing, ...registered])
     const res = markWorkDone({
       work_id: workId,
       verification,
@@ -550,12 +577,24 @@ if (WORK_VERBS.has(cmd)) {
       verifiedBy: strFlag(args['verified-by']) ?? actor,
       actor,
       substrate: strFlag(args.substrate) ?? 'claude-code',
+      // 只在為真時寫。`false` 對讀者是雜訊，而缺欄與 false 在 fold 裡是同一件事。
+      payload: unverified ? { unverified_artifact: true } : {},
     })
+    if (unverified) {
+      // 印在 `report` **之前**：它回 `never`（`process.exit`），寫在後面的每一行都是死碼。
+      // 收件人是剛打完 `flow done` 的那個人——他還在，而此刻 push 一下就結束了，比 24 小時後
+      // 那個 stall shape 早得多。
+      process.stderr.write(
+        `⚠ 這件工作的 commit 憑證在本機驗不出已 push（標 unverified_artifact，驗收列先不排）。\n` +
+          `  push 之後重跑一次 \`flow done ${workId} --verification '<同一句>'\` 即可清掉。\n`,
+      )
+    }
     report(res, {
       work_id: workId,
       state: 'done',
       artifacts: existing.length + registered.length,
       ...(waiver ? { artifact_waiver: waiver } : {}),
+      ...(unverified ? { unverified_artifact: true } : {}),
     })
   }
 
@@ -704,6 +743,32 @@ if (cmd === 'ask') {
   process.exit(0)
 }
 
+/**
+ * repo 名 → checkout root → 出版證據，做成 `buildDecisionQueue` 吃的那個 probe。
+ *
+ * **名字與路徑一律取自 snapshot 自己**（`snapshot.repos` 的 `name` / `path`），那正是每一個 span
+ * 被打上 `repo` 標籤時用的那一份。**NEVER 在這裡第二次算名字**——這一格 2026-09-03 寫錯過一次：
+ * 原本寫 `repoName(cladeRoot, cladeRoot)`，而那個函式對「root === cladeRoot」逐字回 `'clade'`，
+ * 於是在 linked worktree 裡（`buildSnapshot` 用 `basename(cwd)`，實測是 `decisions-queue-reform`）
+ * 每一件工作都對不上 key、整個 R1 靜默不生效。clade home 常駐 6+ 棵 worktree，而 fail-closed 讓它
+ * 連一行訊號都沒有。
+ *
+ * 名字對不上就回 null：不知道就照樣問人。
+ */
+function landingProbeFor(
+  snapshot: { repos?: { name: string; path: string }[] },
+  cladeRoot: string,
+): LandingProbe {
+  const probe = makeLandingProbe()
+  const roots = new Map<string, string>()
+  for (const r of snapshot.repos ?? []) roots.set(r.name, r.path)
+  return (item, repo) => {
+    const root = repo === null ? cladeRoot : roots.get(repo)
+    if (!root) return null
+    return probe(root, item)
+  }
+}
+
 if (cmd === 'pending') {
   // `\my` 的 CLI 門 —— 對話端要看的那份佇列。
   //
@@ -718,7 +783,25 @@ if (cmd === 'pending') {
   const snapshot = buildServeSnapshot({ cwd: root, cladeRoot: root, fleet })
   // 分桶不再吃 fleet 旗標：`跨 repo` 那幾節在 `categoryOfHeading` 就被擋掉，兩邊看到的是
   // 同一份佇列。`\my` 與 `/decisions` 的漂移由那裡收斂，不在這裡。
-  const queue = buildDecisionQueue(snapshot.spans)
+  //
+  // 出版證據只有 CLI 這一端付得起（要 spawn git），所以這裡注入、那一頁不注入——而那一頁靠
+  // `flow sources --apply` 落下的 `work.accept` 收斂到同一個結果。兩端的**判準**同源
+  // （`landing.ts`），差的只有誰付得起量測成本。
+  // `--audience all` 連問 coordinator 的題一起顯示。預設不顯示是 R3 的整個要點；這個旗標是給
+  // coordinator 自己用的——它要看的正是那一批。
+  //
+  // 值域封閉，typo **fail closed**：`--audience coordinatr` 靜默當 `charles` 的話，讀的人會看到
+  // 一份少了東西的佇列而且完全沒有訊號，而他打這個旗標的**唯一**理由就是要看那一批。
+  // 另一端（`herdr-session-handoff.ts --decision-for`）本來就是封閉的，兩端不對稱本身就是 bug。
+  const audienceFlag = strFlag(args.audience)
+  if (audienceFlag !== null && !(PENDING_AUDIENCES as readonly string[]).includes(audienceFlag)) {
+    fail(`--audience 只接受 ${PENDING_AUDIENCES.join(' | ')}（收到「${audienceFlag}」）`)
+  }
+  const queue = buildDecisionQueue(snapshot.spans, {
+    landed: landingProbeFor(snapshot, root),
+    // `coordinator` 與 `charles` 對這一支的行為相同（都只看自己那一批），差別在 `all`。
+    audience: audienceFlag === 'all' ? 'all' : 'charles',
+  })
 
   // 現況量測**當下實跑**，NEVER 快取：`\my` 契約逐字要求它不得引用寫死的數字，而過期的
   // dirty 數與新鮮的長得一模一樣。
@@ -896,9 +979,16 @@ if (cmd === 'sources') {
     args.all === true
       ? syncWorkFleet({ roots: fleetRoots(cladeRoot), dryRun: !apply })
       : [syncWork({ repoRoot: localRoot, dryRun: !apply })]
+  // 驗收的 landing 半邊（R1）。同一道 `--apply` 門、同一趟對帳：出版證據每分鐘都可能新增一筆
+  // （publish 跑完就是），而一個要人另外記得跑的對帳等於沒有對帳——`work.accept` 會恰好在
+  // 「已經出版了、佇列還在問」的那段時間缺席，也就是它唯一有用的那段時間。
+  const landedProbe = makeLandingProbe()
+  const landed = (args.all === true ? fleetRoots(cladeRoot) : [localRoot]).map((landRoot) =>
+    reconcileLandedAccepts({ repoRoot: landRoot, dryRun: !apply, probe: landedProbe }),
+  )
 
   if (args.json === true) {
-    process.stdout.write(`${JSON.stringify({ applied: apply, results, work }, null, 2)}\n`)
+    process.stdout.write(`${JSON.stringify({ applied: apply, results, work, landed }, null, 2)}\n`)
     process.exit(0)
   }
 
@@ -906,11 +996,17 @@ if (cmd === 'sources') {
   let retracted = 0
   let amended = 0
   let suppressed = 0
+  let selfClosed = 0
   for (const result of results) {
     suppressed += result.suppressed
+    selfClosed += result.self_closed
     const opens = result.actions.filter((a) => a.type === 'open')
     const retracts = result.actions.filter((a) => a.type === 'retract')
     const amends = result.actions.filter((a) => a.type === 'amend')
+    // 自述結案而被收掉的既有 span：它**改動了脊椎**（寫了一筆 end），所以與 `retract` 同一層
+    // 逐條印。只印計數的話，一題從佇列上消失的唯一線索是一個數字變小了，而人要拿 span id 才
+    // 推翻得了它（`flow answer` 要 id）。JSON 路徑本來就帶著，文字路徑漏掉是兩端不對稱。
+    const selfClosedActions = result.actions.filter((a) => a.type === 'self-closed')
     opened += opens.length
     retracted += retracts.length
     amended += amends.length
@@ -918,7 +1014,14 @@ if (cmd === 'sources') {
       process.stdout.write(`${result.repo}\n  skipped: ${result.skipped}\n`)
       continue
     }
-    if (opens.length === 0 && retracts.length === 0 && amends.length === 0) continue
+    if (
+      opens.length === 0 &&
+      retracts.length === 0 &&
+      amends.length === 0 &&
+      selfClosedActions.length === 0
+    ) {
+      continue
+    }
     process.stdout.write(
       `${result.repo}  (掃到 ${result.scanned} 件，已在佇列 ${result.tracked} 件)\n`,
     )
@@ -927,6 +1030,11 @@ if (cmd === 'sources') {
     }
     for (const action of retracts) {
       process.stdout.write(`  - 撤回（來源已消失） ${action.source_id}\n`)
+    }
+    for (const action of selfClosedActions) {
+      process.stdout.write(
+        `  - 撤回（來源自述已結案） ${action.span_id ?? '(no span)'} ${action.question.slice(0, 60)}\n`,
+      )
     }
     // Distinguished from `+` on purpose: an amend does NOT add a row to anybody's queue, it
     // corrects one that is already there. Printing them alike would make a parser fix reaching
@@ -941,14 +1049,37 @@ if (cmd === 'sources') {
   // deliberately NOT re-asked because a human already ruled on them, and a silent suppression is
   // indistinguishable from a scanner that stopped seeing the file at all.
   if (suppressed > 0) process.stdout.write(`\n已答過、不再重問：${suppressed} 題\n`)
+  // 收件人是下一個編那份檔的人，所以印的是**該做什麼**而不只是一個數字：這幾條會一直被掃到、
+  // 一直被判成結案、一直不進佇列，直到有人把它們搬走。
+  if (selfClosed > 0) {
+    process.stdout.write(
+      `\n${selfClosed} 條自述結案的條目仍在待拍板段（不進佇列）：請搬到參考段或刪掉\n`,
+    )
+  }
   process.stdout.write(
     `\n${verb}開 ${opened} 題、${verb}撤回 ${retracted} 題、${verb}更新 ${amended} 題`,
   )
   process.stdout.write(apply ? '\n' : '（加 --apply 才會真的寫入）\n')
 
   const workActions = renderWork(work, verb, apply)
+
+  // 逐件印，NEVER 只印一個總數：這一條代替的是「人本來要按的那一下」，而它憑的是哪個 tag
+  // 是唯一讓人事後推翻得了它的資訊。
+  let landedCount = 0
+  for (const r of landed) {
+    for (const row of r.accepted) {
+      landedCount += 1
+      process.stdout.write(`  ✓ ${verb}以 landing 收下  ${row.tag}  ${row.title ?? row.work_id}\n`)
+    }
+    for (const id of r.unwritten) {
+      process.stdout.write(`  ⚠ landing accept 沒寫進 spine：${id}\n`)
+    }
+  }
+
   // 2 = nothing to show, the same convention `status` uses.
-  process.exit(opened + retracted + amended + workActions === 0 ? 2 : 0)
+  // `selfClosed` 一起算：那幾條是**這一趟做了事**（收掉既有 span、或指名還躺在待拍板段的條目），
+  // 而 exit 2 逐字是「沒有東西可看」。
+  process.exit(opened + retracted + amended + selfClosed + workActions + landedCount === 0 ? 2 : 0)
 }
 
 /** The work half's report. Returns how many actions it named, for the caller's exit code. */
@@ -1028,16 +1159,29 @@ if (cmd === 'dismiss') {
   // ever cleared a gated card was unrelated work starting in the same work id. A question settled
   // through a different route therefore sat on `/decisions` forever, and a queue that cannot be
   // emptied is a queue that stops being read.
+  //
+  // `--repo` 與 `answer` 走同一支解析（R2）。在這之前這裡用 `process.cwd()`，而佇列是跨 repo 的
+  // ——每一條從 consumer 的 HANDOFF 掃進來的題，想寫掉都拿到 `no-such-span`：一句「這一題不存在」
+  // 對著一個畫面上看得見的東西。那是 agent 代收自述結案條目時唯一的出路被封死的地方。
   const spanId = positionals[1]
   const reason = strFlag(args.reason)
   if (!spanId || !reason) fail('dismiss needs <span_id> and --reason')
-  const res = dismissGated({ spanId, reason, dismissedBy: strFlag(args.actor) ?? 'human' })
-  if (!res.written) {
-    process.stderr.write(`${res.errors?.map((e) => e.code).join(',') ?? 'not written'}\n`)
+  const dismissHome = process.env.CLADE_HOME ?? repoRoot()
+  const dismissTarget = resolveRepoRootByName(strFlag(args.repo), dismissHome)
+  if (!dismissTarget) {
+    // NEVER fall back to home：把 consumer 的寫掉紀錄寫進 clade 的 spine，比一個看得見的失敗糟。
+    process.stderr.write(`flow: ${REPO_NOT_ON_ROSTER(strFlag(args.repo))}\n`)
     process.exit(1)
   }
-  process.stdout.write(`${JSON.stringify({ written: true, span_id: spanId })}\n`)
-  process.exit(0)
+  const res = dismissDecision({
+    spanId,
+    reason,
+    repoRoot: dismissTarget,
+    dismissedBy: strFlag(args.actor) ?? 'human',
+    dryRun: args['dry-run'] === true,
+  })
+  process.stdout.write(`${JSON.stringify(res)}\n`)
+  process.exit(res.ok ? 0 : 1)
 }
 
 if (cmd === 'amend-options') {
@@ -1585,6 +1729,11 @@ if (cmd === 'status') {
       ...findStalls(spans, {
         thresholdMinutes: numberFlag(args['stall-minutes'], DEFAULT_STALL_MINUTES),
       }),
+      // 憑證還沒推上去的完成宣稱（R4）。**在 `workingTreeStalls` 之外**，而且刻意不受
+      // `CLADE_FLOW_EVENTS` 的跳過影響：那道跳過買的是「答案只由輸入決定」，而這一支是
+      // spans 的純函式——它本來就只由輸入決定，跟著被跳過只會讓一個給定 spine 的固定答案
+      // 在測試裡憑空少一列。
+      ...findUnverifiedDoneStalls(spans),
       // Working-tree ownership stalls are not on the spine — they are derived from git status ×
       // the provenance journal (see stall.ts). Deliberately repo-local: `--all` above folds each
       // consumer's events.jsonl, and a fleet-wide answer would have to walk 14 working trees on
@@ -1714,6 +1863,8 @@ if (cmd === 'brief') {
     ...findStalls(spans, {
       thresholdMinutes: numberFlag(args['stall-minutes'], DEFAULT_STALL_MINUTES),
     }),
+    // 同上：純 spine，所以站在跳過之外。
+    ...findUnverifiedDoneStalls(spans),
     ...(process.env.CLADE_FLOW_EVENTS ? [] : workingTreeStalls(spans)),
   ]
   const workItems = buildWorkItems(spans)
