@@ -462,9 +462,9 @@ function actionOf(
 /**
  * What gets sent back when a question arrives with no options — one wording, one place.
  *
- * Both the page's button and the scanner's automatic hand-back use this string. Two copies would
- * drift, and the drift is invisible: the agent reading it has no way to tell which one it got,
- * so a weaker wording on one path would quietly produce weaker questions on that path forever.
+ * **人按的那條路徑才用它。** `/decisions` 的按鈕、`flow ask-options`、edit-time 的
+ * `decision-lint` 三處共用這一句；掃描端**不再**自動注入它（TD-904：缺選項的題在 ingest 就被
+ * 退回，不鑄 span）。兩份文字會漂，而收到的 agent 分不出是哪一份，所以仍然只有這一份。
  *
  * It names the contract rather than asking nicely, because "能不能給我選項" is answerable with a
  * paragraph of prose — which is exactly the shape that got us here.
@@ -487,6 +487,10 @@ export const OPTIONS_REQUEST_TEXT =
 /**
  * The review-side sibling of `OPTIONS_REQUEST_TEXT`, and fixed wording for the same reason.
  *
+ * **已退出自動注入路徑（TD-904）**，而字串留著，因為它現在有兩個新的用途：一次性清理腳本
+ * （`purge-injected-decisions.ts`）拿它的逐字片段去認**存量**注入痕跡，而人要手動退件時
+ * 仍然只有這一份措辭。**NEVER 改寫這一段的字面**——改了就認不出既有的注入。
+ *
  * It names the three fields verbatim instead of asking for "more detail", because 「寫清楚一點」
  * is satisfiable by a paragraph that still costs 20 minutes to act on — which is the shape that
  * produced the measured backlog.
@@ -500,6 +504,10 @@ export const EVIDENCE_REQUEST_TEXT =
 
 /**
  * The third hand-back, for a register row that restated a live change's `## 人工檢查`.
+ *
+ * **同樣已退出自動注入路徑（TD-904）**，理由與上一條相同，字面同樣 NEVER 改寫。`belongs-on-review`
+ * 的列照舊鑄 span——它是**路由**錯誤不是寫法錯誤，擋在 ingest 外會讓那一列靜默消失——只是不再被
+ * 注入這段文字；該說的話由 `LINT_NOTES['belongs-on-review']` 在兩個渲染端說。
  *
  * It names the measurement to run rather than asserting which of the two states the change is
  * in, because the author is the one who can see it and the two states need opposite work: a row
@@ -552,10 +560,13 @@ function needsOptions(
  * already decided this, `driftOf` already compares lint, and a second detector here would be a
  * parallel copy that drifts — the failure `LINT_NOTES` exists to avoid on the render side.
  *
+ * 這一格量的是**存量**：TD-904 之後缺三欄的 review 在 ingest 就被退回、根本不鑄 span，所以帶著
+ * 這一碼的 span 全是它上線之前開的（清理走 `purge-injected-decisions.ts`）。旗標留著，因為那些
+ * span 還在，而「沒有證據時不渲染通過」對它們照樣要成立。
+ *
  * NEVER add `needsOptions`'s clarification guard here, however symmetrical the two look. That
- * guard exists to stop a second identical REQUEST, and the review side never issues one: the
- * hand-back fires once, in `syncDecisions`'s open branch, keyed on the lint. What the guard would
- * do instead is drop this flag the moment the row is handed back — and unlike a ruling, whose
+ * guard exists to stop a second identical REQUEST, and the review side never issues one. What the
+ * guard would do instead is drop this flag the moment the row is handed back — and unlike a ruling, whose
  * radio then covers an EMPTY option array, a review's 通過／退回 are synthesised by the scanner
  * and always present. The result is a pressable 通過 against zero evidence, with
  * `handedBackCount`'s 「切到條列去看 →」 pointing right at it.

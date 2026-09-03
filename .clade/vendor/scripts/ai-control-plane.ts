@@ -34,6 +34,7 @@ import {
   markWorkDone,
   openWork,
   readEvents,
+  reboundWork,
   reopenWork,
   startSpan,
   type SpanHandle,
@@ -55,6 +56,7 @@ import {
   registerWorkerProfile,
   reopenRuntimeWork,
   EVIDENCE_READINESS_PREDICATE,
+  RUNTIME_NON_TERMINAL_WORK_STATES,
   VERIFICATION_PHASES,
   type VerificationPhase,
   type CapabilityGrant,
@@ -712,6 +714,86 @@ function workSlug(spec: Record<string, any>): string {
     .replace(/^-+|-+$/g, '')
 }
 
+/**
+ * Does this work item hold a claim of completion that a binding must protect?
+ *
+ * The runtime journal answers first because it is the authority on work state, and the spine is
+ * asked when it has no record — which is the ordinary state of a fresh clone, where the journal is
+ * machine-local and absent. Neither is treated as "unknown, refuse": a work item that no ledger has
+ * as finished has no accepted evidence, and that is the whole predicate ruling (n) rests on.
+ *
+ * Fail-CLOSED on an unreadable journal, and that direction is deliberate. Every other read on this
+ * path fails open because telemetry must not change an outcome; this one decides whether a binding
+ * may move under a receipt, so an unreadable ledger has to mean "assume there is something to
+ * protect" and leave the pre-existing staleness refusal standing.
+ */
+function workIsTerminal(
+  repoRoot: string,
+  spine: ReturnType<typeof readEvents>,
+  workId: string,
+): boolean {
+  try {
+    const runtimeWork = readRuntimeState(repoRoot).works.find(
+      (candidate) => candidate.work_id === workId,
+    )
+    if (runtimeWork) return !RUNTIME_NON_TERMINAL_WORK_STATES.has(runtimeWork.state)
+  } catch {
+    return true
+  }
+  // Last claim wins, in stream order — the same read `workHasClosedClaim` and the board's fold
+  // both use, because a `work.reopened` withdraws the `work.done` before it and a scan for "is
+  // there a done anywhere" would protect a binding on a work item that is running right now.
+  const last = spine.findLast(
+    (event) =>
+      event.work_id === workId &&
+      (SPINE_TERMINAL_WORK_KINDS.has(String(event.kind)) || event.kind === 'work.reopened'),
+  )
+  return last !== undefined && SPINE_TERMINAL_WORK_KINDS.has(String(last.kind))
+}
+
+const SPINE_TERMINAL_WORK_KINDS = new Set(['work.done', 'work.accept', 'work.drop'])
+
+/**
+ * Record on the spine that a materialization now answers a different requirement revision.
+ *
+ * Same two-ledger discipline as `recordSpineReopen` and the same fail-open contract, with one
+ * difference that matters: there is no runtime counterpart to disagree with. A rebind moves no
+ * state and steps no counter (ruling (n) calls it a fact, not a state change), so the spine is the
+ * only place it is recorded at all — which is exactly why it has to be recorded. Before this, the
+ * binding moved with no trace in either ledger, and a reader asking why an r1 `work.open` was
+ * answered by an r2 receipt had nothing to read.
+ */
+function recordSpineRebound(input: {
+  repoRoot: string
+  workId: string
+  requirementRevision: number
+  fromRevision: number | null
+  actor: string
+}): boolean {
+  try {
+    const result = reboundWork({
+      work_id: input.workId,
+      requirement_revision: input.requirementRevision,
+      from_revision: input.fromRevision,
+      actor: input.actor,
+      substrate: 'claude-code',
+      cwd: input.repoRoot,
+    })
+    if (result?.written === true) return true
+    process.stderr.write(
+      `[ai-control-plane] spine rebind not written for ${input.workId} (${String(
+        (result as { skipped?: string })?.skipped ?? 'rejected',
+      )})\n`,
+    )
+    return false
+  } catch (error) {
+    process.stderr.write(
+      `[ai-control-plane] spine rebind failed for ${input.workId}: ${(error as Error).message}\n`,
+    )
+    return false
+  }
+}
+
 export function materializeWork(input: {
   repoRoot: string
   source: OpsxChangeSource
@@ -749,9 +831,9 @@ export function materializeWork(input: {
       )
     }
     // The revision this materialization is bound to NOW, which is not always the one frozen into
-    // `work.open`. A `revision` reopen (TD-884 ruling (m)) moves the binding forward and says so in
-    // its payload: the work item is the same item, sent back to answer the requirement's new
-    // revision, and re-materializing it is how the next attempt gets a card to run against.
+    // `work.open`. A reopen (TD-884 ruling (m)) moves the binding forward and says so in its
+    // payload: the work item is the same item, sent back to answer a revision, and re-materializing
+    // it is how the next attempt gets a card to run against.
     //
     // Without this the two features cancel each other out. The reopen puts the work in `queued`,
     // and then the very next `materializeWork` — the first step of running it again — reads r1 off
@@ -760,22 +842,46 @@ export function materializeWork(input: {
     // second work spec is refused above, and the receipt has to land on THIS work id for
     // `superseded_by` to pair it with the r1 receipt (it matches on requirement × work).
     //
-    // Read in stream order, last reopen wins, and ONLY `cause: 'revision'` counts: an
-    // `evidence_insufficient` reopen says the record was short, not that the requirement moved, so
-    // it leaves the binding exactly where it was.
+    // Read in stream order, last reopen wins, and the CAUSE IS NOT CONSULTED (ruling (n)). The
+    // binding means "which requirement revision the next attempt's receipt is for", not "when the
+    // requirement moved" — so an `evidence_insufficient` reopen carries a revision for the same
+    // reason a `revision` one does, and reading only the latter is what left <consumer-c>'s gate 5
+    // stuck: the r2 revision was made before the reopen emitter existed, so no `revision` reopen
+    // was ever on the stream, and the `evidence_insufficient` reopen that followed was ignored.
+    // `work.rebound` is read back here for exactly one reason: so that re-materializing a work item
+    // whose binding has ALREADY moved finds the binding it moved to. Without it the fact is written
+    // afresh on every `materializeWork` — and every attempt begins with one — so a single rebind
+    // shows up on the spine as a run of identical events. The fact stays a fact; it is just stated
+    // once per move rather than once per read.
     const openIndex = spine.indexOf(current)
     const boundRevision = spine
       .slice(openIndex + 1)
       .findLast(
         (event) =>
-          event.kind === 'work.reopened' &&
+          (event.kind === 'work.reopened' || event.kind === 'work.rebound') &&
           event.work_id === currentWorkId &&
-          event.payload?.cause === 'revision' &&
           Number.isInteger(event.payload?.requirement_revision),
       )?.payload?.requirement_revision as number | undefined
+    const frozenRevision = boundRevision ?? current.payload?.requirement_revision
+    const plannedRevision = Number(requirement?.revision)
+    // A work item that is not terminal has NO ACCEPTED EVIDENCE TO PROTECT, so a revision running
+    // ahead of its binding is not staleness — it is simply the plan the next attempt will answer
+    // (ruling (n)). This is the half `reopenWorkForRevision`'s skip always assumed and nothing
+    // implemented: it passes over non-`done` work saying the next attempt picks the revision up,
+    // and before this line that attempt could never be leased because the materialization it needed
+    // was refused here.
+    //
+    // Terminal work is deliberately NOT covered: there the frozen revision guards a receipt that
+    // was accepted against it, and moving the binding under a standing `work.done` would let a
+    // change archive on evidence for a requirement that has since moved. That path keeps the
+    // refusal, and `work.reopened` stays the only way out of it.
+    const rebindable =
+      Number.isInteger(plannedRevision) &&
+      Number(frozenRevision) < plannedRevision &&
+      !workIsTerminal(input.repoRoot, spine, currentWorkId)
     if (
       current.payload?.requirement_id !== requirement?.id ||
-      (boundRevision ?? current.payload?.requirement_revision) !== Number(requirement?.revision) ||
+      (!rebindable && frozenRevision !== plannedRevision) ||
       current.payload?.verification_policy !== String(spec.verification_policy)
     ) {
       throw new Error(`existing materialization is stale for work_spec_id: ${input.workSpecId}`)
@@ -787,6 +893,22 @@ export function materializeWork(input: {
       changeId: normalized.change_id,
       now: input.now,
     })
+    // Recorded as a FACT and nothing else: no state moves, no counter steps, and the runtime
+    // journal is not touched. Fail-open like every other spine write on this path — telemetry
+    // NEVER changes the outcome of the work it observes.
+    //
+    // It runs AFTER `ensureRuntimeWork` because that call can refuse (immutable identity, binding
+    // gate) and throw. Written before it, the spine would carry a rebind for a materialization that
+    // never happened — a fact asserting something the caller was told did not occur.
+    if (rebindable) {
+      recordSpineRebound({
+        repoRoot: input.repoRoot,
+        workId: currentWorkId,
+        requirementRevision: plannedRevision,
+        fromRevision: Number.isInteger(frozenRevision) ? Number(frozenRevision) : null,
+        actor: input.actor ?? 'flow-controller',
+      })
+    }
     return {
       work_id: currentWorkId,
       span_id: requireId('span', current.span_id),
@@ -2480,6 +2602,28 @@ function materializedWorkId(repoRoot: string, changeId: string, workSpecId: stri
  * requirement that moved — that is precisely the shape `evidenceIsCurrent` invalidates receipts on.
  * The ref's own revision is the fallback for a requirement no impact covers.
  */
+/**
+ * The revision a materialization of this work spec binds to — exactly the number `materializeWork`
+ * compares against, read the same way it reads it (`requirement_refs[0].revision`).
+ *
+ * A second reader of the plan rather than `referencedRequirementRevisions` because the two answer
+ * different questions: that one asks "did anything about this spec's requirements move" and prefers
+ * the requirement artifact's own revision, which is what makes it the right detector for a revision
+ * reopen. This one asks "which number will the binding check see", and a binding filled from a
+ * different reading is a binding that silently fails to match (ruling (n)).
+ */
+function plannedRequirementRevision(source: OpsxChangeSource, workSpecId: string): number {
+  const spec = (artifact(source, 'intent.work_plan').work_specs ?? []).find(
+    (candidate: any) => String(candidate.work_spec_id) === workSpecId,
+  )
+  if (!spec) throw new Error(`unknown work_spec_id: ${workSpecId}`)
+  const revision = Number(spec.requirement_refs?.[0]?.revision)
+  if (!Number.isInteger(revision) || revision < 1) {
+    throw new Error(`work spec ${workSpecId} declares no requirement revision to bind to`)
+  }
+  return revision
+}
+
 function referencedRequirementRevisions(source: OpsxChangeSource): Map<string, number> {
   const plan = artifact(source, 'intent.work_plan')
   const byRequirement = new Map(
@@ -2568,9 +2712,16 @@ function recordSpineReopen(input: {
  * by returning an empty list — the work is left `done` and readiness reports it as lacking current
  * evidence, which is true and is the pre-existing behaviour.
  *
- * Work that is not `done` is skipped rather than refused: `queued` / `running` work already picks
- * the revision up on its next attempt, and reopening it would be a second edge into a state it is
- * already in.
+ * Work that is not `done` is skipped rather than refused, and ruling (n) is what makes that true
+ * rather than an assumption. A non-terminal work item has no accepted evidence to protect, so a
+ * revision advancing past its binding is not staleness: `materializeWork` rebinds it on sight and
+ * records `work.rebound`. Reopening it would be a second edge into a state it is already in, and
+ * `reopenRuntimeWork` refuses anything but `done` anyway.
+ *
+ * The original reason given here — "queued work picks the revision up on its next attempt" — was
+ * not true when it was written: `materializeWork` compared the plan against the revision frozen
+ * into `work.open` and refused the whole spec as stale, so the skip left the work reachable by
+ * nothing. Ruling (n) makes the sentence true by fixing the reader, not by dropping the skip.
  */
 export function reopenWorkForRevision(input: {
   repoRoot: string
@@ -2600,7 +2751,11 @@ export function reopenWorkForRevision(input: {
       revisionCommit: input.revisionCommit,
       // The revision this work is being sent back to answer, on BOTH ledgers: `materializeWork`
       // reads it off the spine to know that the r1 in `work.open` is history rather than staleness.
-      requirementRevision: revision,
+      // Read through `plannedRequirementRevision` and not from `revision` above, because that one
+      // is the CHANGE detector (it prefers the requirement artifact) while this is the number the
+      // binding check compares — a plan whose ref lags its requirement would otherwise bind to a
+      // revision `materializeWork` never asks about.
+      requirementRevision: plannedRequirementRevision(input.source, workSpecId),
       actor: input.actor ?? 'intent-controller',
       now: input.now,
       recordOnSpine: () =>
@@ -2610,7 +2765,7 @@ export function reopenWorkForRevision(input: {
           cause: 'revision',
           reason,
           actor: input.actor ?? 'intent-controller',
-          payload: { requirement_revision: revision },
+          payload: { requirement_revision: plannedRequirementRevision(input.source, workSpecId) },
         }),
     })
     results.push({
@@ -2652,11 +2807,17 @@ export function reopenWorkForInsufficientEvidence(input: {
       `${EVIDENCE_READINESS_PREDICATE} is satisfied for ${workId}; there is nothing to reopen`,
     )
   }
+  // Ruling (n): the requirement has not moved, but the binding still has to say which revision the
+  // next attempt's receipt is for, and for this cause that is simply the plan's current one. Filled
+  // here rather than left to the caller because the CLI has no better source than the plan either,
+  // and a caller-supplied revision would be a claim about the requirement made by whoever typed it.
+  const requirementRevision = plannedRequirementRevision(input.source, work.work_spec_id)
   const reopened = reopenRuntimeWork({
     repoRoot: input.repoRoot,
     workId,
     cause: 'evidence_insufficient',
     reason: input.reason,
+    requirementRevision,
     receiptIds: work.evidence_ids,
     actor: input.actor ?? 'flow-controller',
     now: input.now,
@@ -2667,6 +2828,7 @@ export function reopenWorkForInsufficientEvidence(input: {
         cause: 'evidence_insufficient',
         reason: input.reason,
         actor: input.actor ?? 'flow-controller',
+        payload: { requirement_revision: requirementRevision },
       }),
   })
   return {

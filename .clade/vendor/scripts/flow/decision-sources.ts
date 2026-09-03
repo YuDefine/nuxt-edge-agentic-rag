@@ -104,6 +104,20 @@ export interface SourceItem {
   category: DecisionCategory
   /** Repo-relative path the answer gets filed back onto. `answer.ts` resolves and contains it. */
   carrier: string
+  /**
+   * 1-based line of this item's own line in the file it was parsed out of. `0` = not a file.
+   *
+   * NEVER part of the identity: `source_id` and `fingerprint` both ignore it, because inserting a
+   * bullet above a question does not make it a different question. What it is for is the ONE
+   * reader that has to go edit the bullet — ingest now refuses malformed items outright
+   * (`REJECTING_LINTS` in `decision-sync.ts`), and a rejection that names only a filename sends
+   * its author to re-read the whole register to find which row it meant.
+   *
+   * `0` for `.clade/work-loop/state.json`: it is parsed as JSON, so there is no line to point at
+   * without a second, position-preserving parser — and the answer to that row lands in HANDOFF.md
+   * anyway. Renderers MUST print the carrier alone when this is 0, NEVER `carrier:0`.
+   */
+  line: number
   /** Content hash. A change here means "same question, reworded" — NEVER a new question. */
   fingerprint: string
   /**
@@ -704,6 +718,8 @@ export function scanWorkLoopState(repoRoot: string): SourceItem[] {
       category: 'ruling',
       // The answer belongs where the loop reads it back, not in the state file it rewrites.
       carrier: 'HANDOFF.md',
+      // JSON, so there is no line to point at. See `SourceItem.line`.
+      line: 0,
       fingerprint: fingerprint(title ?? '', blocker, options.join('|')),
       // The structured source: options are FIELDS here, so a missing list is a missing field,
       // never a shape the parser failed to read. `near-miss` cannot arise.
@@ -722,6 +738,7 @@ export function scanWorkLoopState(repoRoot: string): SourceItem[] {
       recommended: null,
       category: 'loop-structural',
       carrier: 'HANDOFF.md',
+      line: 0,
       fingerprint: fingerprint(escalated.trim()),
       lint: [],
     })
@@ -735,24 +752,30 @@ export function scanWorkLoopState(repoRoot: string): SourceItem[] {
 interface Section {
   heading: string
   body: string
+  /** 1-based line of the `## ` heading. `body`'s first line is therefore `line + 1`. */
+  line: number
 }
 
 function splitSections(text: string): Section[] {
   const sections: Section[] = []
   let heading: string | null = null
+  let headingLine = 0
   let buffer: string[] = []
 
-  for (const line of text.split(/\r?\n/)) {
+  const lines = text.split(/\r?\n/)
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
     // `## ` only. `###` is a sub-part of the section above it, never a section of its own here.
     if (/^##\s+/.test(line) && !line.startsWith('###')) {
-      if (heading !== null) sections.push({ heading, body: buffer.join('\n') })
+      if (heading !== null) sections.push({ heading, body: buffer.join('\n'), line: headingLine })
       heading = line.replace(/^##\s+/, '').trim()
+      headingLine = i + 1
       buffer = []
       continue
     }
     if (heading !== null) buffer.push(line)
   }
-  if (heading !== null) sections.push({ heading, body: buffer.join('\n') })
+  if (heading !== null) sections.push({ heading, body: buffer.join('\n'), line: headingLine })
   return sections
 }
 
@@ -845,6 +868,8 @@ interface SectionItem {
   /** Pre-`plainTitle` text — `identityKey` needs the `**bold**` markers still on it. */
   raw: string
   body: string
+  /** 0-based index of the item's own line WITHIN the section body. Absolute line is the caller's. */
+  line: number
 }
 
 const RESOLVED_MARK = /^(?:✅|✔️?|☑️?|🆗)/
@@ -889,35 +914,41 @@ const QUESTION_MARK = /^\*\*Q\d*[.．、]/
 function openBullets(body: string): SectionItem[] {
   const lines = body.split(/\r?\n/)
   const out: SectionItem[] = []
-  let current: { title: string; raw: string; body: string[] } | null = null
+  let current: { title: string; raw: string; body: string[]; line: number } | null = null
 
   const close = () => {
     if (current) {
-      out.push({ title: current.title, raw: current.raw, body: current.body.join('\n').trim() })
+      out.push({
+        title: current.title,
+        raw: current.raw,
+        body: current.body.join('\n').trim(),
+        line: current.line,
+      })
     }
     current = null
   }
 
-  for (const line of lines) {
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
     const bullet = /^[-*]\s+(.+)$/.exec(line)
     if (bullet) {
       close()
       const rest = bullet[1]
       const box = /^\[([ xX])\]\s*(.+)$/.exec(rest)
       if (box) {
-        if (box[1] === ' ') current = { title: plainTitle(box[2]), raw: box[2], body: [] }
+        if (box[1] === ' ') current = { title: plainTitle(box[2]), raw: box[2], body: [], line: i }
         continue
       }
       if (RESOLVED_MARK.test(rest)) continue
       if (OPEN_MARK.test(rest)) {
         const lamped = rest.replace(OPEN_MARK, '').trim()
-        current = { title: plainTitle(lamped), raw: lamped, body: [] }
+        current = { title: plainTitle(lamped), raw: lamped, body: [], line: i }
         continue
       }
       // §QnX form: the `**Qn.` prefix stays on `raw` — it is part of the question's own wording,
       // unlike a lamp, which is pure marker and gets stripped.
       if (QUESTION_MARK.test(rest)) {
-        current = { title: plainTitle(rest), raw: rest, body: [] }
+        current = { title: plainTitle(rest), raw: rest, body: [], line: i }
       }
       continue
     }
@@ -939,9 +970,11 @@ function openBullets(body: string): SectionItem[] {
  * `## 🟢 Ready for review` the same way. A container heading is not a question; its children are.
  */
 function subSections(body: string): SectionItem[] {
-  const out: { title: string; raw: string; body: string[] }[] = []
-  let current: { title: string; raw: string; body: string[] } | null = null
-  for (const line of body.split(/\r?\n/)) {
+  const out: { title: string; raw: string; body: string[]; line: number }[] = []
+  let current: { title: string; raw: string; body: string[]; line: number } | null = null
+  const lines = body.split(/\r?\n/)
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
     const heading = /^###\s+(.+)$/.exec(line)
     if (heading) {
       if (current) out.push(current)
@@ -950,7 +983,7 @@ function subSections(body: string): SectionItem[] {
       current =
         RESOLVED_MARK.test(title) || RESOLVED_PHRASE.test(title)
           ? null
-          : { title: plainTitle(lamped), raw: lamped, body: [] }
+          : { title: plainTitle(lamped), raw: lamped, body: [], line: i }
       continue
     }
     if (current) current.body.push(line)
@@ -958,7 +991,12 @@ function subSections(body: string): SectionItem[] {
   if (current) out.push(current)
   return out
     .filter((item) => item.title)
-    .map((item) => ({ title: item.title, raw: item.raw, body: item.body.join('\n').trim() }))
+    .map((item) => ({
+      title: item.title,
+      raw: item.raw,
+      body: item.body.join('\n').trim(),
+      line: item.line,
+    }))
 }
 
 /** `⏳ Awaiting Charles — <topic>` reads as a question only once the container name is off it. */
@@ -1137,7 +1175,10 @@ export function scanHandoff(repoRoot: string): SourceItem[] {
       if (!first || DECLARED_EMPTY.test(first)) return []
       if (!/[—-]/.test(section.heading)) return []
       const title = stripContainerPrefix(section.heading)
-      return [{ title, raw: title, body: section.body.trim() }]
+      // The heading IS the item, so its line is the heading's own — expressed as a body index of
+      // -1 so the single `section.line + 1 + item.line` sum below stays the only place that maps
+      // body position onto file position. A second formula here is a second thing to keep true.
+      return [{ title, raw: title, body: section.body.trim(), line: -1 }]
     })()
 
     for (const item of items) {
@@ -1171,6 +1212,7 @@ export function scanHandoff(repoRoot: string): SourceItem[] {
         recommended,
         category,
         carrier: rel,
+        line: section.line + 1 + item.line,
         fingerprint: fingerprint(item.title, item.body),
         lint: [
           ...lintOf(category, options, nearMiss, item.body, item.title),
@@ -1215,10 +1257,15 @@ export function scanTechDebt(repoRoot: string): SourceItem[] {
   let tdTitle = ''
   let status = ''
   let buffer: string[] = []
+  /** 1-based file line of `buffer[0]` — the line right after the `## TD-NNN` heading. */
+  let bufferStart = 0
 
   const flush = () => {
     if (!tdId) return
     const body = buffer.join('\n')
+    /** Where in the FILE a regex hit inside `body` actually is. `index` is a body offset. */
+    const lineOfMatch = (index: number | undefined) =>
+      index === undefined ? bufferStart : bufferStart + body.slice(0, index).split('\n').length - 1
     // `wontfix-until-signal` is parked by definition, `resolved` is done. Neither is waiting.
     if (status && !/^open\b/.test(status)) {
       return
@@ -1237,6 +1284,7 @@ export function scanTechDebt(repoRoot: string): SourceItem[] {
         recommended,
         category: 'ruling',
         carrier: rel,
+        line: lineOfMatch(awaiting.index),
         fingerprint: fingerprint(tdId, question, body),
         lint: [
           ...lintOf('ruling', options, nearMiss, body, question),
@@ -1259,6 +1307,7 @@ export function scanTechDebt(repoRoot: string): SourceItem[] {
         recommended: null,
         category: 'human-action',
         carrier: rel,
+        line: lineOfMatch(gate.index),
         fingerprint: fingerprint(tdId, gate[1], body),
         /*
          * `### 需要 Charles` in the debt register is the SAME admission path as `## 需要 Charles
@@ -1273,7 +1322,8 @@ export function scanTechDebt(repoRoot: string): SourceItem[] {
     }
   }
 
-  for (const line of lines) {
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
     const heading = /^##\s+(TD-\d+)\s*[—-]\s*(.+)$/.exec(line)
     if (heading) {
       flush()
@@ -1281,6 +1331,7 @@ export function scanTechDebt(repoRoot: string): SourceItem[] {
       tdTitle = plainTitle(heading[2])
       status = ''
       buffer = []
+      bufferStart = i + 2
       continue
     }
     if (!tdId) continue
@@ -1339,8 +1390,10 @@ export function scanTasks(repoRoot: string): SourceItem[] {
      */
     let deferredParentIndent = -1
 
-    for (const rawLine of text.split(/\r?\n/)) {
-      const line = rawLine
+    const taskLines = text.split(/\r?\n/)
+    for (let i = 0; i < taskLines.length; i++) {
+      const line = taskLines[i]
+      const lineNo = i + 1
       const indent = /^\s*/.exec(line)?.[0].length ?? 0
       if (/^\s*[-*]\s*\[[ xX]\]/.test(line) && indent <= deferredParentIndent) {
         deferredParentIndent = -1
@@ -1365,6 +1418,7 @@ export function scanTasks(repoRoot: string): SourceItem[] {
         recommended: null,
         category: 'human-action',
         carrier: rel,
+        line: lineNo,
         fingerprint: fingerprint(rel, key, title),
         lint: [],
       })

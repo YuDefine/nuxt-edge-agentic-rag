@@ -2,11 +2,10 @@
 // 🔒 LOCKED — managed by clade · Source: vendor/scripts/flow/decision-lint.ts · 改這裡無效，下次 propagate 會覆寫；請改 $CLADE_HOME/vendor/scripts/flow/decision-lint.ts
 // Decision-queue lint for ONE file, at the moment it is written.
 //
-// `flow sources` already reports `no-options-under-ruling`, and the ingest side already hands such
-// a ruling straight back with `ask-options`. Both are correct and both are too late: by then the
-// question is on Charles's phone as a blank text box, the request to fix it is a card in a queue,
-// and the agent that could fix it in five seconds — the one that still has the options in its own
-// context — has moved on. Measured 2026-08-29: one such hand-back sat unanswered for 3.2 hours.
+// `flow sources` already reports `no-options-under-ruling`, and since TD-904 the ingest side
+// REFUSES such a ruling outright — it never becomes a question. Both are correct and both are too
+// late: by then the agent that could fix it in five seconds — the one that still has the options in
+// its own context — has moved on, and the row is a line in a report nobody is standing in front of.
 //
 // So this asks the same question at the only moment the answer is free: the write itself. Same
 // scanners, same `lint` codes, same wording (`OPTIONS_REQUEST_TEXT`) — NEVER a second parser and
@@ -57,8 +56,8 @@ export function lintReport(items: SourceItem[]): string {
     '',
     `    ${OPTIONS_REQUEST_TEXT}`,
     '',
-    '    現在補最省：選項還在你的 context 裡。等它進佇列之後，補件的請求會退回給你，',
-    '    而中間那段時間 Charles 手機上是一張答不了的卡。',
+    '    現在補最省：選項還在你的 context 裡。這樣寫的題**不會進佇列**（ingest 直接退件），',
+    '    所以不補的話它不是「晚一點被問到」，是**永遠不會被問到**。',
     '',
   ].join('\n')
 }

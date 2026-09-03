@@ -252,6 +252,16 @@ interface PayloadRule {
   code: string
   why: string
   nullable?: boolean
+  /**
+   * This field carries a POSITIVE INTEGER rather than prose.
+   *
+   * Needed because the presence test below is `a non-empty string`, which every rule until
+   * `work.rebound` satisfied — its two fields are revision numbers, and stringifying them to fit
+   * the check would put a type on the stream that no reader of a revision expects. Zero and
+   * negatives are refused with the same message as absence: a revision counts from 1, so neither
+   * is a value a binding can hold.
+   */
+  numeric?: boolean
   /** The values this field may take. Checked only when the field is present and non-empty. */
   oneOf?: readonly string[]
 }
@@ -301,6 +311,27 @@ const REQUIRED_PAYLOAD: Record<string, PayloadRule[]> = {
       field: 'reason',
       code: 'reason-required',
       why: 'work.reopened needs payload.reason — withdrawing a done with no stated basis is a silent retraction',
+    },
+  ],
+  // A rebind states what the binding MOVED FROM and MOVED TO, and both halves are load-bearing:
+  // `requirement_revision` alone would be indistinguishable from a re-materialization that changed
+  // nothing, which is the overwhelmingly common case and the one this event must not record.
+  'work.rebound': [
+    {
+      field: 'requirement_revision',
+      code: 'requirement-revision-required',
+      why: 'work.rebound needs payload.requirement_revision — the revision the materialization is bound to now. A rebind naming no revision records that somebody re-read the plan, not what the binding became',
+      numeric: true,
+    },
+    {
+      field: 'from_revision',
+      code: 'from-revision-required',
+      why: 'work.rebound needs payload.from_revision — the revision work.open froze, or null when that materialization recorded none. Without it a rebind cannot be told from a re-materialization that changed nothing',
+      numeric: true,
+      // Null is the real answer for a `work.open` written before the payload carried a revision at
+      // all, and it is the KEY being present that this rule is about — same argument as
+      // `work.link`'s detach.
+      nullable: true,
     },
   ],
   'work.eta': [
@@ -387,6 +418,7 @@ function requiredPayloadError(kind: string, payload: Record<string, unknown>) {
   for (const rule of rules) {
     const value = payload?.[rule.field]
     if (typeof value === 'string' && value.trim().length > 0) continue
+    if (rule.numeric && Number.isInteger(value) && (value as number) >= 1) continue
     // Presence, not truthiness, and ONLY for a rule that opted in. The rules that did not are
     // unchanged: `work.done` with `verification: null` is still refused, which is the assertion
     // that keeps this widening from silently becoming a hole in the one fail-closed gate.
@@ -1716,6 +1748,56 @@ export function reopenWork({
     payload: {
       cause: String(cause ?? '').trim(),
       reason: String(reason ?? '').trim(),
+      ...payload,
+    },
+    cwd,
+  })
+}
+
+export interface ReboundWorkInput {
+  work_id: string
+  /** The requirement revision this materialization answers from now on. */
+  requirement_revision: number
+  /** What `work.open` froze, or null when that materialization recorded no revision. */
+  from_revision: number | null
+  actor?: string
+  substrate?: string
+  session_id?: string | null
+  payload?: Record<string, unknown>
+  cwd?: string
+}
+
+/**
+ * A materialization now answers a different requirement revision than the one it was opened with.
+ *
+ * A FACT, not a state change (plan section 10.6 ruling (n)). The control plane rebinds a work item
+ * that is not terminal when the plan's revision runs ahead of the one frozen into `work.open`: a
+ * work item with no accepted evidence has nothing to protect, so the advance is not staleness and
+ * refusing it left <consumer-c>'s gate 5 with a work spec reachable by nothing. Nothing about the work
+ * moves, which is why this is a point event that no fold reads as a lifecycle edge — the reason it
+ * exists at all is that before it, the rebind happened with no trace in either ledger.
+ *
+ * NEVER confuse it with `work.reopened`: a reopen withdraws a claim of completion and leaves
+ * `done`, and a rebind never touches a `done` work item.
+ */
+export function reboundWork({
+  work_id,
+  requirement_revision,
+  from_revision,
+  actor = 'unknown',
+  substrate = 'manual',
+  session_id = null,
+  payload = {},
+  cwd,
+}: ReboundWorkInput) {
+  return workPoint('work.rebound', {
+    work_id,
+    actor,
+    substrate,
+    session_id,
+    payload: {
+      requirement_revision,
+      from_revision,
       ...payload,
     },
     cwd,

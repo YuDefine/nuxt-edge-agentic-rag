@@ -382,6 +382,22 @@ const WORK_TRANSITIONS: Record<MachineWorkState, MachineWorkState[]> = {
   legacy_unverified: ['quarantined'],
   quarantined: [],
 }
+/**
+ * The work states ruling (n) calls non-terminal, verbatim.
+ *
+ * Written out rather than derived from `WORK_TRANSITIONS` (say, "has outgoing edges"): `done` has
+ * one outgoing edge — the reopen — and would derive as non-terminal, which is the exact opposite of
+ * what every caller of this set means by it. `legacy_unverified` and `quarantined` are absent for
+ * the same reason they are absent from the ruling: neither is a work item waiting to be run.
+ */
+export const RUNTIME_NON_TERMINAL_WORK_STATES: ReadonlySet<string> = new Set<MachineWorkState>([
+  'created',
+  'queued',
+  'leased',
+  'running',
+  'retry_wait',
+])
+
 const ATTEMPT_TRANSITIONS: Record<AttemptState, AttemptState[]> = {
   leased: ['running', 'abandoned', 'cancelled', 'superseded'],
   running: ['paused', 'abandoned', 'succeeded', 'failed', 'exhausted', 'cancelled', 'superseded'],
@@ -1113,32 +1129,36 @@ function validateNestedEventPayload(event: RuntimeEvent): void {
     if ('spine_written' in payload && payload.spine_written !== false) {
       throw new Error('work reopen spine_written is written only as false')
     }
-    // Each cause carries the thing that makes it checkable, and carries ONLY that: a revision
+    // The revision the next attempt's receipt is for — carried by EVERY reopen, whatever moved
+    // (ruling (n)). The binding is not "when the requirement moved"; a reopen that cannot say which
+    // revision it sends the work back to answer leaves `materializeWork` comparing the plan's
+    // current revision against the one frozen into `work.open`, which is the stale refusal <consumer-c>
+    // gate 5 hit with no way out.
+    //
+    // Optional on the SHAPE and required by the emitter, and the asymmetry is deliberate: this
+    // validator runs on read as well as write, so requiring the key here would make every journal
+    // written before ruling (n) unreadable — and for a fail-open adapter, unreadable means every
+    // later dispatch silently records nothing. Absent reads as null (`materializeWork` asks
+    // `Number.isInteger` before it uses the value); `reopenRuntimeWork` is the sole producer and
+    // refuses to write one without it.
+    if ('requirement_revision' in payload) {
+      if (
+        !Number.isInteger(payload.requirement_revision) ||
+        (payload.requirement_revision as number) < 1
+      ) {
+        throw new Error('work reopen requirement_revision must be a positive integer')
+      }
+    }
+    // Each cause still carries the thing that makes IT checkable, and carries only that: a revision
     // reopen points at the commit that moved the requirement, an evidence reopen at the readiness
     // predicate that named the work and the receipts it judged. Accepting either field under
     // either cause would let a caller present an unrelated commit as a readiness verdict.
     if (payload.cause === 'revision') {
       requirePattern('work reopen revision_commit', payload.revision_commit, /^[0-9a-f]{7,40}$/)
-      // The revision the work is being sent back to answer. Optional on the shape but written by
-      // the only emitter, because `materializeWork` reads it: without it, re-materializing the work
-      // spec after a revision compares the plan's r2 against the r1 frozen into `work.open` and
-      // refuses the work spec as stale — the reopen would put the work back in the queue and
-      // nothing could take it out again.
-      if ('requirement_revision' in payload) {
-        if (
-          !Number.isInteger(payload.requirement_revision) ||
-          (payload.requirement_revision as number) < 1
-        ) {
-          throw new Error('work reopen requirement_revision must be a positive integer')
-        }
-      }
       if ('readiness_predicate' in payload || 'receipt_ids' in payload) {
         throw new Error('a revision reopen carries a revision commit, not a readiness verdict')
       }
     } else {
-      if ('requirement_revision' in payload) {
-        throw new Error('an evidence reopen does not move the requirement, so it names no revision')
-      }
       if (payload.readiness_predicate !== EVIDENCE_READINESS_PREDICATE) {
         throw new Error(
           `an evidence reopen must name ${EVIDENCE_READINESS_PREDICATE}, not ${String(payload.readiness_predicate)}`,
@@ -2951,8 +2971,12 @@ export function reopenRuntimeWork(input: {
   reason: string
   /** Required for `cause: 'revision'`: the commit that moved the requirement. */
   revisionCommit?: string | null
-  /** For `cause: 'revision'`: the revision the requirement moved TO. See the payload validator. */
-  requirementRevision?: number | null
+  /**
+   * Required, whatever the cause (ruling (n)): the requirement revision the next attempt's receipt
+   * is for. `materializeWork` reads the last reopen's value off the spine and rebinds to it, so a
+   * reopen that omits it puts the work back in the queue and leaves nothing able to take it out.
+   */
+  requirementRevision: number
   /** Required for `cause: 'evidence_insufficient'`: the receipts readiness judged. */
   receiptIds?: string[] | null
   /**
@@ -2980,6 +3004,14 @@ export function reopenRuntimeWork(input: {
     throw new Error(`invalid work reopen cause: ${String(input.cause)}`)
   }
   requireNonEmptyString('work reopen reason', input.reason)
+  // At the write door, not the read door. See the payload validator: the shape keeps this optional
+  // so journals written before ruling (n) stay readable, and this is where "every reopen carries
+  // it" is actually enforced — `reopenRuntimeWork` is the only producer of the transition.
+  if (!Number.isInteger(input.requirementRevision) || input.requirementRevision < 1) {
+    throw new Error(
+      `work reopen requirementRevision must be a positive integer, got ${String(input.requirementRevision)}`,
+    )
+  }
   return mutateRuntime(input.repoRoot, (state) => {
     const work = state.works.find((candidate) => candidate.work_id === workId)
     if (!work) throw new Error(`unknown runtime work: ${workId}`)
@@ -2994,15 +3026,14 @@ export function reopenRuntimeWork(input: {
             cause: input.cause,
             reopen_count: reopenCount,
             reason: input.reason,
+            requirement_revision: input.requirementRevision,
             revision_commit: input.revisionCommit,
-            ...(input.requirementRevision === undefined || input.requirementRevision === null
-              ? {}
-              : { requirement_revision: input.requirementRevision }),
           }
         : {
             cause: input.cause,
             reopen_count: reopenCount,
             reason: input.reason,
+            requirement_revision: input.requirementRevision,
             readiness_predicate: EVIDENCE_READINESS_PREDICATE,
             receipt_ids: [...(input.receiptIds ?? [])],
           }

@@ -997,9 +997,11 @@ if (cmd === 'sources') {
   let amended = 0
   let suppressed = 0
   let selfClosed = 0
+  let rejectedCount = 0
   for (const result of results) {
     suppressed += result.suppressed
     selfClosed += result.self_closed
+    rejectedCount += result.rejected.length
     const opens = result.actions.filter((a) => a.type === 'open')
     const retracts = result.actions.filter((a) => a.type === 'retract')
     const amends = result.actions.filter((a) => a.type === 'amend')
@@ -1013,6 +1015,23 @@ if (cmd === 'sources') {
     if (result.skipped) {
       process.stdout.write(`${result.repo}\n  skipped: ${result.skipped}\n`)
       continue
+    }
+    /**
+     * 退件（TD-904）—— 逐條印，**NEVER** 只給一個數字。
+     *
+     * 這幾條**不在佇列上**：ingest 拒鑄 span，所以除了這裡沒有任何畫面會提到它們。收件人是編那
+     * 份來源檔的人，所以印的是他修得動的東西：檔案第幾行、缺什麼。少了行號他要重讀整份登記簿才
+     * 找得到是哪一條。
+     */
+    if (result.rejected.length > 0) {
+      process.stdout.write(
+        `${result.repo}\n  ⨯ ${result.rejected.length} 條退回 carrier 作者（不鑄 span、不進佇列）：\n`,
+      )
+      for (const item of result.rejected) {
+        const at = item.line > 0 ? `${item.carrier}:${item.line}` : item.carrier
+        process.stdout.write(`    ${at}  [${item.lint.join(',')}]  ${item.question.slice(0, 60)}\n`)
+        for (const note of item.notes) process.stdout.write(`      ${note}\n`)
+      }
     }
     if (
       opens.length === 0 &&
@@ -1056,6 +1075,11 @@ if (cmd === 'sources') {
       `\n${selfClosed} 條自述結案的條目仍在待拍板段（不進佇列）：請搬到參考段或刪掉\n`,
     )
   }
+  if (rejectedCount > 0) {
+    process.stdout.write(
+      `\n${rejectedCount} 條因寫法不合契約被退回，沒有進佇列：補齊後下一趟掃描自己會開\n`,
+    )
+  }
   process.stdout.write(
     `\n${verb}開 ${opened} 題、${verb}撤回 ${retracted} 題、${verb}更新 ${amended} 題`,
   )
@@ -1079,7 +1103,13 @@ if (cmd === 'sources') {
   // 2 = nothing to show, the same convention `status` uses.
   // `selfClosed` 一起算：那幾條是**這一趟做了事**（收掉既有 span、或指名還躺在待拍板段的條目），
   // 而 exit 2 逐字是「沒有東西可看」。
-  process.exit(opened + retracted + amended + selfClosed + workActions + landedCount === 0 ? 2 : 0)
+  // `rejectedCount` 一起算：那幾條是**有人要去修的東西**，而 exit 2 逐字是「沒有東西可看」。
+  // 一趟只有退件的掃描退 2，等於對呼叫它的 hook 說「一切正常」，而那正是它唯一該出聲的時候。
+  process.exit(
+    opened + retracted + amended + selfClosed + rejectedCount + workActions + landedCount === 0
+      ? 2
+      : 0,
+  )
 }
 
 /** The work half's report. Returns how many actions it named, for the caller's exit code. */
