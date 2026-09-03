@@ -88,11 +88,41 @@ export interface NormalizedOpsxChange {
   impact_ids: string[]
   work_plan_revision: number
   normalized_at: string
+  /**
+   * The changes this one supersedes (plan §3.2 rule 6, §10.5).
+   *
+   * Always an array — empty when the change replaces nothing — because "no supersession" and
+   * "the reader did not look" would otherwise be the same value. The relation is a canonical
+   * fact of the change, not provenance: a rebuild under a new `chg_*` id is only lossless if
+   * what it replaced travels with it.
+   */
+  supersedes: ChangeSupersession[]
+}
+
+/**
+ * One change-to-change supersession relation, declared on the intent source.
+ *
+ * `ref.id` is the superseded change's identity in *its own* namespace: a `chg_*` id for an
+ * `opsx-v2` target, a Spectra slug for a `spectra-v1` one — the two namespaces are disjoint
+ * by construction (§10.6 item 1), so the pair `(profile, ref.id)` is unambiguous without a
+ * lookup. `artifact_root` and `digest` pin *what* was superseded: the relation names a
+ * repository path and the content that stood there, so retirement gate 3's legacy ↔ OPSX
+ * comparison reads the link instead of inferring it from an intake source ref.
+ */
+export interface ChangeSupersession {
+  ref: { type: 'change'; id: string; revision: number }
+  profile: 'spectra-v1' | 'opsx-v2'
+  /** Repository-relative POSIX path to the superseded change's artifacts. */
+  artifact_root: string
+  /** `supersedesTargetDigest` over `artifact_root` at the moment the relation was declared. */
+  digest: Digest
 }
 
 export interface OpsxChangeSource {
   profile_assignment: Record<string, any>
   native_artifacts: Array<Record<string, any>>
+  /** Optional (§10.5): a change that replaces nothing simply omits it. */
+  supersedes?: ChangeSupersession[]
   normalized_change?: Record<string, any>
 }
 
@@ -104,6 +134,7 @@ export interface OpsxChangeSource {
  */
 export interface SpectraLegacySource {
   profile_assignment: Record<string, any>
+  supersedes?: ChangeSupersession[]
   legacy_source: {
     artifact_root: string
     preserved_evidence_digest: Digest
@@ -283,6 +314,8 @@ export interface ControlPlaneProjection {
   change_id: string
   intent_revision: number
   source_digest: Digest
+  /** The changes this one replaced, carried through from the intent source (§3.2 rule 6). */
+  supersedes: ChangeSupersession[]
   requirements: RequirementRef[]
   work_records: Array<{
     work_spec_id: string
@@ -369,6 +402,105 @@ function artifact<T extends Record<string, any>>(source: OpsxChangeSource, type:
   return matches[0] as T
 }
 
+const SPECTRA_SLUG = /^[a-z0-9][a-z0-9-]*$/
+
+/**
+ * Digest of everything standing under a superseded change's artifact root.
+ *
+ * A tree digest rather than one nominated file: neither profile guarantees a particular
+ * document exists (`proposal.md` is Spectra's habit, not its contract), so pinning one name
+ * would make the relation unverifiable exactly where a change is unusual. Every regular file
+ * under the root contributes `<repo-relative posix path> -> sha256(bytes)`, canonicalised by
+ * path, so the value is stable across filesystems and directory-read order.
+ *
+ * Two shapes are refused rather than digested. A symlink anywhere under the root has no bytes
+ * of its own, so whatever it points at could change without the digest moving — silently
+ * skipping it would pin a value that does not cover the tree it claims to. A root holding no
+ * regular file at all digests to the empty map, which is the same value for every such root:
+ * the relation would verify against a target that has nothing in it. Both throw with the path.
+ */
+export function supersedesTargetDigest(repoRoot: string, artifactRoot: string): Digest {
+  const root = join(repoRoot, artifactRoot)
+  const files: Record<string, string> = {}
+  const walk = (directory: string): void => {
+    for (const entry of readdirSync(directory, { withFileTypes: true }).toSorted((a, b) =>
+      a.name.localeCompare(b.name),
+    )) {
+      const full = join(directory, entry.name)
+      if (entry.isSymbolicLink()) {
+        throw new Error(
+          `supersedes target contains a symlink, which pins no content: ${relative(repoRoot, full).replaceAll('\\', '/')}`,
+        )
+      }
+      if (entry.isDirectory()) walk(full)
+      else if (entry.isFile())
+        files[relative(root, full).replaceAll('\\', '/')] = sha256(readFileSync(full))
+    }
+  }
+  walk(root)
+  if (Object.keys(files).length === 0) {
+    throw new Error(`supersedes target holds no regular file to digest: ${artifactRoot}`)
+  }
+  return sha256(canonical(files))
+}
+
+/**
+ * Read and validate the change-level `supersedes` relations on an intent source.
+ *
+ * Shape only — whether the target is actually there is a filesystem question, and this
+ * function is also the read path for a repository that no longer holds the superseded change
+ * (an archived Spectra slug, a different checkout). `createOpsxChange` is where existence and
+ * digest are checked, because create is the one entry that can still refuse before writing.
+ */
+export function readChangeSupersessions(
+  source: { supersedes?: unknown },
+  changeId: string,
+): ChangeSupersession[] {
+  const declared = source.supersedes
+  if (declared === undefined || declared === null) return []
+  if (!Array.isArray(declared)) throw new Error('supersedes must be an array when present')
+  const seen = new Set<string>()
+  return declared.map((entry: any, index) => {
+    const at = `supersedes[${index}]`
+    const ref = entry?.ref
+    if (ref?.type !== 'change') throw new Error(`${at}.ref.type must be "change"`)
+    if (typeof ref.id !== 'string' || ref.id.length === 0)
+      throw new Error(`${at}.ref.id must be a non-empty string`)
+    if (!Number.isInteger(ref.revision) || ref.revision < 1)
+      throw new Error(`${at}.ref.revision must be an integer >= 1`)
+    if (entry.profile !== 'spectra-v1' && entry.profile !== 'opsx-v2')
+      throw new Error(`${at}.profile must be spectra-v1 or opsx-v2`)
+    // The two namespaces are disjoint by construction (§10.6 item 1); a relation that names a
+    // slug as an `opsx-v2` target is describing a change that cannot exist, and reading it as
+    // if it did is how a supersession chain silently points at nothing.
+    if (entry.profile === 'opsx-v2' && !ID.change.test(ref.id))
+      throw new Error(`${at}.ref.id must be a chg_ id for an opsx-v2 target: ${ref.id}`)
+    if (entry.profile === 'spectra-v1' && !SPECTRA_SLUG.test(ref.id))
+      throw new Error(`${at}.ref.id must be a Spectra slug for a spectra-v1 target: ${ref.id}`)
+    if (ref.id === changeId) throw new Error(`${at} supersedes its own change`)
+    if (seen.has(ref.id)) throw new Error(`${at} repeats ${ref.id}`)
+    seen.add(ref.id)
+    const artifactRoot = entry.artifact_root
+    if (typeof artifactRoot !== 'string' || artifactRoot.length === 0)
+      throw new Error(`${at}.artifact_root must be a non-empty string`)
+    // Repository-relative POSIX (acceptance 8): an absolute or escaping root would pin the
+    // relation to one machine's directory layout, which is the whole class of bug that
+    // acceptance forbids for every other persisted path.
+    if (
+      artifactRoot.startsWith('/') ||
+      artifactRoot.includes('\\') ||
+      artifactRoot.split('/').some((segment) => segment === '..' || segment === '')
+    )
+      throw new Error(`${at}.artifact_root must be a repository-relative POSIX path`)
+    return {
+      ref: { type: 'change' as const, id: ref.id, revision: ref.revision },
+      profile: entry.profile,
+      artifact_root: artifactRoot,
+      digest: requireDigest(`${at}.digest`, entry.digest),
+    }
+  })
+}
+
 export function readOpsxChange(
   source: OpsxChangeSource,
   normalizedAt?: string,
@@ -427,6 +559,7 @@ export function readOpsxChange(
     impact_ids: impacts.map((impact) => String(impact.impact_id)).toSorted(),
     work_plan_revision: Number(plan.plan_revision),
     normalized_at: normalizedAt ?? String(plan.generated_at),
+    supersedes: readChangeSupersessions(source, changeId),
   }
 }
 
@@ -465,6 +598,9 @@ export function canonicalOpsxSource(source: WorkflowChangeSource): {
     source: {
       profile_assignment: { ...assignment, profile: 'opsx-v2', source_digest: preserved },
       native_artifacts: legacy.legacy_artifacts,
+      // A supersession is a fact about the change, not about the profile that owns it, so it
+      // survives the reduction — a legacy change that itself replaced something keeps saying so.
+      ...(source.supersedes === undefined ? {} : { supersedes: source.supersedes }),
     },
   }
 }
@@ -2320,6 +2456,7 @@ export async function projectChange(input: {
       change_id: built.normalized.change_id,
       intent_revision: built.normalized.intent_revision,
       source_digest: built.normalized.source_digest,
+      supersedes: built.normalized.supersedes,
       requirements: built.normalized.requirements,
       work_records: built.projectorInput.work_records,
       attempts: built.attempts,
@@ -2414,6 +2551,7 @@ function rebuildJudgementFromTrackedFacts(
         change_id: built.normalized.change_id,
         intent_revision: built.normalized.intent_revision,
         source_digest: built.normalized.source_digest,
+        supersedes: built.normalized.supersedes,
         requirements: built.normalized.requirements,
         work_records: built.projectorInput.work_records,
         attempts: built.attempts,
