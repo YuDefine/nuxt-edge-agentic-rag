@@ -1,7 +1,5 @@
 <!-- AUTO-GENERATED from .claude/ — 請勿手動編輯 -->
 
-# AGENTS.md
-
 # RTK Instructions
 
 Use RTK (Rust Token Killer) to reduce token-heavy shell output when running commands through an AI coding assistant.
