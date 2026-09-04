@@ -28,6 +28,7 @@
 | TD-069 | T3 evlog 落地 production 缺 D1 evlog_events migration（drain 在 prod 是 dead-write）                                                                                                                                                                                 | high — T3 evlog 在 production 形同無作用，所有 wide event drain 都會 silently fail | open        | 2026-05-10 — clade HANDOFF §2.4 dev smoke 跑 wrangler d1 execute agentic-rag-db --remote --command "SELECT count(*) FROM evlog_events" 回 no such table: evlog_events: SQLITE_ERROR [code: 7500] | —     |
 | TD-070 | `rag-query-rewriting` 人工檢查對齊新 manual-review 規範（補 `[discuss]` marker + verify channel + Pre-Review Data Readiness）                                                                                                                                 | mid      | open        | 2026-05-12 clade v1.3.6 manual-review.md 新規散播                | —     |
 | TD-071 | deploy-workflow contract test 對 workflow 原文做無錨點斷言、未剝除註解 — 註解引用同一字串即恆綠 | mid | done | 2026-07-29 clade pitfall 跨 consumer 掃描 | — |
+| TD-072 | clade propagate 的 `push-withheld` 無人接手 → 本地 clade bump 靜默累積（v1.12.12–v1.12.15 共 4 版、最舊 26 小時未推） | mid | done | 2026-09-04 clade 主線 w7:pC7 於 v1.12.15 propagate 後量到並派工排查 | — |
 
 ---
 
@@ -726,3 +727,57 @@ User 決定本次 session **登記不處理**（2026-05-12 對話中明示「age
 新增 `test/helpers/config-text.ts` 的 `behaviourView()`（濾掉 YAML `#` 與 JSONC `//` 整行註解），
 兩個 test 的 source 改綁該 view。Mutation 實證：把註解放進被斷言的切片內、同時刪掉 secret 注入 →
 綁原文假 PASS、綁 `behaviourView` FAIL。128 test files / 829 tests 全綠。
+
+---
+
+## TD-072 — clade propagate 的 `push-withheld` 無人接手 → 本地 clade bump 靜默累積
+
+**Priority**: mid
+**Discovered**: 2026-09-04 — clade 主線 w7:pC7 於 v1.12.15 propagate 後量到 `push-withheld`，回溯發現 v1.12.12–v1.12.15 連續 4 版都只 commit 在本地
+**Location**: 本 repo `main` 與 clade `scripts/propagate.ts` 的 `shouldPush()`
+
+### Problem
+
+clade `propagate.ts` 的 `shouldPush()` 契約：branch 上存在**任一** propagate 自己沒建的未推 commit
+（collateral）時，整批 withhold 不 push，並要求人工 review 後自行 `git push origin main`。
+
+單次 withhold 是刻意設計、不算 failed。問題出在**沒有任何一趟會報錯**：那顆 collateral commit
+一旦停在 main 沒被推，之後每一趟 propagate 都被同一顆擋住，每趟看起來都只是「這次沒推」，
+而未推量單調累積。與 TD-270（nuxt-supabase-starter 靜默落後 67 版）同源。
+
+本次的 collateral 是 `01bc7a09`（2026-09-03 19:11，`HANDOFF.md` 一行，TD-904
+`purge-injected-decisions.ts --apply`，Charles 授權的全 fleet 清理）。它不是刻意保留，
+只是沒人推——commit 完就沒有下一棒。
+
+累積實測：`git rev-list --count @{u}..HEAD` = 5（4 個 clade bump + 1 個 collateral），
+最舊 commit 距量測時 26 小時。
+
+### Fix approach
+
+已做（本輪）：`git push origin main` 把 5 個 commit 一次送出，`@{u}..HEAD` 歸零。
+
+結構層（clade 側，本 repo 無法自行修）：`push-withheld` 目前只寫進 propagate 的 summary 計數與
+`recordConsumerError`，沒有任何機制保證有人在**下一趟之前**接手。可行方向擇一：
+
+1. propagate 對「同一 consumer 連續 N 趟 withheld」升級告警，或直接產生 durable follow-up
+2. consumer 端加 session-start 檢查：`@{u}..HEAD` > 0 且最舊 commit 超過 24h 時提示
+
+本 repo 側的實務紀律：clade 升級以外的 chore commit 落 main 後**當下就推**，
+不要留給下一趟 propagate 判斷。
+
+### Acceptance
+
+- [x] `git rev-list --count @{u}..HEAD` 回 0
+- [ ] clade 側對連續 withheld 有告警或 durable follow-up（跨 repo，登記於此供 clade 主線接手）
+
+### Resolution（2026-09-04，pane w7:pCB）
+
+成因查明非猜測：讀 `propagate.ts` 的 `shouldPush()` 確認 withhold 條件，
+再以 `git log origin/main..HEAD` 對出唯一的 collateral 是 `01bc7a09`。
+
+並行協調（per `session-tasks` § 並行爭用 Step 0）：同 repo 另有 w7:pCA 在跑 TD-912
+（`scripts.tag` 移除 `git push origin --tags`）。`herdr agent prompt` 詢問後確認它只改
+`package.json` 一行、0 commit、未碰 pre-push hook 與 propagate——兩件事無關，
+本輪 push 為純 fast-forward，不動 working tree / index。
+
+Acceptance 第二條屬 clade 中央倉，留 open 待 clade 主線處理。
