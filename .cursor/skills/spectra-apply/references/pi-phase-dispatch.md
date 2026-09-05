@@ -38,7 +38,7 @@ IMPLEMENTATION_ORIGIN_ID = spectra-$CONSUMER_SLUG-$CHANGE_NAME-p$PHASE_NUMBER
 PRESCAN_ORIGIN_ID = $IMPLEMENTATION_ORIGIN_ID-prescan
 ```
 
-現行 `rolloutStage=shadow` 時，`effective` 必定是 `spectra-phase-implementation` / Sol high。`mechanical.eligible=true` 只決定 cohort=`shadow-luna-candidate`，**不**授權 Luna mutation。
+現行 `rolloutStage=shadow` 時，`effective` 必定是 `spectra-phase-implementation` / Astra medium。`mechanical.eligible=true` 只決定 cohort=`shadow-luna-candidate`，**不**授權 Luna mutation。
 
 ### 2. Eligible phase 先跑 Luna read-only prescan
 
@@ -71,12 +71,12 @@ node ~/offline/clade/vendor/scripts/pi-dispatch.ts \
 
 依 Pi Watch Protocol 收 terminal receipt：
 
-- `exit 0/2` 且有 parseable result → `PRESCAN_EVIDENCE=<receipt.lastMessagePath>`；即使 `needs_reconciliation=true` 仍保留 raw facts，裁決交下一步 Sol high。
+- `exit 0/2` 且有 parseable result → `PRESCAN_EVIDENCE=<receipt.lastMessagePath>`；即使 `needs_reconciliation=true` 仍保留 raw facts，裁決交下一步 Astra medium。
 - `exit 3/4` → 依標準 fallback 處理；不重試 Luna medium/high。若決定略過 prescan，`PRESCAN_EVIDENCE=(prescan unavailable: <exit/reason>)`，implementation 仍可開始。
 
 若 `prescan.eligible === false`，設 `PRESCAN_EVIDENCE=(not run)`。
 
-### 3. 用泛用 dispatcher 派 Sol high implementation
+### 3. 用泛用 dispatcher 派 Astra medium implementation
 
 每一個 C 類 phase 的 effective mutation 都走 named row `spectra-phase-implementation`。Template 與 output schema 是 clade SoT；**NEVER** 複製 raw `codex exec` 或在 caller 自行拼 model flag。
 
@@ -94,7 +94,7 @@ node ~/offline/clade/vendor/scripts/pi-dispatch.ts \
   --output-schema ~/offline/clade/vendor/snippets/pi-offload/schemas/spectra-phase-result.schema.json \
   --label "$IMPLEMENTATION_ORIGIN_ID" \
   --cwd <consumer-worktree-root> \
-  --model sol --effort high \
+  --model astra --effort medium \
   --route routing-table \
   --workspace-access mutation \
   --tier-basis table-row --table-row spectra-phase-implementation \

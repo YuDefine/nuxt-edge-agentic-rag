@@ -33,7 +33,7 @@ Plan 寫完後**立刻**繼續執行，**不要**停下來等確認。Plan 是�
 
 - 例：`## 1. Database Schema` + `## 2. API Endpoints` + `## 3. Pinia Store + Composables` + `## 4. UI View Implementation` + `## 5. Fixtures / Seed Plan` + `## 6. Design Review`
 - **禁止**把 view 層改動（`.vue` / `app/pages/` 等）與非 view 工作混進同一 phase
-- 理由：spectra-apply 的 UI view phase 由主線 Opus 自己做（實作與 Design Review 都不外派）、其他 phase 派 Pi sol；混雜 phase 會破壞 dispatch 規則
+- 理由：spectra-apply 的 UI view phase 由主線 Opus 自己做（實作與 Design Review 都不外派）、其他 phase 派 Pi astra；混雜 phase 會破壞 dispatch 規則
 - frontend 但非 view 的（store / hook / API client / type / util / unit test）算非 view，可以與 backend 工作放同 phase 或自己一個 phase 都可
 
 ---

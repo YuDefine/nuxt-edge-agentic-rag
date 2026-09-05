@@ -17,7 +17,7 @@ Local edits will be reverted by the next sync.
 
    ### 選項 B：三模型交叉 pipeline（Fable draft → Pi review → 主線 Fable final check）
 
-   三段序列：Claude Fable 5.1（effort: xhigh）在背景起草 → GPT-5.6-sol via Pi（effort: max；fresh session）檢查出 findings → 主線 Claude Fable 5.1（effort: xhigh）整合 findings 並完成全套 cross-check。三段皆背景派工 + notification-only watch（per `.claude/rules/agent-routing.pi-watch-protocol.md` § 監看排程 A）。draft 與 review 是兩個不同 model 的獨立 session（Fable draft + Pi review 交叉視角，比同 model 更能抓到盲點）。
+   三段序列：Claude Fable 5.1（effort: xhigh）在背景起草 → GPT-6-astra via Pi（effort: medium；fresh session）檢查出 findings → 主線 Claude Fable 5.1（effort: xhigh）整合 findings 並完成全套 cross-check。三段皆背景派工 + notification-only watch（per `.claude/rules/agent-routing.pi-watch-protocol.md` § 監看排程 A）。draft 與 review 是兩個不同 model 的獨立 session（Fable draft + Pi review 交叉視角，比同 model 更能抓到盲點）。
 
    #### Phase B-0a：背景 Fable draft
 
@@ -61,13 +61,13 @@ Local edits will be reverted by the next sync.
         --brief /tmp/pi-spectra-propose-<change-name>-review-prompt.md \
         --cwd <consumer-repo-root> \
         --label spectra-propose-review-<change-name> \
-        --model sol --effort max \
+        --model astra --effort medium \
         --route routing-table \
         --workspace-access readonly \
         --tier-basis table-row --table-row spectra-artifact-review
       ```
 
-   5. **立刻**回報：「Fable draft 完成，已派 GPT-5.6-sol via Pi（effort: max）負責 review（bash job `<id>`）；完成後主線 Fable final check」+ 啟動 notification-only watch（同 Phase B-0a step 5）。
+   5. **立刻**回報：「Fable draft 完成，已派 GPT-6-astra via Pi（effort: medium）負責 review（bash job `<id>`）；完成後主線 Fable final check」+ 啟動 notification-only watch（同 Phase B-0a step 5）。
 
    #### Phase B-0c：Pi 檢查完 → 主線 Fable final check
 
@@ -76,7 +76,7 @@ Local edits will be reverted by the next sync.
    - `0`：讀 findings，往下走。
    - `2`：業務 fail；讀 `result` 的原因，主線決定修補或重派。
    - `3`：機械故障；讀 receipt 指向的 stderr log，依 watch protocol fallback。
-   - `4`：配額擋；本段是 readonly Sol review gate，逐字採用 dispatcher payload。第一池耗盡會指向同 tier 的 `sol-cursor`（保留 `--workspace-access readonly`）；**NEVER** 當成可立即重試的機械故障。兩個 Sol pool 皆耗盡且 payload 帶 `gate_met:false`／`durable_follow_up_required:true` 時，MUST 明示「Spectra artifact review gate 未達成」，並依 `.claude/rules/follow-up-register.md` 建立 durable follow-up。**NEVER** 改派產出 draft 的 Fable family、Opus main self-review、Luna 或 Grok 充當 review。後續若執行既有 final check，也 **NEVER** 把它記成已補足此 Pi gate。
+   - `4`：配額擋；本段是 readonly Astra review gate，逐字採用 dispatcher payload。Astra 目前沒有已驗證的 Cursor pool；**NEVER** 當成可立即重試的機械故障。Astra 配額耗盡且 payload 帶 `gate_met:false`／`durable_follow_up_required:true` 時，MUST 明示「Spectra artifact review gate 未達成」，並依 `.claude/rules/follow-up-register.md` 建立 durable follow-up。**NEVER** 改派產出 draft 的 Fable family、Opus main self-review、Luna 或 Grok 充當 review。後續若執行既有 final check，也 **NEVER** 把它記成已補足此 Pi gate。
 
    收到 Pi `<task-notification status=completed>` 時**立刻**：
 

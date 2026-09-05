@@ -148,7 +148,7 @@ Update an existing Spectra change — from a plan file or conversation context.
 
    **Step 4b 開頭 MUST 用 AskUserQuestion 跳三選一選單**讓使用者選（除非使用者已明確指定路徑，見下方捷徑）：
 
-   - **A. Pi flow（預設 / 推薦，選單第一項）** — GPT-5.6-sol via Pi（effort: max）在背景更新 artifacts + 主線 Claude Fable 5.1（effort: xhigh）負責 cross-check。
+   - **A. Pi flow（預設 / 推薦，選單第一項）** — GPT-6-astra via Pi（effort: medium）在背景更新 artifacts + 主線 Claude Fable 5.1（effort: xhigh）負責 cross-check。
    - **B. Fable flow** — Claude Fable 5.1（effort: xhigh）在背景更新 artifacts + 主線 Claude Fable 5.1（effort: xhigh）負責 cross-check。
    - **C. 純 Claude** — 主線 Claude Fable 5.1（effort: xhigh）直接走 Step 5~9。
 
@@ -218,7 +218,7 @@ Update an existing Spectra change — from a plan file or conversation context.
         --brief /tmp/pi-spectra-ingest-<change-name>-prompt.md \
         --cwd <consumer-repo-root> \
         --label spectra-ingest-<change-name> \
-        --model sol --effort max \
+        --model astra --effort medium \
         --route routing-table \
         --workspace-access mutation \
         --tier-basis table-row --table-row spectra-artifact-draft
@@ -240,7 +240,7 @@ Update an existing Spectra change — from a plan file or conversation context.
    - `0`：讀 `result`，往下走。
    - `2`：業務 fail；讀 `result` 的原因，主線決定修補或重派。
    - `3`：機械故障；讀 receipt 指向的 stderr log，依 watch protocol fallback。
-   - `4`：配額擋；本列是 sol 且是 workspace mutation，逐字採用 dispatcher payload，跳過 `sol-cursor` 交給 writable terminal carrier，**NEVER** 當成可立即重試的機械故障，**也 NEVER** 改派 Claude subagent。
+   - `4`：配額擋；本列是 astra 且是 workspace mutation，逐字採用 dispatcher payload，跳過 `sol-cursor` 交給 writable terminal carrier，**NEVER** 當成可立即重試的機械故障，**也 NEVER** 改派 Claude subagent。
 
    **Cross-check（A / B 共用，收到 `<task-notification status=completed>` 後立刻）**：
 

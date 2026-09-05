@@ -54,8 +54,8 @@ Main worktree 的 staged / modified / untracked / unmerged **完全不影響**�
 
    本 skill 的 draft 階段有三條可選路徑。**Step 0 開頭 MUST 用 AskUserQuestion 跳三選一選單**讓使用者選（除非使用者已明確指定路徑，見下方捷徑）：
 
-   - **A. Pi flow（預設 / 推薦，選單第一項）** — GPT-5.6-sol via Pi（effort: max）負責 draft + 主線 Claude Fable 5.1（effort: xhigh）負責 cross-check。draft + cross-check 比擇一穩，wall-clock 最短。
-   - **B. 三模型交叉 pipeline** — Claude Fable 5.1（effort: xhigh）負責 draft → GPT-5.6-sol via Pi（effort: max）負責 review（fresh session、只出 findings、不改檔）→ 主線 Claude Fable 5.1（effort: xhigh）負責 final check。三模型交叉（Fable draft + Pi review + Fable final）比擇一穩，wall-clock 較長（多一層背景等待）。
+   - **A. Pi flow（預設 / 推薦，選單第一項）** — GPT-6-astra via Pi（effort: medium）負責 draft + 主線 Claude Fable 5.1（effort: xhigh）負責 cross-check。draft + cross-check 比擇一穩，wall-clock 最短。
+   - **B. 三模型交叉 pipeline** — Claude Fable 5.1（effort: xhigh）負責 draft → GPT-6-astra via Pi（effort: medium）負責 review（fresh session、只出 findings、不改檔）→ 主線 Claude Fable 5.1（effort: xhigh）負責 final check。三模型交叉（Fable draft + Pi review + Fable final）比擇一穩，wall-clock 較長（多一層背景等待）。
    - **C. 純 Claude** — 主線 Claude Fable 5.1（effort: xhigh）直接走 Step 1~11（含 Step 8 補 7 步 Design Review check）。
 
    選單寫法：option A label 標「(預設/推薦)」並排第一（使用者按 Enter 即走現狀）。
@@ -492,7 +492,7 @@ Main worktree 的 staged / modified / untracked / unmerged **完全不影響**�
      - 一個 phase 要嘛純 view 工作（component / page / view / layout / styling），要嘛純非 view 工作；混雜 phase 違規
    - Verify by running `bash scripts/spectra-advanced/post-propose-check.sh <change-name>` and acting on Check 4c FINDINGS
    - If a mixed phase is detected, **MUST** split inline now into independent phases — do NOT defer to ingest. spectra-apply Phase Dispatch 規則仰賴 phase purity；混雜 phase 在 apply 時會被擋下要求重 ingest，propose 階段就修掉成本最低
-   - Reason: spectra-apply 把 UI view phase 留在主線 Claude Opus 5（effort: xhigh；永不外派）、其他 phase 派給 GPT-5.6-sol via Pi（effort: high）；phase 混雜會破壞 dispatch 邊界，要嘛讓 Pi 碰 view 層、要嘛讓主線吞下原本可以 offload 的 mechanical 工作
+   - Reason: spectra-apply 把 UI view phase 留在主線 Claude Opus 5（effort: xhigh；永不外派）、其他 phase 派給 GPT-6-astra via Pi（effort: medium）；phase 混雜會破壞 dispatch 邊界，要嘛讓 Pi 碰 view 層、要嘛讓主線吞下原本可以 offload 的 mechanical 工作
 
    **Check 9: Manual Review Marker Hygiene** (applies to **every** change, not only backend-only)
 
@@ -542,7 +542,7 @@ Main worktree 的 staged / modified / untracked / unmerged **完全不影響**�
    - Code identifiers, file paths, technical names (e.g., `audit_signed_chain`, `business_keys_drift`, `PostgREST`), SQL blocks, shell commands, and inline `code` remain untranslated.
    - OpenSpec / Spectra 制式英文標題（如 `## Why`、`## What Changes`、`## Non-Goals`、`## Affected Entity Matrix`、`## User Journeys`、`## Implementation Risk Plan`）保留英文，body 內容必須繁中。
    - If pi draft produced English artifacts despite the convention, fix inline now — main thread Edit 翻譯，**不要**回 pi 重 draft.
-   - Reason: pi GPT-5.6-sol 在 prompt 已有繁中指示時仍可能默認輸出英文；主線 cross-check 是最後一道翻譯把關。違反語言慣例會讓使用者在 review/manual-check 階段卡關。
+   - Reason: pi GPT-6-astra 在 prompt 已有繁中指示時仍可能默認輸出英文；主線 cross-check 是最後一道翻譯把關。違反語言慣例會讓使用者在 review/manual-check 階段卡關。
 
 ---
 
