@@ -18,6 +18,7 @@ import {
 import { basename, dirname, join, relative, resolve as resolvePath } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { nativeAcceptanceReasons } from './opsx-acceptance.ts'
 import { atomicWriteText } from './lib/atomic-file.ts'
 import {
   assertBindingCommittedIfGoverned,
@@ -28,6 +29,7 @@ import {
   INTENT_REVISION_TRAILER,
   type OpenSpecOperation,
   toOpenSpecAlias,
+  isControlPlaneChangeId,
 } from './ai-control-plane-profile.ts'
 import {
   endSpan,
@@ -40,6 +42,8 @@ import {
   type SpanHandle,
 } from './flow/emit.ts'
 import { redactPayload } from '../signals/redact.ts'
+import { currentBoundRevision } from './flow/work-revision.ts'
+import type { FlowEvent } from './flow/spine.ts'
 import {
   beginRuntimeAttempt,
   capabilityGrantDigest,
@@ -853,16 +857,14 @@ export function materializeWork(input: {
     // afresh on every `materializeWork` — and every attempt begins with one — so a single rebind
     // shows up on the spine as a run of identical events. The fact stays a fact; it is just stated
     // once per move rather than once per read.
-    const openIndex = spine.indexOf(current)
-    const boundRevision = spine
-      .slice(openIndex + 1)
-      .findLast(
-        (event) =>
-          (event.kind === 'work.reopened' || event.kind === 'work.rebound') &&
-          event.work_id === currentWorkId &&
-          Number.isInteger(event.payload?.requirement_revision),
-      )?.payload?.requirement_revision as number | undefined
-    const frozenRevision = boundRevision ?? current.payload?.requirement_revision
+    // Keep launch, materialization, and manual assistance on the same stream-order reader. In
+    // particular, an evidence_insufficient reopen carries the binding just like a revision reopen;
+    // consulting only the cause would regress TD-898.
+    const sharedRevision = currentBoundRevision(spine as FlowEvent[], currentWorkId).revision
+    const frozenRevision =
+      sharedRevision !== null && Number.isInteger(Number(sharedRevision))
+        ? Number(sharedRevision)
+        : current.payload?.requirement_revision
     const plannedRevision = Number(requirement?.revision)
     // A work item that is not terminal has NO ACCEPTED EVIDENCE TO PROTECT, so a revision running
     // ahead of its binding is not staleness — it is simply the plan the next attempt will answer
@@ -2091,7 +2093,10 @@ function withProjectionReadLock<T>(repoRoot: string, changeId: string, run: () =
   }
 }
 
-function validateEvidence(receipt: EvidenceReceipt): void {
+export function validateEvidence(receipt: EvidenceReceipt): void {
+  if (receipt.artifact_type !== 'evidence.receipt' || receipt.schema_version !== 1)
+    throw new Error('Expected evidence.receipt schema_version 1')
+  if (!Array.isArray(receipt.references)) throw new Error('references must be an array')
   requireId('evidence', receipt.evidence_id)
   requireId('change', receipt.change_id)
   requireId('requirement', receipt.requirement_id)
@@ -2142,7 +2147,7 @@ function correlatedWorkEvents(repoRoot: string, changeId: string): Array<Record<
   return readEvents(repoRoot).filter((event) => event.work_id && workIds.has(event.work_id))
 }
 
-function correlatedRuntimeState(repoRoot: string, changeId: string): RuntimeState {
+export function correlatedRuntimeState(repoRoot: string, changeId: string): RuntimeState {
   const state = readRuntimeState(repoRoot)
   const works = state.works.filter((work) => work.change_id === changeId)
   const workIds = new Set(works.map((work) => work.work_id))
@@ -3058,6 +3063,13 @@ export function buildProjectorInput(input: {
       .filter((attempt) => runtimeWorkIds.has(attempt.work_id))
       .map((attempt) => attempt.attempt_id),
   )
+  const acceptanceReasons = isControlPlaneChangeId(normalized.change_id)
+    ? nativeAcceptanceReasons(input.repoRoot, input.source, {
+        normalized,
+        humanGates,
+        impactMatrix: impacts,
+      })
+    : []
   const predicates: ArchivePredicates = {
     current_intent_valid: true,
     impacts_current_and_consistent: impacts.every(
@@ -3072,7 +3084,8 @@ export function buildProjectorInput(input: {
     required_work_terminal_with_current_evidence: workRecords.every((work: any) =>
       workEvidenceIsSufficient(work, evidence),
     ),
-    required_gates_terminal: humanGates.every((gate) => gate.state !== 'open'),
+    required_gates_terminal:
+      humanGates.every((gate) => gate.state !== 'open') && acceptanceReasons.length === 0,
     no_active_attempt_or_lease:
       runtime.attempts
         .filter((attempt) => runtimeAttemptIds.has(attempt.attempt_id))
@@ -3095,6 +3108,7 @@ export function buildProjectorInput(input: {
   const blockingReasons = Object.entries(predicates)
     .filter(([, value]) => !value)
     .map(([key]) => key)
+  blockingReasons.push(...acceptanceReasons)
   const archiveReadiness: ArchiveReadiness = {
     artifact_type: 'archive.readiness',
     schema_version: 1,

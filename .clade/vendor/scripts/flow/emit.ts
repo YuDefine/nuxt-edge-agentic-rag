@@ -26,17 +26,22 @@ import { redactPayload, validateFlowEvent, workReopenCauses } from '../../signal
 import { appendRaw } from '../../signals/ledger-writer.ts'
 import { detectConsumer } from '../../signals/shim-core.ts'
 import { normalizeArtifacts } from './nodes/lib/artifacts.ts'
+import { repositorySpineRoot } from './spine-context.ts'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const CLADE_ROOT = resolve(__dirname, '..', '..', '..')
 
 export const SCHEMA_VERSION = '1'
 
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
+
 export function flowDisabled() {
   return process.env.CLADE_FLOW_OFF === '1'
 }
 
-function gitTopLevel(cwd) {
+function gitTopLevel(cwd: string): string {
   try {
     return execFileSync('git', ['rev-parse', '--show-toplevel'], {
       cwd,
@@ -61,6 +66,8 @@ export function spinePathIn(root: string) {
 
 /** Repo-local spine path. Explicit override wins so tests never touch a real repo's stream. */
 export function eventsPath(cwd = process.cwd()) {
+  const scopedRoot = repositorySpineRoot()
+  if (scopedRoot) return spinePathIn(scopedRoot)
   if (process.env.CLADE_FLOW_EVENTS) return resolve(process.env.CLADE_FLOW_EVENTS)
   return spinePathIn(gitTopLevel(cwd) || CLADE_ROOT)
 }
@@ -76,7 +83,7 @@ function utcDate(now = new Date()) {
 const SLUG_OK = /^[a-z0-9][a-z0-9-]*$/
 
 /** W-<YYYY-MM-DD>-<slug>. Throws on a slug the envelope pattern would reject. */
-export function mintWorkId(slug, now = new Date()) {
+export function mintWorkId(slug: string, now = new Date()): string {
   const normalized = String(slug)
     .toLowerCase()
     .replace(/[^a-z0-9-]+/g, '-')
@@ -128,13 +135,13 @@ function mintOrphanWorkId() {
   return mintWorkId(`orphan-${randomBytes(3).toString('hex')}`)
 }
 
-export function resolveWorkId(hint = null) {
+export function resolveWorkId(hint: string | null | undefined = null): string {
   const explicit = hint ?? process.env.CLADE_WORK_ID ?? null
   if (explicit) return explicit
   return mintOrphanWorkId()
 }
 
-function identity(cwd) {
+function identity(cwd: string): { consumer_id: string; repo_id: string } {
   const consumer = detectConsumer(cwd) ?? {}
   return {
     consumer_id: process.env.CLADE_CONSUMER_ID ?? consumer.consumer_id ?? 'unknown',
@@ -493,9 +500,10 @@ export function emitEvent({
     // appendRaw gives the single-writer advisory lock; validation already ran above.
     const res = appendRaw(record, { ledgerPath: path })
     return { written: res.written === true, record }
-  } catch (e) {
-    process.stderr.write(`[clade flow] emit failed (fail-open): ${e.message}\n`)
-    return { written: false, errors: [{ code: 'emit-failed', message: e.message }] }
+  } catch (e: unknown) {
+    const message = errorMessage(e)
+    process.stderr.write(`[clade flow] emit failed (fail-open): ${message}\n`)
+    return { written: false, errors: [{ code: 'emit-failed', message }] }
   }
 }
 

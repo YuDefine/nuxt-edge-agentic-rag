@@ -30,7 +30,7 @@
 // Propagation constraint: `vendor/scripts/flow/` is copied wholesale to every consumer, so this
 // file may import ONLY `node:*` and siblings in this directory.
 
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { linkWork, markWorkDone, openWork, readEvents } from './emit.ts'
@@ -88,6 +88,36 @@ export interface WorkSyncResult {
    */
   unresolved_parents: string[]
   skipped: string | null
+}
+
+/** Serialize every exact-origin admission on one checkout, including collector callers. */
+export function withWorkSourceLock<T>(repoRoot: string, fn: () => T): T {
+  const lock = join(repoRoot, '.clade', 'flow', 'work-source.lock')
+  mkdirSync(join(repoRoot, '.clade', 'flow'), { recursive: true })
+  const started = Date.now()
+  while (true) {
+    try {
+      mkdirSync(lock)
+      writeFileSync(join(lock, 'owner'), `${process.pid}\n${started}\n`)
+      break
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
+      try {
+        const age = Date.now() - Number(readFileSync(join(lock, 'owner'), 'utf8').split('\n')[1])
+        if (Number.isFinite(age) && age > 5 * 60 * 1000)
+          rmSync(lock, { recursive: true, force: true })
+      } catch {
+        // A lock with no readable owner is retained; the next bounded retry can observe it.
+      }
+      if (Date.now() - started > 30_000) throw new Error('Timed out waiting for work-source lock')
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25)
+    }
+  }
+  try {
+    return fn()
+  } finally {
+    rmSync(lock, { recursive: true, force: true })
+  }
 }
 
 function emptyResult(repo: string): WorkSyncResult {
@@ -166,11 +196,15 @@ export function syncWork({
   repoRoot,
   dryRun = false,
   actor = 'work-source-scan',
+  lock = true,
 }: {
   repoRoot: string
   dryRun?: boolean
   actor?: string
+  lock?: boolean
 }): WorkSyncResult {
+  if (lock)
+    return withWorkSourceLock(repoRoot, () => syncWork({ repoRoot, dryRun, actor, lock: false }))
   const result = emptyResult(repoRoot)
 
   /*

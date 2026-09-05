@@ -22,7 +22,44 @@ import { dirname, join } from 'node:path'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
-export const SECRET_PATTERNS = [
+type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue }
+interface SecretPattern {
+  id: string
+  pattern: RegExp
+  token: string
+}
+interface SchemaProperty {
+  const?: unknown
+  enum?: readonly unknown[]
+  pattern?: string
+  minLength?: number
+  type?: string | string[]
+}
+interface SchemaDefinition {
+  required?: string[]
+  properties?: Record<string, SchemaProperty>
+  enum?: readonly unknown[]
+}
+interface SchemaDocument extends SchemaDefinition {
+  $defs?: Record<string, SchemaDefinition>
+}
+interface LeakDiagnostic {
+  field: string
+  pattern_id: string
+}
+interface ValidationError {
+  code: string
+  [key: string]: unknown
+}
+interface ValidationResult {
+  ok: boolean
+  errors: ValidationError[]
+}
+function isObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
+export const SECRET_PATTERNS: SecretPattern[] = [
   {
     id: 'github-pat',
     pattern: /\bgh[pousr]_[A-Za-z0-9]{36,}\b/g,
@@ -101,7 +138,7 @@ export const SECRET_PATTERNS = [
   },
 ]
 
-export function redactString(input) {
+export function redactString(input: string): string {
   if (typeof input !== 'string') return input
   let out = input
   for (const { pattern, token } of SECRET_PATTERNS) {
@@ -114,7 +151,7 @@ export function redactString(input) {
 // Redaction recurses into nested objects and arrays. Signal records are flat, so this is a
 // no-op for them; flow envelopes carry a free-form `payload` object, and a top-level-only
 // sweep would let a secret ride inside it untouched.
-function redactDeep(value) {
+function redactDeep(value: unknown): JsonValue | unknown {
   if (typeof value === 'string') return redactString(value)
   if (Array.isArray(value)) return value.map(redactDeep)
   if (value !== null && typeof value === 'object') {
@@ -139,9 +176,9 @@ export function redactPayload<T extends Record<string, unknown>>(
   return out as Omit<T, 'redaction_applied'> & { redaction_applied: true }
 }
 
-export function findLeaks(record) {
-  const leaks = []
-  const walk = (value, path) => {
+export function findLeaks(record: unknown): LeakDiagnostic[] {
+  const leaks: LeakDiagnostic[] = []
+  const walk = (value: unknown, path: string): void => {
     if (typeof value === 'string') {
       for (const { id, pattern } of SECRET_PATTERNS) {
         pattern.lastIndex = 0
@@ -157,17 +194,18 @@ export function findLeaks(record) {
       for (const [k, v] of Object.entries(value)) walk(v, path ? `${path}.${k}` : k)
     }
   }
+  if (!isObject(record)) return leaks
   for (const [field, value] of Object.entries(record)) walk(value, field)
   return leaks
 }
 
-let cachedSchema = null
-const cachedValidators = new Map()
+let cachedSchema: SchemaDocument | null = null
+const cachedValidators = new Map<string, (record: unknown) => ValidationError[]>()
 
-function loadSchema() {
+function loadSchema(): SchemaDocument {
   if (cachedSchema) return cachedSchema
   const schemaPath = join(__dirname, 'schema.json')
-  cachedSchema = JSON.parse(readFileSync(schemaPath, 'utf8'))
+  cachedSchema = JSON.parse(readFileSync(schemaPath, 'utf8')) as SchemaDocument
   return cachedSchema
 }
 
@@ -177,16 +215,18 @@ function loadSchema() {
  * signal record. Both shapes go through this one function so the flow spine cannot drift
  * into a validator of its own.
  */
-function compileStructuralValidator(defName = null) {
+function compileStructuralValidator(
+  defName: string | null = null,
+): (record: unknown) => ValidationError[] {
   const cacheKey = defName ?? '__root__'
-  if (cachedValidators.has(cacheKey)) return cachedValidators.get(cacheKey)
+  if (cachedValidators.has(cacheKey)) return cachedValidators.get(cacheKey)!
   const root = loadSchema()
   const schema = defName ? root.$defs?.[defName] : root
   if (!schema) throw new Error(`schema.json has no $defs.${defName}`)
   const required = schema.required ?? []
   const props = schema.properties ?? {}
-  const validator = (record) => {
-    const errors = []
+  const validator = (record: unknown): ValidationError[] => {
+    const errors: ValidationError[] = []
     if (record === null || typeof record !== 'object') {
       errors.push({ code: 'not-object', message: 'record must be an object' })
       return errors
@@ -241,11 +281,11 @@ function compileStructuralValidator(defName = null) {
   return validator
 }
 
-function validateAgainst(record, defName) {
-  const errors = []
+function validateAgainst(record: unknown, defName: string | null): ValidationResult {
+  const errors: ValidationError[] = []
   errors.push(...compileStructuralValidator(defName)(record))
 
-  if (record && typeof record === 'object') {
+  if (isObject(record)) {
     if (record.redaction_applied !== true) {
       errors.push({
         code: 'redaction-not-applied',
@@ -261,7 +301,7 @@ function validateAgainst(record, defName) {
   return { ok: errors.length === 0, errors }
 }
 
-export function validateRecord(record) {
+export function validateRecord(record: unknown): ValidationResult {
   return validateAgainst(record, null)
 }
 
@@ -278,9 +318,10 @@ export function validateRecord(record) {
  * It lives in the validator rather than in `emitEvent` because `flow emit --kind session_summary` is
  * a door too, and a gate only one door honours is not a gate.
  */
-function flowKindWorkIdError(record) {
-  const isSummary = record?.kind === 'session_summary'
-  const isNull = record?.work_id === null
+function flowKindWorkIdError(record: unknown): ValidationError | null {
+  const value = isObject(record) ? record : null
+  const isSummary = value?.kind === 'session_summary'
+  const isNull = value?.work_id === null
   if (isSummary && !isNull) {
     return {
       code: 'session-summary-work-id',
@@ -290,7 +331,7 @@ function flowKindWorkIdError(record) {
   if (isNull && !isSummary) {
     return {
       code: 'null-work-id',
-      message: `work_id null is only legal for kind=session_summary, not ${record?.kind}`,
+      message: `work_id null is only legal for kind=session_summary, not ${value?.kind}`,
     }
   }
   return null
@@ -304,8 +345,9 @@ function flowKindWorkIdError(record) {
  * envelope is ever built, which is what a caller of `reopenWork()` sees, while this one is what
  * `flow emit --kind work.reopened` hits.
  */
-export function workReopenCauses() {
-  return loadSchema().$defs?.work_reopen_cause?.enum ?? []
+export function workReopenCauses(): string[] {
+  const values = loadSchema().$defs?.work_reopen_cause?.enum ?? []
+  return values.filter((value): value is string => typeof value === 'string')
 }
 
 /**
@@ -318,11 +360,13 @@ export function workReopenCauses() {
  * reopen carrying neither cannot be audited against the requirement's history at all. Presence is
  * already enforced at the emitter; this is the half that checks WHICH.
  */
-function flowReopenCauseError(record) {
-  if (record?.kind !== 'work.reopened') return null
-  const allowed = workReopenCauses()
-  const cause = record?.payload?.cause
-  if (allowed.includes(cause)) return null
+function flowReopenCauseError(record: unknown): ValidationError | null {
+  const value = isObject(record) ? record : null
+  if (value?.kind !== 'work.reopened') return null
+  const allowed = workReopenCauses() as string[]
+  const payload = isObject(value.payload) ? value.payload : null
+  const cause = payload?.cause
+  if (typeof cause === 'string' && allowed.includes(cause)) return null
   return {
     code: 'reopen-cause-unknown',
     field: 'payload.cause',
@@ -333,9 +377,11 @@ function flowReopenCauseError(record) {
 }
 
 /** Same validator, same redaction enforcement, applied to $defs.flow_envelope. */
-export function validateFlowEvent(record) {
+export function validateFlowEvent(record: unknown): ValidationResult {
   const result = validateAgainst(record, 'flow_envelope')
-  const cross = [flowKindWorkIdError(record), flowReopenCauseError(record)].filter(Boolean)
+  const cross = [flowKindWorkIdError(record), flowReopenCauseError(record)].filter(
+    (error): error is ValidationError => error !== null,
+  )
   if (cross.length === 0) return result
   return { ok: false, errors: [...result.errors, ...cross] }
 }

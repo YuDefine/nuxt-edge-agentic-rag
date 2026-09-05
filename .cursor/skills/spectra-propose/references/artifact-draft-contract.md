@@ -5,6 +5,8 @@ Edit at: $CLADE_HOME
 Local edits will be reverted by the next sync.
 -->
 
+> 歷史封存：此分冊不再由入口載入。現行工作請讀 `../../opsx/SKILL.md`；以下舊版 recipe 僅保留為 provenance。
+
 # Artifact Draft Contract
 
 > 本檔是 propose / ingest dispatch 共用的規約彙編。draft runtime（Pi / Fable / Claude）和主線 cross-check

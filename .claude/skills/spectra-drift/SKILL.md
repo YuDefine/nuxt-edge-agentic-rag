@@ -1,17 +1,8 @@
 ---
 name: spectra-drift
-description: "Detect drift between a Spectra change and the current codebase state"
-context: fork
-agent: Explore
-disallowedTools: [Edit, Write]
-license: MIT
-compatibility: Requires spectra CLI.
-effort: medium
-metadata:
-  author: spectra
-  version: "1.0"
-  generatedBy: "Spectra"
-permission_tier: read-only
+description: 'spectra-drift 已退役；既有呼叫由此接續到 OPSX 的需求、實作、驗證與歷史入口。'
+effort: high
+permission_tier: draft
 ---
 <!--
 🔒 LOCKED — managed by clade
@@ -21,115 +12,8 @@ Local edits will be reverted by the next sync.
 -->
 
 
-> **Spectra target guard (clade fork):** Every executable Spectra command that names a change **MUST** run through `node .claude/scripts/spectra-target-guard.ts --change "<name>" -- <spectra args...>`. Existing targets pass only with path-bearing attestation anchored to the current git root; `new change` passes only with a current-root create postcondition. `TARGET_FOREIGN`, `TARGET_UNPROVEN`, `TARGET_MISSING`, or `MUTATION_POSTCONDITION` is a hard STOP. Preserve every candidate worktree and the failed mutation scene; **NEVER** delete, move, clean, or mirror state to make the guard pass. Global `list`, `list --parked`, `search`, and `instructions --skill` calls remain raw because they do not target a change.
+# 接續 OPSX
 
+此入口保留舊名稱相容性。讀取同 plugin 的 `../opsx/SKILL.md`，依使用者原本目標接續同一 change/work；已有授權就直接執行。
 
-## Claude fork context
-
-This generated Claude Code skill runs with `context: fork`. The rules in this section take precedence over the shared `drift` body below.
-
-When no change name is provided, run `spectra list --json`. Auto-select only when there is exactly one active change. If there are zero active changes or more than one active change, return the candidate list or empty-state message and ask the main thread to rerun `/spectra-drift <change-name>`. Do NOT ask an interactive selection question inside the fork.
-
----
-
-Detect drift between a Spectra change and the current codebase state. Reports time dormancy, broken design anchors, task collisions with external commits, and a single recommended next command.
-
-**Input**: Optionally specify a change name (e.g., `/spectra-drift add-auth`). If omitted, infer from conversation context or auto-select if only one active change exists.
-
-**Prerequisites**: This skill requires the `spectra` CLI. If any `spectra` command fails with "command not found" or similar, report the error and STOP.
-
-**Steps**
-
-1. **Determine change name**
-
-   If not provided, infer from context or run `spectra list --json` to auto-select. If multiple active changes exist and no name is given, list candidates and ask the user to rerun with an explicit name.
-
-2. **Run programmatic drift analysis**
-
-   ```bash
-   node .claude/scripts/spectra-target-guard.ts --change <change-name> -- drift <change-name> --json
-   ```
-
-   The JSON contains:
-   - `severity`: `"light"` / `"medium"` / `"heavy"`
-   - `total_score`: aggregate over Time / Structure / Tasks (Environment is display-only)
-   - `dimensions`: array of `{ kind, status, score, contributes_to_total }`
-   - `broken_anchors`: design.md references (file paths / symbols / functions / CLI flags) that no longer resolve
-   - `tasks_blocked_external`: pending tasks whose referenced files were modified by commits outside the change dir
-   - `tasks_maybe_resolved`: pending tasks whose verb+target keywords match commit subjects since `created`
-   - `primary_recommendation`: a single copy-pasteable command line
-
-3. **Present the report**
-
-   Use a user-readable, conclusion-first format. The first substantive paragraph after the title MUST be a plain-language conclusion that says what to do next before showing score tables, broken anchors, task collisions, or severity labels.
-
-   Translate severity into action-oriented meaning:
-   - **Light**: the change can continue with apply.
-   - **Medium**: the change can continue, but the plan should be refreshed before implementation.
-   - **Heavy**: the old plan is likely unsuitable for direct implementation; restart or refresh first.
-
-   Recommended shape:
-
-   ```markdown
-   ## Drift Report: <change-name>
-
-   <Plain-language conclusion. Example for medium: "This change can continue, but update the plan before implementing it. Related code has changed since the plan was written, so applying the old tasks directly may cause rework or conflicts.">
-
-   ### Why
-
-   - <1-3 plain-language reasons derived from dimensions, broken anchors, and task collisions>
-
-   ### Details
-
-   | Item              | Result                                                 |
-   | ----------------- | ------------------------------------------------------ |
-   | Time              | <status>                                               |
-   | Design references | <broken anchor count or "No broken references">        |
-   | Pending tasks     | <blocked/maybe-resolved count or "No task collisions"> |
-   | Overall           | <light/medium/heavy, total score N>                    |
-
-   ### Recommendation
-
-   Run `<primary_recommendation>`.
-   ```
-
-   Keep technical details below the plain-language conclusion. List broken anchors, blocked tasks, and maybe-resolved tasks only when non-empty. Omit empty technical detail sections entirely. Keep the report short enough to skim; the goal is to help the user decide, not to explain the scoring model.
-
-4. **Apply the recommendation interactively**
-
-   Use the **AskUserQuestion tool** to offer one decision based on `severity`. Use plain-language option labels while preserving the exact command in each option description. Do NOT auto-invoke `/spectra-apply`, `/spectra-ingest`, or the guarded `archive` command; always wait for the user's choice.
-   - **Light** (score 0-3, drift is minor):
-     - Recommended label: "Directly start work"
-       - Description: run `/spectra-apply <name>`
-     - Alternate label: "Pause for now"
-       - Description: do nothing until the user reviews manually
-   - **Medium** (score 4-8, refresh worth doing):
-     - Recommended label: "Refresh the plan"
-       - Description: run `/spectra-ingest <name>` with the broken references and task collisions as context
-     - Alternate label: "Directly start work"
-       - Description: run `/spectra-apply <name>` only if the user knows the reported changes are harmless
-     - Alternate label: "Pause for now"
-       - Description: do nothing until the user reviews manually
-   - **Heavy** (score >8 or anchor decay >30%, design diverges from code):
-     - Recommended label: "Archive and restart"
-       - Description: run `<primary_recommendation>`
-     - Alternate label: "Refresh the plan"
-       - Description: try `/spectra-ingest <name>` before restarting
-     - Alternate label: "Pause for now"
-       - Description: do nothing until the user reviews manually
-
-   If the **AskUserQuestion tool** is not available, present the same plain-language choices as text and wait for the user's response.
-
-**Passive Trigger**
-
-When `/spectra-apply` is invoked on a change whose `.openspec.yaml created` date is more than 5 days ago AND no commits have touched the change directory in the past 3 days, the apply skill SHOULD run drift analysis first and surface findings before tasks begin. The trigger is guidance only and MUST NOT block apply from proceeding.
-
-(Threshold reasoning: AI-assisted commits are daily-cadence, not weekly. A change sitting ≥5 days with ≥3 days of no commits is almost always genuine stagnation rather than normal pacing.)
-
-**Guardrails**
-
-- Read-only: NEVER modify files, artifacts, or git state based on drift findings
-- The CLI caps anchor checks at 50 via `ANCHOR_CAP` in `spectra_core::drift` to bound run-time
-- If the guarded `drift` command returns a non-zero exit code (e.g., older binary without the drift subcommand), report the error and stop
-- Do NOT auto-invoke any follow-up command — recommendations are user-confirmed
-- If **AskUserQuestion tool** is not available, ask the same questions as plain text and wait for the user's response
+每一個舊入口都只走 OPSX／flow 的共同 command。NEVER 啟動 Spectra binary，或直接改 tasks checkbox、touched sidecar、歷史 artifact 來宣告完成。歷史內容由 OPSX history 讀取；尚未承接的需求明示未遷移，保留原件與來源，不把封存原件當作需求完成。
