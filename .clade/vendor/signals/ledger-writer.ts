@@ -34,29 +34,35 @@ const STALE_LOCK_MS = 5_000
 const MAX_LOCK_RETRIES = 200
 const LOCK_RETRY_SLEEP_MS = 10
 
+type RawRecord = Record<string, unknown>
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
+
 interface LedgerOptions {
   ledgerPath?: string
   skipSchema?: boolean
 }
 
-function defaultLedgerPath() {
+function defaultLedgerPath(): string {
   return process.env.CLADE_LEDGER_PATH ?? join(CLADE_ROOT, 'vendor', 'ledger', 'signals.jsonl')
 }
 
-function sleepMs(ms) {
+function sleepMs(ms: number): void {
   // Synchronous sleep using Atomics.wait on a SharedArrayBuffer — works in Node main
   // thread without spinning the event loop.
   const buf = new SharedArrayBuffer(4)
   Atomics.wait(new Int32Array(buf), 0, 0, ms)
 }
 
-function acquireLock(lockPath) {
+function acquireLock(lockPath: string): number {
   for (let i = 0; i < MAX_LOCK_RETRIES; i++) {
     try {
       const fd = openSync(lockPath, 'wx')
       return fd
-    } catch (e) {
-      if (e.code !== 'EEXIST') throw e
+    } catch (e: unknown) {
+      if (!(e instanceof Error && 'code' in e && e.code === 'EEXIST')) throw e
       try {
         const st = statSync(lockPath)
         if (Date.now() - st.mtimeMs > STALE_LOCK_MS) {
@@ -74,7 +80,7 @@ function acquireLock(lockPath) {
   )
 }
 
-function releaseLock(lockPath, fd) {
+function releaseLock(lockPath: string, fd: number): void {
   try {
     closeSync(fd)
   } catch {}
@@ -83,7 +89,7 @@ function releaseLock(lockPath, fd) {
   } catch {}
 }
 
-export function appendRaw(rawRecord, options: LedgerOptions = {}) {
+export function appendRaw(rawRecord: RawRecord, options: LedgerOptions = {}) {
   const ledgerPath = options.ledgerPath ?? defaultLedgerPath()
   try {
     const dir = dirname(ledgerPath)
@@ -99,13 +105,14 @@ export function appendRaw(rawRecord, options: LedgerOptions = {}) {
     } finally {
       releaseLock(lockPath, fd)
     }
-  } catch (e) {
-    process.stderr.write(`[clade improvement-loop] ledger write failed: ${e.message}\n`)
-    return { written: false, errors: [{ code: 'write-failed', message: e.message }] }
+  } catch (e: unknown) {
+    const message = errorMessage(e)
+    process.stderr.write(`[clade improvement-loop] ledger write failed: ${message}\n`)
+    return { written: false, errors: [{ code: 'write-failed', message }] }
   }
 }
 
-export function appendRecord(rawRecord, options: LedgerOptions = {}) {
+export function appendRecord(rawRecord: RawRecord, options: LedgerOptions = {}) {
   if (options.skipSchema) return appendRaw(rawRecord, options)
   const ledgerPath = options.ledgerPath ?? defaultLedgerPath()
   try {
@@ -128,8 +135,9 @@ export function appendRecord(rawRecord, options: LedgerOptions = {}) {
     } finally {
       releaseLock(lockPath, fd)
     }
-  } catch (e) {
-    process.stderr.write(`[clade improvement-loop] signal write failed: ${e.message}\n`)
-    return { written: false, errors: [{ code: 'write-failed', message: e.message }] }
+  } catch (e: unknown) {
+    const message = errorMessage(e)
+    process.stderr.write(`[clade improvement-loop] signal write failed: ${message}\n`)
+    return { written: false, errors: [{ code: 'write-failed', message }] }
   }
 }

@@ -37,6 +37,7 @@ export type RepoState =
   | 'no-projection'
   /** In the registry, not on this machine. */
   | 'missing-checkout'
+  | 'read-error'
 
 export interface FleetRepo {
   name: string
@@ -68,6 +69,7 @@ const WHY: Record<RepoState, string> = {
   'no-events': '有 checkout 也有投影，但還沒有任何事件',
   'no-projection': '沒有 .clade/flow/ 投影（尚未散播，或這家沒開 improvement loop）',
   'missing-checkout': '在 registry 裡，但這台機器上沒有這個 checkout',
+  'read-error': '事件來源讀取失敗；本次資料不可用，其他專案仍持續更新',
 }
 
 /**
@@ -172,7 +174,14 @@ export function buildFleetSnapshot({
   for (const root of roster.roots) {
     const name = repoName(root, cladeRoot)
     const spinePath = spinePathIn(root)
-    const { state, events } = stateOf(root, spinePath)
+    let state: RepoState
+    let events: FlowEvent[]
+    try {
+      ;({ state, events } = stateOf(root, spinePath))
+    } catch {
+      state = 'read-error'
+      events = []
+    }
     const repo: FleetRepo = {
       name,
       path: root,

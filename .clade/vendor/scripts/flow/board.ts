@@ -219,6 +219,7 @@ export interface ProgressView {
 
 export interface BoardCard {
   work_id: string
+  repo?: string
   lane: BoardLane
   lane_label: string
   /** title → slug → origin_ref, in that order. Null only for a card admitted by "needs eyes". */
@@ -1049,6 +1050,9 @@ function makeCard(
   const { lane, reason, action } = classify(item, stalls, pending, now, kids)
   return {
     work_id: item.work_id,
+    ...((item as WorkItem & { repo?: string }).repo
+      ? { repo: (item as WorkItem & { repo?: string }).repo }
+      : {}),
     lane,
     lane_label: laneLabel(lane),
     title: cardTitle(item),
@@ -1163,7 +1167,7 @@ function clusterResidue(cards: BoardCard[]): { named: BoardCard[]; residue: Resi
     piles.set(key, held)
   }
   for (const pile of piles.values()) {
-    pile.cards.sort((a, b) => b.age_minutes - a.age_minutes)
+    pile.cards.toSorted((a, b) => b.age_minutes - a.age_minutes)
     // Built after the sort so the copied lines arrive in the same order the reader sees them.
     pile.actions = pile.cards
       .map((c) => c.action)
@@ -1193,6 +1197,49 @@ export function buildBoardLanes(
     all = false,
   }: { now?: number; hiddenRecentDays?: number; all?: boolean } = {},
 ): Board {
+  const repoOf = (value: unknown) => (value as { repo?: string }).repo ?? ''
+  const repos = [...new Set(workItems.map(repoOf))]
+  if (repos.length > 1) {
+    const partitions = repos.map((repo) =>
+      buildBoardLanes(
+        workItems.filter((item) => repoOf(item) === repo),
+        stalls.filter((stall) => repoOf(stall) === repo),
+        spans.filter((span) => repoOf(span) === repo),
+        { now, hiddenRecentDays, all },
+      ),
+    )
+    const groups = BOARD_LANES.map(({ lane, label }) => {
+      const cards = partitions
+        .flatMap((board) => board.groups.find((group) => group.lane === lane)!.cards)
+        .toSorted((a, b) => b.age_minutes - a.age_minutes)
+      return {
+        lane,
+        label,
+        cards,
+        ...(lane === 'blocked' ? clusterResidue(cards) : { named: cards, residue: [] }),
+      }
+    })
+    const hidden: Board['hidden'] = {
+      count: 0,
+      recent: 0,
+      recent_days: hiddenRecentDays,
+      by_state: {},
+    }
+    for (const board of partitions) {
+      hidden.count += board.hidden.count
+      hidden.recent += board.hidden.recent
+      for (const [state, count] of Object.entries(board.hidden.by_state))
+        hidden.by_state[state] = (hidden.by_state[state] ?? 0) + count
+    }
+    return {
+      groups,
+      hidden,
+      total_work_items: workItems.length,
+      counts: Object.fromEntries(
+        groups.map((group) => [group.lane, group.cards.length]),
+      ) as Board['counts'],
+    }
+  }
   // Plan section 9.8 rule 4. Folded rather than hidden: `hidden` counts what the ENTRY THRESHOLD
   // kept out, and a pi call is kept out by a different decision that the parent's chip states in
   // full. Putting them in `hidden` would make「隱藏 N 件無名靜置活動」count named, attributed,
@@ -1270,7 +1317,7 @@ export function buildBoardLanes(
 
   // Oldest first inside a lane: the thing that has been waiting longest is the thing a reader
   // should see first, and "newest on top" would bury exactly the rows a stall list is for.
-  for (const g of groups) g.cards.sort((a, b) => b.age_minutes - a.age_minutes)
+  for (const g of groups) g.cards.toSorted((a, b) => b.age_minutes - a.age_minutes)
 
   // Clustering runs on 受阻 only. Every other lane keeps `residue` empty and `named === cards`:
   // 擱置's 27 are all named, and piling up 待你 would hide questions behind a fold.

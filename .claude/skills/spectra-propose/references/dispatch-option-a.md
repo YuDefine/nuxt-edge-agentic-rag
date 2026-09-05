@@ -5,6 +5,8 @@ Edit at: $CLADE_HOME
 Local edits will be reverted by the next sync.
 -->
 
+> 歷史封存：此分冊不再由入口載入。現行工作請讀 `../../opsx/SKILL.md`；以下舊版 recipe 僅保留為 provenance。
+
 # spectra-propose — Step 0 選項 A Pi flow
 
 > 本檔是 `spectra-propose/SKILL.md` 的執行細節分冊（clade fork 加料，2026-08-02 自 SKILL.md 抽出以縮 invoke 成本）。

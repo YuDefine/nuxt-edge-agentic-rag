@@ -29,7 +29,31 @@ const CLADE_ROOT = resolve(__dirname, '..', '..')
 
 const STDERR_CAPTURE_BYTES = 2048
 
-function findRealBinary(name, shimAbsPath, preferredBin = null) {
+interface ConsumerIdentity {
+  consumer_id?: string
+  repo_id?: string
+}
+
+interface ConsumerRegistry {
+  consumers: Array<ConsumerIdentity & { repo_id?: string }>
+}
+
+interface ShimOptions {
+  binName: string
+  shimAbsPath: string
+  preferredBin?: string | null
+  source?: string
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
+
+function findRealBinary(
+  name: string,
+  shimAbsPath: string,
+  preferredBin: string | null = null,
+): string | null {
   const shimDir = resolve(dirname(shimAbsPath))
   const pathCandidates = (process.env.PATH ?? '')
     .split(':')
@@ -49,7 +73,7 @@ function findRealBinary(name, shimAbsPath, preferredBin = null) {
   return null
 }
 
-function gitSafe(args, cwd) {
+function gitSafe(args: string[], cwd: string): string {
   try {
     return execFileSync('git', args, {
       cwd,
@@ -62,15 +86,15 @@ function gitSafe(args, cwd) {
 }
 
 /** Exported so the flow spine resolves consumer identity the same way signals do. */
-export function detectConsumer(cwd) {
+export function detectConsumer(cwd: string): ConsumerIdentity {
   try {
     const registryPath = join(CLADE_ROOT, 'registry', 'consumers.json')
     if (!existsSync(registryPath)) return { consumer_id: 'unknown', repo_id: 'unknown/unknown' }
-    const registry = JSON.parse(readFileSync(registryPath, 'utf8'))
+    const registry = JSON.parse(readFileSync(registryPath, 'utf8')) as ConsumerRegistry
     const gitTop = gitSafe(['rev-parse', '--show-toplevel'], cwd) || cwd
     const gitTopReal = resolve(gitTop)
     if (gitTopReal === resolve(CLADE_ROOT)) {
-      const entry = registry.consumers.find((c) => c.consumer_id === 'clade')
+      const entry = registry.consumers.find((c: ConsumerIdentity) => c.consumer_id === 'clade')
       if (entry) return entry
     }
     const originUrl = gitSafe(['config', '--get', 'remote.origin.url'], cwd)
@@ -78,7 +102,7 @@ export function detectConsumer(cwd) {
       const repoMatch = originUrl.match(/[:/]([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+?)(?:\.git)?$/)
       if (repoMatch) {
         const repoId = repoMatch[1]
-        const entry = registry.consumers.find((c) => c.repo_id === repoId)
+        const entry = registry.consumers.find((c: ConsumerIdentity) => c.repo_id === repoId)
         if (entry) return entry
       }
     }
@@ -88,15 +112,15 @@ export function detectConsumer(cwd) {
   }
 }
 
-function detectCommitSha(cwd) {
+function detectCommitSha(cwd: string): string {
   return gitSafe(['rev-parse', '--short', 'HEAD'], cwd) || 'unknown'
 }
 
-function detectBranch(cwd) {
+function detectBranch(cwd: string): string {
   return gitSafe(['rev-parse', '--abbrev-ref', 'HEAD'], cwd) || 'unknown'
 }
 
-function buildCommandFingerprint(binName, args) {
+function buildCommandFingerprint(binName: string, args: string[]): string {
   const normalized = args.map((a) => {
     if (a.includes(sep)) return redactString(a).replace(/.*\//, '*/')
     return a
@@ -104,12 +128,12 @@ function buildCommandFingerprint(binName, args) {
   return [binName, ...normalized].join(':')
 }
 
-function stripAnsi(s) {
+function stripAnsi(s: string): string {
   // eslint-disable-next-line no-control-regex
   return s.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '')
 }
 
-export function buildErrorFingerprint(stderrText, exitCode, fullText = '') {
+export function buildErrorFingerprint(stderrText: string, exitCode: number, fullText = ''): string {
   // TS 診斷優先：vue-tsc / nuxt typecheck 把錯誤印在 stdout 且行首是檔案路徑
   // （不以 error 開頭），舊邏輯永遠 fallback 到 pnpm 的通用 exit 行 → 跨 consumer
   // 各種不相干紅燈聚成同一 pattern（DIG-4f7343a79acf 根因）。只取 error code
@@ -142,9 +166,9 @@ export function buildErrorFingerprint(stderrText, exitCode, fullText = '') {
   // typecheck 經 citty 印到 stderr），把所有不同 module init error 聚成同一假 pattern
   // （DIG-4f7343a79acf 持續未收斂根因之二）。過濾後 fallback 落到更具體的 error 行。
   const ERROR_PREFIX = /^(error|fail|✖|×|FAIL|ERROR)/i
-  const isNoise = (l) =>
+  const isNoise = (l: string): boolean =>
     /^Loaded\s+vitest@/i.test(l) || /Process exited with non-zero status/i.test(l)
-  const toLines = (s) =>
+  const toLines = (s: string | null | undefined): string[] =>
     stripAnsi(s ?? '')
       .split('\n')
       .map((l) => l.trim())
@@ -158,7 +182,7 @@ export function buildErrorFingerprint(stderrText, exitCode, fullText = '') {
   return redactString(errorLine).slice(0, 200)
 }
 
-function severityFor(gateName) {
+function severityFor(gateName: string): string {
   if (gateName === 'publish' || gateName === 'propagate' || gateName === 'validate-manifests')
     return 'P1'
   if (gateName === 'pre-commit') return 'P1'
@@ -168,7 +192,7 @@ function severityFor(gateName) {
   return 'P2'
 }
 
-function classifyGate(binName, args) {
+function classifyGate(binName: string, args: string[]): string {
   if (binName === 'vp') {
     const sub = args[0] ?? ''
     if (sub === 'check') return 'vp-check'
@@ -184,7 +208,11 @@ function classifyGate(binName, args) {
   return 'other'
 }
 
-function passthroughExec(binName, shimAbsPath, preferredBin) {
+function passthroughExec(
+  binName: string,
+  shimAbsPath: string,
+  preferredBin: string | null = null,
+): void {
   const args = process.argv.slice(2)
   const realBin = findRealBinary(binName, shimAbsPath, preferredBin)
   if (!realBin) {
@@ -195,7 +223,12 @@ function passthroughExec(binName, shimAbsPath, preferredBin) {
   child.on('exit', (code, sig) => process.exit(code ?? (sig ? 128 : 0)))
 }
 
-export async function runShim({ binName, shimAbsPath, preferredBin, source = 'shim' }) {
+export async function runShim({
+  binName,
+  shimAbsPath,
+  preferredBin = null,
+  source = 'shim',
+}: ShimOptions): Promise<void> {
   if (process.env.CLADE_IMPROVEMENT_LOOP_OFF === '1') {
     passthroughExec(binName, shimAbsPath, preferredBin)
     return
@@ -208,12 +241,12 @@ export async function runShim({ binName, shimAbsPath, preferredBin, source = 'sh
   }
 
   const cwd = process.cwd()
-  const stderrChunks = []
+  const stderrChunks: Buffer[] = []
   let stderrLen = 0
   // stdout 也 bounded capture（passthrough 不影響可見輸出）— 只餵
   // buildErrorFingerprint 萃取 TS error code，原始行永不入 ledger。
   // 代價：child 的 process.stdout.isTTY 變 false（gate 命令輸出格式差異可接受）。
-  const stdoutChunks = []
+  const stdoutChunks: Buffer[] = []
   let stdoutLen = 0
 
   const child = spawn(realBin, args, { stdio: ['inherit', 'pipe', 'pipe'] })
@@ -266,8 +299,8 @@ export async function runShim({ binName, shimAbsPath, preferredBin, source = 'sh
         branch: detectBranch(cwd),
       }
       appendRecord(record)
-    } catch (e) {
-      process.stderr.write(`[clade improvement-loop] capture failed: ${e.message}\n`)
+    } catch (e: unknown) {
+      process.stderr.write(`[clade improvement-loop] capture failed: ${errorMessage(e)}\n`)
     }
   }
 

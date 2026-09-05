@@ -5,6 +5,8 @@ Edit at: $CLADE_HOME
 Local edits will be reverted by the next sync.
 -->
 
+> 歷史封存：此分冊不再由入口載入。現行工作請讀 `../../opsx/SKILL.md`；以下舊版 recipe 僅保留為 provenance。
+
 # spectra-apply — Step 6c / 6d UI phase gate 細節
 
 > 本檔是 `spectra-apply/SKILL.md` 的執行細節分冊（clade fork 加料，2026-08-02 自 SKILL.md 抽出以縮 invoke 成本）。

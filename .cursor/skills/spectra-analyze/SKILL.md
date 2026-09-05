@@ -1,17 +1,8 @@
 ---
 name: spectra-analyze
-description: "Analyze artifact consistency for a change"
-context: fork
-agent: Explore
-disallowedTools: [Edit, Write]
-license: MIT
-compatibility: Requires spectra CLI.
-effort: medium
-metadata:
-  author: spectra
-  version: "1.0"
-  generatedBy: "Spectra"
-permission_tier: read-only
+description: 'spectra-analyze 已退役；既有呼叫由此接續到 OPSX 的需求、實作、驗證與歷史入口。'
+effort: high
+permission_tier: draft
 ---
 <!--
 🔒 LOCKED — managed by clade
@@ -21,79 +12,8 @@ Local edits will be reverted by the next sync.
 -->
 
 
-> **Spectra target guard (clade fork):** Every executable Spectra command that names a change **MUST** run through `node .cursor/scripts/spectra-target-guard.ts --change "<name>" -- <spectra args...>`. Existing targets pass only with path-bearing attestation anchored to the current git root; `new change` passes only with a current-root create postcondition. `TARGET_FOREIGN`, `TARGET_UNPROVEN`, `TARGET_MISSING`, or `MUTATION_POSTCONDITION` is a hard STOP. Preserve every candidate worktree and the failed mutation scene; **NEVER** delete, move, clean, or mirror state to make the guard pass. Global `list`, `list --parked`, `search`, and `instructions --skill` calls remain raw because they do not target a change.
+# 接續 OPSX
 
+此入口保留舊名稱相容性。讀取同 plugin 的 `../opsx/SKILL.md`，依使用者原本目標接續同一 change/work；已有授權就直接執行。
 
-## Claude fork context
-
-This generated AI Agent skill runs with `context: fork`. The rules in this section take precedence over the shared `analyze` body below.
-
-When no change name is provided, run `spectra list --json`. Auto-select only when there is exactly one active change. If there are zero active changes or more than one active change, return the candidate list or empty-state message and ask the main thread to rerun `/spectra-analyze <change-name>`. Do NOT ask an interactive selection question inside the fork.
-
----
-
-Analyze artifact consistency for a change. Can be invoked directly or triggered automatically when all artifacts are complete.
-
-**Input**: Optionally specify a change name (e.g., `/spectra-analyze add-auth`). If omitted, infer from conversation context or auto-select if only one active change exists.
-
-**Prerequisites**: This skill requires the `spectra` CLI. If any `spectra` command fails with "command not found" or similar, report the error and STOP.
-
-**Steps**
-
-1. **Determine change name**
-
-   If not provided, infer from context or run `spectra list --json` to auto-select.
-
-2. **Run programmatic analysis**
-
-   ```bash
-   node .cursor/scripts/spectra-target-guard.ts --change <change-name> -- analyze <change-name> --json
-   ```
-
-   This returns structured JSON with:
-   - `dimensions`: Array of `{ dimension, status, finding_count }` for Coverage, Consistency, Ambiguity, Gaps
-   - `findings`: Array of `{ id, dimension, severity, location, summary, recommendation }`
-   - `artifacts_analyzed` / `artifacts_missing`: Which artifacts were available
-
-3. **Present results**
-
-   Format the JSON output as a readable summary:
-
-   ```
-   ## Artifact Analysis: <change-name>
-
-   | Dimension     | Status                   |
-   |---------------|--------------------------|
-   | Coverage      | <status>                 |
-   | Consistency   | <status>                 |
-   | Ambiguity     | <status>                 |
-   | Gaps          | <status>                 |
-   ```
-
-   Group findings by severity (Critical > Warning > Suggestion) with locations and recommendations.
-
-4. **Supplement with AI semantic analysis** (optional)
-
-   The programmatic analyzer catches structural issues. For deeper semantic analysis, also read the artifacts and check for:
-   - Design decisions that contradict spec requirements
-   - Tasks referencing work outside proposal scope
-   - Risks in design without corresponding spec coverage
-   - Logical inconsistencies between artifacts
-
-   Add any additional findings to the report.
-
-5. **Recommend next steps**
-   - If CRITICAL findings: "Found N issue(s) worth addressing. Want to fix these before implementing?"
-   - If only warnings/suggestions: Note them briefly, then recommend proceeding with `/spectra-apply`
-   - If clean: "Artifacts look consistent" and suggest `/spectra-apply`
-
-**Passive Trigger**
-
-When `node .cursor/scripts/spectra-target-guard.ts --change "<name>" -- status --change "<name>" --json` shows `isComplete: true`, run this analysis automatically before recommending `/spectra-apply`.
-
-**Guardrails**
-
-- Read-only: NEVER modify files
-- Do NOT prompt for change selection if it can be inferred
-- Keep output concise - this runs inline, not as a separate workflow
-- If **AskUserQuestion tool** is not available, ask the same questions as plain text and wait for the user's response
+每一個舊入口都只走 OPSX／flow 的共同 command。NEVER 啟動 Spectra binary，或直接改 tasks checkbox、touched sidecar、歷史 artifact 來宣告完成。歷史內容由 OPSX history 讀取；尚未承接的需求明示未遷移，保留原件與來源，不把封存原件當作需求完成。
