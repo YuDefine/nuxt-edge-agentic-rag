@@ -3,8 +3,25 @@
   "hooks": {
     "preToolUse": [
       {
-        "command": "node $(git rev-parse --show-toplevel)/.claude/scripts/guard-check.mjs",
+        "command": "export CLADE_RUNTIME=cursor; node ${CURSOR_PROJECT_DIR:-$(git rev-parse --show-toplevel)}/.claude/scripts/guard-check.mjs",
         "matcher": "Edit|Write"
+      }
+    ],
+    "sessionStart": [
+      {
+        "command": "export CLADE_RUNTIME=cursor; \"${CURSOR_PROJECT_DIR:-$(git rev-parse --show-toplevel)}\"/.cursor/hooks/_bootstrap-check.sh",
+        "timeout": 30
+      },
+      {
+        "command": "CLADE_RUNTIME=cursor node \"${CURSOR_PROJECT_DIR:-$(git rev-parse --show-toplevel)}/scripts/cbm-health.ts\" --hook SessionStart",
+        "timeout": 5
+      }
+    ],
+    "postToolUse": [
+      {
+        "command": "CLADE_RUNTIME=cursor node \"${CURSOR_PROJECT_DIR:-$(git rev-parse --show-toplevel)}/scripts/cbm-health.ts\" --hook PostToolUse",
+        "timeout": 5,
+        "matcher": "Shell"
       }
     ]
   }
