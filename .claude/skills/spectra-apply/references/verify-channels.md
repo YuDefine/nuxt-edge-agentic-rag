@@ -44,7 +44,7 @@ Local edits will be reverted by the next sync.
    node ~/offline/clade/vendor/scripts/pi-dispatch.ts \
      --template ~/offline/clade/vendor/snippets/pi-offload/templates/self-collect-evidence.template.md \
      --var <key>=<value> ...（依 template 變數表填：change name、dev-login route 路徑、fixture UUID、port、table 等） \
-     --label 8a-self-collect-<change> --model sol --effort low \
+     --label 8a-self-collect-<change> --model astra --effort low \
      --route routing-table \
      --workspace-access mutation \
      --tier-basis table-row --table-row spectra-8a-self-collect
@@ -152,7 +152,7 @@ Local edits will be reverted by the next sync.
       | 角色 | 範圍 | 檔位 |
       | --- | --- | --- |
       | **收集**（輸出不是 gate） | 開 known URL、poll ready_signal、拍 final-state 截圖 | **`screenshot-review` Claude subagent**（本 channel NEVER 派 Pi） |
-      | **判定（gate）** | 分析每張截圖是否匹配對應 item 要求（防止亂截圖搪塞） | **GPT-5.6-sol via Pi（effort: xhigh）** |
+      | **判定（gate）** | 分析每張截圖是否匹配對應 item 要求（防止亂截圖搪塞） | **GPT-6-astra via Pi（effort: medium）** |
 
       收集便宜跑快、判斷用最高推理力；兩者分開 dispatch 才擋得住「自己拍自己判」。
 
@@ -193,14 +193,14 @@ Local edits will be reverted by the next sync.
 
       **Screenshot Match Analysis gate**（截圖收集完成後 xhigh 分析）：
 
-      Dispatcher 收集完所有截圖後（JSON 摘要已拿到），**MUST** 對每個 `status === "PASS"` 的 item 派 **GPT-5.6-sol via Pi（effort: xhigh）** 做截圖 vs 要求匹配分析：
+      Dispatcher 收集完所有截圖後（JSON 摘要已拿到），**MUST** 對每個 `status === "PASS"` 的 item 派 **GPT-6-astra via Pi（effort: medium）** 做截圖 vs 要求匹配分析：
 
       ```bash
       node ~/offline/clade/vendor/scripts/pi-dispatch.ts \
         --brief /tmp/pi-screenshot-match-analysis-<change>-prompt.md \
         --cwd <consumer-repo-root> \
         --label screenshot-match-<change> \
-        --model sol --effort xhigh \
+        --model astra --effort medium \
         --route routing-table --tier-basis table-row --table-row screenshot-match-analysis
       ```
 
@@ -240,8 +240,8 @@ Local edits will be reverted by the next sync.
 
       **分析結果處理**：
       - **全部 MATCH** → 對每個 item 寫 `(verified-ui:)` annotation
-      - **任一 MISMATCH / UNCERTAIN** → 該 item 保留 `[ ]`，寫 `（issue: screenshot-match-analysis: <reason>）`；主線重派 `screenshot-review` Claude subagent 重拍該 item（最多 2 輪），重拍後再跑一次 GPT-5.6-sol via Pi（effort: xhigh）分析
-      - **GPT-5.6-sol via Pi（effort: xhigh）不可用 / 機械故障** → fallback 派 Sonnet 5 讀截圖檔做 visual sanity check（Sonnet 5 可讀圖、速度快），判定 MATCH 才寫 annotation
+      - **任一 MISMATCH / UNCERTAIN** → 該 item 保留 `[ ]`，寫 `（issue: screenshot-match-analysis: <reason>）`；主線重派 `screenshot-review` Claude subagent 重拍該 item（最多 2 輪），重拍後再跑一次 GPT-6-astra via Pi（effort: medium）分析
+      - **GPT-6-astra via Pi（effort: medium）不可用 / 機械故障** → fallback 派 Sonnet 5 讀截圖檔做 visual sanity check（Sonnet 5 可讀圖、速度快），判定 MATCH 才寫 annotation
 
       **NEVER** 跳過 Screenshot Match Analysis 直接寫 `(verified-ui:)` annotation — 收集與判斷分離是防搪塞的核心機制。
 

@@ -286,7 +286,7 @@ If there is no AskUserQuestion tool available, present options as plain text and
 
       stdout JSON：`{verdict: "codex-primary" | "claude-primary", phases: [...]}`。每個 `phases[]` 另帶 additive `execution`：Class C 的 `prescan` eligibility、mechanical shadow candidate 與 authoritative `effective` row；這些欄位**不**改 residency verdict。
 
-      現行 `execution.rolloutStage` 固定為 `shadow`：`mechanical.eligible=true` 只把 effective Sol implementation 記進 `shadow-luna-candidate` cohort，**NEVER** 直接授權 Luna mutation。Machine-readable marker 的唯一格式、完整 predicate 與 prescan／implementation recipe 在 Step 6b reference。
+      現行 `execution.rolloutStage` 固定為 `shadow`：`mechanical.eligible=true` 只把 effective Astra implementation 記進 `shadow-luna-candidate` cohort，**NEVER** 直接授權 Luna mutation。Machine-readable marker 的唯一格式、完整 predicate 與 prescan／implementation recipe 在 Step 6b reference。
 
    2. **MUST 立刻** record decision（決定實際 executor 後、第一個 dispatch / 第一個 Edit 之前）：
 
@@ -321,8 +321,8 @@ If there is no AskUserQuestion tool available, present options as plain text and
         → 實作完、該 phase commit / 標 done **之前**，照跑 Step 6c / 6d 檢查與 Design Review gate
         → frontend 但非 view 的工作（store / hook / API client / type / util）不在此範圍，走 C 類
       - **C. Other phase** — 上述兩類以外（schema / migration / API server / CLI / 純 backend / frontend 但非 view 的 store / hook / API client / type / util / unit test / docs）
-        → carrier 已在 Pi／`cx`：同一 carrier 直接實作，沿用 `spectra-phase-implementation` 的 Sol high 契約與 gates，**NEVER** recursive dispatch
-        → carrier 是帶 override 的 Claude runtime：派 background Pi，統一走泛用 dispatcher的 `spectra-phase-implementation` row（Sol high）
+        → carrier 已在 Pi／`cx`：同一 carrier 直接實作，沿用 `spectra-phase-implementation` 的 Astra medium 契約與 gates，**NEVER** recursive dispatch
+        → carrier 是帶 override 的 Claude runtime：派 background Pi，統一走泛用 dispatcher的 `spectra-phase-implementation` row（Astra medium）
         → Phase 粒度只切 executor boundary；model／effort／origin 由 runtime receipt 與 ledger 鎖定
         → **在 Form 3 / Form 4 下這一步由 worktree subagent 自己派**，per `agent-routing.md` § Dispatch 入口「pi MUST 由該層編排者在其自身 sandbox 內直接 Bash 派」。准入條件是**該 subagent 自跑完整 Pi Watch Protocol**（notification-only + 安全網 fallback），做不到就退回薄中介禁令。主線對這些 pi **零探針**（TD-351）
    3. **Mixed-phase fallback**（A、B 都不是純 view、又混雜 view 與非 view 工作）:
@@ -334,7 +334,7 @@ If there is no AskUserQuestion tool available, present options as plain text and
           請改跑 `/spectra-ingest <change-name>` 把 UI view tasks 與其他 tasks 切成獨立 phase 後再 `/spectra-apply`。
           ```
           **NEVER** 主線自行修改 tasks.md phase 結構 — 該交給 `/spectra-ingest`，避免 propose / apply / ingest 邊界混淆
-   4. **NEVER** dispatch Phase Dispatch（Step 6b）with `medium` effort — schema drift / cross-file refactor / enum exhaustiveness require `high` minimum。Step 8a 系列收集工作允許 `medium`
+   4. **MUST** dispatch 每一個 C 類 Phase Dispatch（Step 6b）依 `spectra-phase-implementation` 列使用 `--model astra --effort medium`；schema drift / cross-file refactor / enum exhaustiveness 同樣適用。Step 8a 系列收集工作依各自 named row 選 effort。
    5. **NEVER** dispatch task-by-task — phase-level only
 
    **C 類 phase dispatch 執行**：**每一個** C 類 phase 派工前 **MUST** 完整讀 `references/pi-phase-dispatch.md`——classifier execution 欄位、eligible Luna read-only prescan、shadow-only marker、共用 template／output schema、background Pi dispatcher invocation、Pi Watch Protocol，以及 notification 後的 **MUST checks**（commit boundary / view-layer drift double-check / scope cross-check / gate replay）。**NEVER** 憑記憶派工、退回 raw `codex exec`、自行覆寫 classifier 或跳過 post-notification checks；主線收報後 re-classify 下一個 phase。
@@ -399,7 +399,7 @@ If there is no AskUserQuestion tool available, present options as plain text and
    **Reminder: Track progress by editing checkboxes in the tasks file only. Do not use any built-in task tracker.**
 
    **Dispatch reminder**: For each phase, follow Step 6b's three-way classification:
-   - Class C（Other）→ 以泛用 dispatcher 的 `spectra-phase-implementation` row dispatch GPT-5.6-sol via Pi（effort: high）（phase granularity）
+   - Class C（Other）→ 以泛用 dispatcher 的 `spectra-phase-implementation` row dispatch GPT-6-astra via Pi（effort: medium）（phase granularity）
    - Class A（Design Review）→ 主線 Claude Opus 5（effort: xhigh）self-execute：**MUST invoke Skill tool** 跑 `/design improve` + `/impeccable audit` 完成全部 tasks（per Step 6b §6 hard rule；NEVER 停下叫 user 自己跑）
      - 這兩支是 AI Agent 內建 skill，不知道 clade Routing Table 存在。它們內文若叫起 `Agent`（含省略 `model` 而繼承主線 Opus 的形狀），照樣會被 PreToolUse:Agent gate default-deny 攔下（per [[agent-routing]] § Routing Table，TD-513）。攔下時 **MUST** 照 block message 走 dispatch／waive／fallback；Design Review 本身仍是主線自己做，**NEVER** 把它變成外派
    - Class B（UI view: component / page / view / layout / styling）→ 主線 Claude Opus 5（effort: xhigh）self-execute，永不派 pi（形狀見 Step 6b B 類）。該 phase 實作完、commit / 標 done **之前** MUST 跑 **Step 6c Refactor Invariant Check** + **Step 6d Review Rules Check**
@@ -543,7 +543,7 @@ If there is no AskUserQuestion tool available, present options as plain text and
    | 角色 | 範圍 | 檔位 |
    | --- | --- | --- |
    | **收集**（輸出不是 gate） | `[verify:e2e]` / `[verify:api]` 由主線執行；`[verify:ui]` 與 stale 重拍由具名 agent 收集截圖 | **`screenshot-review` Claude subagent**（UI）；其餘依 channel recipe |
-   | **判定（gate）** | 截圖收集完成後分析每張截圖是否匹配對應要求（防止亂截圖搪塞） | **GPT-5.6-sol via Pi（effort: xhigh）** |
+   | **判定（gate）** | 截圖收集完成後分析每張截圖是否匹配對應要求（防止亂截圖搪塞） | **GPT-6-astra via Pi（effort: medium）** |
 
    Read `tasks.md` `## 人工檢查` 找未勾 `[verify:e2e]` / `[verify:api]` / `[verify:ui]` / `[verify:<a>+<b>]` / deprecated `[verify:auto]` items。**MUST** 先處理完所有 verify channels 才進 Step 8b。
 
@@ -553,7 +553,7 @@ If there is no AskUserQuestion tool available, present options as plain text and
 
    **Pre-verify baseline check + 自接路徑**：dispatch 任何 verify channel 前 **MUST** 完整讀 `references/verify-channels.md` § Pre-verify——per-channel baseline 檢查、mis-marked item reclassify（TD-176）、以及 baseline 存在但功能性缺時的 (a)(b)(c)(d) self-collect chain（預設派背景 pi，per [[pitfall-verify-evidence-handoff-instead-of-self-collect]]）。**四層全失敗才**寫 `deferred` annotation 且 MUST 註明已嘗試 path；主線收 pi JSON evidence 後 **MUST 抽查至少一項**再寫 annotation。
 
-   **執行流程**：**MUST** 完整讀 `references/verify-channels.md` § 執行流程，逐 channel 執行——`[verify:e2e]` 主線寫 Playwright spec、`[verify:api]` 主線跑 HTTP round-trip、`[verify:ui]` 走 `screenshot-review` Claude subagent + **GPT-5.6-sol via Pi（effort: xhigh）執行 Screenshot Match Analysis gate**（收集與判斷分離）、multi-marker 依 `e2e → api → ui`、deprecated `[verify:auto]` 視為 `[verify:api+ui]`。evidence 一律走 `evidence-store.ts` 寫入（payload 進 sidecar，短 marker 貼 tasks.md）。
+   **執行流程**：**MUST** 完整讀 `references/verify-channels.md` § 執行流程，逐 channel 執行——`[verify:e2e]` 主線寫 Playwright spec、`[verify:api]` 主線跑 HTTP round-trip、`[verify:ui]` 走 `screenshot-review` Claude subagent + **GPT-6-astra via Pi（effort: medium）執行 Screenshot Match Analysis gate**（收集與判斷分離）、multi-marker 依 `e2e → api → ui`、deprecated `[verify:auto]` 視為 `[verify:api+ui]`。evidence 一律走 `evidence-store.ts` 寫入（payload 進 sidecar，短 marker 貼 tasks.md）。
 
    **反 bypass（hard rule — 2026-06-11 audit 實證）**：
 
@@ -590,13 +590,13 @@ If there is no AskUserQuestion tool available, present options as plain text and
    | 角色 | 範圍 | 檔位 |
    | --- | --- | --- |
    | **收集**（輸出不是 gate） | E.1 五維 evidence 收集 | **Grok 4.6 via Pi（effort: medium；`--model grok-xai`）** |
-   | **判定（gate）** | E.1 對收集結果做五維判定 | **GPT-5.6-sol via Pi（effort: xhigh）** |
-   | **判定（gate）** | E.2 cross-model second opinion（另起 session 獨立審） | **GPT-5.6-sol via Pi（effort: xhigh）** |
+   | **判定（gate）** | E.1 對收集結果做五維判定 | **GPT-6-astra via Pi（effort: medium）** |
+   | **判定（gate）** | E.2 cross-model second opinion（另起 session 獨立審） | **GPT-6-astra via Pi（effort: medium）** |
 
    **MUST** before Step 8b handoff 先派 **Grok 4.6 via Pi（effort: medium；`--model grok-xai --table-row spectra-prehandoff-collect`）** 跑 5-dimension 收集（template 見下）。
-   收集回來後 **MUST** 另派 **GPT-5.6-sol via Pi（effort: xhigh）** 對收集結果做 5-dimension 判定——判定是 gate，**NEVER** 與收集併在同一次 dispatch：
+   收集回來後 **MUST** 另派 **GPT-6-astra via Pi（effort: medium）** 對收集結果做 5-dimension 判定——判定是 gate，**NEVER** 與收集併在同一次 dispatch：
 
-   **E.1 + E.2 執行**：**MUST** 完整讀 `references/pre-handoff-checks.md` § Step 8a.6 執行——E.1（Grok 4.6 via Pi（effort: medium）收集 5-dimension evidence → GPT-5.6-sol via Pi（effort: xhigh）判定 → 主線寫 finding report、FAIL 補 `（issue:）` / strip 假 annotation → `pre-handoff-ledger.ts record`）與 E.2（`pi-dispatch-pre-handoff-check.ts` cross-model 獨立審；fallback Claude subagent，**NEVER** 憑記憶補、**NEVER** 跳過 cross-check 直接 handoff）。**No finding report written → NO Step 8b handoff — this is the gate**；E.1 record 由 `archive-gate.sh` Check 7 機械強制。
+   **E.1 + E.2 執行**：**MUST** 完整讀 `references/pre-handoff-checks.md` § Step 8a.6 執行——E.1（Grok 4.6 via Pi（effort: medium）收集 5-dimension evidence → GPT-6-astra via Pi（effort: medium）判定 → 主線寫 finding report、FAIL 補 `（issue:）` / strip 假 annotation → `pre-handoff-ledger.ts record`）與 E.2（`pi-dispatch-pre-handoff-check.ts` cross-model 獨立審；fallback Claude subagent，**NEVER** 憑記憶補、**NEVER** 跳過 cross-check 直接 handoff）。**No finding report written → NO Step 8b handoff — this is the gate**；E.1 record 由 `archive-gate.sh` Check 7 機械強制。
 
    **Level**：Phase 2 為 **warning / soft-gate**——E.1 + E.2 都 MUST 跑、findings MUST 寫成 `（issue:）` annotation 讓 user 在 review-gui 看到，但**不** hard-block workflow。升 hard gate 的 rollout 狀態與 soak 評估指令見 `references/pre-handoff-checks.md` § Step 8a.6 rollout 狀態。
 
@@ -608,7 +608,7 @@ If there is no AskUserQuestion tool available, present options as plain text and
 
    **觸發條件**：`## 人工檢查` 含至少一個 `[verify:ui]` item 且 `screenshots/local/<change>/` 目錄存在。否則 silent skip。
 
-   **執行流程**：**MUST** 依 `references/pre-handoff-checks.md` § Step 8a.7 執行——`audit-screenshot-staleness.ts` → LEGACY 清理 → STALE 由 `screenshot-review` Claude subagent 重拍 → GPT-5.6-sol via Pi（effort: xhigh）執行 Screenshot Match Analysis → 重跑 audit 至 `stale` 為 0（最多 2 輪）→ selective commit 更新截圖。
+   **執行流程**：**MUST** 依 `references/pre-handoff-checks.md` § Step 8a.7 執行——`audit-screenshot-staleness.ts` → LEGACY 清理 → STALE 由 `screenshot-review` Claude subagent 重拍 → GPT-6-astra via Pi（effort: medium）執行 Screenshot Match Analysis → 重跑 audit 至 `stale` 為 0（最多 2 輪）→ selective commit 更新截圖。
 
    **Skip 條件**：
    - 無 `screenshots/local/<change>/` 目錄（純 backend change）
@@ -759,8 +759,8 @@ What would you like to do?
 - **Worktree isolation — NEVER halt apply on main's WIP**: Step 0 必須自動把 user 帶進 worktree（用 commit-then-fork 或 clean fork，視 scope 而定）；無論 Step 0c 階段或 apply 進行中，**NEVER** 因 main repo 的 dirty WIP / staged / untracked / 同檔別 session WIP 中斷 apply、AskUserQuestion 要 user clean main、或建議 user 自己處理後重試。worktree 是獨立 working tree，main 的 WIP 不在 worktree 也無法影響它；同檔衝突是 merge-back 時的事，由 `/commit` + user 決策處理。唯一合法 STOP 是 unmerged conflict（wt-helper 拒絕 fork）或 helper 本身錯誤；user-decision-needed pause **NEVER**。
 - **Phase dispatch discipline**（per `agent-routing.md`）:
   - **NEVER** dispatch Design Review phase to pi — Design skill is AI Agent first-class
-  - **NEVER** dispatch UI view phase（component / page / view / layout / styling）to any runtime — Pi 任一 model 與 Claude subagent 都算。實作與品質判定（Step 6c / 6d、Design Review）都留主線 Opus（per Step 6b B 類）。Frontend 但非 view 的（store / hook / API client / type / util）仍走 sol
-  - **NEVER** dispatch **Phase Dispatch（Step 6b）** with `medium` effort — use `high` minimum。Step 8a 系列的收集工作允許 `medium`（見 Step 8a Model allocation）
+  - **NEVER** dispatch UI view phase（component / page / view / layout / styling）to any runtime — Pi 任一 model 與 Claude subagent 都算。實作與品質判定（Step 6c / 6d、Design Review）都留主線 Opus（per Step 6b B 類）。Frontend 但非 view 的（store / hook / API client / type / util）仍走 astra
+  - **MUST** dispatch 每一個 C 類 **Phase Dispatch（Step 6b）** 依 `spectra-phase-implementation` 列使用 `--model astra --effort medium`；Step 8a 系列依各自 named row（見 Step 8a Model allocation）。
   - **NEVER** dispatch task-by-task — phase granularity only
   - **NEVER** dispatch a pi phase without including the「view-layer guard」instruction in the prompt — without it, pi tends to incidentally touch `.vue` / `.tsx` files
   - **NEVER** dispatch a pi phase without including the「Plan-first」instruction in the prompt — without it, 主線只能從 `git diff` 反推 pi 意圖，cross-check 易漏「漏做的 task」與「踩到 view 層」這類 drift（per `agent-routing.md` Plan-first 條目）

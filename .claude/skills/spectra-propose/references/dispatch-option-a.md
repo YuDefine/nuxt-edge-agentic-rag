@@ -82,13 +82,13 @@ Local edits will be reverted by the next sync.
         --brief /tmp/pi-spectra-propose-<change-name>-prompt.md \
         --cwd <consumer-repo-root> \
         --label spectra-propose-<change-name> \
-        --model sol --effort max \
+        --model astra --effort medium \
         --route routing-table \
         --workspace-access mutation \
         --tier-basis table-row --table-row spectra-artifact-draft
       ```
 
-   4. **立刻**簡短回報給使用者：「已派 GPT-5.6-sol via Pi（effort: max）在背景負責 draft `/spectra-propose <change-name>`（bash job `<id>`），完成後主線會 cross-check 並補 Design Review template」
+   4. **立刻**簡短回報給使用者：「已派 GPT-6-astra via Pi（effort: medium）在背景負責 draft `/spectra-propose <change-name>`（bash job `<id>`），完成後主線會 cross-check 並補 Design Review template」
    5. 啟動 **Pi Watch Protocol**（見 `.claude/rules/agent-routing.pi-watch-protocol.md` § 監看排程 A）：background Bash 回傳 `<task-id>` 後，立刻記錄 owner / deadline（deadline 取值依 [[agent-routing]] § deadline 怎麼取），並排 1500s canonical `ASYNC_KEEPALIVE_CONTROL task=<task-id> owner=pi:spectra-propose:<change-name> deadline=<ISO>...` inert control message。控制 turn 只准 `TaskOutput(block=false)`、重排同一 inert prompt、停止 wakeup或排 lifecycle intervention；**NEVER** 放原 propose prompt、讀 output tail、執行 artifact mutation或用 180s 短輪詢。完成通知到達後才 claim task id、讀 stdout並進 Phase 0b。
 
    #### Phase 0b：主線 Cross-Check（pi 完成後**立刻**執行）
@@ -98,7 +98,7 @@ Local edits will be reverted by the next sync.
    - `0`：讀 `result`，往下走。
    - `2`：業務 fail；讀 `result` 的原因，主線決定修補或重派。
    - `3`：機械故障；讀 receipt 指向的 stderr log，依 watch protocol fallback。
-   - `4`：配額擋；本列是 sol 且是 workspace mutation，逐字採用 dispatcher payload，跳過 `sol-cursor` 交給 writable terminal carrier，**NEVER** 當成可立即重試的機械故障，**也 NEVER** 改派 Claude subagent。
+   - `4`：配額擋；本列是 astra 且是 workspace mutation，逐字採用 dispatcher payload，跳過 `sol-cursor` 交給 writable terminal carrier，**NEVER** 當成可立即重試的機械故障，**也 NEVER** 改派 Claude subagent。
 
    收到 `<task-notification> status=completed` 時**立刻**依序執行：
 

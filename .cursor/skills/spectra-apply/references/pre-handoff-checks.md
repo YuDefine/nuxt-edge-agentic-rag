@@ -42,14 +42,14 @@ The user must not be the **first** to discover trivial UX/data defects in the GU
 
    Prompt 基於 `~/offline/clade/vendor/snippets/pre-handoff-cross-check/main-self-analysis.template.md`，要求 pi 走全 **5 dimensions**（D1 task↔render / D2 evidence↔dom fab guard / D3 list↔fallback / D4 api contract boundary / D5 error tail），對每個 dimension 收集**客觀 evidence**（讀截圖、讀 DOM observation、讀 annotation、讀 git diff、讀 API response），輸出 JSON：`{"dimensions": [{"id":"D1","evidence":"...","raw_data":"..."}, ...]}` — 收集階段**不做** PASS/FAIL 判定。
 
-   **E.1 判定階段**（GPT-5.6-sol via Pi（effort: xhigh））：
+   **E.1 判定階段**（GPT-6-astra via Pi（effort: medium））：
 
    ```bash
    node ~/offline/clade/vendor/scripts/pi-dispatch.ts \
      --brief /tmp/pi-8a6-e1-judge-<change>-prompt.md \
      --cwd <consumer-repo-root> \
      --label spectra-e1-judge-<change> \
-     --model sol --effort xhigh \
+     --model astra --effort medium \
      --route routing-table --tier-basis table-row --table-row spectra-prehandoff-judge
    ```
 
@@ -70,7 +70,7 @@ The user must not be the **first** to discover trivial UX/data defects in the GU
 
       `--status fail` 當任一 dimension FAIL，否則 `pass`；`--findings-json` 列每個 FAIL 的 `{dimension, severity}`（無 FAIL 給 `[]`）。此 step append-only + fail-open，**NEVER** 因 ledger 寫入失敗而中斷 handoff。此 E.1 record 現由 `archive-gate.sh` **Check 7（Pre-handoff Verdict Presence）機械強制存在** — 缺 E.1 record → archive 被擋 exit 2（fail-open 僅限 ledger 檔尚不存在的 pre-propagation consumer）。
 
-   **Layer E.2 — pi cross-model second opinion**（clade fork addition；Phase 2）：E.1 之後 **MUST** 再派 **GPT-5.6-sol via Pi（effort: xhigh）** 對同 5 dimension 做獨立 cross-check（E.1 收集與判定分別由 Grok 4.6 與 GPT-5.6-sol 執行，E.2 再另起一個 GPT-5.6-sol session 獨立審——fresh session 防止 E.1 判定階段的 rationalization 傳染）：
+   **Layer E.2 — pi cross-model second opinion**（clade fork addition；Phase 2）：E.1 之後 **MUST** 再派 **GPT-6-astra via Pi（effort: medium）** 對同 5 dimension 做獨立 cross-check（E.1 收集與判定分別由 Grok 4.6 與 GPT-6-astra 執行，E.2 再另起一個 GPT-6-astra session 獨立審——fresh session 防止 E.1 判定階段的 rationalization 傳染）：
 
    ```bash
    node <clade-vendor>/scripts/pi-dispatch-pre-handoff-check.ts \
@@ -116,7 +116,7 @@ Step 8a verify:ui 拍完截圖後，後續步驟（seed fix、allow-empty marker
       - 從 tasks.md `## 人工檢查` 找到對應 `#N` item 的 URL + ready_signal
       - 派 `screenshot-review` Claude subagent 重拍該張截圖（本 channel NEVER 派 Pi）
       - 覆蓋原檔（mtime 自然 > last UI commit）
-      - 重拍完成後，對重拍的截圖跑 **Screenshot Match Analysis gate**（同 Step 8a § 4 的 GPT-5.6-sol via Pi（effort: xhigh）分析），確認重拍截圖匹配要求
+      - 重拍完成後，對重拍的截圖跑 **Screenshot Match Analysis gate**（同 Step 8a § 4 的 GPT-6-astra via Pi（effort: medium）分析），確認重拍截圖匹配要求
 
    4. **重跑 audit 確認 0 stale**：
 
