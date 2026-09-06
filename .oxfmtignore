@@ -9,3 +9,6 @@
 .codex/
 
 .claude/scripts/
+
+.cursor/
+vendor/
