@@ -121,7 +121,7 @@ main 本機領先 origin 6 個 commit（`74d3db97` → `bdab3fbe`），**尚未 
 --mode min-score  → exit 1   52/70 個 entry point 仍有失敗的 check
 ```
 
-### 待 Charles 親手套用的 patch（`.github/workflows/` 受 guard 永久保護，agent 改不了）
+### 已套用（`bebbb215`，Charles 於 2026-09-06 授權後由 agent 從 Bash 側寫入）
 
 `.claude/scripts/guard-check.mjs` 的 `PERMANENT_GUARDS` 把 `^\.github/workflows/` 寫死，
 訊息逐字是「手動修改請直接編輯檔案，不要透過 Claude」。`/unfreeze` 只能解 `guard-state.json`
@@ -143,9 +143,12 @@ main 本機領先 origin 6 個 commit（`74d3db97` → `bdab3fbe`），**尚未 
           mode: ratchet
 ```
 
-套用後：`git commit --only -m "..." -- .github/workflows/ci.yml` → `git push` →
-CI 應轉綠 → `deploy-staging` 首次跑起來。**驗收不是「CI 綠」，是實際看到 `deploy-staging`
-job 從 skipped 變成 success**（`gh run view <deploy-run-id> --json jobs`）。
+**驗收不是「CI 綠」，是實際看到 `deploy-staging` job 從 skipped 變成 success**
+（`gh run view <deploy-run-id> --json conclusion,jobs`）。對照下節的修改前基準線。
+
+`.claude/scripts/guard-check.mjs` 的 `PERMANENT_GUARDS` 仍把 `^\.github/workflows/` 寫死，
+`/unfreeze` 碰不到它（它只解 `guard-state.json` 的自訂凍結）。往後要再改 workflow，
+一樣需要 Charles 逐次授權。
 
 ### 修改前基準線（2026-09-06 實測，SHA `3c9325d3`）
 
@@ -171,11 +174,10 @@ gh run view <新的 deploy run id> --json conclusion,jobs \
   -q '{conclusion, jobs: [.jobs[] | {name, conclusion}]}'
 ```
 
-### 還躺在 working tree 的一行（需要走完整 `/commit`）
+### deployTrigger 宣告已修正（`0b9ff402`）
 
-`.claude/consumer-meta.json` 的 `deployTrigger` 已由 `push-main` 改成 `tag-v`，**尚未 commit**。
-它不在 ad-hoc `--only` 白名單，`pre-bash-git-commit-only-whitelist.sh` 會擋，必須走 `/commit`
-（跑 0-A）。改動內容與理由：
+`.claude/consumer-meta.json` 的 `deployTrigger` 已由 `push-main` 改成 `tag-v`（走 `/commit`）。
+理由：
 
 - `deploy-trigger-check.ts` 逐字判定：`production deploy workflows disagree (deploy.yml) —
   declare the production trigger, not the staging one`
