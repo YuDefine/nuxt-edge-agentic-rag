@@ -87,6 +87,21 @@ main 本機領先 origin 6 個 commit（`74d3db97` → `bdab3fbe`），**尚未 
   entry type: .pi/git/github.com/YuDefine/clade/`；來源 worktree `backlog-cleanup` 已移除，
   其 ignored 內容存於 `.git/clade-wt-batch/artifacts/9dc0dfe6-…-MVXCpT/ignored.tar`。
 
+## CI 紅燈：evlog map coverage gate（pre-existing，擋住 staging deploy）
+
+- **現況**：`ci.yml` 的 `Run evlog map coverage gate` step exit 1。實測（run `34037904492`，SHA `7e82f86f`）：
+  `evlog map: score 56 · 70 entry points · 0 suppressed check(s) · framework nuxt`，
+  **52/70 個 entry point 仍有失敗的 check**（`context` / `structured-errors` / `audit` / `error-handling`）。
+  最低分是 `POST /api/_dev/login [high] (25/100)`。
+- **連鎖後果**：`deploy.yml` 的 `verify-ci-gate` 要求同 SHA 的 CI success，因此 `deploy-staging`
+  自 CI 開始紅之後**一次都沒跑過**——main push 看起來有觸發 Deploy workflow，但實際只跑到 gate 就停。
+  `deploy-production` 需要 `verify-staging-gate`，所以 production 發版路徑同樣被這條擋住。
+- **不是本輪造成**：`ci.yml` 在 `69f79920` / `fa91ec11` / `a0d70fa0` / `7e82f86f` 四個 SHA 都是同一格失敗。
+- **複驗指令**（本機）：`pnpm exec evlog map --min-score <門檻>`；CI 側 `gh run view <id> --log-failed`
+  搜 `evlog map coverage gate`。
+- **接手判準**：gate 是 strict（整個 repo 每個 entry point 零失敗 check），**不是**只看本次 diff 觸及的那幾個，
+  所以要清的是 52 個既有 gap，不能靠只改動幾個檔繞過。
+
 ## Ops follow-ups
 
 - [ ] `debdfba02d89f63d2ef381983e14d2697cc80040`（build script heavy-gate semaphore）已在本地 commit；需確認 deploy trigger 宣告
