@@ -22,6 +22,7 @@
 // work layer needed the same aggregation the dossier already did). One module, so the two ends can
 // never disagree about what a ref means — NEVER add a third normalisation or a second aggregator.
 
+import { isRecord, parseJsonRecord } from '../../../lib/json-unknown.ts'
 import { spawnSync } from 'node:child_process'
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -137,7 +138,8 @@ function git(repo: string, args: string[]): string | null {
 export function cladeVersion(repo: string): string | null {
   try {
     const raw = readFileSync(join(repo, '.claude-plugin', 'marketplace.json'), 'utf8')
-    const version = (JSON.parse(raw) as { metadata?: { version?: string } }).metadata?.version
+    const metadata = parseJsonRecord(raw).metadata
+    const version = isRecord(metadata) ? metadata.version : undefined
     return typeof version === 'string' && version.length > 0 ? version : null
   } catch {
     return null
@@ -173,7 +175,20 @@ export function journalArtifacts(repo: string): Artifact[] {
   for (const file of files.toSorted()) {
     let entry: JournalEntry
     try {
-      entry = JSON.parse(readFileSync(join(dir, file), 'utf8')) as JournalEntry
+      const raw = parseJsonRecord(readFileSync(join(dir, file), 'utf8'))
+      if (raw.consumer !== undefined && typeof raw.consumer !== 'string') continue
+      if (raw.status !== undefined && typeof raw.status !== 'string') continue
+      if (
+        raw.commitSha !== undefined &&
+        raw.commitSha !== null &&
+        typeof raw.commitSha !== 'string'
+      )
+        continue
+      entry = {
+        consumer: typeof raw.consumer === 'string' ? raw.consumer : undefined,
+        status: typeof raw.status === 'string' ? raw.status : undefined,
+        commitSha: typeof raw.commitSha === 'string' ? raw.commitSha : null,
+      }
     } catch {
       continue
     }

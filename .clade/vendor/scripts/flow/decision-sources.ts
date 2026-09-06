@@ -19,6 +19,7 @@
 // Propagation constraint (same as every sibling): `vendor/scripts/flow/` is copied wholesale to
 // every consumer, so this file may import ONLY `node:*` and siblings in this directory.
 
+import { parseJsonRecord } from '../lib/json-unknown.ts'
 import { createHash } from 'node:crypto'
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
@@ -680,7 +681,7 @@ export function scanWorkLoopState(repoRoot: string): SourceItem[] {
 
   let state: Record<string, unknown>
   try {
-    state = JSON.parse(raw) as Record<string, unknown>
+    state = parseJsonRecord(raw)
   } catch {
     return []
   }

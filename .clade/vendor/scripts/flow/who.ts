@@ -19,6 +19,7 @@
  * （同 `serve.ts` 的鐵律）。唯一的寫入面是 provenance hook。
  */
 
+import { isRecord, parseJsonRecord } from '../lib/json-unknown.ts'
 import { execFileSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
@@ -121,18 +122,19 @@ export function whoWroteFromTranscripts(path: string): TranscriptWriter[] {
       if (!line.includes(needle)) continue
       let rec: Record<string, unknown>
       try {
-        rec = JSON.parse(line) as Record<string, unknown>
+        rec = parseJsonRecord(line)
       } catch {
         continue
       }
       const ts = typeof rec.timestamp === 'string' ? rec.timestamp : ''
       if (!ts) continue
-      const msg = rec.message as { content?: unknown } | undefined
+      const msg = isRecord(rec.message) ? rec.message : undefined
       const content = Array.isArray(msg?.content) ? msg.content : []
       for (const block of content) {
-        const b = block as { type?: string; name?: string; input?: unknown }
+        if (!isRecord(block)) continue
+        const b = block
         if (b.type !== 'tool_use') continue
-        const input = (b.input ?? {}) as { file_path?: unknown; command?: unknown }
+        const input = isRecord(b.input) ? b.input : {}
         let isWrite = false
         if (b.name === 'Write' || b.name === 'Edit' || b.name === 'NotebookEdit') {
           isWrite = typeof input.file_path === 'string' && input.file_path.endsWith(needle)

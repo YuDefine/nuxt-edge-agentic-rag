@@ -56,4 +56,10 @@ await runShim({
   shimAbsPath,
   preferredBin: resolve(dirname(shimAbsPath), '..', 'node_modules', '.bin', 'vp'),
   source: 'shim',
+  // check includes type-aware analysis. Help/version remain immediate even
+  // when every heavy slot is occupied; nested package gates retain their slot.
+  heavyGate: ['test:file', 'test:unit', 'lint', 'format:check'].includes(process.env.npm_lifecycle_event)
+    || process.argv.slice(2).some((arg) => ['--help', '-h', '--version', '-V'].includes(arg))
+    ? undefined
+    : { check: 'typecheck', build: 'build', test: 'test' }[process.argv[2]],
 })
