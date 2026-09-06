@@ -81,3 +81,11 @@ jobs:
         uses: ./.github/actions/evlog-map-gate
         with:
           base-ref: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || 'origin/main' }}
+          # mode 必須明寫。這個 repo 的 gate 是 ratchet：committed 的
+          # evlog.map.json（score 56）是不可倒退的地板，本次 diff 觸及的
+          # entry point 必須滿分。省略 mode 會繼承 action 的預設值，而那個
+          # 預設值會隨上游改動而變 —— 這裡就發生過一次（clade 448a4412d
+          # 於 2026-08-02 把預設從 ratchet 翻成 strict），56 分的 repo 因此
+          # 自 2026-07-31 起 CI 全紅、staging 一次都沒部署過。
+          # 爬到 100 分之前，模式由本檔宣告，不由預設值決定。見 TD-073。
+          mode: ratchet
