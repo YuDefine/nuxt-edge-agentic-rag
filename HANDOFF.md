@@ -174,6 +174,24 @@ gh run view <新的 deploy run id> --json conclusion,jobs \
   -q '{conclusion, jobs: [.jobs[] | {name, conclusion}]}'
 ```
 
+### 驗收結果（2026-09-06，SHA `9ac3ca3b`）—— 已部署
+
+| 量測 | 修改前（`3c9325d3`） | 修改後（`9ac3ca3b`） |
+| --- | --- | --- |
+| CI run | `34039555084` `failure` | [`34040483314`](https://github.com/YuDefine/nuxt-edge-agentic-rag/actions/runs/34040483314) **`success`**（零失敗 step） |
+| Deploy run | `34039555085` `failure` | [`34040483354`](https://github.com/YuDefine/nuxt-edge-agentic-rag/actions/runs/34040483354) **`success`** |
+| `verify-ci-gate` | `failure` | **`success`** |
+| **`deploy-staging`** | **`skipped`** | **`success`** |
+| `smoke-test-staging` | `skipped` | **`success`** |
+| `deploy-docs-staging` | `skipped` | **`success`** |
+| `deploy-production` | `skipped` | `skipped`（正確：它要 tag `v*`，本輪未建） |
+
+**staging 自 2026-07-31 起首次實際部署，smoke test 通過。** CI 在 main 上先前連續 60 次
+失敗的紀錄到此中斷。
+
+爬回 strict 仍由 **TD-073** 追（score 56 → 100，6 種缺漏共 52 處）。ratchet 地板已釘在 56，
+只進不退。
+
 ### deployTrigger 宣告已修正（`0b9ff402`）
 
 `.claude/consumer-meta.json` 的 `deployTrigger` 已由 `push-main` 改成 `tag-v`（走 `/commit`）。
