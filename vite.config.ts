@@ -1,5 +1,5 @@
 import { defineConfig } from 'vite-plus'
-import { fmtBase, lintBase } from './vendor/oxc-shared/preset.mts'
+import { fmtBase, lintBase } from './vendor/oxc-shared/preset.ts'
 
 export default defineConfig({
   test: {
