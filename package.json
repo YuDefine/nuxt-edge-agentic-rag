@@ -51,7 +51,7 @@
     "spectra:release": "node scripts/spectra-advanced/release-work.mts",
     "spectra:roadmap": "node scripts/spectra-advanced/roadmap-sync.mts",
     "spectra:upgrade-design-review": "node scripts/spectra-advanced/upgrade-design-review.mts",
-    "tag": "git tag v$(node -p \"require('./package.json').version\") && git push origin --tags",
+    "tag": "git tag v$(node -p \"require('./package.json').version\")",
     "test": ".clade/bin/clade-gate run test -- vp test run --config ./vitest.config.ts",
     "test:acceptance": "vp test run --config ./vitest.config.ts test/unit/acceptance-*.test.ts",
     "test:contracts": "vp test run --config ./vitest.config.ts test/unit/mcp-*.test.ts test/integration/mcp-routes.test.ts",
