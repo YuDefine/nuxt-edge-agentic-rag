@@ -28,6 +28,8 @@
 | TD-069 | T3 evlog 落地 production 缺 D1 evlog_events migration（drain 在 prod 是 dead-write）                                                                                                                                                                                 | high — T3 evlog 在 production 形同無作用，所有 wide event drain 都會 silently fail | open        | 2026-05-10 — clade HANDOFF §2.4 dev smoke 跑 wrangler d1 execute agentic-rag-db --remote --command "SELECT count(*) FROM evlog_events" 回 no such table: evlog_events: SQLITE_ERROR [code: 7500] | —     |
 | TD-070 | `rag-query-rewriting` 人工檢查對齊新 manual-review 規範（補 `[discuss]` marker + verify channel + Pre-Review Data Readiness）                                                                                                                                 | mid      | open        | 2026-05-12 clade v1.3.6 manual-review.md 新規散播                | —     |
 | TD-072 | clade propagate 的 `push-withheld` 無人接手 → 本地 clade bump 靜默累積（v1.12.12–v1.12.15 共 4 版、最舊 26 小時未推） | mid | open (clade residual) | 2026-09-04 clade 主線 w7:pC7 於 v1.12.15 propagate 後量到並派工排查 | — |
+| TD-073 | evlog map 覆蓋率停在 56/100，52/70 個 entry point 仍有失敗 check；gate 因此只能跑 ratchet，回不到 strict | mid | open | 2026-09-06 追查 staging 自 CI 轉紅後從未部署時量到 | — |
+| TD-074 | `.claude/consumer-meta.json` 的 `database` 區塊不符 clade schema（缺 `hosted`、`previewEnvCapability` 為 null） | low | open | 2026-09-06 改 `deploy.deployTrigger` 時順帶驗 schema 揭露（HEAD 即已違規） | — |
 
 ---
 
@@ -745,3 +747,103 @@ clade `propagate.ts` 的 `shouldPush()` 契約：branch 上存在**任一** prop
 本輪 push 為純 fast-forward，不動 working tree / index。
 
 Acceptance 第二條屬 clade 中央倉，留 open 待 clade 主線處理。
+
+---
+
+## TD-073 — evlog map 覆蓋率 56/100，52/70 個 entry point 有失敗 check
+
+**Status**: open
+**Priority**: mid
+**Discovered**: 2026-09-06 — 追查「staging 自 CI 轉紅後一次都沒部署過」時量到
+**Location**: `server/api/**`、`server/middleware/00-evlog-actor.ts`、`server/tasks/retention-cleanup.ts`、`app/pages/admin/documents/upload.vue`
+
+### Problem
+
+`evlog map` 實測 score **56**、70 個 entry point、其中 **52 個**至少有一項 check 失敗、0 個 suppressed。
+
+失敗依 check 分類（同一個 entry point 可命中多項）：
+
+| check | 意思 | 命中數 |
+| --- | --- | ---: |
+| `structured-errors` | `createError()` 缺 `why` / `fix` | 28 |
+| `context` | handler 內沒有 `log.set()` 累積 request context | 19 |
+| `audit` | 敏感路徑有 logger 與 context 但沒有 `log.audit()` | 12 |
+| `wide-event` | handler 對 wide event 零貢獻，只有 method / path / status | 7 |
+| `error-handling` | catch 吞掉 error，未記錄也未重拋 | 3 |
+| `page-error-handling` | `useFetch()` 沒接 error | 1 |
+
+最低分群：`server/api/auth/mcp/{authorize.get,authorize.post,chatgpt-client-metadata.get,register.post,token.post}.ts`
+與 `server/api/auth/passkey/verify-authentication.post.ts` —— 6 支全 0 分，四項 check 全滅。
+次低是 `server/api/_dev/login.post.ts`（25 分）。
+
+這不是同一種缺漏重複 52 次，是 6 種不同缺漏。其中 MCP auth 那 6 支是完全未插樁的暗區，
+且同時缺 `audit` —— 它們是 OAuth 授權端點，沒有稽核軌跡。
+
+### 為什麼現在只能跑 ratchet
+
+`ci.yml` 的 gate 在 2026-07-31（`9b7fffe2`，commit 標題逐字寫「導入 evlog map 覆蓋率
+**ratchet** gate」）落地，同時 commit 了一份 score 56 的 `evlog.map.json` 當地板 ——
+baseline 這個檔只在 ratchet 模式下有意義。
+
+2026-08-02 clade 把 action 預設從 ratchet 翻成 strict（clade `448a4412d`），
+下一次 propagate 靜默把本 repo 的 gate 換成 strict。56 分的 repo 對上 strict
+（全 repo 每個 entry point 零失敗）= 結構性不可達，CI 自此 **60/60 全紅**，
+`deploy-staging` 一次都沒跑過。
+
+修法是讓 `ci.yml` 明寫 `mode: ratchet`，不繼承會翻轉的上游預設。本 TD 追的是另一半：
+把 56 爬到 100，讓 gate 有資格回到 strict。
+
+### Fix approach
+
+分批，每批一個 check 類別，由高風險往低走：
+
+1. `wide-event` + `audit`（MCP auth 6 支 + passkey 1 支）—— 授權端點無稽核，風險最高
+2. `audit` 其餘（admin mcp-tokens、auth account delete / credentials 等 12 處）
+3. `structured-errors`（28 處補 `why` / `fix`）
+4. `context`（19 處補 `log.set()`）
+5. `error-handling`（3 處）+ `page-error-handling`（1 處）
+
+每批落地後跑一次 `evlog map` 並把新分數 commit 回 `evlog.map.json`，ratchet 地板隨之抬高。
+
+### Acceptance
+
+自驗（baseline 2026-09-06 實測：score 56、52/70 失敗、0 suppressed）：
+
+```bash
+node .github/actions/evlog-map-gate/gate.ts \
+  --baseline evlog.map.json --changed-files /dev/null --cwd . --mode ratchet
+```
+
+- [ ] 每批落地後上列指令 exit 0，且 score 嚴格高於前一批（ratchet 只進不退）
+- [ ] score 達 100 且失敗 entry point 為 0
+- [ ] `ci.yml` 的 `mode` 改回 `strict`，同 SHA 的 CI run 綠燈
+
+**NEVER** 用 `disable` 註解豁免 check 來抬分 —— gate 對 suppressed > 0 直接 fail，
+且那會讓分數變成洗出來的。
+
+---
+
+## TD-074 — `.claude/consumer-meta.json` 的 `database` 區塊不符 clade schema
+
+**Status**: open
+**Priority**: low
+**Discovered**: 2026-09-06 — 改 `deploy.deployTrigger` 時對照 `registry/consumer-meta.schema.json` 驗證揭露；**HEAD 即已違規**，非本次改動造成
+**Location**: `.claude/consumer-meta.json` 的 `database` 區塊
+
+### Problem
+
+以 `registry/consumer-meta.schema.json` 驗當前檔（`deploy` 區塊已通過），`database` 仍有 3 項：
+
+- 缺 required 欄位 `hosted`（enum：`cloud` / `self-host` / `local` / `none`）
+- `previewEnvCapability` 為 `null`，schema 要求 string 且在 enum 內
+
+本 repo 是 D1（`kind: "d1"`），`hosted` 的正確值需依實際情形判定（Cloudflare 託管 → `cloud`；
+本機 miniflare 開發 → 另議），**不要憑猜填**。
+
+### Acceptance
+
+```bash
+python3 -c "import json,jsonschema;jsonschema.validate(json.load(open('.claude/consumer-meta.json')),json.load(open('$HOME/offline/clade/registry/consumer-meta.schema.json')));print('OK')"
+```
+
+- [ ] 上列指令印出 `OK`（baseline 2026-09-06：3 個 error，全在 `database`）
