@@ -34,12 +34,13 @@ export default defineEventHandler((event) => {
   const userId = session?.user?.id
   if (!userId) return
 
-  try {
-    const log = useLogger(event)
-    log.set({ actor: { id: userId } })
-  } catch {
-    // useLogger throws when called outside the evlog request scope (e.g.
-    // routes filtered out via nuxt.config.evlog.include). Silent skip —
-    // this is the wide net, not the authoritative gate.
-  }
+  // `useLogger`'s only throw condition is literally `if (!event.context.log)`,
+  // and the evlog Nitro plugin attaches that on the `request` hook for every
+  // request — so guarding on it is the same test without the throw. The
+  // previous `catch {}` swallowed the signal; a `catch` that merely logged
+  // would have been an alarm that can never fire, which is decoration.
+  if (!(event.context as { log?: unknown }).log) return
+
+  const log = useLogger(event)
+  log.set({ actor: { id: userId } })
 })

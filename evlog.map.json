@@ -1,9 +1,9 @@
 {
   "version": 1,
-  "generatedAt": "2026-07-30T23:27:10.851Z",
+  "generatedAt": "2026-09-06T17:13:58.568Z",
   "framework": "nuxt",
   "projectName": "nuxt-edge-agentic-rag",
-  "score": 56,
+  "score": 58,
   "routes": [
     {
       "framework": "nuxt",
@@ -23,20 +23,14 @@
         "audit": {
           "status": "n/a"
         },
+        "error-handling": {
+          "status": "n/a"
+        },
         "wide-event": {
           "status": "pass"
         },
         "context": {
           "status": "pass"
-        },
-        "error-handling": {
-          "status": "fail",
-          "message": "empty catch block swallows errors",
-          "evidence": {
-            "file": "server/middleware/00-evlog-actor.ts",
-            "line": 40,
-            "snippet": "} catch {"
-          }
         }
       },
       "suggestions": {},
@@ -44,7 +38,7 @@
         "level": "none",
         "reasons": []
       },
-      "score": 85
+      "score": 100
     },
     {
       "framework": "nuxt",
@@ -216,12 +210,7 @@
       "id": "f6cc3655c63a",
       "checks": {
         "page-error-handling": {
-          "status": "fail",
-          "message": "useFetch() without error handling — the page breaks when it fails",
-          "evidence": {
-            "file": "app/pages/admin/documents/upload.vue",
-            "line": 27
-          }
+          "status": "pass"
         }
       },
       "suggestions": {},
@@ -229,7 +218,7 @@
         "level": "none",
         "reasons": []
       },
-      "score": 80
+      "score": 100
     },
     {
       "framework": "nuxt",
@@ -327,7 +316,9 @@
       "suggestions": {},
       "sensitivity": {
         "level": "high",
-        "reasons": ["auth: path says \"token\""]
+        "reasons": [
+          "auth: path says \"token\""
+        ]
       },
       "score": 100
     },
@@ -450,7 +441,10 @@
       "suggestions": {},
       "sensitivity": {
         "level": "high",
-        "reasons": ["auth: path says \"login\"", "pii: write operation with sensitive fields"]
+        "reasons": [
+          "auth: path says \"login\"",
+          "pii: write operation with sensitive fields"
+        ]
       },
       "score": 25
     },
@@ -1013,7 +1007,9 @@
       "suggestions": {},
       "sensitivity": {
         "level": "high",
-        "reasons": ["auth: path says \"token\""]
+        "reasons": [
+          "auth: path says \"token\""
+        ]
       },
       "score": 55
     },
@@ -1059,7 +1055,9 @@
       "suggestions": {},
       "sensitivity": {
         "level": "high",
-        "reasons": ["auth: path says \"token\""]
+        "reasons": [
+          "auth: path says \"token\""
+        ]
       },
       "score": 55
     },
@@ -1111,7 +1109,9 @@
       "suggestions": {},
       "sensitivity": {
         "level": "high",
-        "reasons": ["auth: path says \"token\""]
+        "reasons": [
+          "auth: path says \"token\""
+        ]
       },
       "score": 40
     },
@@ -1193,7 +1193,9 @@
       "suggestions": {},
       "sensitivity": {
         "level": "medium",
-        "reasons": ["pii: write operation with sensitive fields"]
+        "reasons": [
+          "pii: write operation with sensitive fields"
+        ]
       },
       "score": 80
     },
@@ -1485,7 +1487,9 @@
       "suggestions": {},
       "sensitivity": {
         "level": "high",
-        "reasons": ["auth: path says \"auth\""]
+        "reasons": [
+          "auth: path says \"auth\""
+        ]
       },
       "score": 55
     },
@@ -1531,7 +1535,9 @@
       "suggestions": {},
       "sensitivity": {
         "level": "high",
-        "reasons": ["auth: path says \"auth\""]
+        "reasons": [
+          "auth: path says \"auth\""
+        ]
       },
       "score": 55
     },
@@ -1577,7 +1583,10 @@
       "suggestions": {},
       "sensitivity": {
         "level": "high",
-        "reasons": ["auth: path says \"auth\"", "pii: write operation with sensitive fields"]
+        "reasons": [
+          "auth: path says \"auth\"",
+          "pii: write operation with sensitive fields"
+        ]
       },
       "score": 55
     },
@@ -1633,7 +1642,9 @@
       "suggestions": {},
       "sensitivity": {
         "level": "high",
-        "reasons": ["auth: path says \"auth\""]
+        "reasons": [
+          "auth: path says \"auth\""
+        ]
       },
       "score": 0
     },
@@ -1689,7 +1700,9 @@
       "suggestions": {},
       "sensitivity": {
         "level": "high",
-        "reasons": ["auth: path says \"auth\""]
+        "reasons": [
+          "auth: path says \"auth\""
+        ]
       },
       "score": 0
     },
@@ -1745,7 +1758,9 @@
       "suggestions": {},
       "sensitivity": {
         "level": "high",
-        "reasons": ["auth: path says \"auth\""]
+        "reasons": [
+          "auth: path says \"auth\""
+        ]
       },
       "score": 0
     },
@@ -1801,7 +1816,9 @@
       "suggestions": {},
       "sensitivity": {
         "level": "high",
-        "reasons": ["auth: path says \"auth\""]
+        "reasons": [
+          "auth: path says \"auth\""
+        ]
       },
       "score": 0
     },
@@ -1857,7 +1874,9 @@
       "suggestions": {},
       "sensitivity": {
         "level": "high",
-        "reasons": ["auth: path says \"auth\""]
+        "reasons": [
+          "auth: path says \"auth\""
+        ]
       },
       "score": 0
     },
@@ -1903,7 +1922,9 @@
       "suggestions": {},
       "sensitivity": {
         "level": "high",
-        "reasons": ["auth: path says \"auth\""]
+        "reasons": [
+          "auth: path says \"auth\""
+        ]
       },
       "score": 55
     },
@@ -1949,7 +1970,9 @@
       "suggestions": {},
       "sensitivity": {
         "level": "high",
-        "reasons": ["auth: path says \"auth\""]
+        "reasons": [
+          "auth: path says \"auth\""
+        ]
       },
       "score": 55
     },
@@ -2005,7 +2028,9 @@
       "suggestions": {},
       "sensitivity": {
         "level": "high",
-        "reasons": ["auth: path says \"auth\""]
+        "reasons": [
+          "auth: path says \"auth\""
+        ]
       },
       "score": 0
     },
@@ -2593,7 +2618,9 @@
       "suggestions": {},
       "sensitivity": {
         "level": "high",
-        "reasons": ["auth: path says \"auth\""]
+        "reasons": [
+          "auth: path says \"auth\""
+        ]
       },
       "score": 100
     },
@@ -2613,7 +2640,9 @@
       "suggestions": {},
       "sensitivity": {
         "level": "high",
-        "reasons": ["auth: path says \"auth\""]
+        "reasons": [
+          "auth: path says \"auth\""
+        ]
       },
       "score": 100
     },
@@ -2633,7 +2662,9 @@
       "suggestions": {},
       "sensitivity": {
         "level": "high",
-        "reasons": ["auth: path says \"auth\""]
+        "reasons": [
+          "auth: path says \"auth\""
+        ]
       },
       "score": 100
     },
@@ -2664,7 +2695,7 @@
       "path": "/tasks/retention-cleanup",
       "file": "server/tasks/retention-cleanup.ts",
       "handler": {
-        "line": 26,
+        "line": 25,
         "column": 0
       },
       "id": "08a904dba67e",
@@ -2673,20 +2704,10 @@
           "status": "n/a"
         },
         "wide-event": {
-          "status": "fail",
-          "message": "handler adds nothing to its request event — only method, path and status are recorded",
-          "evidence": {
-            "file": "server/tasks/retention-cleanup.ts",
-            "line": 26
-          }
+          "status": "pass"
         },
         "context": {
-          "status": "fail",
-          "message": "no log.set() context accumulation",
-          "evidence": {
-            "file": "server/tasks/retention-cleanup.ts",
-            "line": 26
-          }
+          "status": "pass"
         },
         "structured-errors": {
           "status": "pass"
@@ -2700,7 +2721,7 @@
         "level": "none",
         "reasons": []
       },
-      "score": 45
+      "score": 100
     }
   ]
 }

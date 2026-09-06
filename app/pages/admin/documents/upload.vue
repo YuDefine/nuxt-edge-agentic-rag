@@ -24,7 +24,12 @@
   // `immediate` / `watch: false` skips the network call when no documentId
   // query param was supplied, while keeping a consistent `{ data, status }`
   // shape so downstream computeds don't have to branch.
-  const { data: targetDocumentData, status: targetStatus } = await useFetch<{
+  const {
+    data: targetDocumentData,
+    status: targetStatus,
+    error: targetError,
+    refresh: refreshTarget,
+  } = await useFetch<{
     data: DocumentWithAllVersions
   }>(() => `/api/admin/documents/${targetDocumentId}`, {
     key: `admin-documents-upload-target-${targetDocumentId ?? 'none'}`,
@@ -34,6 +39,31 @@
 
   const isLockedLoading = computed(
     () => targetDocumentId !== null && targetStatus.value === 'pending',
+  )
+
+  // Without this branch a failed lookup fell through to the「找不到指定文件」
+  // card, so a transient network error was indistinguishable from a deleted
+  // document — and the only offered action was to go back to the list.
+  //
+  // 404 / 403 stay on that card: it already says「已被刪除，或您無權存取」,
+  // which is the accurate reading, and offering a retry button there would
+  // just invert the same confusion.
+  const targetErrorStatus = computed(() => targetError.value?.statusCode ?? null)
+
+  const targetLoadFailed = computed(
+    () =>
+      targetDocumentId !== null &&
+      targetStatus.value === 'error' &&
+      targetErrorStatus.value !== 404 &&
+      targetErrorStatus.value !== 403,
+  )
+
+  // Status code only. `err.message` on a transport failure is an untranslated
+  // browser string ("Failed to fetch"), and this page's copy is 繁中 — the
+  // localized sentence below already says what happened, so the raw string
+  // would add noise in another language rather than information.
+  const targetErrorDetail = computed(() =>
+    targetErrorStatus.value ? `HTTP ${targetErrorStatus.value}` : null,
   )
 
   const lockedDocument = computed(() => {
@@ -99,10 +129,27 @@
       </div>
     </UCard>
 
+    <UCard v-else-if="targetLoadFailed">
+      <div class="flex flex-col items-center justify-center py-12 text-center">
+        <UIcon name="i-lucide-wifi-off" class="mb-4 size-8 text-error" aria-hidden="true" />
+        <h2 class="mb-2 text-lg font-semibold text-default">載入文件資訊失敗</h2>
+        <p class="mb-6 max-w-sm text-sm text-muted">
+          無法讀取此文件的資訊{{ targetErrorDetail ? `（${targetErrorDetail}）` : '' }}，
+          可能是暫時性的連線問題。重試仍失敗時請回到列表重新選擇。
+        </p>
+        <div class="flex gap-3">
+          <UButton color="primary" icon="i-lucide-refresh-cw" @click="refreshTarget()"
+            >重試</UButton
+          >
+          <UButton color="neutral" variant="outline" to="/admin/documents">返回列表</UButton>
+        </div>
+      </div>
+    </UCard>
+
     <UCard v-else-if="targetDocumentId && !lockedDocument">
       <div class="flex flex-col items-center justify-center py-12 text-center">
         <UIcon name="i-lucide-file-x" class="mb-4 size-8 text-error" aria-hidden="true" />
-        <h3 class="mb-2 text-lg font-semibold text-default">找不到指定文件</h3>
+        <h2 class="mb-2 text-lg font-semibold text-default">找不到指定文件</h2>
         <p class="mb-6 max-w-sm text-sm text-muted">
           此文件可能已被刪除，或您無權存取。請回到列表重新選擇。
         </p>

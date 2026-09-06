@@ -70,18 +70,51 @@ Cloudflare Workers tail：
 pnpm exec wrangler tail --format=pretty --config "${WRANGLER_CONFIG:-wrangler.jsonc}"
 ```
 
-觀察每日 03:00 UTC 的 entry，應看到：
+觀察每日 03:00 UTC 的 entry。自 TD-073 起這支 task 發的是 **evlog wide event**（不再是
+consola 行），`path` 為 `/_tasks/retention-cleanup`、`method` 為 `CRON`：
 
 ```
-[info] retention cleanup completed {
-  retentionDays: 180,
-  cutoff: '<ISO>',
-  deleted: { queryLogs: X, citationRecords: Y, sourceChunkText: Z, mcpTokenMetadata: W },
-  errors: 0
+{
+  method: 'CRON',
+  path: '/_tasks/retention-cleanup',
+  retention: {
+    days: 180,
+    cutoff: '<ISO>',
+    deleted: { queryLogs: X, citationRecords: Y, sourceChunkText: Z, mcpTokenMetadata: W },
+    errorCount: 0,
+    errors: []
+  }
 }
 ```
 
-`errors: 0` 代表四 step 皆成功。
+D1 上這個 `retention` 物件落在 `evlog_events.data`（JSON），拋錯落在 `evlog_events.error` ——
+表沒有 `event` 欄，查詢請照下方欄位名。
+
+`retention.errorCount: 0` 代表四 step 皆成功。**兩種失敗形狀要分開看**：
+
+- **單一 step 失敗**（最常見）：`runRetentionCleanup` 是 fail-safe 的，失敗的 step 記進
+  `retention.errors[]`（`{ step, message }`）而其餘 step 照跑，function 正常回傳。此時 event
+  的 level 由 `log.setLevel('error')` 明確標成 `error` —— 否則一次四 step 全失敗的執行會以
+  `info` 出去、在錯誤監控上完全看不到。逐 step 的處置見 §6
+- **整支 task 拋錯**（拿不到 D1 等）：event 帶 `error` 欄位、level 為 `error`
+
+`finally` 保證兩條路徑都 emit，失敗那次同樣留得下紀錄。
+
+這個 event 帶 `_forceKeep`，不受 `nuxt.config.ts` 的 `sampling.rates.info: 50` 抽樣影響 ——
+每一次執行都會留下。因此它也查得到（不必等 tail）：
+
+```bash
+pnpm exec wrangler d1 execute "${D1_DB:-agentic-rag-db}" --remote \
+  --config "${WRANGLER_CONFIG:-wrangler.jsonc}" \
+  --command "SELECT created_at, level, error, data FROM evlog_events WHERE path = '/_tasks/retention-cleanup' ORDER BY created_at DESC LIMIT 7"
+```
+
+查不到任何 row **不等於** drain 壞掉 —— trigger 有註冊只代表排程存在，不代表那一次真的被叫起。
+先用 §4.2 的 `wrangler tail` 或 Cloudflare dashboard 的 Cron Triggers 頁確認**有沒有被 invoke**：
+
+- 有 invoke、tail 看得到 event，但 D1 查不到 → drain 沒接上。wide event 要進 D1 得走
+  `evlog:drain` hook chain，見 `server/utils/sse-child-logger.ts` 的 `runWideEventDrain`
+- 沒有 invoke → 是排程本身沒跑，回 §4.1 查 trigger 註冊與 wrangler 設定
 
 ### 4.3 檢查 D1 狀態（sanity check）
 

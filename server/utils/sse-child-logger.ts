@@ -88,7 +88,7 @@ export async function emitChildLogger(
   // 對 child 跑 enricher → drain pipeline（手動觸發 evlog hook chain）
   // agentic-rag 自家 `runStreamLogDrain` 是 nitro hook 的 wrapper；
   // 不同 consumer 可能命名不同
-  const drainPromise = runChildLogDrain(event, emitted)
+  const drainPromise = runWideEventDrain(emitted, event)
 
   // Workers per-stream flush
   const waitUntil = event.context.cloudflare?.context?.waitUntil ?? event.context.waitUntil
@@ -99,11 +99,25 @@ export async function emitChildLogger(
   }
 }
 
-// ── runChildLogDrain：手動跑 enricher / drain hook chain ──────────────────
-// 不是 evlog 公開 API；nitro 不會自動對 child wide event 跑 hooks，
-// 所以要自己呼叫 enricher / drain（與 nitro plugin 用的同一條 pipeline）
-async function runChildLogDrain(event: H3Event, emittedEvent: unknown) {
-  const nitroApp = (event.context as { nitroApp?: unknown }).nitroApp as
+// ── runWideEventDrain：手動跑 enricher / drain hook chain ─────────────────
+// 不是 evlog 公開 API；nitro 的 evlog plugin 只對 request-scope 的 wide event
+// 跑 hooks（`initLogger` 那裡刻意不帶 drain，drain 由 plugin 自己 callHook），
+// 所以任何 `createRequestLogger` 出來的獨立 event 都要自己走這條 pipeline，
+// 否則 emit 只會印到 console、進不了 NuxtHub D1 drain。
+//
+// `h3Event` 可省略：SSE / MCP child 帶得出來，cron task 沒有。
+//
+// ⚠️ 這個 `?? useNitroApp()` 是行為變更，不只是為了 cron 加的參數：nitropack
+// 只設 `event.context.nitro`，**從不設 `context.nitroApp`**，repo 也沒有任何
+// plugin 設它——所以這個函式在改之前，每一次都走下面那個 `console.warn` 直接
+// return，`chat.post.ts` 的 SSE child event 從來沒有進過 D1。加上 fallback 之後
+// 它們才真的落地（每條 chat stream 一筆 row；info 走 50% 抽樣、error forceKeep）。
+//
+// `h3Event` 目前只往下傳給 hook context，pipeline 內沒有任何一處讀它——built-in
+// enricher 讀的是 `ctx.headers`，缺了也有 guard。
+export async function runWideEventDrain(emittedEvent: unknown, h3Event?: H3Event) {
+  const nitroApp = ((h3Event?.context as { nitroApp?: unknown } | undefined)?.nitroApp ??
+    useNitroApp()) as
     | {
         hooks: {
           callHook: (name: string, ctx: unknown) => Promise<void>
@@ -113,22 +127,22 @@ async function runChildLogDrain(event: H3Event, emittedEvent: unknown) {
 
   if (!nitroApp) {
     // eslint-disable-next-line no-console
-    console.warn('[evlog] child log drain skipped — no nitroApp in event.context')
+    console.warn('[evlog] wide event drain skipped — no nitroApp available')
     return
   }
 
   try {
-    await nitroApp.hooks.callHook('evlog:enrich', { event: emittedEvent, h3Event: event })
+    await nitroApp.hooks.callHook('evlog:enrich', { event: emittedEvent, h3Event })
   } catch (error) {
     // eslint-disable-next-line no-console
-    console.error('[evlog] enrich failed (child):', error)
+    console.error('[evlog] enrich failed (standalone):', error)
   }
 
   try {
-    await nitroApp.hooks.callHook('evlog:drain', { event: emittedEvent, h3Event: event })
+    await nitroApp.hooks.callHook('evlog:drain', { event: emittedEvent, h3Event })
   } catch (error) {
     // eslint-disable-next-line no-console
-    console.error('[evlog] drain failed (child):', error)
+    console.error('[evlog] drain failed (standalone):', error)
   }
 }
 
