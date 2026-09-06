@@ -177,6 +177,35 @@ No linked worktrees.
   - Deferred at: 2026-06-10T06:15:00Z
 <!-- deferred-end:rich-document-extraction-tests:#4 -->
 
+## ⛔ 0-S UNSCANNED — Tier 3 變更未過安全掃描（2026-09-04）
+
+- **日期**：2026-09-04
+- **failure_class**：`tool-failure-no-artifacts`（Codex 訂閱配額用罄，`You've hit your usage limit … try again at Sep 7th, 2026 10:38 AM`）
+- **output_dir**：`~/.local/share/clade/security-scans/hook-2026-09-04T13-16-50-866Z`（`artifact_completeness: partial`，四份 artifact 全部 missing-or-invalid）
+- **本批命中 Tier 3 的 path**：
+  - `app/pages/auth/login.vue`
+  - `app/composables/useCurrentUserRole.ts`
+  - `test/unit/auth-login-passkey-register-transition.test.ts`
+- **處置**：user 選 `[1] 停下修工具` → 本批**一個 commit 都沒建**，commit-lock 已釋放。
+- **接手條件**：配額 2026-09-07 10:38 之後重置。重跑
+  `node ~/offline/clade/scripts/security-scan.ts path --target . --effort high --max-cost <地板+2> --path app/pages/auth/login.vue --path app/composables/useCurrentUserRole.ts`。
+  本 repo 的 preflight 地板**仍未量到**（量地板那一跑就死在配額），`Files: 0/3,432` 是唯一已知數字。
+
+### 一併卡住的未 commit WIP（36 檔，working tree 原封不動）
+
+| 群 | 內容 |
+| --- | --- |
+| TD-912 | `package.json` 的 `scripts.tag` 拿掉 `&& git push origin --tags`（本 session 唯一改動，已完成待 commit） |
+| vite-doctor 真修（2026-08-29） | `nuxt.config.ts` 移除 19 條 rule override → `doctorConfig`、`app/utils/next-frame.ts`（新）、`useClipboard` / `createUseFetch` 改寫、`docs/vite-doctor-remaining-findings.md` |
+| clade 遷移 | `CLAUDE.md` 清空、`.cursor/**` 整批刪除、`.gitattributes` / `.mcp.json` / `.oxfmtignore` |
+| 新測試 | `e2e/screenshots/*.spec.ts`（未追蹤） |
+| 本 session 加的 gitignore | `.pi/`（Pi git cache 97MB）、`openspec/changes/__replay-*`（hook replay 的絕對路徑 symlink） |
+
+- **0-C baseline（2026-09-04 實測）**：`pnpm check` **exit 1**、13 warnings 0 errors，其中多數來自未追蹤的
+  `e2e/screenshots/*.spec.ts`（`no-console`、`no-unused-vars`）。下次接手時這是要先清的那批，
+  **不是** TD-912 造成的。
+
+
 ## Notes
 
 - v0.56.7 已 deploy（CI 綠燈，run 27159609379）：移除 AutoRAG pre-search metadata filter
