@@ -147,6 +147,30 @@ main 本機領先 origin 6 個 commit（`74d3db97` → `bdab3fbe`），**尚未 
 CI 應轉綠 → `deploy-staging` 首次跑起來。**驗收不是「CI 綠」，是實際看到 `deploy-staging`
 job 從 skipped 變成 success**（`gh run view <deploy-run-id> --json jobs`）。
 
+### 修改前基準線（2026-09-06 實測，SHA `3c9325d3`）
+
+套 patch 之後拿這組數字對照，才算驗到「真的部署了」，而不是只看 CI 綠。
+
+| 量測 | 值 |
+| --- | --- |
+| CI run | [`34039555084`](https://github.com/YuDefine/nuxt-edge-agentic-rag/actions/runs/34039555084) — `failure` |
+| CI 失敗 step | **只有** `evlog map coverage gate` 一個 |
+| CI 通過 step | `Format check` / `Lint` / `Typecheck` / `Unit tests` 全綠 |
+| Deploy run | [`34039555085`](https://github.com/YuDefine/nuxt-edge-agentic-rag/actions/runs/34039555085) — `failure` |
+| `verify-ci-gate` | `failure` |
+| `deploy-staging` | **`skipped`**（連同其餘 8 個 deploy job 全 skipped） |
+
+**這組數字說明：擋住部署的只有 evlog gate 一件事，沒有第二個卡點。**
+`scripts/check-ci-gate.mjs` 是輪詢等待（有 deadline）不是單次查詢，所以 CI 一轉綠，
+`verify-ci-gate` 就會過、`deploy-staging` 隨即執行。
+
+**套 patch 後的驗收**（`deploy-staging` 從 `skipped` 變 `success` 才算數）：
+
+```bash
+gh run view <新的 deploy run id> --json conclusion,jobs \
+  -q '{conclusion, jobs: [.jobs[] | {name, conclusion}]}'
+```
+
 ### 還躺在 working tree 的一行（需要走完整 `/commit`）
 
 `.claude/consumer-meta.json` 的 `deployTrigger` 已由 `push-main` 改成 `tag-v`，**尚未 commit**。
