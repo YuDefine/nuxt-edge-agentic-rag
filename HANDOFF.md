@@ -210,6 +210,59 @@ gh run view <新的 deploy run id> --json conclusion,jobs \
 `error-handling` 3 / `page-error-handling` 1），已登記 **TD-073**，含分批修法與可跑的自驗指令。
 ratchet 是上游 action 自己文件寫明的「repos still climbing to 100」過渡模式，不是繞過。
 
+## TD-073 evlog 覆蓋率爬坡（2026-09-06 起）
+
+Batch 1 已 commit：`00-evlog-actor.ts` / `retention-cleanup.ts` / `upload.vue` 三個 entry point
+→ 各 100 分，score **56 → 58**，失敗 entry point **52 → 49**，suppressed 0。
+逐檔內容、gate 紀錄與採納／未採納的 review finding 見
+`tasks/2026-09-06-1510-staging-verify-and-evlog-climb.md`。
+
+### 剩下 49 檔的批次計畫（每批都要能獨立過 ratchet）
+
+`gate.ts` 判定 2 要求「diff 觸及的每一個 entry point 必須滿分」，所以**只能按檔切、不能按 check 切**。
+49 檔每一檔都含 `structured-errors` 失敗，因此全部卡在同一個決策上（下一節）。
+
+- **B0 前置（不觸及 entry point，gate 中性）**：20 個 `test/integration/*.ts` 的
+  `vi.mock('evlog', () => ({ useLogger }))` factory **沒有提供 `createError`** —— handler 一旦改成
+  `import { createError } from 'evlog'` 這些測試會直接 `createError is not a function`。
+  改成 `vi.mock('evlog', async (orig) => ({ ...(await orig()), useLogger: … }))`。
+  同批把 client 端 `useDocumentLifecycle.ts` / `UploadWizard.vue` / `admin/tokens/index.vue`
+  改讀 `parseError(err)`，並遷 `server/utils/` 內的 createError（非 entry point、不進 gate）
+- **B1**：只失 `structured-errors` 的 21 支，建議切 3 個 commit（admin/documents 生命週期 /
+  conversations+chat / admin 雜項）
+- **B2**：`context + structured-errors` 的 13 支
+- **B3**：cron 1 支 —— **已在 batch 1 做掉**
+
+### 未決：error API 的遷移方式（Fable 顧問已裁決為 B′，待 Charles 確認）
+
+- detector 只認 `createError({...})` **最外層**的 `why` / `fix`，巢狀在 `data:` 裡不算
+- 本 repo 的 `createError` 是 **h3** 的（`.nuxt/types/nitro-imports.d.ts` L116），168 個呼叫點
+  含 `why` / `fix` 各 0 個；h3 的 `createError` 會丟掉不認得的 key
+- evlog 的 Nitro errorHandler 已裝在本 repo（`evlog/dist/nuxt/module.mjs` L24），它對**非**
+  EvlogError 的 response body **不含 `data`** ⇒「留 h3、把 why/fix 塞進 `data`」在這個 repo
+  不會上線，那條路是洗分
+- ⇒ 正解是改用 evlog 的 `createError`（收 `status` 不是 `statusCode`），並把 repo 現在拿
+  `statusMessage` 當機器碼用的 8 個點遷到 evlog 的 `code:` 欄位
+  （`sync.post.ts:95`、`mcp-middleware.ts:205`、`link-google-for-passkey-first.ts:48`、
+  `finalize.post.ts:40`、`presign.post.ts:86`、`publish.post.ts:55`、`chat.post.ts:342`、
+  `get-document-chunk.ts:101`）。其餘 `statusMessage` 值都是 h3 本來就會補的 reason phrase
+
+### 停下來回報：21 支不該由 agent 補（Charles 的硬指令）
+
+`audit` 的 sensitivity 判定是**純路徑字串比對、不分 method**（reason 逐字 `auth: path says "auth"`）：
+
+- **判準問題**：`GET /api/auth/nickname/check`、`GET /api/auth/mcp/chatgpt-client-metadata`、
+  `GET /api/auth/me/credentials`、`GET /api/admin/mcp-tokens`、`GET /api/auth/mcp/authorize`
+  —— 唯讀、無狀態變更，補 `log.audit()` 是裝飾
+- **設計缺口**：其餘 mutation 路由（token 建立／刪除、account delete、passkey verify、
+  mcp register/token/authorize.post、`_dev/login`）確實該有 audit，但本 repo **沒有任何
+  canonical audit store**，而 locked 的 `.claude/rules/audit-pattern.md` 禁止把 `log.audit()`
+  當完成條件、其 outbox 設計是 Postgres 的（本 repo 是 D1）
+- **`gate.ts` 判定 3 禁止新增 suppressed**，所以「加 disable 註解豁免」這條路也不通
+
+⇒ 這 21 支（含 6 支同時失 `wide-event` 的 auth 路由）在 Charles 拍板前不動。
+副作用：它們若因 bugfix 被觸及，gate 會擋 —— 這是 ratchet 的已知代價。
+
 ## Ops follow-ups
 
 - [ ] `debdfba02d89f63d2ef381983e14d2697cc80040`（build script heavy-gate semaphore）已在本地 commit；需確認 deploy trigger 宣告

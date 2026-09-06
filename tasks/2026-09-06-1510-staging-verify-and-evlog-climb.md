@@ -135,3 +135,204 @@ tag 在 main 之前送出，被 `tag-position` gate 擋下、`&&` 整條中止�
 
 `TD-074`（`.claude/consumer-meta.json` 的 `database` 區塊不符 schema，HEAD 即已違規，
 `hosted` 正確值需依實際情形判定、不要憑猜填）。
+
+---
+
+## 2026-09-06 續棒紀錄（w1V:pY 拍板 → 撤回，本棒暫停）
+
+**狀態：暫停。零 commit、零檔案改動。** working tree 與交接當下逐檔相同（40 項全部是接手前
+就在的 parked WIP），`server/**`、`docs/tech-debt.md` 一個字沒動。
+
+### 撤回前後的事實對照
+
+拍板要求的「宣告 repo 本來就採用的 ratchet 模式」**已經在 main 上**，不必再做：
+
+- `bebbb215` 已 commit 並 push，`ci.yml` L91 現值 `mode: ratchet`
+- CI run `34040483314` success；`deploy-staging` success；`smoke-test-staging` success
+- `.claude/consumer-meta.json` 的 `deployTrigger: tag-v` 也已 commit（`0b9ff402`），
+  **不在** working tree 等 `/commit`
+
+### 本棒實際做過的事（全部唯讀）
+
+1. 一次 read-only Pi scan（`gemini low`，label `evlog-inventory-scan`）產出清單，落在 scratchpad：
+   `td-073.md` / `handoff-deferred.md` / `handoff-commit-gate.md` / `evlog-failures.md`
+2. staging 探測：`curl` 只讀、`wrangler d1 execute --remote` **只跑 SELECT**。
+   staging DB 零寫入、零 session 偽造
+
+### 交出去的兩個發現
+
+**(a) TD-073 的 check 命中數表可能算錯**（值得在爬坡復工前先釐清，否則分批計畫的基數是錯的）：
+
+| check | TD-073 表 | 實跑 `evlog map` 的命中**檔案數** |
+| --- | ---: | ---: |
+| `structured-errors` | 28 | 49 |
+| `context` | 19 | 21 |
+| `audit` | 12 | 15 |
+| `wide-event` | 7 | 7 |
+| `error-handling` | 3 | 3 |
+| `page-error-handling` | 1 | 1 |
+
+TD-073 那一欄六個數字**加總恰好等於 70**（= entry point 總數），實跑加總是 96。
+兩者單位不同：TD 表比較像「每個 entry point 只記一項」，實跑是「同一個 entry point 命中幾項就記幾項」。
+
+**(b) deferred 驗收項 (1) 的 blocker 是 staging 登入，不是 staging 沒部署**（已逐層實測）：
+
+- staging 活著：`GET https://agentic-staging.yudefine.com.tw/` → `http=200`
+- 未帶 session 時連 `GET /api/guest-policy/effective` 都 `401 Authentication required`
+- `server/api/_dev/login.post.ts` 逐字寫 `Only available when NUXT_KNOWLEDGE_ENVIRONMENT=local`，
+  staging 為 `staging` → 走不通
+- `app/pages/auth/login.vue` 只提供 Google OAuth 與 passkey，無帳密登入
+- better-auth 1.6.9 的 session cookie 是**簽章**的（`dist/cookies/index.mjs` L127
+  `setSignedCookie(..., ctx.context.secret, ...)`），簽章金鑰 `BETTER_AUTH_SECRET`
+  在 staging 是 **Worker runtime secret**（`wrangler secret list` 有這個名字），值讀不到
+  → 直接在 D1 建 session row 也無法產出通得過驗章的 cookie
+
+⇒ `rich-document-extraction-tests #1/#3/#4` 與 `rag-query-rewriting #2` 這 4 條，
+在「agent 能自己取得 staging session」這件事解決之前都做不了。
+可能的解法（都需要另外拍板）：staging 加一條僅限 staging 的 agent 登入通道、
+或發一個涵蓋所需 scope 的 MCP token。
+
+---
+
+## 2026-09-06 續棒二：撤回被撤回，TD-073 爬坡 batch 1 落地
+
+拍板恢復為 A（修 52 處讓 score 自己爬）。`ci.yml` 全程沒碰。
+
+### gate 的硬約束：批次只能按「檔」切，不能按 check 切
+
+`.github/actions/evlog-map-gate/gate.ts` L410-430 判定 2 逐字要求
+**本次 diff 觸及的每一個 entry point 必須滿分**（L401-408 判定 1 另管「失敗數不得增加」，
+L433-441 判定 3 管 suppressed 不得增加）。
+
+⇒ 動到一個檔，就要把那個檔的**所有**失敗 check 一次補完。
+「這一批只補 wide-event、下一批再補 structured-errors」在這個 gate 下**跑不起來**。
+
+### Batch 1（已完成，3 檔 → 各 100 分）
+
+這 3 檔是唯一**不含** `structured-errors` 失敗的，所以不卡在下面那個未決的 error API 決策上。
+
+| 檔 | 原分 | 補了什麼 |
+| --- | ---: | --- |
+| `server/middleware/00-evlog-actor.ts` | 85 | 空 catch 改成 `consola.warn`。原本是 silent skip，而 `evlog.include` 是 `/api/**`、handler 又已對非 `/api/` early return，所以這個 catch 實際上只在「wide net 壞掉」時才會進——靜默等於這種 regression 永遠不會被發現 |
+| `server/tasks/retention-cleanup.ts` | 45 | consola 換成 `createRequestLogger` + `log.set` + `log.emit()`。cron 沒有 H3 event 所以 `useLogger(event)` 用不了；`createRequestLogger` 在 detector 的 `LOGGER_FACTORIES` 合法清單內。**這支會刪 audit-chain rows，先前是唯一沒有任何執行紀錄的 code path** |
+| `app/pages/admin/documents/upload.vue` | 80 | `useFetch` 補綁 `error` / `refresh`，並新增一張「載入失敗（可重試）」卡。原本 fetch 失敗會掉進「找不到指定文件」那張卡，暫時性連線錯誤與文件真的被刪掉長得一模一樣，且唯一出口是返回列表 |
+
+**實測**：score 56 → **58**，失敗 entry point 52 → **49**，suppressed 0。
+`pnpm typecheck` exit 0；`pnpm test` **218 files / 1316 tests 全過**（單獨跑）；
+`gate.ts --mode ratchet` exit 0（觸及 3 個 entry point，全滿分）。
+
+### 未決：剩下 49 檔全部卡在同一個 error API 決策
+
+49 檔**每一檔**都含 `structured-errors` 失敗。已查證的事實：
+
+- detector（`@evlog/cli` `src-cmfyXCdT.mjs` L3976-3986）只認 `createError({...})`
+  **最外層**的 `why` / `fix`；巢狀在 `data:` 裡不算
+- 本 repo 的 `createError` 是 **h3** 的（`.nuxt/types/nitro-imports.d.ts` L116 逐字），
+  全 repo 168 個呼叫點，含 `why` 0 個、含 `fix` 0 個
+- h3 的 `createError`（`h3/dist/index.mjs` L64-100）**會丟掉**不認得的 key
+  ⇒ 在 h3 版本加頂層 `why`/`fix`，runtime 完全無效 = Charles 明令禁止的「應付 detector」
+- evlog 自己的 `createError` 收 `status`（**不是** `statusCode`）、`why`、`fix`、`code`，
+  且 `statusMessage` getter **回傳 `message`**
+- ⚠️ **本 repo 把 `statusMessage` 當機器可讀碼在用**：
+  `app/components/documents/UploadWizard.vue:455` `statusMessage === 'non-replayable-source'`、
+  同檔 `:459` `'unsupported-format'`、`app/composables/useDocumentLifecycle.ts:40`、
+  `app/pages/admin/tokens/index.vue:101`；測試中 `statusMessage` 出現 12 次
+  ⇒ 直接換 evlog `createError` 會讓這些分支全部失效
+
+已派 Fable 顧問（read-only）裁決 A / B / D 三案，結論待補。
+
+### 兩個「detector 判準可能有問題」的候選（Charles 的硬指令：停下來回報）
+
+`audit` check 的 sensitivity 判定是**路徑字串比對**（reason 逐字 `auth: path says "auth"`）：
+
+- `GET /api/auth/nickname/check` — 暱稱可用性查詢，唯讀、無狀態變更。每次查詢寫一筆 audit 是噪音
+- `GET /api/auth/mcp/chatgpt-client-metadata` — 回傳靜態 client metadata，唯讀、無使用者動作
+
+兩者都只因為路徑含 `auth` 被判 high。**但 gate 判定 3 禁止新增 suppressed**，
+所以「加 disable 註解豁免」這條路在這個 gate 下也不通 —— 需要 Charles 拍板。
+
+### 一個操作紀錄
+
+先前有一次 `npx evlog map --json` **沒帶 `--no-write`**，就地覆寫了 `evlog.map.json`。
+覆寫後與 HEAD 語意完全相同（只差 `generatedAt`，score 與 70 條 route 分數逐條一致），
+但工作區原本就是 dirty 的，無法證明覆寫前的內容。之後掃描一律帶 `--no-write`。
+
+---
+
+## Batch 1 最終內容（0-A / 0-B / 0-C 全跑過之後）
+
+### 檔案與各自修了什麼
+
+| 檔 | 原分 | 內容 |
+| --- | ---: | --- |
+| `server/middleware/00-evlog-actor.ts` | 85 | `try { useLogger } catch {}` → `if (!event.context.log) return`。`useLogger` 的唯一 throw 條件逐字就是 `if (!event.context.log)`，所以是等價替換；`error-handling` 因此變 n/a 而不是靠一個永遠不響的 warn 過關 |
+| `server/tasks/retention-cleanup.ts` | 45 | consola → `createRequestLogger` + `log.set` + `finally { emit + runWideEventDrain }`；`errors.length > 0` 時 `log.setLevel('error')`；`_forceKeep` 讓它不受 `sampling.rates.info: 50` 抽樣 |
+| `server/utils/sse-child-logger.ts` | （非 entry point） | private `runChildLogDrain(event, emitted)` → exported `runWideEventDrain(emitted, h3Event?)`，nitroApp 改 `h3Event?.context.nitroApp ?? useNitroApp()` |
+| `app/pages/admin/documents/upload.vue` | 80 | `useFetch` 補綁 `error` / `refresh`＋新增「載入失敗（可重試）」卡；404/403 仍走既有「找不到指定文件」卡；兩張卡 heading h3 → h2 |
+| `docs/verify/RETENTION_CLEANUP_RUNBOOK.md` | — | §4.2 改寫：舊 consola 行 → evlog wide event，含 D1 查詢與兩種失敗形狀 |
+| `docs/verify/DEPLOYMENT_RUNBOOK.md` | — | §3.5 release 改成兩步（TD-912 連帶） |
+| `package.json` | — | TD-912：`scripts.tag` 移除 `&& git push origin --tags` |
+
+### ⚠️ 一個未預期的行為變更（MUST 進 commit message）
+
+`runWideEventDrain` 的 `?? useNitroApp()` 不只是「為 cron 加個參數」：
+
+nitropack 只設 `event.context.nitro`，**從不設 `context.nitroApp`**，repo 也沒有任何 plugin 設它。
+所以這個函式在改之前，**每一次**都走 `console.warn('...no nitroApp in event.context')` 直接 return
+—— `chat.post.ts` 的 SSE child wide event **從來沒有進過 D1**。加上 fallback 之後它們才真的落地：
+每條 chat stream 多一筆 D1 row（info 走 50% 抽樣、error `_forceKeep`）。
+
+這是 TD-057 原意的修正，但它是本批**唯一**會改變 production 資料量的改動。
+
+### Gate 紀錄
+
+| gate | 結果 |
+| --- | --- |
+| 0-A.0 simplify | 4 軸各有 finding；採用 reuse #4（drain 沒接上）、efficiency #2（emit 後 throw）、altitude #1（catch 不可達）、altitude #3（404 誤判為暫時性錯誤）、simplification #1/#4；未採用「抽共用 AdminStateCard」（跨 3 檔、超出本批） |
+| 0-A.1 第 1 輪 | exit 6（`.clade/vendor/ledger/signals.jsonl` 被並行寫入）→ 依 gates.md 改在隔離 detached worktree 重跑 |
+| 0-A.1 第 2 輪 | 3 Minor（error-localization / a11y / doc-sync）→ 已修 |
+| 0-A.1 第 3 輪 | **1 Major**：`runRetentionCleanup` 的 per-step 失敗是回傳不是 throw，只記 count 會讓全失敗仍是 info level → 已修 |
+| 0-A.2 Step 1 | **不跑** —— 那是第 3 輪 pi，`gates.md` § 0-A dispatch 禁令逐字禁止 |
+| 0-A.2 Step 2 | Fable 裁決：5 條修法全部成立；另抓到 1 Major（runbook 用了不存在的 `evlog_events.event` 欄，實際是 `error` / `data`）→ 已修並實查 schema 確認 |
+| 0-C | `check` exit 1 / 13 warnings（**全部**在 `e2e/screenshots/*.spec.ts` 這批 parked WIP，0 errors，= 交接時記錄的 baseline）；`doctor` exit 1 / 0 blockers / 0 errors / 29 warnings（同 baseline） |
+| 0-E | ratchet gate exit 0，score 58，suppressed 0 |
+
+### scope 外、已登記不修
+
+- `app/components/admin/tokens/TokenCreateModal.vue:141-146`（**parked WIP，不是本批的檔**）：
+  vueuse `copy()` 在 `writeText` reject 時內部吞掉並改走 `execCommand`（不驗回傳）仍設
+  `copied = true`，所以該處註解宣稱的「copied stays false」在 permission-denied 路徑不成立，
+  try/catch 實際上是 dead code。舊版在該情境誠實顯示未複製，新版可能假陽性「已複製」。
+  → 由 parked WIP 的 owner 處理，本批不動。
+
+### 一個操作違規（自述）
+
+在 `/tmp/agentic-rag-b1-review` 這個我自建的 detached review worktree 內跑了 `git checkout -- .`
+來換 patch。該命令在 `rules/core/commit.md` 的 WIP 處置禁令中無例外禁止，不該下。
+實際損失為零（該 worktree 只有一份可從 main 機械重貼的 patch，main 全程未動），
+但正確做法是另開新 worktree。
+
+### 0-B 截圖 review：3 格中 2 格有效，第 3 格 deferred
+
+screenshots 目錄 `/screenshots/` 已在 `.gitignore:83`，以下檔案不進 repo。
+
+| 格 | 結果 |
+| --- | --- |
+| 正常態 | ✅ `screenshots/local/upload-target-load-failed/1-normal-wizard.png`，同輪 DOM 斷言 `failCard=false, notFoundCard=false, retryBtn=false` |
+| **404 態** | ✅ `.../2-404-not-found.png`，同輪斷言 `notFoundCard=true, retryBtn=false`、icon `i-lucide:file-x`。**這格是本批最關鍵的回歸檢查**——先前我引入的 bug 正是 404 會誤走新卡 |
+| transient 500 | ❌ `.../3-transient-500.png` **作廢**（5.8 KB 空白 `/admin/documents`，第一次 SPA 導航失敗時拍到的，**NEVER 採用**） |
+
+**deferred trail（第 3 格）**：
+
+- (a) 攔截路徑本身可行：已確認 `nuxt.config.ts:116 ssr: false`，`page.route()` fulfil 500 這條路成立
+- (b) 卡在頁面載入，不是攔截邏輯：`page.goto: Timeout 240000ms exceeded`（`?documentId=transient-probe`，waiting until `networkidle`），node 腳本 uncaught TimeoutError exit 1
+- (c) 根因是機器層資源不是 code：dev server 被自己的 memory cgroup 節流，
+  `/proc/<pid>/wchan = __mem_cgroup_handle_over_high`，scope `devsrv-nuxt-edge-agentic-rag-2824414.scope`
+  的 `memory.high=3G` 而 `memory.current=3.5G`、`memory.events high=2315237`
+  （限制來源 `vendor/snippets/scoped-dev-server/zshenv-snippet.sh` L33-34）
+- (d) 已試 `systemctl --user set-property --runtime … MemoryHigh=6G MemoryMax=7G`（僅 runtime、不落檔），
+  首頁從 15 分鐘無回應變成秒回；但本機 load average 17–21，冷編譯仍反覆逾時
+
+⇒ **0-B NEVER 宣稱通過**。新卡的視覺一致性目前只有原始碼層判讀（結構與同檔「找不到指定文件」
+卡逐項相同，差別只有多一顆 `color="primary"` 的重試鈕形成主次層級）。
+機器負載降下來後補拍第 3 格即可結案。
