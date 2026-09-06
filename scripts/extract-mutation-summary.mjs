@@ -97,7 +97,9 @@ const args = parseArgs(process.argv.slice(2))
 const report = readJson(args.in, 'Stryker 報告')
 
 if (!report.files || typeof report.files !== 'object') {
-  console.error(`[mutation-summary] ${args.in} 沒有 files 欄位——這不像 Stryker 的 json reporter 輸出。`)
+  console.error(
+    `[mutation-summary] ${args.in} 沒有 files 欄位——這不像 Stryker 的 json reporter 輸出。`,
+  )
   process.exit(1)
 }
 
@@ -141,13 +143,21 @@ writeFileSync(args.out, `${JSON.stringify(summary, null, 2)}\n`)
 const s = summary.mutation_score
 const sc = summary.mutation_score_covered
 console.log(`[mutation-summary] → ${args.out}`)
-console.log(`[mutation-summary] score=${s === null ? 'n/a（無可評分突變體）' : `${s}%`} killed=${totals.killed} survived=${totals.survived} noCoverage=${totals.noCoverage}`)
+console.log(
+  `[mutation-summary] score=${s === null ? 'n/a（無可評分突變體）' : `${s}%`} killed=${totals.killed} survived=${totals.survived} noCoverage=${totals.noCoverage}`,
+)
 
 // 兩個分數差距大 = 問題出在覆蓋範圍而非 assertion 強度，兩者的修法相反
 if (s !== null && sc !== null && sc - s >= 10) {
-  console.log(`[mutation-summary] covered-only score=${sc}%（差 ${Math.round((sc - s) * 10) / 10} 個百分點）`)
-  console.log(`[mutation-summary]    → 低分主因是 ${totals.noCoverage} 個 noCoverage，不是測試不敏感。`)
-  console.log('[mutation-summary]    要補的是「覆蓋範圍」（測試沒碰到那段 code），不是 assertion 強度。')
+  console.log(
+    `[mutation-summary] covered-only score=${sc}%（差 ${Math.round((sc - s) * 10) / 10} 個百分點）`,
+  )
+  console.log(
+    `[mutation-summary]    → 低分主因是 ${totals.noCoverage} 個 noCoverage，不是測試不敏感。`,
+  )
+  console.log(
+    '[mutation-summary]    要補的是「覆蓋範圍」（測試沒碰到那段 code），不是 assertion 強度。',
+  )
   console.log('[mutation-summary]    考慮把沒覆蓋的檔移出 mutate，並登記「該檔缺測試」。')
 }
 
@@ -156,8 +166,12 @@ if (s !== null && sc !== null && sc - s >= 10) {
 const detected = totals.killed + totals.timeout
 if (totals.timeout > 0 && totals.timeout > detected * 0.1) {
   const pct = Math.round((totals.timeout / detected) * 100)
-  console.log(`[mutation-summary] ⚠️  timeout 佔 detected 的 ${pct}% —— timeout 算進 killed，這個比例下分數會虛高。`)
-  console.log('[mutation-summary]    確認跑的當下機器沒被佔滿（NEVER 多個 repo 同時跑 Stryker），必要時重跑。')
+  console.log(
+    `[mutation-summary] ⚠️  timeout 佔 detected 的 ${pct}% —— timeout 算進 killed，這個比例下分數會虛高。`,
+  )
+  console.log(
+    '[mutation-summary]    確認跑的當下機器沒被佔滿（NEVER 多個 repo 同時跑 Stryker），必要時重跑。',
+  )
 }
 
 if (totals.survived > 0) {
@@ -168,5 +182,7 @@ if (totals.survived > 0) {
     .map(([name, b]) => `${name}(${b.survived})`)
     .join(' ')
   console.log(`[mutation-summary] 存活最多的 mutator：${worst}`)
-  console.log('[mutation-summary] EqualityOperator / ConditionalExpression 的存活體優先看——那是沒被釘住的邊界。')
+  console.log(
+    '[mutation-summary] EqualityOperator / ConditionalExpression 的存活體優先看——那是沒被釘住的邊界。',
+  )
 }
