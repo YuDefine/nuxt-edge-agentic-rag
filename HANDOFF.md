@@ -59,6 +59,34 @@
   `.gitignore` 收 `.pi/` 與 `openspec/changes/__replay-*`（`78c86266`）、`extract-mutation-summary.mjs`
   套 oxfmt（`d636e84b`）。其餘 WIP 仍原封不動等配額重置。
 
+## 已 commit 未 push（2026-09-06）
+
+main 本機領先 origin 6 個 commit（`74d3db97` → `bdab3fbe`），**尚未 push**：
+
+| commit | 內容 |
+| --- | --- |
+| `74d3db97` | 修 `vite.config.ts` 的 oxc-shared preset import（`preset.mts` 不存在，lint/format 鏈整條 UNRESOLVED_IMPORT） |
+| `dc4491d3` | `.oxfmtignore` 排除 `.cursor/` 與 `vendor/` |
+| `f583c767` | HANDOFF 登記 0-S UNSCANNED 阻塞（其內容已於 `bdab3fbe` 併進本檔 `## Commit security gate`） |
+| `78c86266` | `.gitignore` 收 `.pi/` 與 `openspec/changes/__replay-*` |
+| `d636e84b` | `extract-mutation-summary.mjs` 套 oxfmt |
+| `bdab3fbe` | backlog register 清理（本輪 batch land） |
+
+- **卡在哪**：`node scripts/deploy-trigger-check.ts` 回 `verdict=needs-approval` /
+  `status=unconfirmable` / `derived=ambiguous`，`detail=production deploy workflows disagree (deploy.yml)
+  — declare the production trigger, not the staging one`。依 commit skill Step 6-B.0，此狀態下
+  `git push origin main` 需先取得授權，**NEVER** 先推再問。
+- **根因（獨立待辦，NEVER 順手併進其他 commit）**：`.claude/consumer-meta.json` 宣告
+  `deploy.deployTrigger: "push-main"`，但 `deploy.yml` 自述 `push main → staging deploy`、
+  `push tag v* → production deploy`。宣告要改成 production 的那個觸發（`tag-v`），改完
+  `deploy-trigger-check.ts` 才會回 `confirmed`。
+- **0-A/0-C 證據**：`~/.cache/clade/fleet-backlog-drain/seal2-*`（simplify / 0-A.1 review / checks），
+  batch id `9dc0dfe6-c6fa-41c6-a8fd-164ceed78273`，landedHead `bdab3fbe`。
+- **batch cleanup 殘留**：integration worktree
+  `nuxt-edge-agentic-rag-wt/batch-9dc0dfe6-…` 保留未刪，原因 `Ignored artifact has unsupported
+  entry type: .pi/git/github.com/YuDefine/clade/`；來源 worktree `backlog-cleanup` 已移除，
+  其 ignored 內容存於 `.git/clade-wt-batch/artifacts/9dc0dfe6-…-MVXCpT/ignored.tar`。
+
 ## Ops follow-ups
 
 - [ ] `debdfba02d89f63d2ef381983e14d2697cc80040`（build script heavy-gate semaphore）已在本地 commit；需確認 deploy trigger 宣告
