@@ -10,13 +10,13 @@
 
 | ID     | Title                                                                                                                                                                                                                                                         | Priority | Status      | Discovered                                                       | Owner |
 | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ----------- | ---------------------------------------------------------------- | ----- |
-| TD-027 | MCP connector first-time authorization journey 實測待部署後驗證                                                                                                                                                                                               | mid      | open        | 2026-04-24 auth-redirect-refactor 人工檢查 7.4                   | —     |
+| TD-027 | MCP connector first-time authorization journey 實測待部署後驗證                                                                                                                                                                                               | mid      | in-progress | 2026-04-24 auth-redirect-refactor 人工檢查 7.4                   | —     |
 | TD-045 | Local dev bootstrap 連串斷點（narrow scope：`.env` AI_SEARCH_INDEX 空值 + `[nuxt-hub] DB binding not found` 間歇 500；migration 自動化已由 NuxtHub v0.10.7 接手）                                                                                             | mid      | in-progress | 2026-04-25 consolidate-conversation-history-config §7.4 人工檢查 | —     |
 | TD-054 | `add-new-conversation-entry-points` Safari private mode 實機驗證 — archive 時授權 skip，待後續本機 Safari 補上                                                                                                                                                | low      | open        | 2026-04-25 add-new-conversation-entry-points archive             | —     |
 | TD-056 | Workers AI judge 模型 `max_completion_tokens: 200` 上限被截斷 → JSON parse 失敗 → pipeline_error                                                                                                                                                              | low      | open        | 2026-04-26 v0.50.0 production 7.2 verify 抽查 query_logs         | —     |
 | TD-057 | evlog wide event lifecycle 警告 — `log.error()` 在 wide event emit 後呼叫，導致 SSE stream 真實錯誤 keys 被丟棄                                                                                                                                               | mid      | open        | 2026-04-26 production wrangler tail                              | —     |
 | TD-058 | Production `user_profiles` 6 條 orphaned rows（profile.id 不在 user.id）                                                                                                                                                                                      | low      | open        | 2026-04-26 TD-053 production 立即驗收                            | —     |
-| TD-060 | Production `agentic-rag` AutoRAG 對 seed acceptance fixture 的 retrieval_score 平均 0.32–0.44，全部低於 `directAnswerMin=0.7`，治理層 100% 走 `no_citation_refuse`                                                                                            | high     | open        | 2026-04-26 main-v0.0.54-acceptance run                           | —     |
+| TD-060 | Production `agentic-rag` AutoRAG 對 seed acceptance fixture 的 retrieval_score 平均 0.32–0.44，全部低於 `directAnswerMin=0.7`，治理層 100% 走 `no_citation_refuse`                                                                                            | high     | in-progress | 2026-04-26 main-v0.0.54-acceptance run                           | —     |
 | TD-061 | Production `query_logs` r2 重測批次 28.6%（10/35）觸發 `decision_path=pipeline_error`；同 prompt 重複查詢可能觸發 stateful failure                                                                                                                            | high     | open        | 2026-04-26 main-v0.0.54-acceptance run                           | —     |
 | TD-062 | `rag-query-rewriting` 三個 entry point 的 retrieve closure 幾乎重複（chat.post.ts / mcp/tools/ask.ts / mcp/tools/search.ts），約 28 LoC × 3 應抽 helper                                                                                                       | mid      | open        | 2026-04-26 `/commit` 0-A simplify review                         | —     |
 | TD-063 | `useRewriter: false on retry` 的 docstring 在 4 個 callback signature 重複 6-9 行同一段；應只留一份 canonical 在 `knowledge-query-rewriter.ts`                                                                                                                | low      | open        | 2026-04-26 `/commit` 0-A simplify review                         | —     |
@@ -27,8 +27,7 @@
 | TD-068 | deploy.yml 兩個 wrangler-action step 缺 secrets: list（違反 cf-workers/secrets.md rule）                                                                                                                                                                             | mid      | open        | 2026-05-09 — clade v0.5.25 新增 rules/modules/runtime/cf-workers/secrets.md 後對 5 consumer 跑 verify checklist 揭露 | —     |
 | TD-069 | T3 evlog 落地 production 缺 D1 evlog_events migration（drain 在 prod 是 dead-write）                                                                                                                                                                                 | high — T3 evlog 在 production 形同無作用，所有 wide event drain 都會 silently fail | open        | 2026-05-10 — clade HANDOFF §2.4 dev smoke 跑 wrangler d1 execute agentic-rag-db --remote --command "SELECT count(*) FROM evlog_events" 回 no such table: evlog_events: SQLITE_ERROR [code: 7500] | —     |
 | TD-070 | `rag-query-rewriting` 人工檢查對齊新 manual-review 規範（補 `[discuss]` marker + verify channel + Pre-Review Data Readiness）                                                                                                                                 | mid      | open        | 2026-05-12 clade v1.3.6 manual-review.md 新規散播                | —     |
-| TD-071 | deploy-workflow contract test 對 workflow 原文做無錨點斷言、未剝除註解 — 註解引用同一字串即恆綠 | mid | done | 2026-07-29 clade pitfall 跨 consumer 掃描 | — |
-| TD-072 | clade propagate 的 `push-withheld` 無人接手 → 本地 clade bump 靜默累積（v1.12.12–v1.12.15 共 4 版、最舊 26 小時未推） | mid | done | 2026-09-04 clade 主線 w7:pC7 於 v1.12.15 propagate 後量到並派工排查 | — |
+| TD-072 | clade propagate 的 `push-withheld` 無人接手 → 本地 clade bump 靜默累積（v1.12.12–v1.12.15 共 4 版、最舊 26 小時未推） | mid | open (clade residual) | 2026-09-04 clade 主線 w7:pC7 於 v1.12.15 propagate 後量到並派工排查 | — |
 
 ---
 
@@ -694,44 +693,9 @@ User 決定本次 session **登記不處理**（2026-05-12 對話中明示「age
 
 ---
 
-## TD-071 — deploy-workflow contract test 對 workflow 原文無錨點斷言、未剝除註解
-
-**Status**: done
-**Priority**: mid
-**Discovered**: 2026-07-29 — clade `pitfall-config-assertion-satisfied-by-own-comment` 的跨 consumer 掃描
-**Location**: `test/unit/deploy-workflow-config.test.ts`、`test/unit/deploy-workflow-passkey-env.test.ts`
-
-### Problem
-
-兩個 test 讀 `.github/workflows/*.yml` 的**原文**做字面斷言，共 26 條無錨點 `toContain` + 2 條 `not.toContain`，**0 處剝除註解**。註解為了解釋實作會逐字引用實作，因此只要被斷言的字串同時出現在註解裡，把實作刪掉斷言仍成立 —— 測試恆綠；反向的 `not.toContain` 則是註解命中造成誤報。
-
-2026-07-29 逐條掃描（比對每個被斷言字面值是否出現在目標檔註解行）**沒有找到當下已恆真的斷言**，屬潛在形態不是現行缺陷。
-
-同 repo 內的 `test/unit/ci-gate.test.ts`、`test/unit/staging-gate.test.ts` 不在此列 —— 它們對匯出的純函式（`evaluateCiGate` / `evaluateStagingGate`）跑 in-test fixture，從不讀 workflow 檔，結構上免疫，可作為本 repo 的正解範例。
-
-### Fix approach
-
-依 clade `rules/core/testing-anti-patterns.md` §「對設定檔原文的斷言，標的是行為本身」：
-
-1. 讀進 workflow 後先建行為 view（濾掉 `/^\s*#/` 的行），所有行為斷言改綁該 view；或改用 YAML parser 對節點斷言
-2. 每條斷言附一次 mutation 證明（改壞被鎖的那行、確認轉紅），在 repo 外的複本上跑
-3. 更根本的選項：比照 ci-gate / staging-gate，把判斷邏輯抽成純函式再對函式測試
-
-### Acceptance
-
-- 兩個 test 的行為斷言不再直接綁含註解的原文
-- 對其中任一條斷言做 mutation 可觀察到轉紅
-
-### Resolution（2026-07-29，commit `1896b929`）
-
-新增 `test/helpers/config-text.ts` 的 `behaviourView()`（濾掉 YAML `#` 與 JSONC `//` 整行註解），
-兩個 test 的 source 改綁該 view。Mutation 實證：把註解放進被斷言的切片內、同時刪掉 secret 注入 →
-綁原文假 PASS、綁 `behaviourView` FAIL。128 test files / 829 tests 全綠。
-
----
-
 ## TD-072 — clade propagate 的 `push-withheld` 無人接手 → 本地 clade bump 靜默累積
 
+**Status**: open (clade residual)
 **Priority**: mid
 **Discovered**: 2026-09-04 — clade 主線 w7:pC7 於 v1.12.15 propagate 後量到 `push-withheld`，回溯發現 v1.12.12–v1.12.15 連續 4 版都只 commit 在本地
 **Location**: 本 repo `main` 與 clade `scripts/propagate.ts` 的 `shouldPush()`

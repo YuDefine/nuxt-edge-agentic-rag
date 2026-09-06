@@ -1,212 +1,104 @@
 # Handoff
 
-## ✅ RESOLVED — Production chat 空回答（root cause 三重驗證 + 修法已驗，待 deploy）
-
-**症狀**（已解）：production 問「PO 和 PR 差別」→ `event: complete` 帶 `answer:""`（decision_path=direct_answer + accepted + citations 正常 + refused:false，但 `messages.content_redacted` 空）。retrieval 正常、answer 生成壞掉。
-
-### Root cause（三重驗證：binding probe 實測 + production D1 query_logs + codex docs）
-
-**answer 生成誤用 reasoning model `@cf/moonshotai/kimi-k2.5`，其 `reasoning_content`（思考）吃光 `max_completion_tokens` budget → `message.content` 變空字串。**
-
-因果鏈：
-
-1. 「PO/PR」evidence 來自多個 document → `selectAnswerModelRole`（`knowledge-answering.ts`）對多-doc 切到 `agentJudge` role
-2. `agentJudge` role → `DEFAULT_MODEL_BY_ROLE.agentJudge` = kimi-k2.5（reasoning model）
-3. kimi 回 OpenAI-style `{choices:[{message:{content, reasoning_content}}]}`，**先**輸出 reasoning_content 再輸出 content
-4. answer 的 400 token budget 被 reasoning_content 吃光 → content 空 → 空 answer
-5. judge 同源：kimi judge json_schema 在 1024 token 下 reasoning 吃光 → content=null → JSON parse throw → `pipeline_error`（影響 retrieval 0.45–0.5 邊緣 query）
-
-**實測證據**（部署 minimal standalone worker 跑真實 `env.AI.run()`，已清理）：
-
-- probe kimi short prompt（completion 295<400）content 完整；probe kimi judge 1024 token → finish_reason=length / content=null
-- production query_logs：answer run = kimi、completion_tokens=400 達上限、`messages.content_redacted` len=0 完全吻合
-- probe llama control：`{response}` shape 完美答案；llama judge json_schema 5s / `{response:object}` 正常解析
-
-### 修法（已 commit，待 deploy 驗證）
-
-**核心：`DEFAULT_MODEL_BY_ROLE.agentJudge` kimi-k2.5 → llama-3.3-70b（instruct model）** — 三害（answer 多-doc / judge / rewriter）同源於 agentJudge role 指向 reasoning model，一改同時解。
-
-- `selectAnswerModelRole` 簡化為一律 `defaultAnswer`（answer 不借用 judge role）
-- 4 處測試 model 斷言 kimi→llama + 2 個 regression 測試（文件化 `{choices}` reasoning shape + 空 content 坑）
-- 驗證：test 30 passed + typecheck EXIT=0；probe 三重驗證 llama answer + judge(json_schema) 都正常
-
-### 為何之前 9 版沒解（避免重踩）
-
-- v0.57.5 降門檻 0.7→0.5：只解鎖 direct_answer **path**，沒碰 answer **model**
-- v0.57.6 換 llama-4-scout→llama-3.3-70b：**改錯 role**（改 `defaultAnswer`，但多-doc 走 `agentJudge`=kimi）
-- v0.57.7 關 cache / v0.57.9 non-stream：與 root cause 無關（binding shape 對了，但 reasoning 仍吃光 token）
-- 一直假設「llama binding shape 不匹配」，真兇是被 role 切換選中的 kimi reasoning model
-
-### Deploy / 驗證 ✅ DONE（2026-06-09）
-
-- [x] tag v0.57.10 → CI deploy **success**（run 27199909260）
-- [x] production 驗證 **passed**：問「PO/PR 差別」→ `event: delta`（有內容）+ 完整 answer + 4 citations + refused:false。D1 確認：decision_path=direct_answer、answer model=`@cf/meta/llama-3.3-70b-instruct-fp8-fast`、modelRole=`defaultAnswer`、`messages.content_redacted` len=107（非空）、latency 7.8s（vs kimi 16-31s，快 2-4 倍）、completionTokens=87
-- demo 其他項目 ready：報告 `local/reports/archive/main-v0.0.55.{md,docx}`、`local/reports/notes/demo-cheatsheet-2026-06-10.md`、引導問題已對應知識庫
-
-### 待清理（非 blocker）
-
-- AI Gateway cache 仍關著（v0.57.7，`wrangler.jsonc` `NUXT_KNOWLEDGE_AI_GATEWAY_CACHE_ENABLED=false`）— 修好後評估重開
-- judge 已換 llama instruct；未來若要回 reasoning model 需提高 token budget（probe 證明 2048 夠，但 llama 最穩、最快 5s）
-- `refs/wt-baseline/fix-chat-empty-answer/*` rescue ref（本次 worktree）+ 既有 dangling，可 `wt-helper rescue --prune` / `git update-ref -d` 清理
-
----
+> 本檔只保留目前可接手的工作、外部 gate 與未結案 trigger。已完成的 production chat 空回答已由
+> v0.57.10 deploy 與 production evidence 結案，不在此重複歷史敘述。
 
 ## In Progress
 
-- [ ] **rag-query-rewriting** (21/27 tasks, 78%) — **TD-071 已解（v0.57.1 production deployed 2026-06-09）**，blocker 移除
-  - AI Search migration 已 live：staging retrieval_score=0.51、production HTTP 200
-  - 剩餘 6 項（不再 blocked）：3.3 / 6.1 / 6.3 / 6.4 / 6.5 / 6.6
-  - 無 active claim — 接手前 `pnpm spectra:claim -- rag-query-rewriting`
-
-- [ ] **adopt-evlog-nuxthub-ai-t3** (5/39 tasks, 13%)
-  - 早期階段，尚未大量推進；獨立可平行
+- [ ] **rag-query-rewriting** — 21/27 tasks（78%）；TD-071 已解（v0.57.1 production deployed），blocker 已移除。
+  - 剩餘 3.3、6.1、6.3、6.4、6.5、6.6；先做 staging，再做 production acceptance。
+  - 無 active claim；接手前執行 `pnpm spectra:claim -- rag-query-rewriting`。
+- [ ] **adopt-evlog-nuxthub-ai-t3** — 5/39 tasks（13%）。TD-069 的 production D1 migration 與 §7.1–7.4
+  evidence 仍未完成；`server/database/migrations/` 尚缺 `evlog_events` migration。
+- [ ] **TD-045 local dev bootstrap** — cleanroom migration auto-apply、首次 `/api/_dev/login` + `/api/chat` round-trip，
+  以及 `[nuxt-hub] DB binding not found` 間歇 500 trace 尚待驗證。
 
 ## Ready for review
 
-- [ ] ✅ dismissed: [2026-09-02] **hub.json db 軸修正：`db-schema: supabase` / `db-runtime: cf-workers` → `cf-d1` / `none`**
-  - 改了什麼：`.claude/hub.json` 兩軸改宣告；`hub:prune` 拿掉 9 份 Supabase 專用投影（database-access / storage / unused-features / mcp-remote / audit-schema / migration / rls-policy / trigger / query-optimization），新投影 `data-layer-d1.md`；project-scope plugin 換成 `hub-db-schema-cf-d1`，卸 `hub-db-schema-supabase` 與 `hub-db-runtime-cf-workers`
-  - 證據：repo 只有 `drizzle-orm` / `drizzle-kit` / `@nuxthub/core`，`wrangler.jsonc` 綁 D1，無 `@supabase/supabase-js`；`db-runtime` enum 只有 supabase-* / cf-workers（README 明寫 cf-workers = Supabase 存取）/ none，rental-scout 同為 cf-d1 + `none`；`pnpm hub:check` 綠（no drift, no orphans）
-  - 退回會怎樣：18.8 KB Supabase client 規約會在每次動 `server/**` 時被注入，而 D1 / Drizzle 的 hard rule（subquery alias、dev binding 鎖死、DROP TABLE cascade）一條都不載
-  - **需要 clade 判斷的缺口**：`db-runtime` 軸沒有 D1 / Drizzle 存取層的值，`none` 只是「不要 Supabase 規約」的替代寫法。若 clade 認為 D1 存取層值得獨立 variant（例：`cf-d1`），需要新增；若認為 `db-schema/cf-d1/data-layer-d1.md` 已涵蓋存取層，建議 `db-runtime/README.md` 補一句「D1 track 宣告 `none`」。另：rental-scout 宣告 `none` 卻仍留著 cf-workers 的 Supabase 投影（未 prune），是同型錯配
-  - 附帶：`hub.json` 的 `localHooks: post-migration-gen-types.sh` 指向的檔案不存在（`.claude/hooks/` 只有 `_bootstrap-check.sh`），本次未動，待判要不要移除
-  - 未達成的 gate：commit 0-A.1 跨模型 review 未跑（codex 池與 cursor 池同時配額耗盡，cursor 於 2026-09-16 重置；exit 4 payload 指示主線自審＋登記待補）。0-C 的 lint 紅燈全部來自另一 session 的 untracked e2e spec，test 失敗為 propagate 併行時的 nuxt hook timeout，皆與本批 json / symlink / md 無關
-  - 教訓：hub.json 的 modules 改動 MUST 在下一次 clade propagate 前 commit——propagate 的 main flow 會把 `.claude/hub.json` 與投影層 reset 到 HEAD 再 bump（本次 19:57 被 v1.12.0 propagate 還原一次，重做後才落地）
-  - 已 commit 未 push：main 本來就領先 origin 30+ commit，deploy-trigger-check 回 `status=unconfirmable`，push 由持有 main 的人統一處理
+- [ ] ✅ dismissed（2026-09-02 已判定不需再處置，保留為紀錄）: **2026-09-02 hub.json DB 軸修正** — 已改 `db-schema: cf-d1`、`db-runtime: none`，移除 Supabase 專用投影並通過
+  `pnpm hub:check`；證據是 repo 只有 Drizzle/NuxtHub D1、`wrangler.jsonc` 有 D1 binding。
+  - 待判 `db-runtime: none` 是否需要 clade 的 D1/Drizzle variant 或 README 說明。
+  - `hub.json` 的 `localHooks: post-migration-gen-types.sh` 指向不存在檔案，尚未處理。
+  - commit 的 cross-model review gate 0-A.1 尚未跑；主線 push 仍由持有 main 的 session 統一處理。
+  - **教訓**：`hub.json` 的 `modules` 改動 **MUST** 在下一次 clade propagate 之前 commit —— propagate 的 main flow 會把 `.claude/hub.json` 與投影層 reset 回 HEAD 再 bump。本次 19:57 就被 v1.12.0 的 propagate 還原過一次，重做才落地。
 
 ## Blocked / Waiting
 
-- ~~TD-071~~ **done** — v0.57.1 production deployed
-- **TD-056 / TD-061 / TD-057 behavior 驗收**（皆 open）
-  - TD-071 blocker 已移除，可開始 acceptance
+- [ ] **TD-027 MCP connector first-time authorization** — local migration 已驗；需 staging/production deploy 後，
+  Claude.ai connector → Google OAuth → 原始 authorize URL → consent → MCP tool call 的完整 6 步 evidence。
+- [ ] **TD-054 Safari private mode** — 三個新對話入口需在 Safari private window 實機跑過，確認無 toast / console error。
+- [ ] **TD-056 / TD-061 / TD-057 behavior acceptance** — judge truncation、production pipeline_error 與 wide-event lifecycle
+  仍需 production evidence；TD-061 最終驗收依賴 `rag-query-rewriting` 讓 fixture 進入 judge gate。
+- [ ] **TD-068 deploy secrets** — production/staging runtime secret inventory、GitHub secret 對照、`secrets:` list 與 staging deploy
+  evidence 尚待處理。
+- [ ] **TD-070 manual-review hygiene** — `rag-query-rewriting` 的 7 個人工檢查項需補 `[discuss]` marker 與 evidence trail。
+- [ ] **TD-072 clade push-withheld residual** —本 repo 5 個 commit 已 fast-forward；clade 側仍需對連續 withheld 產生告警或 durable follow-up。
 
-## Next Steps
+## Commit security gate
 
-1. ~~TD-071~~ **done** v0.57.1
-2. **rag-query-rewriting 6.3-6.6 acceptance**：TD-071 解鎖，可開始 staging + production acceptance
-3. **adopt-evlog-nuxthub-ai-t3**：推進 impl（獨立，可平行）
-4. **TD-056 / TD-061 / TD-057 behavior 驗收**：production 觀察 pipeline_error 比例
+- 2026-09-04 的 Tier 3 掃描為 `tool-failure-no-artifacts`，四份 artifacts 缺失或無效；本批尚未 commit。沿用使用者「停下修工具」決定，先取得完整安全掃描結果。
+- 受影響：`app/pages/auth/login.vue`、`app/composables/useCurrentUserRole.ts`、`test/unit/auth-login-passkey-register-transition.test.ts`。原掃描目錄：`~/.local/share/clade/security-scans/hook-2026-09-04T13-16-50-866Z`；掃描費用地板尚未量到，配額需當下重驗。
+- main WIP 仍含 TD-912 tag push 調整、vite-doctor 修正與 clade 遷移殘項；本輪文件清理不代表這批已通過。
+- 原 `pnpm check` baseline 為 exit 1、13 warnings、0 errors；多數 warnings 來自未追蹤 screenshot tests，接手時重跑確認。
 
-## Follow-ups（2026-08-29 session — TD-685 heavy-gate relay）
-
-- [ ] **debdfba0 已 commit 未 push** — `🧹 chore: build script 納入 heavy-gate semaphore`
-  - 卡在 Step 6-Gate：`verdict=needs-approval status=unconfirmable`
-  - `detail=production deploy workflows disagree (deploy.yml) — declare the production trigger, not the staging one`
-  - main push 會不會觸發 production deploy 推不出結論，故未 push（不是失敗，是 fail-closed）
-  - 收尾：修 `.claude/consumer-meta.json` 的 `deploy.deployTrigger` 宣告使其與 `deploy.yml` 一致，或改 workflow；宣告修正是獨立工作，NEVER 夾在別的 commit 裡
-- [ ] **既有測試紅燈：5 個 test file 在 `setupNuxt()` hook 10s timeout**（與本次改動無關，已用 stash 對照驗證 HEAD 原狀同樣紅）
-  - `test/unit/auth-return-to.spec.ts`、`auth-return-to-pending-delete.test.ts`、`chat-conversation-history.test.ts`、`chat-conversation-session.test.ts`、`create-chat-conversation-history.spec.ts`
-  - 單獨重跑仍紅 → 不是負載 flake，是 nuxt test environment setup 的真紅燈
-  - 另兩個 chart test（`debug-outcome-breakdown` / `admin-usage-timeline-chart`）在 build 併發下 5s timeout，機器閒置時重跑即綠 → 那兩個是負載 flake，不是 bug
-- [ ] **clade `scripts/audit-gate-coverage.ts` 尚無 § 3b heavy-label 覆蓋表** — TD-685 relay 的驗收標準 1 目前無從機械驗證（§ 3 只列 test / lint / typecheck，不含 build）。這條屬 clade 端，consumer 不動
-
-## Worktree & Stash Audit
-
-_Updated: 2026-06-09_
-
-### Worktrees (0)
-
-No linked worktrees.
-
-### Stashes (1)
-
-- `stash@{0}` — `rag-query-rewriting tasks.md marker-hygiene WIP` **← STALE，可 drop**
-  - 已被 2026-06-09 session 直接 edit 進 working tree 取代
-  - 收尾：`git stash drop`
-
-## Follow-ups（2026-06-08 session）
-
-- [ ] **sign-out API 回 500** — 獨立 bug，疑似 D1 相關
-- [ ] **D1 transaction pitfall 待補** — 寫進 clade `docs/pitfalls/` 跨 consumer 共享
-- [ ] **Notion「Secret」頁同步** — staging wrangler section + Environment-scoped Secrets table 舊值待更新
-
-## Deferred discuss items
-
-<!-- deferred-begin:autorag-to-ai-search-migration:#1 -->
-- **autorag-to-ai-search-migration** #1 — Production deploy authorization
-  - Awaiting signal: production tag push deploy
-  - Resume: `/spectra-archive autorag-to-ai-search-migration`
-  - Deferred at: 2026-06-09T04:35:00Z
-<!-- deferred-end:autorag-to-ai-search-migration:#1 -->
-
-<!-- deferred-begin:autorag-to-ai-search-migration:#2 -->
-- **autorag-to-ai-search-migration** #2 — Production cutover observation
-  - Awaiting signal: production deploy 完成後 D1 query_logs evidence
-  - Resume: `/spectra-archive autorag-to-ai-search-migration`
-  - Deferred at: 2026-06-09T04:35:00Z
-<!-- deferred-end:autorag-to-ai-search-migration:#2 -->
-
-<!-- deferred-begin:autorag-to-ai-search-migration:#3 -->
-- **autorag-to-ai-search-migration** #3 — rag-query-rewriting blocker release
-  - Awaiting signal: production deploy + TD-071 close
-  - Resume: `/spectra-archive autorag-to-ai-search-migration`
-  - Deferred at: 2026-06-09T04:35:00Z
-<!-- deferred-end:autorag-to-ai-search-migration:#3 -->
-
-<!-- deferred-begin:rag-query-rewriting:#2 -->
-- **rag-query-rewriting** #2 — Latency p95 增量 < 800ms
-  - Awaiting signal: staging app endpoint p95 實測（REST search total 不適用，rewriter call ~749ms 為 proxy）
-  - Resume: `/spectra-archive rag-query-rewriting`
-  - Deferred at: 2026-06-09T11:05:33Z
-<!-- deferred-end:rag-query-rewriting:#2 -->
-
-<!-- deferred-begin:rich-document-extraction-tests:#1 -->
-- **rich-document-extraction-tests** #1 — staging PDF 上傳到 chat citation evidence walkthrough
-  - Awaiting signal: staging deploy + PDF upload + sync/publish
-  - Resume: `/spectra-archive rich-document-extraction-tests`
-  - Deferred at: 2026-06-10T06:15:00Z
-<!-- deferred-end:rich-document-extraction-tests:#1 -->
-
-<!-- deferred-begin:rich-document-extraction-tests:#2 -->
-- **rich-document-extraction-tests** #2 — production PDF round-trip 授權與觀察結果
-  - Awaiting signal: production deploy 授權 + staging 先完成
-  - Resume: `/spectra-archive rich-document-extraction-tests`
-  - Deferred at: 2026-06-10T06:15:00Z
-<!-- deferred-end:rich-document-extraction-tests:#2 -->
-
-<!-- deferred-begin:rich-document-extraction-tests:#3 -->
-- **rich-document-extraction-tests** #3 — staging/production POST /api/chat HTTP round-trip
-  - Awaiting signal: staging deploy + published PDF available
-  - Resume: `/spectra-archive rich-document-extraction-tests`
-  - Deferred at: 2026-06-10T06:15:00Z
-<!-- deferred-end:rich-document-extraction-tests:#3 -->
-
-<!-- deferred-begin:rich-document-extraction-tests:#4 -->
-- **rich-document-extraction-tests** #4 — staging/production GET /api/citations citation replay
-  - Awaiting signal: #3 completion to capture citationId
-  - Resume: `/spectra-archive rich-document-extraction-tests`
-  - Deferred at: 2026-06-10T06:15:00Z
-<!-- deferred-end:rich-document-extraction-tests:#4 -->
-
-## ⛔ 0-S UNSCANNED — Tier 3 變更未過安全掃描（2026-09-04）
-
-- **日期**：2026-09-04
-- **failure_class**：`tool-failure-no-artifacts`（Codex 訂閱配額用罄，`You've hit your usage limit … try again at Sep 7th, 2026 10:38 AM`）
-- **output_dir**：`~/.local/share/clade/security-scans/hook-2026-09-04T13-16-50-866Z`（`artifact_completeness: partial`，四份 artifact 全部 missing-or-invalid）
-- **本批命中 Tier 3 的 path**：
-  - `app/pages/auth/login.vue`
-  - `app/composables/useCurrentUserRole.ts`
-  - `test/unit/auth-login-passkey-register-transition.test.ts`
-- **處置**：user 選 `[1] 停下修工具` → 本批**一個 commit 都沒建**，commit-lock 已釋放。
 - **接手條件**：配額 2026-09-07 10:38 之後重置。重跑
   `node ~/offline/clade/scripts/security-scan.ts path --target . --effort high --max-cost <地板+2> --path app/pages/auth/login.vue --path app/composables/useCurrentUserRole.ts`。
   本 repo 的 preflight 地板**仍未量到**（量地板那一跑就死在配額），`Files: 0/3,432` 是唯一已知數字。
 
-### 一併卡住的未 commit WIP（36 檔，working tree 原封不動）
+### 一併卡住的未 commit WIP（working tree 原封不動）
 
 | 群 | 內容 |
 | --- | --- |
 | TD-912 | `package.json` 的 `scripts.tag` 拿掉 `&& git push origin --tags`（本 session 唯一改動，已完成待 commit） |
 | vite-doctor 真修（2026-08-29） | `nuxt.config.ts` 移除 19 條 rule override → `doctorConfig`、`app/utils/next-frame.ts`（新）、`useClipboard` / `createUseFetch` 改寫、`docs/vite-doctor-remaining-findings.md` |
-| clade 遷移 | `CLAUDE.md` 清空、`.cursor/**` 整批刪除、`.gitattributes` / `.mcp.json` / `.oxfmtignore` |
+| clade 遷移 | `CLAUDE.md` 清空、`.cursor/**` 整批刪除、`.gitattributes` / `.mcp.json` |
 | 新測試 | `e2e/screenshots/*.spec.ts`（未追蹤） |
-| 本 session 加的 gitignore | `.pi/`（Pi git cache 97MB）、`openspec/changes/__replay-*`（hook replay 的絕對路徑 symlink） |
 
-- **0-C baseline（2026-09-04 實測）**：`pnpm check` **exit 1**、13 warnings 0 errors，其中多數來自未追蹤的
-  `e2e/screenshots/*.spec.ts`（`no-console`、`no-unused-vars`）。下次接手時這是要先清的那批，
-  **不是** TD-912 造成的。
+- **2026-09-06 已從本批拆出落地**（皆不含 Tier 3 path，未受本阻塞約束）：`vite.config.ts` 的 oxc-shared
+  preset import 修正（`74d3db97`）、`.oxfmtignore` 排除 `.cursor/` 與 `vendor/`（`dc4491d3`）、
+  `.gitignore` 收 `.pi/` 與 `openspec/changes/__replay-*`（`78c86266`）、`extract-mutation-summary.mjs`
+  套 oxfmt（`d636e84b`）。其餘 WIP 仍原封不動等配額重置。
 
+## Ops follow-ups
 
-## Notes
+- [ ] `debdfba02d89f63d2ef381983e14d2697cc80040`（build script heavy-gate semaphore）已在本地 commit；需確認 deploy trigger 宣告
+  與 `deploy.yml` 一致後再依 gate 推送。
+- [ ] 5 個既有 test file 的 `setupNuxt()` 10s timeout 仍需獨立 root-cause；另 2 個 chart timeout 先按負載 flake 觀察。
+- [ ] clade `scripts/audit-gate-coverage.ts` 尚無 §3b heavy-label coverage；TD-685 relay 的 build acceptance 暫無機械證據。
+- [ ] AI Gateway cache 仍關著（v0.57.7 起，`wrangler.jsonc` `NUXT_KNOWLEDGE_AI_GATEWAY_CACHE_ENABLED=false`）——
+  空回答根因（judge role 誤切到 kimi reasoning model）已於 v0.57.10 解掉，可重新評估是否開回。
+- [ ] sign-out API 500、D1 transaction pitfall、Notion「Secret」頁 staging/runtime 表仍是未重新驗證的 follow-up。
 
-- v0.56.7 已 deploy（CI 綠燈，run 27159609379）：移除 AutoRAG pre-search metadata filter
-- `refs/wt-baseline/*` 有 5 個 dangling rescue ref（含本 session `fix-autorag-filter`），可 `git update-ref -d` 清理
+## Deferred discuss items
+
+<!-- deferred-begin:autorag-to-ai-search-migration:#1 -->
+- **autorag-to-ai-search-migration #1** — production deploy authorization；signal：production tag push deploy；resume：`/spectra-archive autorag-to-ai-search-migration`。
+<!-- deferred-end:autorag-to-ai-search-migration:#1 -->
+<!-- deferred-begin:autorag-to-ai-search-migration:#2 -->
+- **autorag-to-ai-search-migration #2** — production cutover observation；signal：deploy 後 D1 `query_logs` evidence；resume：`/spectra-archive autorag-to-ai-search-migration`。
+<!-- deferred-end:autorag-to-ai-search-migration:#2 -->
+<!-- deferred-begin:autorag-to-ai-search-migration:#3 -->
+- **autorag-to-ai-search-migration #3** — rag-query-rewriting blocker release；signal：production deploy + TD-071 close；resume：`/spectra-archive autorag-to-ai-search-migration`。
+<!-- deferred-end:autorag-to-ai-search-migration:#3 -->
+<!-- deferred-begin:rag-query-rewriting:#2 -->
+- **rag-query-rewriting #2** — latency p95 增量 < 800ms；signal：staging app endpoint p95 實測；resume：`/spectra-archive rag-query-rewriting`。
+<!-- deferred-end:rag-query-rewriting:#2 -->
+<!-- deferred-begin:rich-document-extraction-tests:#1 -->
+- **rich-document-extraction-tests #1** — staging PDF upload/citation walkthrough；signal：staging deploy + PDF upload + sync/publish；resume：`/spectra-archive rich-document-extraction-tests`。
+<!-- deferred-end:rich-document-extraction-tests:#1 -->
+<!-- deferred-begin:rich-document-extraction-tests:#2 -->
+- **rich-document-extraction-tests #2** — production PDF round-trip authorization/observation；signal：production authorization + staging complete；resume：`/spectra-archive rich-document-extraction-tests`。
+<!-- deferred-end:rich-document-extraction-tests:#2 -->
+<!-- deferred-begin:rich-document-extraction-tests:#3 -->
+- **rich-document-extraction-tests #3** — staging/production `POST /api/chat` round-trip；signal：staging deploy + published PDF；resume：`/spectra-archive rich-document-extraction-tests`。
+<!-- deferred-end:rich-document-extraction-tests:#3 -->
+<!-- deferred-begin:rich-document-extraction-tests:#4 -->
+- **rich-document-extraction-tests #4** — staging/production `GET /api/citations` replay；signal：#3 完成並取得 citationId；resume：`/spectra-archive rich-document-extraction-tests`。
+<!-- deferred-end:rich-document-extraction-tests:#4 -->
+
+## Worktree and stash boundary
+
+- 本輪不處理其他 worktree 或 stash；目前可見兩筆 `wt-preserve/*` stash，保留給原工作 owner。
+- 任何 worktree/stash 處置前，先重新跑 clade 的 `node ~/offline/clade/vendor/scripts/handoff-scan.ts`，
+  並依 clade `plugins/hub-core/skills/handoff/worktree-stash-audit.md` 判定（兩者都不在本 repo 投影內）。
+- TD-071 已移至 `docs/archives/tech-debt-closed-2026-09.md`；TD-072 保留在 active register，因 clade residual acceptance 尚未完成。
