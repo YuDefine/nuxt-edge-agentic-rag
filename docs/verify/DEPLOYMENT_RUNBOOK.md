@@ -444,7 +444,11 @@ curl -sf https://agentic.yudefine.com.tw/api/auth/session \
 
 - `v<MAJOR>.<MINOR>.<PATCH>` — semantic versioning，對齊 `package.json`
 - Hotfix → 只升 patch；新 feature → 升 minor；breaking → 升 major
-- `/commit` skill 會在 commit 時自動升版號，release 只需 `pnpm tag` 或 git tag push
+- `/commit` skill 會在 commit 時自動升版號
+- Release 是**兩步**：先 `git push origin main`，main 上去之後才 `pnpm tag`（只建本機 tag）
+  再 `git push origin v<版本>`。`pnpm tag` 自 TD-912 起**不再**自帶 push —— 它原本的
+  `&& git push origin --tags` 會讓 tag 在 main 之前送出，被 `tag-position` gate 擋下、
+  `&&` 整條中止，結果 main 與 tag 兩個都不落地（TD-906 死鎖）
 - Tag push 後 `.github/workflows/deploy.yml` 自動觸發
 
 ## 4. 定期巡檢（Weekly / Monthly）
