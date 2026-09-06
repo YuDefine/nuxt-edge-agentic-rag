@@ -64,7 +64,7 @@
     "platform": "cloudflare-workers",
     "prodUrl": null,
     "previewUrlShape": null,
-    "deployTrigger": "push-main"
+    "deployTrigger": "tag-v"
   },
 
   "verification": {
