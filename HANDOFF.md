@@ -99,8 +99,72 @@ main 本機領先 origin 6 個 commit（`74d3db97` → `bdab3fbe`），**尚未 
 - **不是本輪造成**：`ci.yml` 在 `69f79920` / `fa91ec11` / `a0d70fa0` / `7e82f86f` 四個 SHA 都是同一格失敗。
 - **複驗指令**（本機）：`pnpm exec evlog map --min-score <門檻>`；CI 側 `gh run view <id> --log-failed`
   搜 `evlog map coverage gate`。
-- **接手判準**：gate 是 strict（整個 repo 每個 entry point 零失敗 check），**不是**只看本次 diff 觸及的那幾個，
-  所以要清的是 52 個既有 gap，不能靠只改動幾個檔繞過。
+
+### 根因（2026-09-06 查明）：模式繼承了會翻轉的上游預設
+
+不是「門檻該不該調」，是 **`ci.yml` 沒把自己的 gate 模式寫出來**。
+
+| 時間 | 事件 |
+| --- | --- |
+| 2026-07-31 07:27 | 本 repo 以 `9b7fffe2` 導入 gate，commit 標題逐字寫「導入 evlog map 覆蓋率 **ratchet** gate」，同時 commit 一份 score 56 的 `evlog.map.json` 當地板 —— baseline 這個檔只在 ratchet 模式下有意義 |
+| 2026-08-02 17:53 | clade 把 action 預設從 ratchet 翻成 strict（clade `448a4412d`「預設改 strict」） |
+| 之後 | 下一次 propagate 靜默把本 repo 的 gate 換成 strict。`ci.yml` 只傳 `base-ref`，沒傳 `mode`，所以吃到新預設 |
+
+`.github/actions/evlog-map-gate/gate.ts` 自身預設是 `ratchet`（L65）；是 `action.yml` 的
+`mode` 預設值 `min-score`（→ strict）把它蓋掉。56 分的 repo 對上 strict（全 repo 每個 entry point
+零失敗）＝ **結構性不可達**，於是 CI 在 main 上 **60/60 全紅**，`deploy-staging` 一次都沒跑過。
+
+**實測對照組**（同一支 gate.ts、同一份 baseline、同一份 changed-files）：
+
+```
+--mode ratchet    → exit 0   ✓ ratchet 通過（score 56 >= 56，suppressed 0 <= 0）
+--mode min-score  → exit 1   52/70 個 entry point 仍有失敗的 check
+```
+
+### 待 Charles 親手套用的 patch（`.github/workflows/` 受 guard 永久保護，agent 改不了）
+
+`.claude/scripts/guard-check.mjs` 的 `PERMANENT_GUARDS` 把 `^\.github/workflows/` 寫死，
+訊息逐字是「手動修改請直接編輯檔案，不要透過 Claude」。`/unfreeze` 只能解 `guard-state.json`
+裡的自訂凍結，碰不到這條。所以下面這段 **只能由 Charles 手動貼進 `ci.yml`**：
+
+把 `.github/workflows/ci.yml` 的 evlog gate step（約 L80-83）改成：
+
+```yaml
+      - name: evlog map coverage gate
+        uses: ./.github/actions/evlog-map-gate
+        with:
+          base-ref: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || 'origin/main' }}
+          # mode 必須明寫。這個 repo 的 gate 是 ratchet：committed 的
+          # evlog.map.json（score 56）是不可倒退的地板，本次 diff 觸及的
+          # entry point 必須滿分。省略 mode 會繼承 action 的預設值，而那個
+          # 預設值會隨上游改動而變 —— 這裡就發生過一次（clade 448a4412d
+          # 把預設從 ratchet 翻成 strict），56 分的 repo 因此永遠紅燈。
+          # 爬到 100 分之前，模式由本檔宣告，不由預設值決定。見 TD-073。
+          mode: ratchet
+```
+
+套用後：`git commit --only -m "..." -- .github/workflows/ci.yml` → `git push` →
+CI 應轉綠 → `deploy-staging` 首次跑起來。**驗收不是「CI 綠」，是實際看到 `deploy-staging`
+job 從 skipped 變成 success**（`gh run view <deploy-run-id> --json jobs`）。
+
+### 還躺在 working tree 的一行（需要走完整 `/commit`）
+
+`.claude/consumer-meta.json` 的 `deployTrigger` 已由 `push-main` 改成 `tag-v`，**尚未 commit**。
+它不在 ad-hoc `--only` 白名單，`pre-bash-git-commit-only-whitelist.sh` 會擋，必須走 `/commit`
+（跑 0-A）。改動內容與理由：
+
+- `deploy-trigger-check.ts` 逐字判定：`production deploy workflows disagree (deploy.yml) —
+  declare the production trigger, not the staging one`
+- 本 repo production 走 `push tag v*`，`push main` 走的是 staging，所以宣告值應為 `tag-v`
+- 改完 verdict 仍是 `needs-approval`（同一支 deploy.yml 兩種觸發，機械上推不出唯一值）。
+  那是 gate 正常運作，不是漂移 —— **不要**為了讓它變綠再去動宣告值
+- schema 已驗：`deploy` 區塊通過；`database` 區塊的 3 個 error 是 HEAD 既有，見 TD-074
+
+### 爬回 strict 的路
+
+52 個 gap 分 6 種缺漏（`structured-errors` 28 / `context` 19 / `audit` 12 / `wide-event` 7 /
+`error-handling` 3 / `page-error-handling` 1），已登記 **TD-073**，含分批修法與可跑的自驗指令。
+ratchet 是上游 action 自己文件寫明的「repos still climbing to 100」過渡模式，不是繞過。
 
 ## Ops follow-ups
 
