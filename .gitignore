@@ -87,3 +87,9 @@ reports/stryker-incremental.json
 .clade/ai-control-plane/*
 !.clade/ai-control-plane/intent/
 !.clade/ai-control-plane/human-decisions.jsonl
+
+# Pi runtime git cache（pi-dispatch 的 repo 快取，可重生）
+.pi/
+
+# spectra post-propose hook replay 的暫時 symlink（見 clade docs/evidence/post-propose-hook-replay.md）
+openspec/changes/__replay-*
