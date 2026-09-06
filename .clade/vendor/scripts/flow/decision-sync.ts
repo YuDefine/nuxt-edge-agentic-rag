@@ -207,7 +207,7 @@ function stampOf(decision: Record<string, unknown>): SourceStamp | null {
  * changing the title — which is also what makes it a different question to every other reader.
  */
 function answeredSourceIds(repoRoot: string): Set<string> {
-  const events = readEvents(repoRoot) as unknown as Record<string, unknown>[]
+  const events = readEvents(repoRoot)
 
   // The stamp lives on the START event; the ruling lives on the END. Join them on span id.
   const sourceBySpan = new Map<string, string>()
@@ -359,7 +359,7 @@ export function syncDecisions({
   // `pendingDecisions` already folds amendments, so `rendered` is what the page shows right now,
   // not what the start event said. That is what makes the drift check idempotent: once amended,
   // the next scan compares against the corrected payload and finds nothing to do.
-  const open = pendingDecisions(repoRoot) as unknown as Record<string, unknown>[]
+  const open = pendingDecisions(repoRoot)
   const openBySourceId = new Map<
     string,
     { span_id: string; stamp: SourceStamp; rendered: Record<string, unknown> }
@@ -500,7 +500,7 @@ export function syncDecisions({
   // 2b. Verify. Anything reported open that the spine does not have is named, never assumed.
   if (!dryRun) {
     const landed = new Set(
-      (pendingDecisions(repoRoot) as unknown as Record<string, unknown>[])
+      pendingDecisions(repoRoot)
         .map((decision) => stampOf(decision)?.id)
         .filter((id): id is string => typeof id === 'string'),
     )

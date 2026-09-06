@@ -16,6 +16,8 @@
 //   CLADE_FLOW_OFF=1        disable capture entirely
 //   CLADE_CONSUMER_ID       override registry-resolved consumer id
 
+import { isRecord, parseJson } from '../lib/json-unknown.ts'
+import type { FlowEvent } from './spine.ts'
 import { execFileSync } from 'node:child_process'
 import { randomBytes, randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync } from 'node:fs'
@@ -634,6 +636,23 @@ export function spanIsClosed(spanId: string, cwd = process.cwd()) {
  * Split out from `readEvents` so the fleet reader parses events the same way this one does —
  * two parsers would be two answers to "what counts as an event".
  */
+function isReadableFlowEvent(value: unknown): value is FlowEvent & Record<string, unknown> {
+  return (
+    isRecord(value) &&
+    (value.work_id === null || typeof value.work_id === 'string') &&
+    ['span_id', 'kind', 'actor', 'substrate', 'ts_utc'].every(
+      (key) => typeof value[key] === 'string',
+    ) &&
+    ['start', 'end', 'point'].includes(String(value.phase)) &&
+    (value.payload === undefined || isRecord(value.payload)) &&
+    (value.outcome === undefined || value.outcome === null || typeof value.outcome === 'string') &&
+    (value.parent_span === undefined ||
+      value.parent_span === null ||
+      typeof value.parent_span === 'string') &&
+    (value.session_id === undefined || typeof value.session_id === 'string')
+  )
+}
+
 export function readEventsFile(path: string) {
   if (!existsSync(path)) return []
   return readFileSync(path, 'utf8')
@@ -641,12 +660,12 @@ export function readEventsFile(path: string) {
     .filter(Boolean)
     .map((line) => {
       try {
-        return JSON.parse(line)
+        return parseJson(line)
       } catch {
         return null
       }
     })
-    .filter(Boolean)
+    .filter(isReadableFlowEvent)
 }
 
 /** Read this repo's spine back. */
@@ -1051,7 +1070,7 @@ export function pendingDecisions(cwd = process.cwd()) {
   const closed = new Set(events.filter((e) => e.phase === 'end').map((e) => e.span_id as string))
   // Folded here, not at each call site: a caller that read the raw start payload would see the
   // options a since-fixed parser wrote, and act on a question the page no longer shows.
-  const amendments = latestAmendments(events as unknown as Record<string, unknown>[])
+  const amendments = latestAmendments(events)
   return events
     .filter((e) => e.kind === 'decision.request' && e.phase === 'start')
     .filter((e) => !closed.has(e.span_id as string))
@@ -1417,7 +1436,7 @@ export function pickupDecision({
  * one answer while the file on disk carries another.
  */
 export function decisionAnswerHistory(spanId: string, cwd = process.cwd()) {
-  const events = readEvents(cwd) as unknown as Record<string, unknown>[]
+  const events = readEvents(cwd)
   let answered = false
   let answer = ''
   let answeredBy = ''

@@ -486,7 +486,7 @@ export function decisionLockFor(
   answeredAt: string,
   repoRoot: string,
 ): DecisionLock | null {
-  const candidates: LockCandidate[] = (readEvents(repoRoot) as unknown as Record<string, unknown>[])
+  const candidates: LockCandidate[] = readEvents(repoRoot)
     .filter((e) => e.phase === 'start' || e.phase === 'point')
     .map((e) => ({
       kind: String(e.kind ?? ''),

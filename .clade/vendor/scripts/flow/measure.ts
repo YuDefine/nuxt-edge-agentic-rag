@@ -17,6 +17,7 @@
 // Propagation constraint: `vendor/scripts/flow/` is copied wholesale to every consumer, so this
 // file may import ONLY `node:*` and siblings in this directory.
 
+import { parseJsonRecord } from '../lib/json-unknown.ts'
 import { execFileSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
@@ -64,7 +65,7 @@ function lockState(repoRoot: string): string {
   const path = join(repoRoot, '.clade', 'work-loop', 'state.json')
   if (!existsSync(path)) return 'free'
   try {
-    const state = JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>
+    const state = parseJsonRecord(readFileSync(path, 'utf8'))
     const held = state.lockSessionId
     if (typeof held === 'string' && held) return `held by ${held}`
     return 'free'

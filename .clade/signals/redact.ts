@@ -19,6 +19,7 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
+import { isRecord, parseJsonWith } from '../scripts/lib/json-unknown.ts'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
@@ -202,10 +203,57 @@ export function findLeaks(record: unknown): LeakDiagnostic[] {
 let cachedSchema: SchemaDocument | null = null
 const cachedValidators = new Map<string, (record: unknown) => ValidationError[]>()
 
+function isSchemaProperty(value: unknown): value is SchemaProperty {
+  if (!isRecord(value)) return false
+  if (value.pattern !== undefined) {
+    if (typeof value.pattern !== 'string') return false
+    try {
+      RegExp(value.pattern)
+    } catch {
+      return false
+    }
+  }
+  return (
+    (value.enum === undefined || Array.isArray(value.enum)) &&
+    (value.minLength === undefined ||
+      (typeof value.minLength === 'number' &&
+        Number.isSafeInteger(value.minLength) &&
+        value.minLength >= 0)) &&
+    (value.type === undefined ||
+      typeof value.type === 'string' ||
+      (Array.isArray(value.type) && value.type.every((item: unknown) => typeof item === 'string')))
+  )
+}
+
+function isSchemaDefinition(value: unknown): value is SchemaDefinition {
+  return (
+    isRecord(value) &&
+    (value.required === undefined ||
+      (Array.isArray(value.required) &&
+        value.required.every((item: unknown) => typeof item === 'string'))) &&
+    (value.enum === undefined || Array.isArray(value.enum)) &&
+    (value.properties === undefined ||
+      (isRecord(value.properties) && Object.values(value.properties).every(isSchemaProperty)))
+  )
+}
+
+function isSchemaDocument(value: unknown): value is SchemaDocument {
+  return (
+    isRecord(value) &&
+    isSchemaDefinition(value) &&
+    (value.$defs === undefined ||
+      (isRecord(value.$defs) && Object.values(value.$defs).every(isSchemaDefinition)))
+  )
+}
+
 function loadSchema(): SchemaDocument {
   if (cachedSchema) return cachedSchema
   const schemaPath = join(__dirname, 'schema.json')
-  cachedSchema = JSON.parse(readFileSync(schemaPath, 'utf8')) as SchemaDocument
+  cachedSchema = parseJsonWith(
+    readFileSync(schemaPath, 'utf8'),
+    isSchemaDocument,
+    'invalid signal schema',
+  )
   return cachedSchema
 }
 

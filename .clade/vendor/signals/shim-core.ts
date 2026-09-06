@@ -15,11 +15,12 @@
 //
 // CLADE_IMPROVEMENT_LOOP_OFF=1 disables capture entirely.
 
-import { execFileSync, spawn } from 'node:child_process'
+import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
 import { existsSync, readFileSync, statSync } from 'node:fs'
 import { dirname, join, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
+import { isRecord, parseJsonWith } from '../scripts/lib/json-unknown.ts'
 
 import { redactString } from './redact.ts'
 import { appendRecord } from './ledger-writer.ts'
@@ -38,11 +39,25 @@ interface ConsumerRegistry {
   consumers: Array<ConsumerIdentity & { repo_id?: string }>
 }
 
+function isConsumerRegistry(value: unknown): value is ConsumerRegistry {
+  return (
+    isRecord(value) &&
+    Array.isArray(value.consumers) &&
+    value.consumers.every(
+      (entry: unknown) =>
+        isRecord(entry) &&
+        (entry.consumer_id === undefined || typeof entry.consumer_id === 'string') &&
+        (entry.repo_id === undefined || typeof entry.repo_id === 'string'),
+    )
+  )
+}
+
 interface ShimOptions {
   binName: string
   shimAbsPath: string
   preferredBin?: string | null
   source?: string
+  heavyGate?: string
 }
 
 function errorMessage(error: unknown): string {
@@ -85,12 +100,34 @@ function gitSafe(args: string[], cwd: string): string {
   }
 }
 
+/** PATH shims use the same helper, repo key and global slots as clade-gate. */
+function heavyGateCommand(label: string | undefined, command: string[]): string[] {
+  const gates = (process.env.CLADE_HEAVY_GATES ?? 'typecheck,test,test-mutation,build')
+    .split(',')
+    .map((s) => s.trim())
+  if (!label || !gates.includes(label) || process.env.CLADE_GATE_SLOT_HELD === '1') return command
+  const cwd = process.cwd()
+  const top = gitSafe(['rev-parse', '--show-toplevel'], cwd) || cwd
+  const slot = [
+    join(top, 'scripts', 'gate-slot.sh'),
+    join(top, 'vendor', 'scripts', 'gate-slot.sh'),
+  ].find((path) => existsSync(path))
+  // CI / standalone installations without the helper retain passthrough.
+  if (!slot) return command
+  const key = createHash('sha1').update(top).digest('hex').slice(0, 12)
+  return ['bash', slot, 'wait', key, '--', ...command]
+}
+
 /** Exported so the flow spine resolves consumer identity the same way signals do. */
 export function detectConsumer(cwd: string): ConsumerIdentity {
   try {
     const registryPath = join(CLADE_ROOT, 'registry', 'consumers.json')
     if (!existsSync(registryPath)) return { consumer_id: 'unknown', repo_id: 'unknown/unknown' }
-    const registry = JSON.parse(readFileSync(registryPath, 'utf8')) as ConsumerRegistry
+    const registry = parseJsonWith(
+      readFileSync(registryPath, 'utf8'),
+      isConsumerRegistry,
+      'invalid consumer registry',
+    )
     const gitTop = gitSafe(['rev-parse', '--show-toplevel'], cwd) || cwd
     const gitTopReal = resolve(gitTop)
     if (gitTopReal === resolve(CLADE_ROOT)) {
@@ -208,10 +245,28 @@ function classifyGate(binName: string, args: string[]): string {
   return 'other'
 }
 
+function forwardCancellation(child: ChildProcess): () => boolean {
+  let cancelled = false
+  for (const signal of ['SIGINT', 'SIGTERM'] as const) {
+    const forward = () => {
+      cancelled = true
+      child.kill(signal)
+    }
+    process.on(signal, forward)
+    child.once('exit', () => process.removeListener(signal, forward))
+  }
+  return () => cancelled
+}
+
+function childExitCode(code: number | null, signal: NodeJS.Signals | null): number {
+  return code ?? (signal === 'SIGINT' ? 130 : signal === 'SIGTERM' ? 143 : signal ? 128 : 0)
+}
+
 function passthroughExec(
   binName: string,
   shimAbsPath: string,
   preferredBin: string | null = null,
+  heavyGate?: string,
 ): void {
   const args = process.argv.slice(2)
   const realBin = findRealBinary(binName, shimAbsPath, preferredBin)
@@ -219,8 +274,10 @@ function passthroughExec(
     process.stderr.write(`[clade improvement-loop] real ${binName} not found; aborting\n`)
     process.exit(127)
   }
-  const child = spawn(realBin, args, { stdio: 'inherit' })
-  child.on('exit', (code, sig) => process.exit(code ?? (sig ? 128 : 0)))
+  const command = heavyGateCommand(heavyGate, [realBin, ...args])
+  const child = spawn(command[0], command.slice(1), { stdio: 'inherit' })
+  forwardCancellation(child)
+  child.on('exit', (code, sig) => process.exit(childExitCode(code, sig)))
 }
 
 export async function runShim({
@@ -228,9 +285,10 @@ export async function runShim({
   shimAbsPath,
   preferredBin = null,
   source = 'shim',
+  heavyGate,
 }: ShimOptions): Promise<void> {
   if (process.env.CLADE_IMPROVEMENT_LOOP_OFF === '1') {
-    passthroughExec(binName, shimAbsPath, preferredBin)
+    passthroughExec(binName, shimAbsPath, preferredBin, heavyGate)
     return
   }
   const args = process.argv.slice(2)
@@ -249,7 +307,9 @@ export async function runShim({
   const stdoutChunks: Buffer[] = []
   let stdoutLen = 0
 
-  const child = spawn(realBin, args, { stdio: ['inherit', 'pipe', 'pipe'] })
+  const command = heavyGateCommand(heavyGate, [realBin, ...args])
+  const child = spawn(command[0], command.slice(1), { stdio: ['inherit', 'pipe', 'pipe'] })
+  const wasCancelled = forwardCancellation(child)
   child.stdout.on('data', (chunk) => {
     process.stdout.write(chunk)
     if (stdoutLen < STDERR_CAPTURE_BYTES) {
@@ -268,10 +328,13 @@ export async function runShim({
   })
 
   const exitCode = await new Promise<number>((resolveExit) => {
-    child.on('exit', (code, sig) => resolveExit(code ?? (sig ? 128 : 0)))
+    child.on('exit', (code, sig) => resolveExit(childExitCode(code, sig)))
   })
 
-  const shouldLog = exitCode !== 0 || process.env.CLADE_IMPROVEMENT_LOOP_LOG_ALL === '1'
+  const shouldLog =
+    !wasCancelled() &&
+    !(command[0] !== realBin && exitCode === 75) &&
+    (exitCode !== 0 || process.env.CLADE_IMPROVEMENT_LOOP_LOG_ALL === '1')
   if (shouldLog) {
     try {
       const gateName = classifyGate(binName, args)

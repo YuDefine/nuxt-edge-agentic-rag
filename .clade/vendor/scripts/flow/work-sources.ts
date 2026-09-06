@@ -30,8 +30,18 @@
 // Propagation constraint: `vendor/scripts/flow/` is copied wholesale to every consumer, so this
 // file may import ONLY `node:*` and siblings in this directory.
 
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs'
+import { DatabaseSync } from 'node:sqlite'
+import { join, resolve } from 'node:path'
 
 import { linkWork, markWorkDone, openWork, readEvents } from './emit.ts'
 import { parseTdRegister, type TdEntry } from './nodes/lib/td-parse.ts'
@@ -90,33 +100,134 @@ export interface WorkSyncResult {
   skipped: string | null
 }
 
-/** Serialize every exact-origin admission on one checkout, including collector callers. */
-export function withWorkSourceLock<T>(repoRoot: string, fn: () => T): T {
-  const lock = join(repoRoot, '.clade', 'flow', 'work-source.lock')
-  mkdirSync(join(repoRoot, '.clade', 'flow'), { recursive: true })
-  const started = Date.now()
-  while (true) {
+type LockOwnerState = 'alive' | 'dead' | 'unknown'
+const heldWorkSourceLocks = new Set<string>()
+
+function procStartTime(pid: number): { state: LockOwnerState; startTime?: string } {
+  if (process.platform !== 'linux') return { state: 'unknown' }
+  let stat: string
+  try {
+    stat = readFileSync(`/proc/${pid}/stat`, 'utf8')
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === 'ENOENT'
+      ? { state: 'dead' }
+      : { state: 'unknown' }
+  }
+  const closingParen = stat.lastIndexOf(')')
+  const fields =
+    closingParen >= 0
+      ? stat
+          .slice(closingParen + 2)
+          .trim()
+          .split(/\s+/u)
+      : []
+  return fields[19] ? { state: 'alive', startTime: fields[19] } : { state: 'unknown' }
+}
+
+function lockOwnerState(raw: string): LockOwnerState {
+  const [pidText, , expectedStartTime, expectedBootId] = raw.trim().split('\n')
+  const pid = Number(pidText)
+  if (!Number.isSafeInteger(pid) || pid <= 0) return 'unknown'
+  if (!expectedStartTime || !expectedBootId) {
+    // Previous versions wrote only PID and timestamp. A missing process is conclusive;
+    // an existing/reused PID or unreadable process remains ambiguous and is retained.
     try {
-      mkdirSync(lock)
-      writeFileSync(join(lock, 'owner'), `${process.pid}\n${started}\n`)
-      break
+      process.kill(pid, 0)
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
-      try {
-        const age = Date.now() - Number(readFileSync(join(lock, 'owner'), 'utf8').split('\n')[1])
-        if (Number.isFinite(age) && age > 5 * 60 * 1000)
-          rmSync(lock, { recursive: true, force: true })
-      } catch {
-        // A lock with no readable owner is retained; the next bounded retry can observe it.
-      }
-      if (Date.now() - started > 30_000) throw new Error('Timed out waiting for work-source lock')
-      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25)
+      if ((error as NodeJS.ErrnoException).code === 'ESRCH') return 'dead'
+    }
+    return 'unknown'
+  }
+  const observed = procStartTime(pid)
+  if (observed.state !== 'alive') return observed.state
+  let bootId: string
+  try {
+    bootId = readFileSync('/proc/sys/kernel/random/boot_id', 'utf8').trim()
+  } catch {
+    return 'unknown'
+  }
+  return observed.startTime === expectedStartTime && bootId === expectedBootId ? 'alive' : 'dead'
+}
+
+function lockOwnerRecord(started: number): string {
+  let startTime = ''
+  let bootId = ''
+  if (process.platform === 'linux') {
+    const observed = procStartTime(process.pid)
+    startTime = observed.startTime ?? ''
+    try {
+      bootId = readFileSync('/proc/sys/kernel/random/boot_id', 'utf8').trim()
+    } catch {
+      // An unreadable identity is written as ambiguous and will fail closed on recovery.
     }
   }
+  return `${process.pid}\n${started}\n${startTime}\n${bootId}\n`
+}
+
+/** Serialize every exact-origin admission on one checkout, including collector callers. */
+export function withWorkSourceLock<T>(repoRoot: string, fn: () => T): T {
+  const directory = resolve(repoRoot, '.clade', 'flow')
+  const lock = join(directory, 'work-source.lock')
+  if (heldWorkSourceLocks.has(lock)) return fn()
+  mkdirSync(directory, { recursive: true })
+  // SQLite owns the recovery mutex: SIGKILL releases its transaction automatically.
+  // Retain the directory protocol so already-running older collectors also serialize.
+  const mutex = new DatabaseSync(join(directory, 'work-source-mutex.sqlite'))
+  let acquired = false
+  let candidate: string | undefined
   try {
+    mutex.exec('PRAGMA busy_timeout=30000; BEGIN IMMEDIATE')
+    const started = Date.now()
+    candidate = mkdtempSync(join(directory, 'work-source-candidate-'))
+    writeFileSync(join(candidate, 'owner'), lockOwnerRecord(started))
+    while (true) {
+      try {
+        // Publish a complete owner record atomically; a crash cannot leave an ownerless lock.
+        symlinkSync(candidate, lock, 'dir')
+        acquired = true
+        break
+      } catch (error) {
+        const code = (error as NodeJS.ErrnoException).code
+        if (code !== 'EEXIST') throw error
+        let owner = ''
+        try {
+          owner = readFileSync(join(lock, 'owner'), 'utf8')
+        } catch {
+          // An unreadable legacy owner remains ambiguous and is retained.
+        }
+        if (owner && lockOwnerState(owner) === 'dead') {
+          // The SQLite transaction excludes competing reclaimers, including after restart.
+          rmSync(lock, { recursive: true, force: true })
+        }
+        if (Date.now() - started > 30_000) throw new Error('Timed out waiting for work-source lock')
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25)
+      }
+    }
+    // Only this transaction can create candidates. Reap complete dead-owner records,
+    // including candidates left before publication or after releasing the symlink.
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      if (!entry.isDirectory() || !entry.name.startsWith('work-source-candidate-')) continue
+      const abandoned = join(directory, entry.name)
+      if (abandoned === candidate) continue
+      try {
+        if (lockOwnerState(readFileSync(join(abandoned, 'owner'), 'utf8')) === 'dead') {
+          rmSync(abandoned, { recursive: true, force: true })
+        }
+      } catch {
+        // Unreadable ownership is retained; cleanup does not change admission outcome.
+      }
+    }
+    heldWorkSourceLocks.add(lock)
     return fn()
   } finally {
-    rmSync(lock, { recursive: true, force: true })
+    heldWorkSourceLocks.delete(lock)
+    try {
+      if (acquired) rmSync(lock, { recursive: true, force: true })
+      if (candidate) rmSync(candidate, { recursive: true, force: true })
+    } finally {
+      // close rolls back the mutex-only transaction and releases the OS lock on every path.
+      mutex.close()
+    }
   }
 }
 

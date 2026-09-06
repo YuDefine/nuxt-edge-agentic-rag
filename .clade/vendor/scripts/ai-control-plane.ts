@@ -17,6 +17,7 @@ import {
 } from 'node:fs'
 import { basename, dirname, join, relative, resolve as resolvePath } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { isRecord, parseJson, parseJsonRecord, parseJsonWith } from './lib/json-unknown.ts'
 
 import { nativeAcceptanceReasons } from './opsx-acceptance.ts'
 import { atomicWriteText } from './lib/atomic-file.ts'
@@ -239,6 +240,13 @@ export interface EvidenceReceipt {
   references: EvidenceReference[]
   recorded_at: string
   recorded_by: string
+  /** Controlled outcome evidence pins both the plan and the tested Git artifact. */
+  acceptance?: {
+    contract_digest: Digest
+    artifact_digest: Digest
+    scenario_id: string
+    outcome: 'pass' | 'fail'
+  }
 }
 
 /**
@@ -692,11 +700,60 @@ export function readWorkflowChange(source: WorkflowChangeSource): NormalizedOpsx
   }
 }
 
+function isOpsxSourceShape(value: unknown): value is OpsxChangeSource {
+  if (
+    !isRecord(value) ||
+    !isRecord(value.profile_assignment) ||
+    !Array.isArray(value.native_artifacts) ||
+    !value.native_artifacts.every(isRecord) ||
+    (value.normalized_change !== undefined && !isRecord(value.normalized_change))
+  )
+    return false
+  if (value.supersedes !== undefined) {
+    if (!Array.isArray(value.supersedes)) return false
+    readChangeSupersessions(value, requireId('change', value.profile_assignment.change_id))
+  }
+  return true
+}
+
+export function parseOpsxChangeSource(text: string): OpsxChangeSource {
+  const source = parseJsonWith(text, isOpsxSourceShape, 'invalid opsx intent source')
+  readOpsxChange(source)
+  return source
+}
+
+function isLegacySourceShape(value: unknown): value is SpectraLegacySource {
+  if (!isRecord(value) || !isRecord(value.profile_assignment) || !isRecord(value.legacy_source))
+    return false
+  const legacy = value.legacy_source
+  if (
+    typeof legacy.artifact_root !== 'string' ||
+    !Array.isArray(legacy.legacy_artifacts) ||
+    !legacy.legacy_artifacts.every(isRecord) ||
+    (value.normalized_change !== undefined && !isRecord(value.normalized_change)) ||
+    (value.projector_input !== undefined && !isRecord(value.projector_input))
+  )
+    return false
+  requireDigest('legacy preserved_evidence_digest', legacy.preserved_evidence_digest)
+  if (value.supersedes !== undefined) {
+    if (!Array.isArray(value.supersedes)) return false
+    readChangeSupersessions(value, requireId('change', value.profile_assignment.change_id))
+  }
+  return true
+}
+
+export function parseWorkflowChangeSource(value: unknown): WorkflowChangeSource {
+  if (!isOpsxSourceShape(value) && !isLegacySourceShape(value))
+    throw new Error('invalid workflow intent source')
+  readWorkflowChange(value)
+  return value
+}
+
 export function readOpsxChangeFile(path: string): {
   source: OpsxChangeSource
   normalized: NormalizedOpsxChange
 } {
-  const source = JSON.parse(readFileSync(path, 'utf8')) as OpsxChangeSource
+  const source = parseOpsxChangeSource(readFileSync(path, 'utf8'))
   return { source, normalized: readOpsxChange(source) }
 }
 
@@ -1076,6 +1133,7 @@ export function startAttempt(input: {
   const workOpen = readEvents(input.repoRoot).find(
     (event) => event.kind === 'work.open' && event.work_id === workId,
   )
+  const declaredRequirementId = workOpen?.payload?.requirement_id
   const declaredRequirementRevision = Number(workOpen?.payload?.requirement_revision)
   const rootSpanId = randomUUID().replaceAll('-', '').slice(0, 16)
   const attempt = beginRuntimeAttempt({
@@ -1094,7 +1152,9 @@ export function startAttempt(input: {
     workspaceId: input.workspaceId,
     paneId: input.paneId,
     initiativeId: input.initiativeId,
-    requirementId: input.requirementId ?? workOpen?.payload?.requirement_id ?? null,
+    requirementId:
+      input.requirementId ??
+      (typeof declaredRequirementId === 'string' ? declaredRequirementId : null),
     requirementRevision:
       input.requirementRevision ??
       (Number.isInteger(declaredRequirementRevision) ? declaredRequirementRevision : null),
@@ -1792,7 +1852,7 @@ export async function persistOpsxChangeSource(
     }
     assertIntentRevisionStep({
       changeId: normalized.change_id,
-      current: JSON.parse(current) as OpsxChangeSource,
+      current: parseOpsxChangeSource(current),
       next: source,
     })
   }
@@ -1828,13 +1888,35 @@ export function intentRevisionLedgerPath(repoRoot: string, changeId: string): st
   )
 }
 
+function isIntentRevisionRecord(value: unknown): value is IntentRevisionRecord {
+  if (
+    !isRecord(value) ||
+    value.artifact_type !== 'intent.revision' ||
+    value.schema_version !== 1 ||
+    typeof value.revision !== 'number' ||
+    !Number.isSafeInteger(value.revision) ||
+    value.revision < 1 ||
+    typeof value.intent_revision !== 'number' ||
+    !Number.isSafeInteger(value.intent_revision) ||
+    value.intent_revision < 1 ||
+    typeof value.source_revision !== 'string' ||
+    typeof value.recorded_at !== 'string'
+  )
+    return false
+  requireId('change', value.change_id)
+  requireDigest('source_digest', value.source_digest)
+  if (value.previous_record_digest !== null)
+    requireDigest('previous_record_digest', value.previous_record_digest)
+  return true
+}
+
 export function readIntentRevisions(repoRoot: string, changeId: string): IntentRevisionRecord[] {
   const path = intentRevisionLedgerPath(repoRoot, changeId)
   if (!existsSync(path)) return []
   return readFileSync(path, 'utf8')
     .split('\n')
     .filter(Boolean)
-    .map((line) => JSON.parse(line) as IntentRevisionRecord)
+    .map((line) => parseJsonWith(line, isIntentRevisionRecord, 'invalid intent revision record'))
 }
 
 /**
@@ -1936,7 +2018,7 @@ export class FilesystemIntentStore implements IntentStore {
 
   read(changeId: string): { source: WorkflowChangeSource; normalized: NormalizedOpsxChange } {
     const path = intentSourcePath(this.repoRoot, changeId)
-    const source = JSON.parse(readFileSync(path, 'utf8')) as WorkflowChangeSource
+    const source = parseWorkflowChangeSource(parseJson(readFileSync(path, 'utf8')))
     return { source, normalized: readWorkflowChange(source) }
   }
 
@@ -1952,8 +2034,9 @@ export class FilesystemIntentStore implements IntentStore {
   profile(changeId: string): 'spectra-v1' | 'opsx-v2' | null {
     const path = intentSourcePath(this.repoRoot, changeId)
     if (!existsSync(path)) return null
-    const source = JSON.parse(readFileSync(path, 'utf8')) as WorkflowChangeSource
-    const profile = source.profile_assignment?.profile
+    const source = parseJsonRecord(readFileSync(path, 'utf8'))
+    if (!isRecord(source.profile_assignment)) return null
+    const profile = source.profile_assignment.profile
     return profile === 'opsx-v2' || profile === 'spectra-v1' ? profile : null
   }
 
@@ -1988,13 +2071,65 @@ export function projectionPath(repoRoot: string, changeId: string): string {
   )
 }
 
+function isEvidenceKind(value: unknown): value is EvidenceReference['kind'] {
+  return (
+    value === 'report' || value === 'trace' || value === 'screenshot' || value === 'api-receipt'
+  )
+}
+
+function isEvidenceReceipt(value: unknown): value is EvidenceReceipt {
+  if (
+    !isRecord(value) ||
+    value.artifact_type !== 'evidence.receipt' ||
+    value.schema_version !== 1 ||
+    ![
+      'evidence_id',
+      'change_id',
+      'requirement_id',
+      'work_id',
+      'attempt_id',
+      'span_id',
+      'verification_policy',
+      'recorded_at',
+      'recorded_by',
+    ].every((key) => typeof value[key] === 'string') ||
+    typeof value.requirement_revision !== 'number' ||
+    !isEvidenceKind(value.evidence_kind) ||
+    !Array.isArray(value.references) ||
+    !value.references.every((ref: unknown) => {
+      if (!isRecord(ref) || !isEvidenceKind(ref.kind) || typeof ref.locator !== 'string')
+        return false
+      requireDigest('reference digest', ref.digest)
+      return true
+    }) ||
+    (value.phase !== undefined && !VERIFICATION_PHASES.some((phase) => phase === value.phase))
+  )
+    return false
+  requireDigest('subject_digest', value.subject_digest)
+  if (value.acceptance !== undefined) {
+    if (
+      !isRecord(value.acceptance) ||
+      typeof value.acceptance.scenario_id !== 'string' ||
+      (value.acceptance.outcome !== 'pass' && value.acceptance.outcome !== 'fail')
+    )
+      return false
+    requireDigest('contract_digest', value.acceptance.contract_digest)
+    requireDigest('artifact_digest', value.acceptance.artifact_digest)
+  }
+  return true
+}
+
 export function readEvidence(repoRoot: string): EvidenceReceipt[] {
   const path = evidenceLedgerPath(repoRoot)
   if (!existsSync(path)) return []
   return readFileSync(path, 'utf8')
     .split('\n')
     .filter(Boolean)
-    .map((line) => JSON.parse(line) as EvidenceReceipt)
+    .map((line) => {
+      const receipt = parseJsonWith(line, isEvidenceReceipt, 'invalid evidence receipt')
+      validateEvidence(receipt)
+      return receipt
+    })
 }
 
 function sleepMs(ms: number): void {
@@ -2113,10 +2248,15 @@ export function validateEvidence(receipt: EvidenceReceipt): void {
   }
   if (receipt.references.length === 0)
     throw new Error('at least one evidence reference is required')
+  if (receipt.acceptance) {
+    requireDigest('contract_digest', receipt.acceptance.contract_digest)
+    requireDigest('artifact_digest', receipt.acceptance.artifact_digest)
+    if (!receipt.acceptance.scenario_id || !['pass', 'fail'].includes(receipt.acceptance.outcome)) {
+      throw new Error('acceptance evidence requires a scenario and outcome')
+    }
+  }
   for (const ref of receipt.references) requireDigest('reference digest', ref.digest)
-  const { redaction_applied: _, ...redacted } = redactPayload(
-    receipt as unknown as Record<string, unknown>,
-  )
+  const { redaction_applied: _, ...redacted } = redactPayload({ ...receipt })
   if (canonical(redacted) !== canonical(receipt)) {
     throw new Error(
       'evidence receipt contains a value that requires redaction; store a digest or safe locator',
@@ -2204,6 +2344,9 @@ export function correlatedRuntimeState(repoRoot: string, changeId: string): Runt
   const engines = state.engines
   const engineNames = new Set(engines.map((engine) => engine.engine))
   return {
+    controlled_executions: state.controlled_executions.filter((execution) =>
+      workIds.has(execution.work_id),
+    ),
     events: state.events.filter(
       (event) =>
         (event.work_id !== null && workIds.has(event.work_id)) ||
@@ -2317,9 +2460,10 @@ function maxTimestamp(
 function changeTitle(source: OpsxChangeSource): string {
   const intake = artifact(source, 'intent.intake_batch')
   const explicit = typeof intake.title === 'string' ? intake.title.trim() : ''
-  if (explicit) return explicit
-  const raw = String(intake.raw_text ?? '').trim()
-  return raw.match(/^.*?[.!?](?:\s|$)/)?.[0]?.trim() ?? raw
+  const sourceText = explicit || String(intake.raw_text ?? '').trim()
+  const firstSentence = sourceText.match(/^.*?[.!?](?:\s|$)/s)?.[0] ?? sourceText
+  const singleLine = firstSentence.replace(/\s+/gu, ' ').trim()
+  return singleLine.length > 160 ? `${singleLine.slice(0, 159).trimEnd()}…` : singleLine
 }
 
 function impactMatrix(source: OpsxChangeSource): ImpactProjection[] {
@@ -2458,13 +2602,32 @@ export function humanDecisionLedgerPath(repoRoot: string): string {
   return join(repoRoot, '.clade', 'ai-control-plane', 'human-decisions.jsonl')
 }
 
+function isHumanDecisionRecord(value: unknown): value is HumanDecisionRecord {
+  return (
+    isRecord(value) &&
+    value.artifact_type === 'human.decision' &&
+    value.schema_version === 1 &&
+    ['decision_id', 'gate_id', 'change_id', 'outcome', 'recorded_at'].every(
+      (key) => typeof value[key] === 'string',
+    ) &&
+    isRecord(value.provided_fields) &&
+    Object.values(value.provided_fields).every((item) => typeof item === 'string') &&
+    Array.isArray(value.evidence_links) &&
+    value.evidence_links.every((item: unknown) => typeof item === 'string')
+  )
+}
+
 export function readHumanDecisions(repoRoot: string): HumanDecisionRecord[] {
   const path = humanDecisionLedgerPath(repoRoot)
   if (!existsSync(path)) return []
   return readFileSync(path, 'utf8')
     .split('\n')
     .filter(Boolean)
-    .map((line) => JSON.parse(line) as HumanDecisionRecord)
+    .map((line) => {
+      const decision = parseJsonWith(line, isHumanDecisionRecord, 'invalid human decision record')
+      validateHumanDecisionIdentity(decision)
+      return decision
+    })
 }
 
 function validateHumanDecisionAgainstGate(
@@ -2511,10 +2674,7 @@ function validateHumanDecisionAgainstGate(
   }
 }
 
-export function recordHumanDecision(
-  repoRoot: string,
-  decision: HumanDecisionRecord,
-): HumanDecisionRecord {
+function validateHumanDecisionIdentity(decision: HumanDecisionRecord): void {
   if (decision.artifact_type !== 'human.decision' || decision.schema_version !== 1) {
     throw new Error('human decision contract mismatch')
   }
@@ -2527,6 +2687,13 @@ export function recordHumanDecision(
   if (Number.isNaN(Date.parse(decision.recorded_at))) {
     throw new Error('human decision recorded_at must be a date-time')
   }
+}
+
+export function recordHumanDecision(
+  repoRoot: string,
+  decision: HumanDecisionRecord,
+): HumanDecisionRecord {
+  validateHumanDecisionIdentity(decision)
   const path = humanDecisionLedgerPath(repoRoot)
   mkdirSync(dirname(path), { recursive: true })
   return withFileLock(`${path}.lock`, 'human decision ledger', () => {
@@ -3300,13 +3467,31 @@ export function projectionEventsPath(repoRoot: string): string {
   return join(repoRoot, '.clade', 'ai-control-plane', 'projection-events.jsonl')
 }
 
+export function isProjectionCheckpoint(
+  value: unknown,
+): value is ControlPlaneProjection['checkpoint'] {
+  if (
+    !isRecord(value) ||
+    value.artifact_type !== 'projection.updated' ||
+    value.schema_version !== 1 ||
+    !['projection_id', 'projector', 'through_cursor', 'output_path', 'recorded_at'].every(
+      (key) => typeof value[key] === 'string',
+    )
+  )
+    return false
+  requireId('change', value.change_id)
+  requireDigest('input_digest', value.input_digest)
+  requireDigest('output_digest', value.output_digest)
+  return true
+}
+
 function readProjectionCheckpoints(repoRoot: string): ControlPlaneProjection['checkpoint'][] {
   const path = projectionEventsPath(repoRoot)
   if (!existsSync(path)) return []
   return readFileSync(path, 'utf8')
     .split('\n')
     .filter(Boolean)
-    .map((line) => JSON.parse(line) as ControlPlaneProjection['checkpoint'])
+    .map((line) => parseJsonWith(line, isProjectionCheckpoint, 'invalid projection checkpoint'))
 }
 
 function appendProjectionCheckpoint(
@@ -3461,8 +3646,8 @@ function judgeIntentTransition(input: {
   let next: OpsxChangeSource
   let current: OpsxChangeSource
   try {
-    next = JSON.parse(input.nextText) as OpsxChangeSource
-    current = JSON.parse(input.currentText) as OpsxChangeSource
+    next = parseOpsxChangeSource(input.nextText)
+    current = parseOpsxChangeSource(input.currentText)
   } catch (error) {
     return { reason: error instanceof Error ? error.message : 'intent source is not JSON' }
   }
@@ -3590,7 +3775,7 @@ export function validateIntentRevisionCommits(
       continue
     }
     if (revertOf) continue
-    const revision = readIntakeChangeRevision(JSON.parse(nextText) as OpsxChangeSource)
+    const revision = readIntakeChangeRevision(parseOpsxChangeSource(nextText))
     if (Number(declaredRevision) !== revision) {
       add(
         path,
@@ -3600,7 +3785,7 @@ export function validateIntentRevisionCommits(
     }
     // The binding trailer keeps the bare id (ruling (h)): a revision commit that decorated or
     // dropped it would stop counting as a binding, and the change would read as never bound.
-    const bareId = readOpsxChange(JSON.parse(nextText) as OpsxChangeSource).change_id
+    const bareId = readOpsxChange(parseOpsxChangeSource(nextText)).change_id
     if (declaredBinding !== bareId) {
       add(
         path,
@@ -3764,7 +3949,7 @@ export function validateControlPlaneProjections(
     if (!entry.isDirectory() || entry.name === 'archive') continue
     const tasksPath = join(changesRoot, entry.name, 'tasks.md')
     if (!readControlPlaneChangeId(tasksPath)) continue
-    let projection: ControlPlaneProjection | null = null
+    let projection: ReadControlPlaneProjection | null = null
     try {
       projection = readControlPlaneProjection(repoRoot, tasksPath)
     } catch (error) {
@@ -3804,10 +3989,55 @@ export function readControlPlaneChangeId(tasksPath: string): string | null {
   return content.match(/^<!-- control-plane-change-id: (chg_[A-Za-z0-9]+) -->$/m)?.[1] ?? null
 }
 
+/** Validated reader fields; all other sidecar fields remain untrusted JSON. */
+export type ReadControlPlaneProjection = Record<string, unknown> &
+  Pick<ControlPlaneProjection, 'change_id' | 'checkpoint' | 'archive_readiness'>
+
+function isArchiveReadiness(value: unknown): value is ArchiveReadiness {
+  if (
+    !isRecord(value) ||
+    value.artifact_type !== 'archive.readiness' ||
+    value.schema_version !== 1 ||
+    typeof value.intent_revision !== 'number' ||
+    !Number.isSafeInteger(value.intent_revision) ||
+    value.intent_revision < 1 ||
+    typeof value.evaluated_at !== 'string' ||
+    Number.isNaN(Date.parse(value.evaluated_at)) ||
+    typeof value.ready !== 'boolean' ||
+    !Array.isArray(value.blocking_reasons) ||
+    !value.blocking_reasons.every((reason: unknown) => typeof reason === 'string') ||
+    !isRecord(value.predicates)
+  )
+    return false
+  requireId('change', value.change_id)
+  const predicates = value.predicates
+  return [
+    'current_intent_valid',
+    'impacts_current_and_consistent',
+    'required_work_terminal_with_current_evidence',
+    'required_gates_terminal',
+    'no_active_attempt_or_lease',
+    'projection_cursors_current',
+    'single_writer',
+    'no_stale_evidence',
+  ].every((key) => typeof predicates[key] === 'boolean')
+}
+
+function isReadableControlPlaneProjection(value: unknown): value is ReadControlPlaneProjection {
+  if (
+    !isRecord(value) ||
+    !isProjectionCheckpoint(value.checkpoint) ||
+    !isArchiveReadiness(value.archive_readiness)
+  )
+    return false
+  requireId('change', value.change_id)
+  return true
+}
+
 export function readControlPlaneProjection(
   repoRoot: string,
   tasksPath: string,
-): ControlPlaneProjection | null {
+): ReadControlPlaneProjection | null {
   const changeId = readControlPlaneChangeId(tasksPath)
   if (!changeId) return null
   return withProjectionReadLock(repoRoot, changeId, () => {
@@ -3815,7 +4045,11 @@ export function readControlPlaneProjection(
     const content = readFileSync(tasksPath, 'utf8')
     const path = projectionPath(repoRoot, changeId)
     if (!existsSync(path)) return null
-    const projection = JSON.parse(readFileSync(path, 'utf8')) as ControlPlaneProjection
+    const projection = parseJsonWith(
+      readFileSync(path, 'utf8'),
+      isReadableControlPlaneProjection,
+      'invalid control plane projection reader fields',
+    )
     const actualOutputDigest = sha256(content)
     let canonicalInputCurrent = false
     let journalCurrent = false

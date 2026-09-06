@@ -1,18 +1,24 @@
 // 🔒 LOCKED — managed by clade · Source: vendor/scripts/ai-control-plane-runtime.ts · 改這裡無效，下次 propagate 會覆寫；請改 $CLADE_HOME/vendor/scripts/ai-control-plane-runtime.ts
+import { isRecord, parseJsonRecord } from './lib/json-unknown.ts'
 import { createHash, randomUUID } from 'node:crypto'
+import { spawnSync } from 'node:child_process'
 import {
   closeSync,
   existsSync,
   fsyncSync,
   mkdirSync,
+  lstatSync,
+  readlinkSync,
   openSync,
   readFileSync,
+  readdirSync,
+  realpathSync,
   renameSync,
   statSync,
   unlinkSync,
   writeFileSync,
 } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { dirname, isAbsolute, join, relative } from 'node:path'
 
 import { assertBindingCommittedIfGoverned } from './ai-control-plane-profile.ts'
 import { redactPayload } from '../signals/redact.ts'
@@ -307,8 +313,93 @@ export interface RuntimeEvent {
   payload: Record<string, any>
 }
 
+/** Controlled executions share the runtime transaction and journal with attempts and leases. */
+export type ControlledExecutionOutcome = 'success' | 'quality-failure' | 'quota' | 'runtime-failure'
+export type ControlledExecutionStatus =
+  | 'admitted'
+  | 'consumed'
+  | 'running'
+  | 'awaiting-harvest'
+  | 'accepted'
+  | 'transferred'
+export interface ExecutionResource {
+  kind: 'port' | 'database' | 'integration'
+  key: string
+}
+export interface LocalProcessIdentity {
+  pid: number
+  process_group_id: number
+  start_time: string
+  boot_id: string
+}
+export interface ExecutionCheckpoint {
+  contract_digest: RuntimeDigest
+  artifact_digest: RuntimeDigest
+  worktree_head: string
+  scope_paths: string[]
+  evidence_ids: string[]
+  pending_contract_refs: string[]
+  workspace_digest: RuntimeDigest
+}
+export interface ControlledExecution {
+  request_id: string
+  request_digest: RuntimeDigest
+  permit_id: string
+  attempt_id: string
+  lease_id: string
+  work_id: string
+  worker_id: string
+  engine: string
+  engine_version: string
+  capability_grant_digest: RuntimeDigest
+  coordinator_id: string
+  contract_digest: RuntimeDigest
+  routing_decision_digest: RuntimeDigest
+  input_artifact_digest: RuntimeDigest
+  root_span_id: string
+  lease_duration_ms: number
+  worktree_id: string | null
+  worktree_locator: RuntimeDigest | null
+  worktree_head: string | null
+  scope_paths: string[]
+  workspace_access: 'readonly' | 'mutation'
+  resource_keys: string[]
+  status: ControlledExecutionStatus
+  owner: LocalProcessIdentity | null
+  outcome: ControlledExecutionOutcome | null
+  artifact_digest: RuntimeDigest | null
+  evidence_ids: string[]
+  checkpoint: ExecutionCheckpoint | null
+  checkpoint_digest: RuntimeDigest | null
+  successor_request_id: string | null
+  admitted_at: string
+  updated_at: string
+}
+export interface ControlledExecutionInput {
+  repoRoot: string
+  requestId: string
+  workId: string
+  workerId: string
+  engine: string
+  engineVersion: string
+  capabilityGrantDigest: RuntimeDigest
+  coordinatorId: string
+  contractDigest: RuntimeDigest
+  routingDecisionDigest: RuntimeDigest
+  artifactDigest: RuntimeDigest
+  rootSpanId: string
+  workspaceAccess: 'readonly' | 'mutation'
+  worktreeId?: string
+  worktreePath?: string
+  worktreeHead?: string
+  scopePaths: string[]
+  resources: ExecutionResource[]
+  leaseDurationMs?: number
+}
+
 export interface RuntimeState {
   events: RuntimeEvent[]
+  controlled_executions: ControlledExecution[]
   workers: WorkerProfile[]
   grants: CapabilityGrant[]
   engines: RuntimeEngine[]
@@ -443,6 +534,35 @@ const HANDOFF_REASON = 'relay handoff'
  */
 export const CONTINUATION_HANDOVER_BUDGET = 64
 const RUNTIME_EVENT_PAYLOAD_KEYS: Record<string, { required: string[]; optional?: string[] }> = {
+  'execution.routing_decided': {
+    required: [
+      'request_id',
+      'decision_digest',
+      'contract_digest',
+      'policy_digest',
+      'mode',
+      'locator',
+    ],
+  },
+  'execution.admitted': { required: ['execution'] },
+  'execution.permit_consumed': { required: ['request_id', 'permit_id', 'request_digest'] },
+  'execution.process_bound': { required: ['request_id', 'owner'] },
+  'execution.finished': {
+    required: ['request_id', 'outcome', 'artifact_digest', 'evidence_ids', 'stopped_owner'],
+  },
+  'execution.accepted': {
+    required: [
+      'request_id',
+      'coordinator_id',
+      'contract_digest',
+      'artifact_digest',
+      'evidence_ids',
+    ],
+  },
+  'execution.checkpointed': { required: ['request_id', 'checkpoint', 'checkpoint_digest'] },
+  'execution.transferred': {
+    required: ['request_id', 'successor_request_id', 'checkpoint_digest', 'stopped_owner'],
+  },
   'worker.registered': { required: ['profile'] },
   'grant.registered': { required: ['grant'] },
   'engine.registered': { required: ['engine'] },
@@ -610,7 +730,13 @@ function withRuntimeLock<T>(repoRoot: string, run: () => T): T {
           ownerAlive = (probeError as NodeJS.ErrnoException).code !== 'ESRCH'
         }
       }
-      const lockAgeMs = Date.now() - statSync(lockPath).mtimeMs
+      let lockAgeMs: number
+      try {
+        lockAgeMs = Date.now() - statSync(lockPath).mtimeMs
+      } catch (statError) {
+        if ((statError as NodeJS.ErrnoException).code === 'ENOENT') continue
+        throw statError
+      }
       if ((validOwner && !ownerAlive) || (!validOwner && lockAgeMs >= 5_000)) {
         const stalePath = `${lockPath}.stale-${process.pid}-${randomUUID()}`
         try {
@@ -1100,6 +1226,7 @@ function validateTraceObservation(observation: RuntimeTraceObservation): void {
 
 function validateNestedEventPayload(event: RuntimeEvent): void {
   const payload = event.payload
+  if (event.kind.startsWith('execution.')) validateExecutionEvent(event)
   if (event.kind === 'worker.registered') validateWorkerProfile(payload.profile)
   if (event.kind === 'grant.registered') validateGrant(payload.grant)
   if (event.kind === 'engine.registered') validateEngine(payload.engine)
@@ -1248,7 +1375,8 @@ function validateNestedEventPayload(event: RuntimeEvent): void {
   if (event.kind === 'trace.observed') validateTraceObservation(payload.observation)
 }
 
-function validateEvent(event: RuntimeEvent, expectedSequence?: number): void {
+function validateEvent(value: unknown, expectedSequence?: number): asserts value is RuntimeEvent {
+  const event = requireRecord('runtime event', value)
   const expectedKeys = [
     'schema_version',
     'sequence',
@@ -1298,7 +1426,7 @@ function validateEvent(event: RuntimeEvent, expectedSequence?: number): void {
       `runtime payload contract mismatch for ${event.kind}: missing=${missing.join(',')} unexpected=${unexpected.join(',')}`,
     )
   }
-  validateNestedEventPayload(event)
+  validateNestedEventPayload(event as RuntimeEvent)
   validateSafePayload(event.payload)
 }
 
@@ -1336,11 +1464,12 @@ const EVENT_BACKFILL: Record<string, { key: string; fields: Record<string, unkno
   },
 }
 
-function migrateReadEvent(event: RuntimeEvent): RuntimeEvent {
+function migrateReadEvent(event: Record<string, unknown>): Record<string, unknown> {
+  if (typeof event.kind !== 'string' || !isRecord(event.payload)) return event
   const rule = EVENT_BACKFILL[event.kind]
   if (!rule) return event
-  const target = event.payload[rule.key] as Record<string, unknown> | undefined
-  if (!target || typeof target !== 'object') return event
+  const target = event.payload[rule.key]
+  if (!isRecord(target)) return event
   const missing = Object.entries(rule.fields).filter(([key]) => !(key in target))
   if (missing.length === 0) return event
   return {
@@ -1360,7 +1489,11 @@ export function readRuntimeEvents(repoRoot: string): RuntimeEvent[] {
   const events = complete
     .split('\n')
     .filter(Boolean)
-    .map((line) => migrateReadEvent(JSON.parse(line) as RuntimeEvent))
+    .map((line, index) => {
+      const event = migrateReadEvent(parseJsonRecord(line))
+      validateEvent(event, index + 1)
+      return event
+    })
   const eventIds = new Set<string>()
   events.forEach((event, index) => {
     validateEvent(event, index + 1)
@@ -1445,6 +1578,7 @@ function mutateRuntime<T>(
 }
 
 export function foldRuntimeEvents(events: RuntimeEvent[]): RuntimeState {
+  const executions = new Map<string, ControlledExecution>()
   const workers = new Map<string, WorkerProfile>()
   const grants = new Map<string, CapabilityGrant>()
   const engines = new Map<string, RuntimeEngine>()
@@ -1483,7 +1617,187 @@ export function foldRuntimeEvents(events: RuntimeEvent[]): RuntimeState {
 
   for (const [eventIndex, event] of events.entries()) {
     const payload = event.payload
+    if (event.kind === 'execution.routing_decided') {
+      if (!works.has(event.work_id!)) throw new Error('routing references unknown work')
+      continue
+    }
     const previousEvent = events[eventIndex - 1]
+    const controlled = [...executions.values()].find(
+      (candidate) =>
+        candidate.attempt_id === event.attempt_id && !CONTROLLED_TERMINAL.has(candidate.status),
+    )
+    if (controlled && ['lease.released', 'attempt.flow_recovered'].includes(event.kind)) {
+      throw new Error('controlled execution lifecycle requires controlled authority')
+    }
+    if (
+      controlled &&
+      event.kind === 'attempt.state' &&
+      !['running', 'paused'].includes(payload.state)
+    ) {
+      throw new Error('controlled execution cannot finish through legacy telemetry')
+    }
+    if (
+      event.kind === 'work.state' &&
+      [...executions.values()].some(
+        (candidate) =>
+          candidate.work_id === event.work_id && !CONTROLLED_TERMINAL.has(candidate.status),
+      ) &&
+      payload.state !== 'running'
+    ) {
+      throw new Error('controlled work awaits harvest or verified transfer')
+    }
+    if (event.kind === 'execution.admitted') {
+      const execution = payload.execution as ControlledExecution
+      const attempt = attempts.get(execution.attempt_id)
+      if (
+        executions.has(execution.request_id) ||
+        [...executions.values()].some((item) => item.permit_id === execution.permit_id)
+      )
+        throw new Error('duplicate execution identity')
+      if (
+        !attempt ||
+        event.work_id !== execution.work_id ||
+        event.attempt_id !== execution.attempt_id ||
+        event.actor !== execution.coordinator_id ||
+        execution.admitted_at !== event.recorded_at ||
+        execution.updated_at !== event.recorded_at ||
+        attempt.state !== 'running' ||
+        attempt.work_id !== execution.work_id ||
+        attempt.worker_id !== execution.worker_id ||
+        attempt.engine !== execution.engine ||
+        attempt.engine_version !== execution.engine_version ||
+        attempt.capability_grant_digest !== execution.capability_grant_digest ||
+        attempt.lease_id !== execution.lease_id ||
+        attempt.root_span_id !== execution.root_span_id ||
+        attempt.worktree_id !== execution.worktree_id ||
+        attempt.worktree_head !== execution.worktree_head
+      )
+        throw new Error('execution admission lacks correlated runtime lease')
+      const grant = [...grants.values()].find(
+        (item) => item.digest === execution.capability_grant_digest,
+      )!
+      const worker = workers.get(execution.worker_id)!
+      for (const path of execution.scope_paths)
+        if (
+          !folderScopesCover(grant.folders, path) ||
+          !folderScopesCover(worker.allowed_folders, path)
+        )
+          throw new Error('execution path exceeds grant scope')
+      for (const other of executions.values()) {
+        if (
+          !CONTROLLED_TERMINAL.has(other.status) &&
+          (other.work_id === execution.work_id ||
+            other.resource_keys.some((key) => execution.resource_keys.includes(key)))
+        )
+          throw new Error('overlapping controlled execution reservation')
+      }
+      executions.set(execution.request_id, execution)
+    } else if (event.kind.startsWith('execution.')) {
+      const execution = executions.get(payload.request_id)
+      if (
+        !execution ||
+        event.work_id !== execution.work_id ||
+        event.attempt_id !== execution.attempt_id ||
+        event.actor !== execution.coordinator_id
+      )
+        throw new Error('execution event authority mismatch')
+      const attempt = attempts.get(execution.attempt_id)!
+      const work = works.get(execution.work_id)!
+      const lease = leases.get(execution.lease_id)!
+      let updated: ControlledExecution = { ...execution, updated_at: event.recorded_at }
+      if (event.kind === 'execution.permit_consumed') {
+        if (
+          execution.status !== 'admitted' ||
+          payload.permit_id !== execution.permit_id ||
+          payload.request_digest !== execution.request_digest
+        )
+          throw new Error('execution permit replay or mismatch')
+        if (
+          lease.released_at !== null ||
+          Date.parse(lease.expires_at) <= Date.parse(event.recorded_at)
+        )
+          throw new Error('execution permit lease expired')
+        updated.status = 'consumed'
+      }
+      if (event.kind === 'execution.process_bound') {
+        if (execution.status !== 'consumed' || execution.owner !== null)
+          throw new Error('execution owner binding is immutable')
+        updated = { ...updated, status: 'running', owner: payload.owner }
+      }
+      if (event.kind === 'execution.finished') {
+        if (
+          execution.status !== 'running' ||
+          canonical(execution.owner) !== canonical(payload.stopped_owner)
+        )
+          throw new Error('execution finish owner mismatch')
+        updated = {
+          ...updated,
+          status: 'awaiting-harvest',
+          outcome: payload.outcome,
+          artifact_digest: payload.artifact_digest,
+          evidence_ids: payload.evidence_ids,
+        }
+        attempts.set(attempt.attempt_id, {
+          ...attempt,
+          state: payload.outcome === 'success' ? 'succeeded' : 'failed',
+          flow_state: 'ended',
+          pending_outcome: null,
+          updated_at: event.recorded_at,
+        })
+        leases.set(lease.lease_id, {
+          ...lease,
+          released_at: event.recorded_at,
+          release_reason: `controlled ${payload.outcome}`,
+        })
+        // Work stays nonterminal. The execution reservation, including integration, remains held.
+      }
+      if (event.kind === 'execution.accepted') {
+        if (
+          execution.status !== 'awaiting-harvest' ||
+          execution.outcome !== 'success' ||
+          attempt.state !== 'succeeded' ||
+          payload.coordinator_id !== execution.coordinator_id ||
+          payload.contract_digest !== execution.contract_digest ||
+          payload.artifact_digest !== execution.artifact_digest ||
+          canonical(payload.evidence_ids.toSorted()) !==
+            canonical(execution.evidence_ids.toSorted()) ||
+          payload.evidence_ids.length === 0
+        )
+          throw new Error('execution harvest correlation mismatch')
+        updated.status = 'accepted'
+        works.set(work.work_id, { ...work, state: 'done', updated_at: event.recorded_at })
+      }
+      if (event.kind === 'execution.checkpointed') {
+        const checkpoint = payload.checkpoint as ExecutionCheckpoint
+        if (
+          execution.status !== 'awaiting-harvest' ||
+          execution.checkpoint !== null ||
+          checkpoint.contract_digest !== execution.contract_digest ||
+          checkpoint.artifact_digest !== execution.artifact_digest ||
+          canonical(checkpoint.scope_paths) !== canonical(execution.scope_paths) ||
+          canonical(checkpoint.evidence_ids) !== canonical(execution.evidence_ids)
+        )
+          throw new Error('execution checkpoint correlation mismatch')
+        updated = { ...updated, checkpoint, checkpoint_digest: payload.checkpoint_digest }
+      }
+      if (event.kind === 'execution.transferred') {
+        if (
+          execution.status !== 'awaiting-harvest' ||
+          !execution.checkpoint ||
+          payload.checkpoint_digest !== execution.checkpoint_digest ||
+          canonical(payload.stopped_owner) !== canonical(execution.owner) ||
+          payload.successor_request_id === execution.request_id
+        )
+          throw new Error('execution transfer correlation mismatch')
+        updated = {
+          ...updated,
+          status: 'transferred',
+          successor_request_id: payload.successor_request_id,
+        }
+        works.set(work.work_id, { ...work, state: 'queued', updated_at: event.recorded_at })
+      }
+      executions.set(execution.request_id, updated)
+    }
     if (event.kind === 'worker.registered') {
       if (event.work_id !== null || event.attempt_id !== null)
         throw new Error('worker event cannot carry work identity')
@@ -2371,6 +2685,7 @@ export function foldRuntimeEvents(events: RuntimeEvent[]): RuntimeState {
 
   return {
     events,
+    controlled_executions: [...executions.values()],
     workers: [...workers.values()],
     grants: [...grants.values()],
     engines: [...engines.values()],
@@ -2439,7 +2754,7 @@ function validateWorkerProfile(profile: WorkerProfile): void {
   requireNonEmptyString('worker evidence_policy', profile.evidence_policy)
   requireNonEmptyString('worker verification_policy', profile.verification_policy)
   iso(profile.registered_at)
-  validateSafePayload(profile as unknown as Record<string, unknown>)
+  validateSafePayload({ ...profile })
 }
 
 export function registerWorkerProfile(repoRoot: string, profile: WorkerProfile): WorkerProfile {
@@ -2780,6 +3095,13 @@ function validateAttemptAdmission(
 ): RuntimeWork {
   const work = state.works.find((candidate) => candidate.work_id === input.workId)
   if (!work) throw new Error(`runtime work is not materialized: ${input.workId}`)
+  if (
+    state.controlled_executions.some(
+      (execution) =>
+        execution.work_id === input.workId && !CONTROLLED_TERMINAL.has(execution.status),
+    )
+  )
+    throw new Error('controlled execution owns work; explicit transfer required')
   if (work.state !== 'queued' && work.state !== 'retry_wait') {
     throw new Error(`work ${input.workId} cannot lease from state ${work.state}`)
   }
@@ -3083,7 +3405,7 @@ export function assertRuntimeAttemptCanStart(input: {
   validateAttemptAdmission(input.repoRoot, readRuntimeState(input.repoRoot), input)
 }
 
-export function beginRuntimeAttempt(input: {
+export interface RuntimeAttemptInput {
   repoRoot: string
   workId: string
   workerId: string
@@ -3115,7 +3437,16 @@ export function beginRuntimeAttempt(input: {
   supersedesAttemptId?: string | null
   actor?: string
   now?: string | Date
-}): RuntimeAttempt {
+}
+
+export function beginRuntimeAttempt(input: RuntimeAttemptInput): RuntimeAttempt {
+  return mutateRuntime(input.repoRoot, (state) => planRuntimeAttempt(state, input))
+}
+
+function planRuntimeAttempt(
+  state: RuntimeState,
+  input: RuntimeAttemptInput,
+): { value: RuntimeAttempt; events: Array<Omit<RuntimeEvent, 'sequence'>> } {
   const workId = requirePattern('work_id', input.workId, WORK_ID)
   const workerId = requirePattern('worker_id', input.workerId, WORKER_ID)
   const attemptId = requirePattern('attempt_id', input.attemptId ?? opaque('att'), ATTEMPT_ID)
@@ -3132,134 +3463,132 @@ export function beginRuntimeAttempt(input: {
   if (!Number.isInteger(leaseDurationMs) || leaseDurationMs < 1) {
     throw new Error('leaseDurationMs must be a positive integer')
   }
-  return mutateRuntime(input.repoRoot, (state) => {
-    const work = validateAttemptAdmission(input.repoRoot, state, {
-      workId,
-      workerId,
-      engine: input.engine,
-      engineVersion: input.engineVersion,
-      capabilityGrantDigest: grantDigest,
-      resumesAttemptId: input.resumesAttemptId,
-      resumeRecordId: input.resumeRecordId,
-      resumeToken: input.resumeToken,
-      resumeOpsxArtifactDigest: input.resumeOpsxArtifactDigest,
-      resumeCheckpointIds: input.resumeCheckpointIds,
-      resumeEvidenceIds: input.resumeEvidenceIds,
-      worktreeId: input.worktreeId,
-      worktreeHead: input.worktreeHead,
-      scopeFolder: input.scopeFolder,
-      initiativeId: input.initiativeId,
-      attemptId,
-      supersedesAttemptId: input.supersedesAttemptId,
-    })
-    if (state.attempts.some((candidate) => candidate.attempt_id === attemptId)) {
-      throw new Error(`duplicate attempt_id: ${attemptId}`)
-    }
-    if (state.leases.some((candidate) => candidate.lease_id === leaseId)) {
-      throw new Error(`duplicate lease_id: ${leaseId}`)
-    }
-    if (state.attempts.some((candidate) => candidate.root_trace_id === rootTraceId)) {
-      throw new Error(`duplicate root_trace_id: ${rootTraceId}`)
-    }
-    if (
-      state.attempts.some((candidate) => candidate.root_span_id === rootSpanId) ||
-      state.trace_observations.some((candidate) => candidate.span_id === rootSpanId)
-    ) {
-      throw new Error(`duplicate span_id: ${rootSpanId}`)
-    }
-    const lease: RuntimeLease = {
-      lease_id: leaseId,
-      work_id: workId,
-      attempt_id: attemptId,
-      worker_id: workerId,
-      acquired_at: recordedAt,
-      heartbeat_at: recordedAt,
-      expires_at: new Date(Date.parse(recordedAt) + leaseDurationMs).toISOString(),
-      released_at: null,
-      release_reason: null,
-    }
-    const attempt: RuntimeAttempt = {
-      attempt_id: attemptId,
-      work_id: workId,
-      worker_id: workerId,
-      repo_id: work.repo_id,
-      change_id: work.change_id,
-      engine: input.engine,
-      engine_version: input.engineVersion,
-      scope_folder: normalizeScopeFolder(input.scopeFolder),
-      worktree_id: input.worktreeId ?? null,
-      worktree_head: input.worktreeHead ?? null,
-      workspace_id: input.workspaceId ?? null,
-      pane_id: input.paneId ?? null,
-      lease_id: leaseId,
-      root_trace_id: rootTraceId,
-      root_span_id: rootSpanId,
-      capability_grant_digest: grantDigest,
-      initiative_id: input.initiativeId ?? work.initiative_id,
-      requirement_id: input.requirementId ?? null,
-      requirement_revision: input.requirementRevision ?? null,
-      scenario_id: input.scenarioId ?? null,
-      code_revision: input.codeRevision ?? null,
-      phase_revisions: {},
-      intent_revision: input.intentRevision ?? null,
-      resumes_attempt_id: input.resumesAttemptId ?? null,
-      supersedes_attempt_id: input.supersedesAttemptId ?? null,
-      flow_state: 'pending_start',
-      pending_outcome: null,
-      state: 'running',
-      started_at: recordedAt,
-      updated_at: recordedAt,
-    }
-    return {
-      value: attempt,
-      events: [
-        makeEvent({
-          kind: 'attempt.leased',
-          actor: input.actor ?? workerId,
-          recordedAt,
-          workId,
-          attemptId,
-          payload: { attempt: { ...attempt, state: 'leased' }, lease },
-        }),
-        makeEvent({
-          kind: 'work.state',
-          actor: input.actor ?? workerId,
-          recordedAt,
-          workId,
-          attemptId,
-          payload: { from: work.state, state: 'leased', reason: 'lease acquired' },
-        }),
-        makeEvent({
-          kind: 'attempt.state',
-          actor: input.actor ?? workerId,
-          recordedAt,
-          workId,
-          attemptId,
-          payload: { from: 'leased', state: 'running', reason: 'attempt started' },
-        }),
-        ...(input.resumeRecordId
-          ? [
-              makeEvent({
-                kind: 'resume.consumed',
-                actor: input.actor ?? workerId,
-                recordedAt,
-                workId,
-                attemptId,
-                payload: { resume_record_id: input.resumeRecordId },
-              }),
-            ]
-          : []),
-        makeEvent({
-          kind: 'work.state',
-          actor: input.actor ?? workerId,
-          recordedAt,
-          workId,
-          attemptId,
-          payload: { from: 'leased', state: 'running', reason: 'attempt started' },
-        }),
-      ],
-    }
+  const work = validateAttemptAdmission(input.repoRoot, state, {
+    workId,
+    workerId,
+    engine: input.engine,
+    engineVersion: input.engineVersion,
+    capabilityGrantDigest: grantDigest,
+    resumesAttemptId: input.resumesAttemptId,
+    resumeRecordId: input.resumeRecordId,
+    resumeToken: input.resumeToken,
+    resumeOpsxArtifactDigest: input.resumeOpsxArtifactDigest,
+    resumeCheckpointIds: input.resumeCheckpointIds,
+    resumeEvidenceIds: input.resumeEvidenceIds,
+    worktreeId: input.worktreeId,
+    worktreeHead: input.worktreeHead,
+    scopeFolder: input.scopeFolder,
+    initiativeId: input.initiativeId,
+    attemptId,
+    supersedesAttemptId: input.supersedesAttemptId,
   })
+  if (state.attempts.some((candidate) => candidate.attempt_id === attemptId)) {
+    throw new Error(`duplicate attempt_id: ${attemptId}`)
+  }
+  if (state.leases.some((candidate) => candidate.lease_id === leaseId)) {
+    throw new Error(`duplicate lease_id: ${leaseId}`)
+  }
+  if (state.attempts.some((candidate) => candidate.root_trace_id === rootTraceId)) {
+    throw new Error(`duplicate root_trace_id: ${rootTraceId}`)
+  }
+  if (
+    state.attempts.some((candidate) => candidate.root_span_id === rootSpanId) ||
+    state.trace_observations.some((candidate) => candidate.span_id === rootSpanId)
+  ) {
+    throw new Error(`duplicate span_id: ${rootSpanId}`)
+  }
+  const lease: RuntimeLease = {
+    lease_id: leaseId,
+    work_id: workId,
+    attempt_id: attemptId,
+    worker_id: workerId,
+    acquired_at: recordedAt,
+    heartbeat_at: recordedAt,
+    expires_at: new Date(Date.parse(recordedAt) + leaseDurationMs).toISOString(),
+    released_at: null,
+    release_reason: null,
+  }
+  const attempt: RuntimeAttempt = {
+    attempt_id: attemptId,
+    work_id: workId,
+    worker_id: workerId,
+    repo_id: work.repo_id,
+    change_id: work.change_id,
+    engine: input.engine,
+    engine_version: input.engineVersion,
+    scope_folder: normalizeScopeFolder(input.scopeFolder),
+    worktree_id: input.worktreeId ?? null,
+    worktree_head: input.worktreeHead ?? null,
+    workspace_id: input.workspaceId ?? null,
+    pane_id: input.paneId ?? null,
+    lease_id: leaseId,
+    root_trace_id: rootTraceId,
+    root_span_id: rootSpanId,
+    capability_grant_digest: grantDigest,
+    initiative_id: input.initiativeId ?? work.initiative_id,
+    requirement_id: input.requirementId ?? null,
+    requirement_revision: input.requirementRevision ?? null,
+    scenario_id: input.scenarioId ?? null,
+    code_revision: input.codeRevision ?? null,
+    phase_revisions: {},
+    intent_revision: input.intentRevision ?? null,
+    resumes_attempt_id: input.resumesAttemptId ?? null,
+    supersedes_attempt_id: input.supersedesAttemptId ?? null,
+    flow_state: 'pending_start',
+    pending_outcome: null,
+    state: 'running',
+    started_at: recordedAt,
+    updated_at: recordedAt,
+  }
+  return {
+    value: attempt,
+    events: [
+      makeEvent({
+        kind: 'attempt.leased',
+        actor: input.actor ?? workerId,
+        recordedAt,
+        workId,
+        attemptId,
+        payload: { attempt: { ...attempt, state: 'leased' }, lease },
+      }),
+      makeEvent({
+        kind: 'work.state',
+        actor: input.actor ?? workerId,
+        recordedAt,
+        workId,
+        attemptId,
+        payload: { from: work.state, state: 'leased', reason: 'lease acquired' },
+      }),
+      makeEvent({
+        kind: 'attempt.state',
+        actor: input.actor ?? workerId,
+        recordedAt,
+        workId,
+        attemptId,
+        payload: { from: 'leased', state: 'running', reason: 'attempt started' },
+      }),
+      ...(input.resumeRecordId
+        ? [
+            makeEvent({
+              kind: 'resume.consumed',
+              actor: input.actor ?? workerId,
+              recordedAt,
+              workId,
+              attemptId,
+              payload: { resume_record_id: input.resumeRecordId },
+            }),
+          ]
+        : []),
+      makeEvent({
+        kind: 'work.state',
+        actor: input.actor ?? workerId,
+        recordedAt,
+        workId,
+        attemptId,
+        payload: { from: 'leased', state: 'running', reason: 'attempt started' },
+      }),
+    ],
+  }
 }
 
 export function markRuntimeFlowStarted(input: {
@@ -3547,7 +3876,12 @@ export function reconcileRuntimeFlowBoundaries(input: {
   const authorizationAt = trustedAuthorizationTimestamp()
   const boundaryGraceMs = input.boundaryGraceMs ?? 5_000
   const actions: Array<{ attempt_id: string; action: string }> = []
-  for (const snapshot of readRuntimeState(input.repoRoot).attempts) {
+  const initialState = readRuntimeState(input.repoRoot)
+  const controlledAttempts = new Set(
+    initialState.controlled_executions.map((execution) => execution.attempt_id),
+  )
+  for (const snapshot of initialState.attempts) {
+    if (controlledAttempts.has(snapshot.attempt_id)) continue
     if (!ACTIVE_ATTEMPT.has(snapshot.state)) {
       if (snapshot.flow_state === 'ended') continue
       const closed = mutateRuntime(input.repoRoot, (state) => {
@@ -4466,7 +4800,18 @@ export function reconcileRuntimeOrphans(input: {
       }
     }
 
+    // One pass over the executions instead of a scan per work item: this is the only caller
+    // that walks the full work set, so the nested form grows quadratically with both.
+    const liveControlledWorkIds = new Set(
+      state.controlled_executions
+        .filter((execution) => !CONTROLLED_TERMINAL.has(execution.status))
+        .map((execution) => execution.work_id),
+    )
     for (const work of state.works) {
+      if (liveControlledWorkIds.has(work.work_id)) {
+        handledWorkIds.add(work.work_id)
+        continue
+      }
       if (
         input.validWorkIds &&
         !input.validWorkIds.has(work.work_id) &&
@@ -5023,4 +5368,811 @@ export function runtimeHasActiveAttemptOrLease(repoRoot: string, workIds?: Set<s
       (lease) => (!workIds || workIds.has(lease.work_id)) && lease.released_at === null,
     )
   )
+}
+
+// Controlled execution is an authority path. It never uses the telemetry adapter's fail-open catch.
+const CONTROLLED_TERMINAL = new Set<ControlledExecutionStatus>(['accepted', 'transferred'])
+const CONTROLLED_OUTCOMES = new Set<ControlledExecutionOutcome>([
+  'success',
+  'quality-failure',
+  'quota',
+  'runtime-failure',
+])
+
+function executionRequestBody(execution: ControlledExecution): Record<string, unknown> {
+  const {
+    request_digest: _digest,
+    permit_id: _permit,
+    attempt_id: _attempt,
+    lease_id: _lease,
+    status: _status,
+    owner: _owner,
+    outcome: _outcome,
+    artifact_digest: _artifact,
+    evidence_ids: _evidence,
+    checkpoint: _checkpoint,
+    checkpoint_digest: _checkpointDigest,
+    successor_request_id: _successor,
+    admitted_at: _admitted,
+    updated_at: _updated,
+    ...body
+  } = execution
+  return body
+}
+
+export function exactScope(paths: string[]): string[] {
+  requireStringList('execution scope', paths, 1)
+  for (const path of paths) {
+    if (
+      !path ||
+      isAbsolute(path) ||
+      path.includes('\\') ||
+      /[*?[\]\0\r\n]/.test(path) ||
+      path.split('/').some((part) => !part || part === '..' || part === '.')
+    ) {
+      throw new Error('execution scope requires exact relative paths')
+    }
+  }
+  return paths.toSorted()
+}
+
+function gitRead(root: string, args: string[]): string {
+  const result = spawnSync('git', ['-C', root, ...args], {
+    encoding: 'utf8',
+    timeout: 10_000,
+    maxBuffer: 32 * 1024 * 1024,
+  })
+  if (result.error || result.status !== 0)
+    throw new Error(`execution Git evidence unavailable: ${args[0]}`)
+  return result.stdout
+}
+
+function executionWorktree(path: string, head?: string): { locator: RuntimeDigest; head: string } {
+  const root = realpathSync(path)
+  if (realpathSync(gitRead(root, ['rev-parse', '--show-toplevel']).trim()) !== root) {
+    throw new Error('execution worktree must be its Git toplevel')
+  }
+  const actualHead = gitRead(root, ['rev-parse', 'HEAD']).trim()
+  if (head !== undefined && actualHead !== head) throw new Error('execution worktree HEAD changed')
+  return { locator: runtimeDigest(root), head: actualHead }
+}
+
+function scopedWorkspaceDigest(path: string, scope: string[]): RuntimeDigest {
+  const root = realpathSync(path)
+  const paths = [
+    ...new Set(
+      gitRead(root, [
+        'ls-files',
+        '--cached',
+        '--others',
+        '--exclude-standard',
+        '-z',
+        '--',
+        ...scope,
+      ])
+        .split('\0')
+        .filter(Boolean),
+    ),
+  ].toSorted()
+  const entries = paths.map((name) => {
+    const full = join(root, name)
+    if (relative(root, full).startsWith('../')) throw new Error('workspace snapshot escaped root')
+    try {
+      const stat = lstatSync(full)
+      if (stat.isSymbolicLink()) return [name, 'symlink', readlinkSync(full)]
+      if (!stat.isFile()) throw new Error('workspace snapshot requires regular files or symlinks')
+      // Refuse traversal through a symlinked directory; a tracked path is not proof of containment.
+      const resolved = realpathSync(full)
+      if (relative(root, resolved).startsWith('../'))
+        throw new Error('workspace snapshot escaped root')
+      return [
+        name,
+        stat.mode & 0o777,
+        createHash('sha256').update(readFileSync(full)).digest('hex'),
+      ]
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [name, 'deleted']
+      throw error
+    }
+  })
+  return runtimeDigest(entries)
+}
+
+function validateOwner(owner: LocalProcessIdentity): void {
+  requireRecord('execution owner', owner)
+  assertExactKeys('execution owner', owner, ['pid', 'process_group_id', 'start_time', 'boot_id'])
+  if (!Number.isSafeInteger(owner.pid) || owner.pid < 2 || owner.process_group_id !== owner.pid) {
+    throw new Error('execution owner must lead an isolated process group')
+  }
+  requirePattern('process start time', owner.start_time, /^\d+$/)
+  requirePattern('boot id', owner.boot_id, /^[0-9a-f-]{36}$/)
+}
+
+/** Capture an actually live, detached process group; launchers bind this immediately after spawn. */
+export function captureLocalProcessIdentity(pid: number): LocalProcessIdentity {
+  if (!Number.isSafeInteger(pid) || pid < 2) throw new Error('invalid execution pid')
+  const stat = readFileSync(`/proc/${pid}/stat`, 'utf8')
+  const fields = stat.slice(stat.lastIndexOf(')') + 2).split(' ')
+  if (fields[0] === 'Z' || fields[0] === 'X') throw new Error('execution process already exited')
+  const owner = {
+    pid,
+    process_group_id: Number(fields[2]),
+    start_time: fields[19]!,
+    boot_id: readFileSync('/proc/sys/kernel/random/boot_id', 'utf8').trim(),
+  }
+  validateOwner(owner)
+  return owner
+}
+
+function assertOwnerStopped(owner: LocalProcessIdentity): void {
+  validateOwner(owner)
+  const boot = readFileSync('/proc/sys/kernel/random/boot_id', 'utf8').trim()
+  if (boot !== owner.boot_id) return // A verified machine reboot terminated every old process.
+  for (const entry of readdirSync('/proc')) {
+    if (!/^\d+$/.test(entry)) continue
+    try {
+      const stat = readFileSync(`/proc/${entry}/stat`, 'utf8')
+      const fields = stat.slice(stat.lastIndexOf(')') + 2).split(' ')
+      if (Number(fields[2]) === owner.process_group_id)
+        throw new Error('execution owner process group is still present')
+    } catch (error) {
+      if (
+        (error as NodeJS.ErrnoException).code !== 'ENOENT' &&
+        (error as NodeJS.ErrnoException).code !== 'ESRCH'
+      )
+        throw error
+    }
+  }
+}
+
+function checkpointBody(checkpoint: ExecutionCheckpoint): void {
+  requireRecord('execution checkpoint', checkpoint)
+  assertExactKeys('execution checkpoint', checkpoint, [
+    'contract_digest',
+    'artifact_digest',
+    'worktree_head',
+    'scope_paths',
+    'evidence_ids',
+    'pending_contract_refs',
+    'workspace_digest',
+  ])
+  for (const digest of [
+    checkpoint.contract_digest,
+    checkpoint.artifact_digest,
+    checkpoint.workspace_digest,
+  ])
+    requireDigest('checkpoint digest', digest)
+  requirePattern('checkpoint HEAD', checkpoint.worktree_head, /^[0-9a-f]{40,64}$/)
+  exactScope(checkpoint.scope_paths)
+  requireStringList('checkpoint evidence', checkpoint.evidence_ids)
+  requireStringList('checkpoint contracts', checkpoint.pending_contract_refs)
+  if (checkpoint.pending_contract_refs.some((ref) => !ref.trim()))
+    throw new Error('empty pending contract reference')
+}
+
+function validateControlledExecution(execution: ControlledExecution): void {
+  requireRecord('controlled execution', execution)
+  assertExactKeys('controlled execution', execution, [
+    'request_id',
+    'request_digest',
+    'permit_id',
+    'attempt_id',
+    'lease_id',
+    'work_id',
+    'worker_id',
+    'engine',
+    'engine_version',
+    'capability_grant_digest',
+    'coordinator_id',
+    'contract_digest',
+    'routing_decision_digest',
+    'input_artifact_digest',
+    'root_span_id',
+    'lease_duration_ms',
+    'worktree_id',
+    'worktree_locator',
+    'worktree_head',
+    'scope_paths',
+    'workspace_access',
+    'resource_keys',
+    'status',
+    'owner',
+    'outcome',
+    'artifact_digest',
+    'evidence_ids',
+    'checkpoint',
+    'checkpoint_digest',
+    'successor_request_id',
+    'admitted_at',
+    'updated_at',
+  ])
+  for (const field of ['request_id', 'permit_id', 'coordinator_id', 'engine'] as const)
+    requirePattern(field, execution[field], SAFE_ID)
+  requireNonEmptyString('engine_version', execution.engine_version)
+  requirePattern('execution work', execution.work_id, WORK_ID)
+  requirePattern('execution worker', execution.worker_id, WORKER_ID)
+  requirePattern('execution attempt', execution.attempt_id, ATTEMPT_ID)
+  requirePattern('execution lease', execution.lease_id, /^lse_[A-Za-z0-9]+$/)
+  requirePattern('execution span', execution.root_span_id, /^[0-9a-f]{16}$/)
+  for (const field of [
+    'request_digest',
+    'capability_grant_digest',
+    'contract_digest',
+    'routing_decision_digest',
+    'input_artifact_digest',
+  ] as const)
+    requireDigest(field, execution[field])
+  if (runtimeDigest(executionRequestBody(execution)) !== execution.request_digest)
+    throw new Error('execution request digest mismatch')
+  exactScope(execution.scope_paths)
+  requireStringList('execution resources', execution.resource_keys)
+  if (
+    execution.resource_keys.some(
+      (key) => !/^(worktree|port|database|integration):sha256:[0-9a-f]{64}$/.test(key),
+    )
+  )
+    throw new Error('invalid execution resource key')
+  if (!['readonly', 'mutation'].includes(execution.workspace_access))
+    throw new Error('invalid execution workspace access')
+  if (
+    execution.workspace_access === 'mutation' &&
+    (!execution.worktree_id || !execution.worktree_locator || !execution.worktree_head)
+  )
+    throw new Error('writer execution requires pinned worktree')
+  if (execution.worktree_id !== null) requirePattern('worktree id', execution.worktree_id, SAFE_ID)
+  if (execution.worktree_locator !== null)
+    requireDigest('worktree locator', execution.worktree_locator)
+  if (execution.worktree_head !== null)
+    requirePattern('worktree HEAD', execution.worktree_head, /^[0-9a-f]{40,64}$/)
+  if (
+    execution.workspace_access === 'mutation' &&
+    !execution.resource_keys.includes(`worktree:${execution.worktree_locator}`)
+  )
+    throw new Error('writer execution lacks resource reservation')
+  if (!Number.isSafeInteger(execution.lease_duration_ms) || execution.lease_duration_ms < 1)
+    throw new Error('invalid execution lease duration')
+  if (
+    execution.status !== 'admitted' ||
+    execution.owner !== null ||
+    execution.outcome !== null ||
+    execution.artifact_digest !== null ||
+    execution.evidence_ids.length ||
+    execution.checkpoint !== null ||
+    execution.checkpoint_digest !== null ||
+    execution.successor_request_id !== null
+  )
+    throw new Error('execution admission must be pristine')
+  iso(execution.admitted_at)
+  iso(execution.updated_at)
+}
+
+function controlledById(state: RuntimeState, requestId: string): ControlledExecution {
+  const execution = state.controlled_executions.find(
+    (candidate) => candidate.request_id === requestId,
+  )
+  if (!execution) throw new Error('unknown controlled execution')
+  return execution
+}
+
+function assertControlledPermit(execution: ControlledExecution, permitId: string): void {
+  if (execution.permit_id !== permitId) throw new Error('execution permit mismatch')
+}
+
+function requireExecutionAuthority(state: RuntimeState, execution: ControlledExecution): void {
+  const work = state.works.find((candidate) => candidate.work_id === execution.work_id)!
+  if (matchingPause(state, work)) throw new Error('controlled execution is paused')
+  const grant = state.grants.find(
+    (candidate) => candidate.digest === execution.capability_grant_digest,
+  )
+  if (!grant || grant.worker_id !== execution.worker_id) throw new Error('execution grant mismatch')
+  assertGrantActiveAt(grant, trustedAuthorizationTimestamp())
+  const engine = state.engines.find((candidate) => candidate.engine === execution.engine)
+  if (!engine || engine.health === 'unavailable' || engine.version !== execution.engine_version)
+    throw new Error('execution engine unavailable')
+  const lease = state.leases.find((candidate) => candidate.lease_id === execution.lease_id)
+  if (!lease || lease.released_at !== null || Date.parse(lease.expires_at) <= Date.now())
+    throw new Error('execution lease expired; reconcile owner before retry')
+}
+
+function controlledEvent(
+  execution: ControlledExecution,
+  kind: string,
+  payload: Record<string, unknown>,
+  actor = execution.coordinator_id,
+): Omit<RuntimeEvent, 'sequence'> {
+  return makeEvent({
+    kind,
+    actor,
+    recordedAt: trustedAuthorizationTimestamp(),
+    workId: execution.work_id,
+    attemptId: execution.attempt_id,
+    payload: { request_id: execution.request_id, ...payload },
+  })
+}
+
+function normalizedExecution(input: ControlledExecutionInput): ControlledExecution {
+  requirePattern('execution request id', input.requestId, SAFE_ID)
+  const worktree = input.worktreePath ? executionWorktree(input.worktreePath) : null
+  if (
+    input.workspaceAccess === 'mutation' &&
+    (!worktree || !input.worktreeId || !input.worktreeHead)
+  )
+    throw new Error('writer execution requires pinned worktree')
+  if ((input.worktreeId || input.worktreeHead) && !worktree)
+    throw new Error('execution worktree path required')
+  const resourceKeys = input.resources.map((resource) => {
+    if (
+      !['port', 'database', 'integration'].includes(resource.kind) ||
+      typeof resource.key !== 'string' ||
+      !resource.key.trim()
+    )
+      throw new Error('invalid execution resource')
+    if (resource.kind === 'integration' && resource.key !== 'repository')
+      throw new Error('integration resource key must be repository')
+    if (resource.kind === 'port' && !/^[1-9]\d{0,4}$/.test(resource.key))
+      throw new Error('port resource key must be a numeric local port')
+    if (resource.kind === 'port' && Number(resource.key) > 65535)
+      throw new Error('invalid port resource')
+    return `${resource.kind}:${runtimeDigest(resource.key)}`
+  })
+  if (worktree) {
+    // A grant is scoped to one authority journal, so the pinned worktree MUST belong to that
+    // repository. Without this the "linked worktree" test below passes for any repo on the box
+    // and a grant for A authorizes writing inside B's linked worktree.
+    const commonDirOf = (root: string) =>
+      realpathSync(
+        gitRead(root, ['rev-parse', '--path-format=absolute', '--git-common-dir']).trim(),
+      )
+    const commonDir = commonDirOf(input.worktreePath!)
+    if (commonDir !== commonDirOf(input.repoRoot))
+      throw new Error('execution worktree belongs to another repository')
+    if (input.workspaceAccess === 'mutation') {
+      const gitDir = realpathSync(
+        gitRead(input.worktreePath!, ['rev-parse', '--absolute-git-dir']).trim(),
+      )
+      if (gitDir === commonDir)
+        throw new Error('writer execution requires an isolated linked worktree')
+      resourceKeys.push(`worktree:${worktree.locator}`)
+    }
+  }
+  const now = trustedAuthorizationTimestamp()
+  const execution: ControlledExecution = {
+    request_id: input.requestId,
+    request_digest: runtimeDigest(null),
+    permit_id: opaque('prm'),
+    attempt_id: opaque('att'),
+    lease_id: opaque('lse'),
+    work_id: input.workId,
+    worker_id: input.workerId,
+    engine: input.engine,
+    engine_version: input.engineVersion,
+    capability_grant_digest: input.capabilityGrantDigest,
+    coordinator_id: input.coordinatorId,
+    contract_digest: input.contractDigest,
+    routing_decision_digest: input.routingDecisionDigest,
+    input_artifact_digest: input.artifactDigest,
+    root_span_id: input.rootSpanId,
+    lease_duration_ms: input.leaseDurationMs ?? 60_000,
+    worktree_id: input.worktreeId ?? null,
+    worktree_locator: worktree?.locator ?? null,
+    worktree_head: input.worktreeHead ?? worktree?.head ?? null,
+    scope_paths: exactScope(input.scopePaths),
+    workspace_access: input.workspaceAccess,
+    resource_keys: [...new Set(resourceKeys)].toSorted(),
+    status: 'admitted',
+    owner: null,
+    outcome: null,
+    artifact_digest: null,
+    evidence_ids: [],
+    checkpoint: null,
+    checkpoint_digest: null,
+    successor_request_id: null,
+    admitted_at: now,
+    updated_at: now,
+  }
+  execution.request_digest = runtimeDigest(executionRequestBody(execution))
+  validateControlledExecution(execution)
+  return execution
+}
+
+function planControlledAdmission(
+  state: RuntimeState,
+  input: ControlledExecutionInput,
+  execution: ControlledExecution,
+  supersedesAttemptId?: string,
+): { value: ControlledExecution; events: Array<Omit<RuntimeEvent, 'sequence'>> } {
+  const existing = state.controlled_executions.find(
+    (candidate) => candidate.request_id === input.requestId,
+  )
+  if (existing) {
+    if (existing.request_digest !== execution.request_digest)
+      throw new Error('idempotency key payload mismatch')
+    return { value: existing, events: [] }
+  }
+  for (const current of state.controlled_executions.filter(
+    (candidate) => !CONTROLLED_TERMINAL.has(candidate.status),
+  )) {
+    if (current.work_id === execution.work_id)
+      throw new Error('controlled work already owned; explicit transfer required')
+    if (current.resource_keys.some((key) => execution.resource_keys.includes(key)))
+      throw new Error('execution resource overlap')
+  }
+  if (input.worktreePath) executionWorktree(input.worktreePath, execution.worktree_head!)
+  const plan = planRuntimeAttempt(state, {
+    repoRoot: input.repoRoot,
+    workId: input.workId,
+    workerId: input.workerId,
+    engine: input.engine,
+    engineVersion: input.engineVersion,
+    capabilityGrantDigest: input.capabilityGrantDigest,
+    rootSpanId: input.rootSpanId,
+    attemptId: execution.attempt_id,
+    leaseId: execution.lease_id,
+    worktreeId: execution.worktree_id,
+    worktreeHead: execution.worktree_head,
+    leaseDurationMs: execution.lease_duration_ms,
+    scopeFolder: execution.scope_paths[0],
+    supersedesAttemptId,
+    actor: input.coordinatorId,
+    now: execution.admitted_at,
+  })
+  // Exact file scope is checked in addition to the legacy attempt's folder capability.
+  const worker = state.workers.find((candidate) => candidate.worker_id === execution.worker_id)!
+  const grant = state.grants.find(
+    (candidate) => candidate.digest === execution.capability_grant_digest,
+  )!
+  for (const path of execution.scope_paths) {
+    if (!folderScopesCover(worker.allowed_folders, path) || !folderScopesCover(grant.folders, path))
+      throw new Error('execution path exceeds grant scope')
+  }
+  return {
+    value: execution,
+    events: [
+      ...plan.events,
+      makeEvent({
+        kind: 'execution.admitted',
+        actor: execution.coordinator_id,
+        recordedAt: execution.admitted_at,
+        workId: execution.work_id,
+        attemptId: execution.attempt_id,
+        payload: { execution },
+      }),
+    ],
+  }
+}
+
+/** Atomic admission and resource reservation. Returning an existing request never authorizes another spawn. */
+export function admitControlledExecution(input: ControlledExecutionInput): ControlledExecution {
+  return mutateRuntime(input.repoRoot, (state) =>
+    planControlledAdmission(state, input, normalizedExecution(input)),
+  )
+}
+
+/** Persist consumption BEFORE spawn. An ambiguous crash keeps the permit spent, even after lease expiry. */
+export function consumeExecutionPermit(input: {
+  repoRoot: string
+  requestId: string
+  permitId: string
+  requestDigest: RuntimeDigest
+}): ControlledExecution {
+  return mutateRuntime(input.repoRoot, (state) => {
+    const execution = controlledById(state, input.requestId)
+    assertControlledPermit(execution, input.permitId)
+    if (execution.request_digest !== input.requestDigest)
+      throw new Error('execution request digest mismatch')
+    if (execution.status !== 'admitted')
+      throw new Error('execution permit already consumed; spawn outcome may be uncertain')
+    requireExecutionAuthority(state, execution)
+    return {
+      value: { ...execution, status: 'consumed' },
+      events: [
+        controlledEvent(execution, 'execution.permit_consumed', {
+          permit_id: input.permitId,
+          request_digest: input.requestDigest,
+        }),
+      ],
+    }
+  })
+}
+
+export function bindControlledExecutionProcess(input: {
+  repoRoot: string
+  requestId: string
+  permitId: string
+  owner: LocalProcessIdentity
+}): void {
+  mutateRuntime(input.repoRoot, (state) => {
+    const execution = controlledById(state, input.requestId)
+    assertControlledPermit(execution, input.permitId)
+    if (execution.status !== 'consumed')
+      throw new Error('execution process binding requires one consumed permit')
+    if (canonical(captureLocalProcessIdentity(input.owner.pid)) !== canonical(input.owner))
+      throw new Error('execution process identity mismatch')
+    return {
+      value: undefined,
+      events: [controlledEvent(execution, 'execution.process_bound', { owner: input.owner })],
+    }
+  })
+}
+
+export function finishControlledExecution(input: {
+  repoRoot: string
+  requestId: string
+  permitId: string
+  outcome: ControlledExecutionOutcome
+  artifactDigest: RuntimeDigest
+  evidenceIds: string[]
+  stoppedOwner: LocalProcessIdentity
+}): ControlledExecution {
+  return mutateRuntime(input.repoRoot, (state) => {
+    const execution = controlledById(state, input.requestId)
+    assertControlledPermit(execution, input.permitId)
+    if (
+      execution.status !== 'running' ||
+      canonical(execution.owner) !== canonical(input.stoppedOwner)
+    )
+      throw new Error('execution finish requires bound owner identity')
+    assertOwnerStopped(input.stoppedOwner)
+    if (!CONTROLLED_OUTCOMES.has(input.outcome)) throw new Error('invalid controlled outcome')
+    requireDigest('execution artifact', input.artifactDigest)
+    requireStringList('execution evidence', input.evidenceIds)
+    return {
+      value: {
+        ...execution,
+        status: 'awaiting-harvest',
+        outcome: input.outcome,
+        artifact_digest: input.artifactDigest,
+        evidence_ids: input.evidenceIds,
+      },
+      events: [
+        controlledEvent(execution, 'execution.finished', {
+          outcome: input.outcome,
+          artifact_digest: input.artifactDigest,
+          evidence_ids: input.evidenceIds,
+          stopped_owner: input.stoppedOwner,
+        }),
+      ],
+    }
+  })
+}
+
+/** Caller runs the independent acceptance verifier first; this layer binds its authority and exact evidence. */
+export function acceptControlledExecution(input: {
+  repoRoot: string
+  requestId: string
+  coordinatorId: string
+  contractDigest: RuntimeDigest
+  artifactDigest: RuntimeDigest
+  evidenceIds: string[]
+}): ControlledExecution {
+  return mutateRuntime(input.repoRoot, (state) => {
+    const execution = controlledById(state, input.requestId)
+    if (
+      input.coordinatorId !== execution.coordinator_id ||
+      input.contractDigest !== execution.contract_digest ||
+      input.artifactDigest !== execution.artifact_digest ||
+      canonical(input.evidenceIds.toSorted()) !== canonical(execution.evidence_ids.toSorted())
+    )
+      throw new Error('controlled harvest authority or evidence mismatch')
+    if (
+      execution.status !== 'awaiting-harvest' ||
+      execution.outcome !== 'success' ||
+      input.evidenceIds.length === 0
+    )
+      throw new Error('controlled execution is not acceptable')
+    return {
+      value: { ...execution, status: 'accepted' },
+      events: [
+        controlledEvent(execution, 'execution.accepted', {
+          coordinator_id: input.coordinatorId,
+          contract_digest: input.contractDigest,
+          artifact_digest: input.artifactDigest,
+          evidence_ids: input.evidenceIds,
+        }),
+      ],
+    }
+  })
+}
+
+export function checkpointControlledExecution(input: {
+  repoRoot: string
+  requestId: string
+  coordinatorId: string
+  worktreePath: string
+  worktreeHead: string
+  pendingContractRefs: string[]
+}): ExecutionCheckpoint {
+  return mutateRuntime(input.repoRoot, (state) => {
+    const execution = controlledById(state, input.requestId)
+    if (
+      execution.status !== 'awaiting-harvest' ||
+      execution.coordinator_id !== input.coordinatorId ||
+      !execution.artifact_digest
+    )
+      throw new Error('checkpoint requires stopped execution and coordinator')
+    const tree = executionWorktree(input.worktreePath, input.worktreeHead)
+    if (tree.locator !== execution.worktree_locator) throw new Error('checkpoint worktree mismatch')
+    const checkpoint: ExecutionCheckpoint = {
+      contract_digest: execution.contract_digest,
+      artifact_digest: execution.artifact_digest,
+      worktree_head: tree.head,
+      scope_paths: execution.scope_paths,
+      evidence_ids: execution.evidence_ids,
+      pending_contract_refs: input.pendingContractRefs,
+      workspace_digest: scopedWorkspaceDigest(input.worktreePath, execution.scope_paths),
+    }
+    checkpointBody(checkpoint)
+    if (execution.checkpoint) {
+      if (canonical(checkpoint) !== canonical(execution.checkpoint))
+        throw new Error('execution checkpoint is immutable')
+      return { value: execution.checkpoint, events: [] }
+    }
+    return {
+      value: checkpoint,
+      events: [
+        controlledEvent(execution, 'execution.checkpointed', {
+          checkpoint,
+          checkpoint_digest: runtimeDigest(checkpoint),
+        }),
+      ],
+    }
+  })
+}
+
+/** Cross-engine transfer is separate from strict resume: stopped predecessor, immutable checkpoint, fresh admission. */
+export function transferControlledExecution(input: {
+  predecessorRequestId: string
+  checkpointDigest: RuntimeDigest
+  stoppedOwner: LocalProcessIdentity
+  successor: ControlledExecutionInput
+}): ControlledExecution {
+  const next = input.successor
+  return mutateRuntime(next.repoRoot, (state) => {
+    const previous = controlledById(state, input.predecessorRequestId)
+    if (
+      previous.status !== 'awaiting-harvest' ||
+      !previous.checkpoint ||
+      previous.checkpoint_digest !== input.checkpointDigest ||
+      canonical(previous.owner) !== canonical(input.stoppedOwner)
+    )
+      throw new Error('transfer requires stopped owner and immutable checkpoint')
+    if (
+      next.workId !== previous.work_id ||
+      next.coordinatorId !== previous.coordinator_id ||
+      next.contractDigest !== previous.contract_digest ||
+      next.artifactDigest !== previous.checkpoint.artifact_digest ||
+      next.worktreeHead !== previous.checkpoint.worktree_head ||
+      canonical(exactScope(next.scopePaths)) !== canonical(previous.scope_paths)
+    )
+      throw new Error('transfer contract or work identity mismatch')
+    if (next.capabilityGrantDigest === previous.capability_grant_digest)
+      throw new Error('transfer requires fresh capability grant')
+    const successorGrant = state.grants.find((grant) => grant.digest === next.capabilityGrantDigest)
+    if (!successorGrant || Date.parse(successorGrant.issued_at) < Date.parse(previous.updated_at))
+      throw new Error('transfer grant predates immutable checkpoint')
+    assertOwnerStopped(input.stoppedOwner)
+    if (
+      !next.worktreePath ||
+      executionWorktree(next.worktreePath, next.worktreeHead).locator !==
+        previous.worktree_locator ||
+      scopedWorkspaceDigest(next.worktreePath, previous.scope_paths) !==
+        previous.checkpoint.workspace_digest
+    )
+      throw new Error('transfer checkpoint is stale')
+    const event = controlledEvent(previous, 'execution.transferred', {
+      successor_request_id: next.requestId,
+      checkpoint_digest: input.checkpointDigest,
+      stopped_owner: input.stoppedOwner,
+    })
+    const intermediate = foldRuntimeEvents([
+      ...state.events,
+      { ...event, sequence: state.events.length + 1 },
+    ])
+    const plan = planControlledAdmission(
+      intermediate,
+      next,
+      normalizedExecution(next),
+      previous.attempt_id,
+    )
+    if (plan.events.length === 0) throw new Error('transfer successor request already exists')
+    return { value: plan.value, events: [event, ...plan.events] }
+  })
+}
+
+function validateExecutionEvent(event: RuntimeEvent): void {
+  const p = event.payload
+  if (event.kind === 'execution.routing_decided') {
+    requirePattern('routing request', p.request_id, SAFE_ID)
+    for (const key of ['decision_digest', 'contract_digest', 'policy_digest'])
+      requireDigest(key, p[key])
+    if (!['shadow', 'execute'].includes(p.mode)) throw new Error('invalid routing mode')
+    requireNonEmptyString('routing locator', p.locator)
+    return
+  }
+  if (event.kind === 'execution.admitted') {
+    validateControlledExecution(p.execution)
+    return
+  }
+  requirePattern('execution request id', p.request_id, SAFE_ID)
+  if (event.kind === 'execution.permit_consumed') {
+    requirePattern('execution permit', p.permit_id, SAFE_ID)
+    requireDigest('execution request', p.request_digest)
+  }
+  if (event.kind === 'execution.process_bound') validateOwner(p.owner)
+  if (event.kind === 'execution.finished') {
+    if (!CONTROLLED_OUTCOMES.has(p.outcome)) throw new Error('invalid controlled outcome')
+    requireDigest('execution artifact', p.artifact_digest)
+    requireStringList('execution evidence', p.evidence_ids)
+    validateOwner(p.stopped_owner)
+  }
+  if (event.kind === 'execution.accepted') {
+    requirePattern('execution coordinator', p.coordinator_id, SAFE_ID)
+    requireDigest('execution contract', p.contract_digest)
+    requireDigest('execution artifact', p.artifact_digest)
+    requireStringList('execution evidence', p.evidence_ids, 1)
+  }
+  if (event.kind === 'execution.checkpointed') {
+    checkpointBody(p.checkpoint)
+    if (runtimeDigest(p.checkpoint) !== p.checkpoint_digest)
+      throw new Error('execution checkpoint digest mismatch')
+  }
+  if (event.kind === 'execution.transferred') {
+    requirePattern('execution successor', p.successor_request_id, SAFE_ID)
+    requireDigest('execution checkpoint', p.checkpoint_digest)
+    validateOwner(p.stopped_owner)
+  }
+}
+
+/** Shadow decisions are recorded before admission, in the existing authority journal. */
+export function recordExecutionRoutingDecision(input: {
+  repoRoot: string
+  workId: string
+  actor: string
+  requestId: string
+  decisionDigest: RuntimeDigest
+  contractDigest: RuntimeDigest
+  policyDigest: RuntimeDigest
+  mode: 'shadow' | 'execute'
+  locator: string
+}): void {
+  mutateRuntime(input.repoRoot, (state) => {
+    if (!state.works.some((work) => work.work_id === input.workId))
+      throw new Error('routing requires registered work')
+    const payload = {
+      event_kind: 'execution.routing_decided',
+      request_id: input.requestId,
+      decision_digest: input.decisionDigest,
+      contract_digest: input.contractDigest,
+      policy_digest: input.policyDigest,
+      mode: input.mode,
+      locator: input.locator,
+    }
+    const prior = state.events.find(
+      (event) =>
+        event.kind === 'execution.routing_decided' && event.payload.request_id === input.requestId,
+    )
+    if (prior) {
+      if (
+        prior.work_id !== input.workId ||
+        prior.actor !== input.actor ||
+        runtimeDigest(prior.payload) !== runtimeDigest(payload)
+      ) {
+        throw new Error('routing request reused with different decision')
+      }
+      return { value: undefined, events: [] }
+    }
+    return {
+      value: undefined,
+      events: [
+        makeEvent({
+          kind: 'execution.routing_decided',
+          actor: input.actor,
+          recordedAt: trustedAuthorizationTimestamp(),
+          workId: input.workId,
+          attemptId: null,
+          payload,
+        }),
+      ],
+    }
+  })
 }

@@ -22,6 +22,7 @@
 // 不是 work 的性質** —— 一個 session 橫跨多件 work、一件 work 橫跨多個 session，任何硬掛規則都會
 // 錯誤歸屬。歸屬在讀端 join on `session_id`（每件 work 的 span 本來就帶它），零新欄位。
 
+import { isRecord, parseJsonRecord } from '../lib/json-unknown.ts'
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
 import type { Dirent } from 'node:fs'
 import { homedir } from 'node:os'
@@ -243,7 +244,7 @@ export function summariseTranscript(file: string): SummariseResult {
       }
       let rec: Record<string, unknown>
       try {
-        rec = JSON.parse(line) as Record<string, unknown>
+        rec = parseJsonRecord(line)
       } catch {
         parseFailures += 1
         continue
@@ -256,7 +257,7 @@ export function summariseTranscript(file: string): SummariseResult {
       }
       bump(permissionModes, rec.permissionMode)
       bump(versions, rec.version)
-      const message = (rec.message ?? {}) as Record<string, unknown>
+      const message = isRecord(rec.message) ? rec.message : {}
       const content = message.content
 
       if (rec.type === 'assistant') {
@@ -366,7 +367,7 @@ export function emitSessionSummary(
     actor: payload.source,
     substrate: 'claude-code',
     session_id: payload.session_id,
-    payload: payload as unknown as Record<string, unknown>,
+    payload: { ...payload },
     outcome: 'ok',
     ...(ts ? { ts_utc: ts } : {}),
     cwd,
@@ -379,14 +380,13 @@ function cladeVersion(root: string): string | null {
   try {
     const hub = join(root, '.claude', 'hub.json')
     if (existsSync(hub)) {
-      const v = (JSON.parse(readFileSync(hub, 'utf8')) as { version?: unknown }).version
+      const v = parseJsonRecord(readFileSync(hub, 'utf8')).version
       return typeof v === 'string' ? v : null
     }
     const marketplace = join(root, '.claude-plugin', 'marketplace.json')
     if (existsSync(marketplace)) {
-      const v = (
-        JSON.parse(readFileSync(marketplace, 'utf8')) as { metadata?: { version?: unknown } }
-      ).metadata?.version
+      const metadata = parseJsonRecord(readFileSync(marketplace, 'utf8')).metadata
+      const v = isRecord(metadata) ? metadata.version : undefined
       return typeof v === 'string' ? v : null
     }
   } catch {
@@ -497,8 +497,10 @@ function watermarkPath(cwd: string): string {
 
 function readWatermark(cwd: string): number {
   try {
-    const raw = JSON.parse(readFileSync(watermarkPath(cwd), 'utf8')) as { watermark_ms?: unknown }
-    return Number(raw.watermark_ms) || 0
+    const raw = parseJsonRecord(readFileSync(watermarkPath(cwd), 'utf8'))
+    const value = raw.watermark_ms
+    const ms = typeof value === 'number' || typeof value === 'string' ? Number(value) : 0
+    return Number.isFinite(ms) ? ms : 0
   } catch {
     return 0
   }

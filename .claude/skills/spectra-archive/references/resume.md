@@ -19,11 +19,13 @@ Local edits will be reverted by the next sync.
 
    #### Resume Dispatch Table (mid-flight)
 
+   Resolve the source via SKILL.md Step 0 before every jump; all following operations use that root.
+
    Read sidecar via `node scripts/spectra-archive-sidecar.ts read <change-name>` (parse JSON `.phase`):
 
    | `phase` value | Action on `--resume` |
    | --- | --- |
-   | `merge-back` | re-run **Step 0** from the top. `wt-helper merge-back --noop-if-missing` is idempotent — if the worktree was already absorbed in the prior run, it silently no-ops. |
+   | `merge-back` | re-run **Step 0** source resolution without reinitializing the existing sidecar. This compatibility token no longer performs a merge. |
    | `gate-check` | jump to **Step 2** and re-run gates (2 / 3 / 3.3 / 3.5 / 5.5). All gates are idempotent: status / task / pattern checks are read-only; the `[discuss]` walkthrough in Step 3.5 only re-prompts items still unchecked. |
    | `spec-sync` | jump to **Step 4** and re-run delta spec assessment. Comparison is idempotent. |
    | `folder-mv` | **STOP — manual fixup required**. Reason: Step 6 invokes the guarded `archive` command CLI which is a black box from clade's POV; mid-flight interrupt may leave `openspec/changes/<X>/` partially renamed and `openspec/specs/<cap>/spec.md` deltas partially applied. Show the user: <br/> *"phase=folder-mv means the guarded `archive` command CLI was mid-flight when interrupted. Cannot safely retry — reality is unknown. Manual fixup: (a) inspect `openspec/changes/<X>/` and `openspec/changes/archive/YYYY-MM-DD-<X>/` directory states; (b) inspect `git status` for partial spec delta writes; (c) reconcile by hand (either complete the move or roll back), then `node scripts/spectra-archive-sidecar.ts delete <X>` and re-invoke from a clean state."* |
