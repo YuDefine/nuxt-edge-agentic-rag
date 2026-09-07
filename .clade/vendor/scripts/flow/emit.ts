@@ -1772,7 +1772,7 @@ export interface ReopenWorkInput {
  * A delivered work item is running again — the counterpart of `markWorkDone` on this stream.
  *
  * The control plane's runtime journal already records the reopen in full (`work.reopened` plus the
- * `done -> queued` transition, ai-control-plane-runtime.ts). This event exists because the SPINE is
+ * `done -> queued` transition, execution-runtime.ts). This event exists because the SPINE is
  * where every read side asks whether a work item is finished, and there a lone `work.done` reads as
  * finished forever: a reopened work would be drawn `done` on the board while its runtime state is
  * `queued`. A point event rather than a state edge, for the same reason `work.done` is one — it is

@@ -32,7 +32,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSy
 import { dirname, join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 
-import { readRuntimeState } from '../ai-control-plane-runtime.ts'
+import { readRuntimeState } from '../execution-runtime.ts'
 import { findConsumerRoot, gitToplevel } from '../claim-helper.ts'
 import { fleetRoots, syncDecisions, syncFleet } from './decision-sync.ts'
 import { syncWork, syncWorkFleet, type WorkSyncResult } from './work-sources.ts'
