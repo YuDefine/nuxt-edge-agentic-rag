@@ -85,7 +85,6 @@
     "hub-auth-better-auth@clade": true,
     "hub-runtime-cf-workers@clade": true,
     "hub-framework-nuxt@clade": true,
-    "hub-capabilities-openspec@clade": true,
     "hub-ecosystem-node@clade": true,
     "hub-db-schema-cf-d1@clade": true
   }
