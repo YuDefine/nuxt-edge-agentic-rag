@@ -7,6 +7,8 @@ Local edits will be reverted by the next sync.
 
 # Blocker & Decision Evaluation
 
+<!-- clade-targets: claude -->
+
 > 本檔從 SKILL.md § 3i / § 3j 搬移，原文逐字保留。主檔 pointer：「bucket 為 `applyBlocked` 時 MUST 先完整讀本檔 § 3i；bucket 為 `awaitingUserDecision` 時 MUST 先完整讀本檔 § 3j」。
 
 **進本檔任一條判定之前，該 item MUST 已經過 [blocker-ledger.md](blocker-ledger.md) 的三步查表且沒命中。** 命中查表的 item 本輪不進本檔——它上一輪已經照本檔判過，而解除條件的實測值沒有變。
@@ -44,7 +46,7 @@ Local edits will be reverted by the next sync.
 
 4. **Impl blocked ≠ review items blocked（hard rule）**：即使 impl 仍 blocked，**MUST** 檢查 `## 人工檢查` 區是否有 Claude-actionable items（`issued > 0` / `verifyClaudePendingCount > 0` / `discussPendingCount > 0` / review-gui 顯示「🤖 等 Claude 接手」）。有 → 走 SKILL.md § 3.1a 的 OPSX inspect／證據補件流程處理 review items，**NEVER** 因為 impl blocked 就整條 change 跳過。人工檢查 lifecycle 獨立於 impl lifecycle。
 
-   **為什麼**（2026-07-21 <consumer-h> 實證）：`ops-deploy-safety` bucket=`applyBlocked`（4.1-4.3 卡 TD-002），但 review-gui 顯示「🤖 等 Claude 接手」有 1 個 Claude-actionable discuss item。loop 看到 `applyBlocked` 就整條跳過，review-gui 的 Claude-ball 永遠沒人接。
+   **為什麼**（2026-07-21 <consumer-g> 實證）：`ops-deploy-safety` bucket=`applyBlocked`（4.1-4.3 卡 TD-002），但 review-gui 顯示「🤖 等 Claude 接手」有 1 個 Claude-actionable discuss item。loop 看到 `applyBlocked` 就整條跳過，review-gui 的 Claude-ball 永遠沒人接。
 
 ### 視覺 blocker 的 capability probe（unattended 一樣要跑）
 
@@ -69,9 +71,9 @@ HANDOFF：那句話描述的是**沒有量測**，不是量測結果。
 **NEVER** 寫「需 attended」這種形容詞——形容詞每一輪都會被重新「發現」一次，而 predicate 有解除條件、
 可以進 [blocker-ledger.md](blocker-ledger.md) 查表，下一輪不必重判。
 
-#### 2026-08-22 端到端實測（<consumer-i>）——為什麼現在只剩三條
+#### 2026-08-22 端到端實測（<consumer-h>）——為什麼現在只剩三條
 
-首版有 probe 1–3（第 3 條量 dispatcher binary），2026-08-22 在 <consumer-i>
+首版有 probe 1–3（第 3 條量 dispatcher binary），2026-08-22 在 <consumer-h>
 （`shape: canonical`、`emailRequired: false`、`stackHint: libsql-drizzle`）跑完整鏈路：
 
 - **鏈路本身是通的**：dev-session 起 3050 → 手組 items（2 個真 `[verify:ui]` item）→ collector
@@ -127,4 +129,4 @@ HANDOFF：那句話描述的是**沒有量測**，不是量測結果。
 
 **核心原則**：work-loop 的自主模式承諾「能自主決策的自主完成」。未實作的 phase、技術 findings、標準 spectra phases（Design Review / evidence collection）**全部屬於自主範疇**，NEVER 因為被標記 `awaitingUserDecision` 就當真 — 先判斷是否真的需要 user、還是上一輪 apply 過度保守地標記了。
 
-**反例（<consumer-b> 2026-07-21 `/change-loop turbo`）**：(1) 未實作的 phase 被標為 awaiting-user-decision → 應直接 dispatch apply；(2) 技術 findings（seed 歸屬 + UI wiring）被標為 blocker → 應自行修或登 TD；(3) Design Review 被標為「需排程」→ 應直接跑。三項全部可自主解決，loop 不應停下。
+**反例（<consumer-a> 2026-07-21 `/change-loop turbo`）**：(1) 未實作的 phase 被標為 awaiting-user-decision → 應直接 dispatch apply；(2) 技術 findings（seed 歸屬 + UI wiring）被標為 blocker → 應自行修或登 TD；(3) Design Review 被標為「需排程」→ 應直接跑。三項全部可自主解決，loop 不應停下。

@@ -7,6 +7,8 @@ Local edits will be reverted by the next sync.
 
 # 問答、調查與討論
 
+<!-- clade-targets: claude,codex,cursor -->
+
 收到 ask、debug、audit、discuss 或等價原請求時，保留唯讀範圍。先確認問題與目標 repo，依 codebase discovery 規約定位程式、規格和既有驗收；需要歷史時才用中立 history 讀原件。
 
 | 模式 | 工作與交付 |

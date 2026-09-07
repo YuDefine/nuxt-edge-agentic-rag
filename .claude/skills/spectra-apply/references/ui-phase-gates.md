@@ -9,21 +9,23 @@ Local edits will be reverted by the next sync.
 
 # spectra-apply — Step 6c / 6d UI phase gate 細節
 
+<!-- clade-targets: claude,codex,cursor -->
+
 > 本檔是 `spectra-apply/SKILL.md` 的執行細節分冊（clade fork 加料，2026-08-02 自 SKILL.md 抽出以縮 invoke 成本）。
 > SKILL.md 對應 step 的 inline pointer 指到本檔；**MUST 依 pointer 指示完整讀對應 § 再執行**。
 > 行為 gate（NEVER / MUST 判定）留在 SKILL.md inline；本檔是操作 recipe / 範本 / 查表。
 
 ---
 
-## Step 6c — 理由（<consumer-h> app-status-badge-extraction 2026-05-24 實證）
+## Step 6c — 理由（<consumer-g> app-status-badge-extraction 2026-05-24 實證）
 
-   **理由**：a UI-view refactor MUST NOT change observable behavior. <consumer-h> `app-status-badge-extraction`（2026-05-24）做 `UBadge → AppStatusBadge` refactor，但 `attendance/amendments.vue` 的 `useEmployeeListQuery({ perPage: 200 })` 違反 schema `max(100)` → API 400 → `employeeNameMap` empty → 員工 column 整列「-」。Refactor「component substitute + typecheck pass」判定通過，但 page runtime 已壞 — design review / verify:ui / manual review 全沒攔，user 親眼才抓到。Step 6c 是針對這條失效鏈的 mechanical gate。
+   **理由**：a UI-view refactor MUST NOT change observable behavior. <consumer-g> `app-status-badge-extraction`（2026-05-24）做 `UBadge → AppStatusBadge` refactor，但 `attendance/amendments.vue` 的 `useEmployeeListQuery({ perPage: 200 })` 違反 schema `max(100)` → API 400 → `employeeNameMap` empty → 員工 column 整列「-」。Refactor「component substitute + typecheck pass」判定通過，但 page runtime 已壞 — design review / verify:ui / manual review 全沒攔，user 親眼才抓到。Step 6c 是針對這條失效鏈的 mechanical gate。
 
 ---
 
-## Step 6d — 理由（<consumer-h> line-notification-system 2026-06-26 實證）
+## Step 6d — 理由（<consumer-g> line-notification-system 2026-06-26 實證）
 
-   **理由**：`vendor/review-rules/patterns.json` 定義的機械可檢規則（如 `ubadge-size-ban`、`overlay-width-class`）在 pre-commit hook 有逐行 grep 的 fallback，但跨行 Vue template props（如 `<UBadge\n  size="xs"\n/>`）在 hook 首次落地前會漏抓。在 apply 階段加 multi-line 整檔掃描是 defense-in-depth。<consumer-h> `line-notification-system`（2026-06-26）的 `UBadge size="xs"` 穿過 pre-commit hook 上線即為實證。
+   **理由**：`vendor/review-rules/patterns.json` 定義的機械可檢規則（如 `ubadge-size-ban`、`overlay-width-class`）在 pre-commit hook 有逐行 grep 的 fallback，但跨行 Vue template props（如 `<UBadge\n  size="xs"\n/>`）在 hook 首次落地前會漏抓。在 apply 階段加 multi-line 整檔掃描是 defense-in-depth。<consumer-g> `line-notification-system`（2026-06-26）的 `UBadge size="xs"` 穿過 pre-commit hook 上線即為實證。
 
 ---
 

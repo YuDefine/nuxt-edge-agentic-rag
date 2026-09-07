@@ -7,6 +7,8 @@ Local edits will be reverted by the next sync.
 
 # 實作、證據與歸檔
 
+<!-- clade-targets: claude,codex,cursor -->
+
 1. 對指定 repo/change 執行 `inspect --change-id <id> --repo-root <repo> --json`，並對所需 artifact 執行 `instructions --change-id <id> --artifact-id <artifact-id> --repo-root <repo> --json`，取得當前 requirement/work revisions、原驗收、阻塞及證據政策。讀取失敗明示；不得由舊tasks checkbox補猜狀態。
 2. 對每個待執行 work spec 呼叫 `materialize --change-id <id> --work-spec-id <id> --repo-root <repo> --json`，回讀同一 work。以現有 work/attempt controller、檔案所有權與 task-type routing 執行；自動開關控制新自動啟動，手動接手保持原身分與互斥 owner。
 3. 依該 work 的 BDD 政策取得實際 RED validity、GREEN、mutation 或其他必需證據。沒有相應 phase 的證據就保留未通過；測試 exit 0、截圖、worker 報告各自只證明其真正量到的事。

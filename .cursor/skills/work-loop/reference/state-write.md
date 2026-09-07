@@ -7,6 +7,9 @@ Local edits will be reverted by the next sync.
 
 # state 寫入 —— 五道保護與 STATE_* token 處置
 
+<!-- clade-targets: claude -->
+<!-- carrier-independent candidate: 本檔的義務不經任何 runtime 專屬工具契約表達，是 [[TD-445]] 抽共用核心時最先可搬的一批。**這是候選標記，不是 audience**——真正的 audience 是上面那行 `clade-targets`，NEVER 因為看到本行就把 targets 放寬。放寬 reference 而不放寬 SKILL.md 會投出沒有 skill 入口指向的孤兒檔。 -->
+
 SKILL.md Step 7.3 留的是一條判讀規則（非 `STATE_OK` 即停）。本檔收的是**收到某個 token 之後**
 才需要的東西：每道保護擋掉什麼、每個 token 怎麼處置、`.bak` 的救援契約。
 
@@ -33,5 +36,5 @@ SKILL.md Step 7.3 留的是一條判讀規則（非 `STATE_OK` 即停）。本�
 ## `.bak` 的救援契約
 
 **`.bak` 只保留上一輪的完好版本，NEVER 累積多份帶時間戳的副本**——救援時要能一眼看出該還原哪一個。
-且 **NEVER 把寫壞的檔存成 `.bak-<ts>`**：那個名字會讓還原程序把屍體當備份撿起來（2026-08-12 <consumer-b>
+且 **NEVER 把寫壞的檔存成 `.bak-<ts>`**：那個名字會讓還原程序把屍體當備份撿起來（2026-08-12 <consumer-a>
 實際留過一份，已改名 `state.json.corrupt-<ts>`）。

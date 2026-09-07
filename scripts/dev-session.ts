@@ -6,7 +6,7 @@
  * 為什麼存在（root cause）：
  *   agent（Claude Code / Codex）的 harness 會在 tool-call 生命週期結束時回收
  *   Bash 衍生的整個 process tree —— **連 `spawn(detached:true)+unref()` / setsid /
- *   nohup 都逃不掉**（實測 2026-06-01 <consumer-h>：run_in_background 與 setsid 起的 nuxt
+ *   nohup 都逃不掉**（實測 2026-06-01 <consumer-g>：run_in_background 與 setsid 起的 nuxt
  *   dev 都被 reap，唯獨掛在 multiplexer server daemon 下的存活）。dev-singleton.ts
  *   的 `spawn(detached:true)` 同樣會被回收。
  *
@@ -445,12 +445,12 @@ function resolveConsumerId(o, meta) {
   // **MUST 解析 main worktree 的名字，不是當前 worktree 的目錄名。**
   //
   // `git rev-parse --show-toplevel` 在 linked worktree 內回的是**該 worktree 的路徑**
-  // （例：.../<consumer-h>-wt/td-279-280-submit-chain），basename 就變成 slug 而不是 consumer 名。
+  // （例：.../<consumer-g>-wt/td-279-280-submit-chain），basename 就變成 slug 而不是 consumer 名。
   // 後果：lease 檔路徑算成 /tmp/<slug>-verification-lease.json —— 跟 main 用的
   // /tmp/<consumer>-verification-lease.json 是**不同檔案**。於是從 worktree 跑、又沒帶
   // --consumer-meta 的指令會靜默操作錯的 lease：release 釋放不到、conflict 偵測不到，
-  // 跨 worktree 的 lease 隔離形同虛設（2026-07-26 <consumer-h> 實證：worktree 內 `stop` 後
-  // /tmp/<consumer-h>-verification-lease.json 原封不動殘留）。 fixed-temp-path-exempt: 2026-07-26 事故的現場路徑，改寫等於竄改事故紀錄
+  // 跨 worktree 的 lease 隔離形同虛設（2026-07-26 <consumer-g> 實證：worktree 內 `stop` 後
+  // /tmp/<consumer-g>-verification-lease.json 原封不動殘留）。 fixed-temp-path-exempt: 2026-07-26 事故的現場路徑，改寫等於竄改事故紀錄
   //
   // `--git-common-dir` 在 main 回 `<repo>/.git`、在 linked worktree 回
   // `<main-repo>/.git/worktrees/<slug>`；兩者的 dirname 往上找到 `.git` 的父層即 main worktree。
@@ -621,8 +621,8 @@ function listeningPortsForCwd(cwd) {
 // 「先確認該程序是什麼」就是「agent 回頭問人怎麼搶回來」的唯一來源，儘管它有能力自己判：
 // listener 的 /proc/<pid>/cwd 指得出它屬於哪個 consumer，registry 說得出那個 port 屬於誰。
 //
-// 2026-09-02 實例：<consumer-b> 要收 evidence，3000 被 <consumer-h> 的一支重複 nuxt dev 佔著
-// （cmdline 寫 `--port 3040`、實際聽 3000、cwd 在 <consumer-h>），而 <consumer-h> 現役的 3040 由另一支
+// 2026-09-02 實例：<consumer-a> 要收 evidence，3000 被 <consumer-g> 的一支重複 nuxt dev 佔著
+// （cmdline 寫 `--port 3040`、實際聽 3000、cwd 在 <consumer-g>），而 <consumer-g> 現役的 3040 由另一支
 // pid 持有。分配層對這件事完全正確，沒有任何一層在 runtime 說「你綁錯了」。
 //
 // **判得出「它綁錯了」才回收，判不出一律維持 refuse。** 缺一即非 foreign-misbound：
@@ -751,9 +751,9 @@ export function ownsPort(territory, port) {
 }
 
 /**
- * 這個 cwd 落在哪個 consumer 的地盤。取**最長**匹配 root：`~/offline/<consumer-e>` 與
- * `~/offline/<consumer-e>` 兩個 root 都是 registry 成員，短的先命中就會把
- * platform 的 worktree 判成 <consumer-e> 的。
+ * 這個 cwd 落在哪個 consumer 的地盤。取**最長**匹配 root：`~/offline/<consumer-d>` 與
+ * `~/offline/<consumer-d>` 兩個 root 都是 registry 成員，短的先命中就會把
+ * platform 的 worktree 判成 <consumer-d> 的。
  */
 export function territoryForCwd(territories, cwd) {
   if (!cwd) return null
@@ -888,8 +888,8 @@ export async function reclaimSquatter(port, firstPid) {
  *
  * 治本那半。上游沒有 `strictPort`：Nuxt / listhen 在請求的 port 被佔住時**靜默換一個**，
  * 而換到的號碼幾乎必然屬於別人 —— registry 把各 consumer 的 base 排成 +10 間距，中間的
- * 空號全是別人的地盤。2026-09-02 實證：<consumer-h> 請求 3040（被自家 worktree 的 dev server
- * 佔著）→ 靜默落到 3000 → 撞進 <consumer-b> 的分配，<consumer-b> 那邊收不了 evidence。
+ * 空號全是別人的地盤。2026-09-02 實證：<consumer-g> 請求 3040（被自家 worktree 的 dev server
+ * 佔著）→ 靜默落到 3000 → 撞進 <consumer-a> 的分配，<consumer-a> 那邊收不了 evidence。
  *
  * 所以偵測到 heard ≠ requested 時 **MUST 殺掉再 fail，NEVER 只 fail 留著它**：留著的那支
  * 會一直佔著別人的號碼，而下一次起 dev 只會再撞一次同一個 fallback ——「只 fail」把一次
@@ -1089,7 +1089,7 @@ function killSession(name) {
  * Lease 檔名的 identity。**per (consumer, port)，不是 per consumer。**
  *
  * 為什麼不能只用 consumerId：一個 consumer 可以同時有多台合法、互不相干的 dev server ——
- * <consumer-h> 的 `dev:<client-a>`(3040) 與 `dev:shared`(3045) 是兩個不同的 app；再加上為了「一邊開發
+ * <consumer-g> 的 `dev:<client-a>`(3040) 與 `dev:shared`(3045) 是兩個不同的 app；再加上為了「一邊開發
  * 一邊人工檢查」而開的 review slot，就有三台。它們共用一個 lease 檔時，第二台一律被判成
  * 衝突（strict → refuse），於是平行變成不可能——而那個衝突是假的：它們根本沒有共用 port。
  *
@@ -1121,9 +1121,10 @@ function holderKind(o) {
 }
 
 function holderSessionId(o) {
-  const id = detectSessionId()
+  const kind = holderKind(o)
+  const id = detectSessionId(process.env, kind)
   if (id) return id
-  if (holderKind(o) === 'human') return 'human'
+  if (kind === 'human') return 'human'
   return createHash('sha1').update(o.cwd).digest('hex').slice(0, 12)
 }
 
@@ -1204,7 +1205,7 @@ function releaseLease(o, id) {
 }
 
 // cwd 比對 MUST 正規化後再比。lease 內的 cwd 是寫入當下的 `o.cwd`，而 `--cwd` 由 caller 傳，
-// 可能是相對路徑（`.` / `../<consumer-h>`）、帶結尾斜線、或走 symlink 的等價路徑。裸字串比對把這些
+// 可能是相對路徑（`.` / `../<consumer-g>`）、帶結尾斜線、或走 symlink 的等價路徑。裸字串比對把這些
 // 等價形式判成「不同 worktree」，兩個方向都會出錯：strict 模式對自己那台 refuse（擋掉合法
 // 操作），或 --takeover 誤殺自己剛起的 dev server。
 function canonicalCwd(p) {
@@ -1374,7 +1375,7 @@ function enforceLeaseOrExit(o, meta, consumerId, lid, port) {
  * 為什麼非查不可：launcher 的成功判準是「port 有沒有 LISTENING」，而那對本問題**恆為真**
  * —— app 起得來、只是打不到 DB。於是第一個發現異常的是瀏覽器，拿到的又是 app 為「後端暫時
  * 抖動」寫的 503 文案，完全指不到 DB。修復成本 ≈ 0（兩個指令、數十秒），發現成本極高
- * （<consumer-b> 2026-07-31 實測十幾輪，中途還跟兩個無關的 dev server 症狀混淆）。這個不對稱就是
+ * （<consumer-a> 2026-07-31 實測十幾輪，中途還跟兩個無關的 dev server 症狀混淆）。這個不對稱就是
  * 把檢查前移的全部理由。
  *
  * 缺席 → 自動補建；補建失敗才 fail-loud 擋下，且訊息 **MUST 點名 backing service 本身與修復

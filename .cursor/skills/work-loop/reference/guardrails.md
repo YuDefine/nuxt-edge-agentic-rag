@@ -7,6 +7,8 @@ Local edits will be reverted by the next sync.
 
 # Guardrails（每輪 re-read，Step 1.5 hard rule）
 
+<!-- clade-targets: claude -->
+
 > 本檔存在的理由：長時間跑的 loop 會被 auto-compaction 壓縮 context，**壓掉的東西裡就包含安全約束，而且壓掉時不會通知你**。所以護欄不能只靠「主線記得」——它必須是每一輪重新讀進最近 context 的檔案。
 >
 > **NEVER** 因為「這輪還記得」「上一輪剛讀過」「這輪只做一個小 item」跳過 re-read。你會覺得自己記得，那正是 decay 的症狀而不是反例。
@@ -29,7 +31,7 @@ Local edits will be reverted by the next sync.
 12. **每條停止路徑 MUST 跑 `work-loop-lock.ts release --session <id>`** —— 含失敗提早結束的路徑。**NEVER** 改用 Write tool 或 `rm` 直接動 `.clade/work-loop/lock`（per Step 0 § 互斥鎖 Iron Law）
 13. **Blocked / Decision item 先評估再處理** —— `applyBlocked` 走 blocker 鮮度判定、`awaitingUserDecision` 先嘗試自主解決（技術決策自決，只有商業決策才是真的 user-bound）。兩者都**不是**「永遠跳過」。見 `blocker-evaluation.md`
 14. **NEVER 因 size / progress 跳過 dispatch** —— `applyInProgress` 不管進度 0% 或 change 看起來多大，MUST dispatch；`/opsx` 依當前 instructions 管理步驟、pause 與 blocker。「需要完整 session」「不適合 loop」= 違反本條
-15. **Bucket ≠ ball ownership** —— `bucket=ready` 不等於 user-bound，`bucket=applyBlocked` 不等於 Claude 無事可做。**MUST** 在每條 change 的 bucket routing 後檢查 `issued` / `verifyClaudePendingCount` / `discussPendingCount` / `staleEvidenceCount`，任一 > 0 = 仍有工作。實證（2026-07-21 <consumer-h>）：bucket=`ready` + issued=5 → loop 宣告 user-bound + 30min idle，user 在 review-gui 等一個不會來的接手。**「所有 change 卡 user action」這句話在 `issued>0` 時就是錯誤判斷**
+15. **Bucket ≠ ball ownership** —— `bucket=ready` 不等於 user-bound，`bucket=applyBlocked` 不等於 Claude 無事可做。**MUST** 在每條 change 的 bucket routing 後檢查 `issued` / `verifyClaudePendingCount` / `discussPendingCount` / `staleEvidenceCount`，任一 > 0 = 仍有工作。實證（2026-07-21 <consumer-g>）：bucket=`ready` + issued=5 → loop 宣告 user-bound + 30min idle，user 在 review-gui 等一個不會來的接手。**「所有 change 卡 user action」這句話在 `issued>0` 時就是錯誤判斷**
 16. **重複 invocation safe（三層）** —— 已 shipped 的 item 不出現在 scan；in-flight item 由 Step 2 的 claim 鮮度 filter 排除；整輪重疊由 Step 0 互斥鎖擋。**三層合起來才算 idempotent**——只靠「shipped 不再出現」不夠
 
 ### 護欄 7 的來源授權

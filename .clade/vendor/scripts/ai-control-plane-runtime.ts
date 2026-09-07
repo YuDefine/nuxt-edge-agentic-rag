@@ -1,5 +1,6 @@
 // 🔒 LOCKED — managed by clade · Source: vendor/scripts/ai-control-plane-runtime.ts · 改這裡無效，下次 propagate 會覆寫；請改 $CLADE_HOME/vendor/scripts/ai-control-plane-runtime.ts
 import { isRecord, parseJsonRecord } from './lib/json-unknown.ts'
+import { readParsedFile } from './lib/parsed-file-cache.ts'
 import { createHash, randomUUID } from 'node:crypto'
 import { spawnSync } from 'node:child_process'
 import {
@@ -397,6 +398,22 @@ export interface ControlledExecutionInput {
   leaseDurationMs?: number
 }
 
+/**
+ * One `execution.routing_decided` event, reduced to the questions anyone asks of it later.
+ *
+ * `payload_digest` is the digest of the WHOLE event payload, not of the fields listed beside it:
+ * the reuse guard compares a freshly built payload against the recorded one, and narrowing that
+ * comparison to the fields this record happens to name would let a difference elsewhere pass.
+ */
+export interface RuntimeRoutingDecision {
+  request_id: string
+  work_id: string
+  actor: string
+  decision_digest: RuntimeDigest
+  locator: string
+  payload_digest: RuntimeDigest
+}
+
 export interface RuntimeState {
   events: RuntimeEvent[]
   controlled_executions: ControlledExecution[]
@@ -421,6 +438,48 @@ export interface RuntimeState {
    * reverse) leaves the work with no attempt shape it can take at all. One producer, two readers.
    */
   reopened_since_last_lease: string[]
+  /**
+   * The sequence of the newest event this state has folded, whether or not that event is still in
+   * `events`. TD-939 Tier D.
+   *
+   * Before rotation existed this was always `events.length`, and five call sites read
+   * `state.events.length` to mean "how far has the canonical journal got" — a coincidence, not a
+   * definition. It stops holding the moment a prefix moves to an archive, and it stops holding
+   * SILENTLY: `last_event_offset > state.events.length` would start rejecting resume records whose
+   * cursor is perfectly valid. Read this field for that question, NEVER the array length.
+   */
+  /**
+   * Routing decisions, folded rather than re-scanned out of `events`. TD-939 Tier D.
+   *
+   * Three call sites used to answer "was this request already routed / where is its artifact" by
+   * scanning the whole event array: the idempotency guard in `recordRoutingDecision` and the two
+   * lineage lookups in `ai-controlled-execution.ts`. A routing decision can be arbitrarily old, so
+   * once a prefix is archived every one of those turns into a wrong answer — the first two into a
+   * fail-OPEN (a reused request looks new), the third into a hard throw. State carries it instead,
+   * which is both correct across rotation and cheaper than the scan it replaces.
+   */
+  routing_decisions: RuntimeRoutingDecision[]
+  /**
+   * Resume records that a later event has already invalidated. TD-939 Tier D.
+   *
+   * Admission used to answer this by scanning every event after the record's cursor for its work.
+   * That made the answer depend on how much of the journal was still on disk, which is the one thing
+   * rotation changes — and the failure was fail-OPEN: a short tail has nothing to object to. Folding
+   * it removes the dependency entirely, so rotation needs no opinion about resume records at all.
+   */
+  stale_resume_record_ids: string[]
+  sequence_high_water: number
+  /**
+   * The sequence of the oldest event still held in `events` — 1 when nothing has been archived, and
+   * `sequence_high_water + 1` when `events` is empty.
+   *
+   * `events` is the LIVE journal, NEVER the whole history: everything older lives in
+   * `runtime-events.archive-<through_sequence>.jsonl` and is reached only through an explicit
+   * `includeArchive` read. A caller that scans `events` for something that may be old MUST fall
+   * back to the archive on a miss (see `findRuntimeEventAnywhere`), because an absent event and an
+   * archived event look identical from here.
+   */
+  events_from_sequence: number
 }
 
 const TERMINAL_WORK = new Set<MachineWorkState>(['done', 'exhausted', 'cancelled', 'superseded'])
@@ -697,6 +756,104 @@ export function runtimeJournalPath(repoRoot: string): string {
   return join(repoRoot, '.clade', 'ai-control-plane', 'runtime-events.jsonl')
 }
 
+/**
+ * The folded state of every event up to `through_sequence`, so reading the control plane costs the
+ * tail instead of the whole history. TD-939 Tier D.
+ *
+ * This is a CACHE, never a source of truth: every event it stands for is still on disk in
+ * `runtime-events.archive-<through_sequence>.jsonl`, and every read path here falls back to a full
+ * replay when the snapshot is missing, stale, or fails its digest. Deleting both snapshot files by
+ * hand is a supported (slow) recovery, NEVER data loss.
+ */
+export function runtimeSnapshotPath(repoRoot: string): string {
+  return join(runtimeStoreDirOf(repoRoot), 'runtime-snapshot.json')
+}
+
+function runtimeArchivePath(repoRoot: string, throughSequence: number): string {
+  return join(runtimeStoreDirOf(repoRoot), `runtime-events.archive-${throughSequence}.jsonl`)
+}
+
+/**
+ * Derived from `runtimeJournalPath`, NEVER rebuilt from `repoRoot`.
+ *
+ * The snapshot and the archives are shards of the journal: any redirection that moves the journal
+ * and leaves them behind produces a snapshot whose `through_sequence` cannot line up with the file
+ * beside it — which reads as a gap, falls back to a full replay, and so is silently correct and
+ * silently slow. Asking the one function that already knows where the journal lives keeps that
+ * impossible by construction instead of by agreement.
+ */
+function runtimeStoreDirOf(repoRoot: string): string {
+  return dirname(runtimeJournalPath(repoRoot))
+}
+
+/**
+ * NEVER read this as "a seventh journal" (per [[TD-837]]): an archive shard carries no fact family
+ * of its own, adds no cursor to align, and is byte-identical to the prefix of the journal it came
+ * out of. It is the SAME journal, split at a sequence boundary.
+ */
+function runtimeArchivePaths(repoRoot: string): string[] {
+  const directory = runtimeStoreDirOf(repoRoot)
+  if (!existsSync(directory)) return []
+  return readdirSync(directory)
+    .map((name) => /^runtime-events\.archive-(\d+)\.jsonl$/.exec(name))
+    .filter((match): match is RegExpExecArray => match !== null)
+    .map((match) => ({ path: join(directory, match[0]), through: Number(match[1]) }))
+    .toSorted((left, right) => left.through - right.through)
+    .map((entry) => entry.path)
+}
+
+/**
+ * How many events the live journal is allowed to reach before a prefix is rotated out, and how many
+ * it keeps afterwards. Overridable so a test can force rotation without writing thousands of events
+ * — NEVER so production can turn rotation off: the whole point of TD-939 is that `n` has a bound.
+ */
+/**
+ * The event kinds a work item may accumulate after a resume record's cursor without invalidating it.
+ *
+ * Module scope on purpose: `validateAttemptAdmission` asks whether a record is still usable, and
+ * `rotateRuntimeJournal` asks whether it is still usable enough to hold the archive boundary. Two
+ * copies of this set would drift, and the drift would be invisible — rotation would archive past a
+ * record admission still considers live, and the resume would be refused with a message about the
+ * journal rather than about the record.
+ */
+const RESUME_RECOVERY_KINDS = new Set([
+  'attempt.state',
+  'attempt.flow',
+  // The one recovery kind this set was missing. It is how EVERY writer here ends the flow of an
+  // attempt that stopped without a verdict — the orphan reconciler, the unbound-attempt branch, and
+  // the relay handoff — so a resume record could never survive the very events that make a resume
+  // necessary. Added 2026-09-02 with rule 8; before it, a handed-off attempt's successor was
+  // refused with `resume record cursor is stale`.
+  'attempt.flow_recovered',
+  'lease.released',
+  'pane.state',
+  'work.state',
+])
+
+const rotateAt = (): number => Number(process.env.CLADE_ACP_JOURNAL_ROTATE_AT ?? 4000)
+/**
+ * At least one event always stays live, so `events_from_sequence` and the tail's first sequence are
+ * never a guess. NEVER let this reach 0: an empty live journal makes "nothing has happened yet" and
+ * "everything was archived" the same file.
+ */
+const rotateKeep = (): number =>
+  Math.max(Number(process.env.CLADE_ACP_JOURNAL_ROTATE_KEEP ?? 1000), 1)
+
+interface RuntimeSnapshot {
+  schema_version: 1
+  through_sequence: number
+  state: RuntimeState
+  /**
+   * The last event folded into `state`, kept because the fold asks positional questions of
+   * `events[index - 1]`: `work.state` after a same-instant `work.reopened` / `work.created`, and
+   * `lease.released` after a same-instant `attempt.state`. Without it, the first event of the tail
+   * would be judged as if it had no predecessor — which is a DIFFERENT question, and one the
+   * events themselves cannot answer.
+   */
+  last_event: RuntimeEvent | null
+  digest: RuntimeDigest
+}
+
 function withRuntimeLock<T>(repoRoot: string, run: () => T): T {
   const path = runtimeJournalPath(repoRoot)
   const lockPath = `${path}.lock`
@@ -761,6 +918,23 @@ function withRuntimeLock<T>(repoRoot: string, run: () => T): T {
   }
 }
 
+/**
+ * The write-path guard: nothing requiring redaction is ever WRITTEN to the journal.
+ *
+ * NEVER call this on the replay path. What it can honestly assert is "this payload needs no
+ * redaction under the patterns in force when it is written"; run against a journal read back later
+ * it silently asserts something stronger and time-varying -- "under TODAY's `SECRET_PATTERNS`" --
+ * so tightening any one of those 15 patterns (`home-path` and `internal-domain` are broad enough to
+ * make this concrete) would make every journal already on disk across the fleet unreadable at once.
+ * And it would not be loud: `recordAttempt` is fail-open and `findRuntimeLeaseStalls` catches and
+ * returns [], so the visible symptom is `flow status --stalled` reporting nothing wrong while the
+ * control plane silently stops recording -- the exact shape of
+ * docs/pitfalls/2026-08-27-in-memory-fold-tests-are-blind-to-the-validator.md.
+ *
+ * The invariant does not need the replay side: `mutateRuntime` is the only writer (the sole caller
+ * of `writeRuntimeEventsAtomic`) and it validates every addition here before writing. Re-asking on
+ * read cost ~900ms of the ~966ms of a validation pass, six times per dispatch. See TD-939.
+ */
 function validateSafePayload(payload: Record<string, unknown>): void {
   assertJsonRoundTripStable('runtime payload', payload)
   const { redaction_applied: _, ...redacted } = redactPayload(payload)
@@ -1259,7 +1433,7 @@ function validateNestedEventPayload(event: RuntimeEvent): void {
     // The revision the next attempt's receipt is for — carried by EVERY reopen, whatever moved
     // (ruling (n)). The binding is not "when the requirement moved"; a reopen that cannot say which
     // revision it sends the work back to answer leaves `materializeWork` comparing the plan's
-    // current revision against the one frozen into `work.open`, which is the stale refusal <consumer-c>
+    // current revision against the one frozen into `work.open`, which is the stale refusal <consumer-b>
     // gate 5 hit with no way out.
     //
     // Optional on the SHAPE and required by the emitter, and the asymmetry is deliberate: this
@@ -1375,7 +1549,55 @@ function validateNestedEventPayload(event: RuntimeEvent): void {
   if (event.kind === 'trace.observed') validateTraceObservation(payload.observation)
 }
 
-function validateEvent(value: unknown, expectedSequence?: number): asserts value is RuntimeEvent {
+/**
+ * Events this process has already validated, keyed by the sequence they were validated AT.
+ *
+ * A journal read is `readRuntimeEvents` -> `foldRuntimeEvents`, and both validate every event, so
+ * a 21504-event journal was validated 21504*2 times per `readRuntimeState` and *3 per
+ * `mutateRuntime` (which folds a second time over `current + additions`). One validation pass over
+ * that journal measures ~966ms and the fold body itself only ~73ms -- validation was 96% of the
+ * cost of reading the control plane's own state, and `recordAttempt` is on the real dispatch path
+ * (`herdr-session-handoff.ts`), so every dispatch paid it. See TD-939.
+ *
+ * The sequence is part of the key, NEVER just the object: `validateEvent(event, index + 1)` asserts
+ * `event.sequence === expectedSequence`, so the same object at a different index is a DIFFERENT
+ * question and must be asked again. Memoising on identity alone would silently pass a reordered
+ * array -- which is exactly the corruption the sequence check exists to catch.
+ *
+ * This is a within-process memo of a pure check on an object nobody mutates (events are parsed out
+ * of JSON and never written to). It does NOT weaken what is validated: it removes repeated
+ * *re-asking* of a question already answered about the very same object in the very same process.
+ */
+const validatedEventSequences = new WeakMap<object, string>()
+
+/**
+ * `expectedSequence` is optional; -1 stands for "validated with no sequence expectation". The trust
+ * mode is part of the key too: an event cleared under `'replay'` has NOT been asked the write-path
+ * question, so it must never satisfy a later `'verify'`.
+ */
+const memoKeyFor = (expectedSequence: number | undefined, trust: PayloadTrust): string =>
+  `${trust}:${expectedSequence ?? -1}`
+
+/**
+ * `'verify'` is the write path and checks everything. `'replay'` is for events read back out of our
+ * own journal: every structural check, the sequence gap, the payload contract and the nested
+ * discriminators still run -- only `validateSafePayload` is skipped, for the reason written above
+ * it. NEVER default a new call site to `'replay'`; the default is the strict one on purpose.
+ */
+type PayloadTrust = 'verify' | 'replay'
+
+function validateEvent(
+  value: unknown,
+  expectedSequence?: number,
+  trust: PayloadTrust = 'verify',
+): asserts value is RuntimeEvent {
+  if (
+    value !== null &&
+    typeof value === 'object' &&
+    validatedEventSequences.get(value) === memoKeyFor(expectedSequence, trust)
+  ) {
+    return
+  }
   const event = requireRecord('runtime event', value)
   const expectedKeys = [
     'schema_version',
@@ -1427,7 +1649,10 @@ function validateEvent(value: unknown, expectedSequence?: number): asserts value
     )
   }
   validateNestedEventPayload(event as RuntimeEvent)
-  validateSafePayload(event.payload)
+  if (trust === 'verify') validateSafePayload(event.payload)
+  // Recorded LAST, so a throw anywhere above leaves the event unmemoised and it is re-validated
+  // (and re-thrown) next time. NEVER move this earlier to "save" the work of a failing event.
+  validatedEventSequences.set(event, memoKeyFor(expectedSequence, trust))
 }
 
 /**
@@ -1481,23 +1706,47 @@ function migrateReadEvent(event: Record<string, unknown>): Record<string, unknow
   }
 }
 
-export function readRuntimeEvents(repoRoot: string): RuntimeEvent[] {
-  const path = runtimeJournalPath(repoRoot)
+/**
+ * One journal shard — the live journal or one archive — parsed and checked on its own terms.
+ *
+ * The sequence expectation is RELATIVE (each event one past the one before it) rather than
+ * `index + 1`, because a rotated live journal starts at whatever sequence the snapshot ended on.
+ * The absolute anchor is asserted by the caller that knows it: `readAllRuntimeEvents` requires the
+ * merge to start at 1, and `readRuntimeJournal` requires the tail to start at
+ * `through_sequence + 1`.
+ */
+/**
+ * Stat-validated 快取：同一個 journal 檔在同一趟請求裡會被展開數十次（review-gui `/api/inbox`
+ * 對 53 個 change 各跑一次控制面投影），而檔案沒動過時解析結果是同一份。
+ * 回傳 `.slice()` 而不是快取內的那個陣列 —— 呼叫端拿到的是可以自由處置的複本。
+ */
+function parseJournalShard(path: string): RuntimeEvent[] {
+  const cached = readParsedFile(path, () => parseJournalShardUncached(path))
+  return cached ? cached.slice() : []
+}
+
+function parseJournalShardUncached(path: string): RuntimeEvent[] {
   if (!existsSync(path)) return []
   const raw = readFileSync(path, 'utf8')
   const complete = raw.endsWith('\n') ? raw : raw.slice(0, raw.lastIndexOf('\n') + 1)
   const events = complete
     .split('\n')
     .filter(Boolean)
-    .map((line, index) => {
+    .map((line) => {
       const event = migrateReadEvent(parseJsonRecord(line))
-      validateEvent(event, index + 1)
+      validateEvent(event, undefined, 'replay')
       return event
     })
   const eventIds = new Set<string>()
+  // NEVER re-add a second `validateEvent` here: the `.map()` above already validated every event
+  // with the same arguments, and nothing between the two loops can change an event. The second call
+  // was a no-op that cost a full validation pass over the whole journal.
   events.forEach((event, index) => {
-    validateEvent(event, index + 1)
     assertTrustedTimestamp(event.recorded_at)
+    const expected = index > 0 ? events[index - 1]!.sequence + 1 : event.sequence
+    if (event.sequence !== expected) {
+      throw new Error(`runtime event sequence gap at ${event.sequence}; expected ${expected}`)
+    }
     if (eventIds.has(event.event_id))
       throw new Error(`duplicate runtime event_id: ${event.event_id}`)
     eventIds.add(event.event_id)
@@ -1505,13 +1754,148 @@ export function readRuntimeEvents(repoRoot: string): RuntimeEvent[] {
   return events
 }
 
+/**
+ * Every event ever written, archives first, anchored at sequence 1.
+ *
+ * Overlap is tolerated on purpose. Rotation writes the archive, then the snapshot, then truncates
+ * the live journal; a crash between any two of those leaves the same events in two shards, and the
+ * recovery for that is to keep the first copy, NEVER to refuse to read. A GAP is the opposite —
+ * that is missing history, and it throws.
+ */
+function readAllRuntimeEvents(repoRoot: string): RuntimeEvent[] {
+  const merged: RuntimeEvent[] = []
+  const absorb = (events: RuntimeEvent[]): void => {
+    for (const event of events) {
+      if (event.sequence === merged.length + 1) merged.push(event)
+      else if (event.sequence > merged.length + 1) {
+        throw new Error(
+          `runtime journal sequence gap at ${event.sequence}; expected ${merged.length + 1}`,
+        )
+      }
+    }
+  }
+  for (const path of runtimeArchivePaths(repoRoot)) absorb(parseJournalShard(path))
+  absorb(parseJournalShard(runtimeJournalPath(repoRoot)))
+  return merged
+}
+
+/**
+ * `includeArchive` reads the whole history; the default reads only what is still live.
+ *
+ * The default is the fast one because it is what the hot path wants, and the hot path is the reason
+ * this tier exists. A caller looking for something that may be OLD (routing lineage, a human-read
+ * history) MUST pass `includeArchive` or fall back to it on a miss — from the live journal alone,
+ * "never happened" and "happened before the last rotation" are the same answer.
+ */
+export function readRuntimeEvents(
+  repoRoot: string,
+  options?: { includeArchive?: boolean },
+): RuntimeEvent[] {
+  return options?.includeArchive
+    ? readAllRuntimeEvents(repoRoot)
+    : parseJournalShard(runtimeJournalPath(repoRoot))
+}
+
+function snapshotDigestOf(snapshot: Omit<RuntimeSnapshot, 'digest'>): RuntimeDigest {
+  return runtimeDigest({
+    schema_version: snapshot.schema_version,
+    through_sequence: snapshot.through_sequence,
+    state: snapshot.state,
+    last_event: snapshot.last_event,
+  })
+}
+
+/**
+ * A snapshot that fails ANY check is discarded, not repaired: the archives plus the live journal
+ * are still the whole truth, so the fallback is a correct (slow) full replay. The warning is not
+ * decoration — a silently slow control plane is exactly the state TD-939 spent a day diagnosing.
+ */
+function readRuntimeSnapshot(repoRoot: string): RuntimeSnapshot | undefined {
+  const path = runtimeSnapshotPath(repoRoot)
+  if (!existsSync(path)) return undefined
+  const reject = (reason: string): undefined => {
+    process.stderr.write(`runtime snapshot ignored (${reason}); replaying the full journal\n`)
+    return undefined
+  }
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(readFileSync(path, 'utf8'))
+  } catch {
+    return reject('unreadable')
+  }
+  if (!isRecord(parsed) || parsed.schema_version !== 1) return reject('unknown schema')
+  // 用 guard 收窄，NEVER 用 `as unknown as`：後者把已知型別丟掉再宣稱新型別，這幾道檢查
+  // 在型別層面就不算數（vite-doctor TS0001）。digest 由下一行單獨驗，所以 guard 只認結構。
+  const through = parsed.through_sequence
+  if (typeof through !== 'number' || !Number.isInteger(through) || through < 1) {
+    return reject('through_sequence is not a positive integer')
+  }
+  if (!isRecord(parsed.state)) return reject('state is not a record')
+  if (!isRuntimeSnapshotShape(parsed)) return reject('unknown schema')
+  if (parsed.digest !== snapshotDigestOf(parsed)) return reject('digest mismatch')
+  return parsed
+}
+
+/** Structural narrowing for a parsed snapshot; `digest` is verified separately by the caller. */
+function isRuntimeSnapshotShape(
+  value: Record<string, unknown>,
+): value is Record<string, unknown> & RuntimeSnapshot {
+  return (
+    value.schema_version === 1 &&
+    typeof value.through_sequence === 'number' &&
+    isRecord(value.state)
+  )
+}
+
+interface RuntimeJournal {
+  base: RuntimeFoldBase | undefined
+  tail: RuntimeEvent[]
+}
+
+/**
+ * What a fold needs to produce current state: a base to continue from, and the events after it.
+ *
+ * `base` is `undefined` whenever the snapshot cannot be trusted to line up with the live journal —
+ * including the crash window where rotation wrote the snapshot but had not yet truncated the live
+ * journal, which shows up here as a tail that starts too early and is handled by replaying
+ * everything rather than by guessing.
+ */
+function readRuntimeJournal(repoRoot: string): RuntimeJournal {
+  const live = parseJournalShard(runtimeJournalPath(repoRoot))
+  const snapshot = readRuntimeSnapshot(repoRoot)
+  if (snapshot) {
+    const tail = live.filter((event) => event.sequence > snapshot.through_sequence)
+    if (tail.length === 0 || tail[0]!.sequence === snapshot.through_sequence + 1) {
+      return {
+        base: {
+          through_sequence: snapshot.through_sequence,
+          state: snapshot.state,
+          last_event: snapshot.last_event,
+        },
+        tail,
+      }
+    }
+    process.stderr.write(
+      `runtime snapshot ignored (live journal starts at ${live[0]?.sequence ?? 'nothing'}, ` +
+        `snapshot ends at ${snapshot.through_sequence}); replaying the full journal\n`,
+    )
+  }
+  return { base: undefined, tail: readAllRuntimeEvents(repoRoot) }
+}
+
 function writeRuntimeEventsAtomic(repoRoot: string, events: RuntimeEvent[]): void {
-  const path = runtimeJournalPath(repoRoot)
+  writeFileAtomic(
+    runtimeJournalPath(repoRoot),
+    events.map((event) => JSON.stringify(event)).join('\n') + '\n',
+  )
+}
+
+function writeFileAtomic(path: string, contents: string): void {
   const temporaryPath = `${path}.tmp-${process.pid}-${randomUUID()}`
   let descriptor: number | null = null
   try {
     descriptor = openSync(temporaryPath, 'wx', 0o600)
-    writeFileSync(descriptor, events.map((event) => JSON.stringify(event)).join('\n') + '\n')
+    writeFileSync(descriptor, contents)
     fsyncSync(descriptor)
     closeSync(descriptor)
     descriptor = null
@@ -1555,44 +1939,182 @@ function mutateRuntime<T>(
   run: (state: RuntimeState) => { value: T; events: Array<Omit<RuntimeEvent, 'sequence'>> },
 ): T {
   return withRuntimeLock(repoRoot, () => {
-    const current = readRuntimeEvents(repoRoot)
-    const result = run(foldRuntimeEvents(current))
+    const journal = readRuntimeJournal(repoRoot)
+    const result = run(foldRuntimeEvents(journal.tail, journal.base))
+    const priorSequence = (journal.base?.through_sequence ?? 0) + journal.tail.length
     const additions = result.events.map((event, index) => ({
       ...event,
-      sequence: current.length + index + 1,
+      sequence: priorSequence + index + 1,
     }))
-    const lastRecordedAt = current.at(-1)?.recorded_at
+    const lastRecordedAt = journal.tail.at(-1)?.recorded_at ?? journal.base?.last_event?.recorded_at
     for (const [index, event] of additions.entries()) {
-      validateEvent(event, current.length + index + 1)
+      validateEvent(event, priorSequence + index + 1)
       assertTrustedTimestamp(event.recorded_at)
       if (lastRecordedAt && Date.parse(event.recorded_at) < Date.parse(lastRecordedAt)) {
         throw new Error('runtime events cannot backfill the canonical journal clock')
       }
     }
-    foldRuntimeEvents([...current, ...additions])
+    const live = [...journal.tail, ...additions]
+    // The write-path fold: it is the closure check on the state this mutation is about to persist,
+    // and its value is deliberately discarded. NEVER drop the call — it is what stops an illegal
+    // state reaching the journal at all.
+    foldRuntimeEvents(live, journal.base)
     if (additions.length > 0) {
-      writeRuntimeEventsAtomic(repoRoot, [...current, ...additions])
+      writeRuntimeEventsAtomic(repoRoot, live)
+      rotateRuntimeJournal(repoRoot, journal.base, live)
     }
     return result.value
   })
 }
 
-export function foldRuntimeEvents(events: RuntimeEvent[]): RuntimeState {
-  const executions = new Map<string, ControlledExecution>()
-  const workers = new Map<string, WorkerProfile>()
-  const grants = new Map<string, CapabilityGrant>()
-  const engines = new Map<string, RuntimeEngine>()
-  const works = new Map<string, RuntimeWork>()
-  const attempts = new Map<string, RuntimeAttempt>()
-  const leases = new Map<string, RuntimeLease>()
-  const resumes = new Map<string, ResumeRecord>()
-  const panes = new Map<string, PaneMapping>()
-  const paneIdentities = new Map<string, PaneIdentity>()
-  const messages = new Map<string, RuntimeMessage>()
-  const pauses = new Map<string, RuntimePause>()
-  const observations = new Map<string, RuntimeTraceObservation>()
+/**
+ * Move a prefix of the live journal into an archive shard and record the state it folded to, so the
+ * next read pays the tail instead of the history. TD-939 Tier D. Runs INSIDE the runtime lock,
+ * because it rewrites the same file `mutateRuntime` just wrote.
+ *
+ * Write order is archive → snapshot → truncate, and it is the order that makes every crash window
+ * recoverable: after the first step the live journal is still whole; after the second the tail
+ * filter in `readRuntimeJournal` drops the duplicated prefix; only after the third does the archive
+ * become load-bearing. NEVER reorder these.
+ */
+function rotateRuntimeJournal(
+  repoRoot: string,
+  base: RuntimeFoldBase | undefined,
+  live: RuntimeEvent[],
+): void {
+  if (live.length < rotateAt()) return
+  let cut = live.length - rotateKeep()
+  if (cut <= 0) return
+  const prefix = live.slice(0, cut)
+  const throughSequence = prefix.at(-1)!.sequence
+  const folded = foldRuntimeEvents(prefix, base, { intermediate: true })
+  const snapshot: Omit<RuntimeSnapshot, 'digest'> = {
+    schema_version: 1,
+    through_sequence: throughSequence,
+    // `events` is dropped on purpose: the snapshot stands FOR those events, and carrying them would
+    // make it the very thing it exists to avoid reading.
+    state: { ...folded, events: [], events_from_sequence: throughSequence + 1 },
+    last_event: prefix.at(-1)!,
+  }
+  writeFileAtomic(
+    runtimeArchivePath(repoRoot, throughSequence),
+    prefix.map((event) => JSON.stringify(event)).join('\n') + '\n',
+  )
+  writeFileAtomic(
+    runtimeSnapshotPath(repoRoot),
+    JSON.stringify({ ...snapshot, digest: snapshotDigestOf(snapshot) }) + '\n',
+  )
+  writeRuntimeEventsAtomic(repoRoot, live.slice(cut))
+}
+
+/**
+ * The state a fold continues from, so a tail can be folded without replaying the prefix that
+ * produced it. TD-939 Tier D.
+ *
+ * `foldRuntimeEvents(all)` and `foldRuntimeEvents(tail, base)` MUST agree on every field except
+ * `events` / `events_from_sequence` (the first holds the whole journal, the second only what is
+ * still live). `test/ai-control-plane-journal-rotation.test.ts` asserts that at every cut point of
+ * a real-shaped journal — any `events[]` dependency that is not carried on `RuntimeState` or
+ * `last_event` shows up there as a mismatch, which is the only reason it is safe to fold a tail at
+ * all.
+ */
+export interface RuntimeFoldBase {
+  through_sequence: number
+  state: RuntimeState
+  last_event: RuntimeEvent | null
+}
+
+export function foldRuntimeEvents(
+  events: RuntimeEvent[],
+  base?: RuntimeFoldBase,
+  options?: { intermediate?: boolean },
+): RuntimeState {
+  const from = base?.state
+  const executions = new Map<string, ControlledExecution>(
+    (from?.controlled_executions ?? []).map((item) => [item.request_id, item]),
+  )
+  const workers = new Map<string, WorkerProfile>(
+    (from?.workers ?? []).map((item) => [item.worker_id, item]),
+  )
+  const grants = new Map<string, CapabilityGrant>(
+    (from?.grants ?? []).map((item) => [item.grant_id, item]),
+  )
+  const engines = new Map<string, RuntimeEngine>(
+    (from?.engines ?? []).map((item) => [item.engine, item]),
+  )
+  const works = new Map<string, RuntimeWork>(
+    (from?.works ?? []).map((item) => [item.work_id, item]),
+  )
+  const attempts = new Map<string, RuntimeAttempt>(
+    (from?.attempts ?? []).map((item) => [item.attempt_id, item]),
+  )
+  const leases = new Map<string, RuntimeLease>(
+    (from?.leases ?? []).map((item) => [item.lease_id, item]),
+  )
+  const resumes = new Map<string, ResumeRecord>(
+    (from?.resume_records ?? []).map((item) => [item.resume_record_id, item]),
+  )
+  const panes = new Map<string, PaneMapping>(
+    (from?.pane_mappings ?? []).map((item) => [item.mapping_id, item]),
+  )
+  const paneIdentities = new Map<string, PaneIdentity>(
+    (from?.pane_identities ?? []).map((item) => [
+      paneIdentityKey(item.workspace_handle, item.pane_handle),
+      item,
+    ]),
+  )
+  const messages = new Map<string, RuntimeMessage>(
+    (from?.messages ?? []).map((item) => [item.message_id, item]),
+  )
+  const pauses = new Map<string, RuntimePause>(
+    (from?.pauses ?? []).map((item) => [`${item.scope}:${item.scope_id}`, item]),
+  )
+  const observations = new Map<string, RuntimeTraceObservation>(
+    (from?.trace_observations ?? []).map((item) => [item.observation_id, item]),
+  )
+  const routingDecisions = new Map<string, RuntimeRoutingDecision>(
+    (from?.routing_decisions ?? []).map((item) => [item.request_id, item]),
+  )
+  const staleResumes = new Set<string>(from?.stale_resume_record_ids ?? [])
+  const resumesByWork = new Map<string, string[]>()
+  const indexResume = (record: ResumeRecord): void => {
+    const list = resumesByWork.get(record.work_id)
+    if (list) list.push(record.resume_record_id)
+    else resumesByWork.set(record.work_id, [record.resume_record_id])
+  }
+  for (const record of resumes.values()) indexResume(record)
+  /**
+   * The exemption list is admission's, verbatim: a record survives its own `resume.recorded` event
+   * and any recovery-kind event on the attempt it belongs to, and nothing else. Called for EVERY
+   * event before any branch, because `execution.routing_decided` and friends invalidate a record
+   * just as surely as an attempt transition does, and they leave the loop early.
+   */
+  const markStaleResumes = (event: RuntimeEvent): void => {
+    if (event.work_id === null) return
+    for (const recordId of resumesByWork.get(event.work_id) ?? []) {
+      if (staleResumes.has(recordId)) continue
+      const record = resumes.get(recordId)
+      if (!record || event.sequence <= record.last_event_offset) continue
+      if (
+        event.kind === 'resume.recorded' &&
+        (event.payload as any).record?.resume_record_id === recordId
+      )
+        continue
+      if (event.attempt_id === record.attempt_id && RESUME_RECOVERY_KINDS.has(event.kind)) continue
+      staleResumes.add(recordId)
+    }
+  }
+  /**
+   * Duplicate-`event_id` detection spans only the events in THIS fold. Across an archive boundary
+   * it is deliberately dropped: event ids are `randomUUID()`-derived and the sequence contract
+   * (contiguous, monotonic, checked on every read and every write) already refuses a journal that
+   * has been reordered or spliced. Keeping it would mean loading every archived id on every read —
+   * paying the whole cost this tier exists to remove, for a collision that cannot occur.
+   */
   const eventIds = new Set<string>()
-  const rootTraceIds = new Set<string>()
+  const rootTraceIds = new Set<string>(
+    (from?.attempts ?? []).map((attempt) => attempt.root_trace_id),
+  )
   /**
    * Work items reopened since their last attempt was leased (ruling (m)).
    *
@@ -1602,26 +2124,41 @@ export function foldRuntimeEvents(events: RuntimeEvent[]): RuntimeState {
    * reopen buys exactly one linkless attempt and the retry after it says why it exists like every
    * other retry.
    */
-  const reopenedSinceLastLease = new Set<string>()
-  const spanIds = new Set<string>()
+  const reopenedSinceLastLease = new Set<string>(from?.reopened_since_last_lease ?? [])
+  const spanIds = new Set<string>([
+    ...(from?.attempts ?? []).map((attempt) => attempt.root_span_id),
+    ...(from?.trace_observations ?? []).map((observation) => observation.span_id),
+  ])
+  const priorSequence = base?.through_sequence ?? 0
+  const priorEvent = base?.last_event ?? null
 
   events.forEach((event, index) => {
-    validateEvent(event, index + 1)
+    validateEvent(event, priorSequence + index + 1, 'replay')
     if (eventIds.has(event.event_id))
       throw new Error(`duplicate runtime event_id: ${event.event_id}`)
     eventIds.add(event.event_id)
-    if (index > 0 && Date.parse(event.recorded_at) < Date.parse(events[index - 1]!.recorded_at)) {
+    const earlier = index > 0 ? events[index - 1]! : priorEvent
+    if (earlier && Date.parse(event.recorded_at) < Date.parse(earlier.recorded_at)) {
       throw new Error('runtime journal clock moved backwards')
     }
   })
 
   for (const [eventIndex, event] of events.entries()) {
     const payload = event.payload
+    markStaleResumes(event)
     if (event.kind === 'execution.routing_decided') {
       if (!works.has(event.work_id!)) throw new Error('routing references unknown work')
+      routingDecisions.set(payload.request_id, {
+        request_id: payload.request_id,
+        work_id: event.work_id!,
+        actor: event.actor,
+        decision_digest: payload.decision_digest,
+        locator: payload.locator,
+        payload_digest: runtimeDigest(payload),
+      })
       continue
     }
-    const previousEvent = events[eventIndex - 1]
+    const previousEvent = eventIndex > 0 ? events[eventIndex - 1] : (priorEvent ?? undefined)
     const controlled = [...executions.values()].find(
       (candidate) =>
         candidate.attempt_id === event.attempt_id && !CONTROLLED_TERMINAL.has(candidate.status),
@@ -2436,6 +2973,7 @@ export function foldRuntimeEvents(events: RuntimeEvent[]): RuntimeState {
       )
         throw new Error('resume record identity mismatch')
       resumes.set(payload.record.resume_record_id, payload.record)
+      indexResume(payload.record)
     }
     if (event.kind === 'resume.consumed') {
       const record = resumes.get(payload.resume_record_id)
@@ -2631,6 +3169,53 @@ export function foldRuntimeEvents(events: RuntimeEvent[]): RuntimeState {
     }
   }
 
+  /**
+   * Map iteration order IS the contract here: `Map.set` on an existing key keeps its original
+   * position, so hydrating from a base and replaying a tail lands every array in the same order a
+   * full replay would. The rotation property test compares these arrays with `deepEqual`, which is
+   * order-sensitive — that is deliberate, because a reordered array is a different digest to
+   * everything downstream that hashes this state.
+   */
+  const assembleRuntimeState = (): RuntimeState => ({
+    events,
+    controlled_executions: [...executions.values()],
+    workers: [...workers.values()],
+    grants: [...grants.values()],
+    engines: [...engines.values()],
+    works: [...works.values()],
+    attempts: [...attempts.values()],
+    leases: [...leases.values()],
+    resume_records: [...resumes.values()],
+    pane_mappings: [...panes.values()],
+    pane_identities: [...paneIdentities.values()],
+    messages: [...messages.values()],
+    pauses: [...pauses.values()],
+    trace_observations: [...observations.values()],
+    reopened_since_last_lease: [...reopenedSinceLastLease],
+    routing_decisions: [...routingDecisions.values()],
+    stale_resume_record_ids: [...staleResumes],
+    sequence_high_water: priorSequence + events.length,
+    events_from_sequence: priorSequence + 1,
+  })
+
+  /**
+   * The four loops below are CLOSURE checks on the newest state — "no attempt is left half-finished",
+   * "no terminal work still holds a live attempt". An interior point of the journal is not the newest
+   * state, and at an interior point they are not merely unnecessary but WRONG: an attempt is terminal
+   * one event before its `lease.released`, so cutting between those two adjacent events makes a
+   * perfectly healthy journal fail (measured: every 500-event cut of the real 21.6k journal throws
+   * `terminal attempt has incomplete lifecycle closure`).
+   *
+   * `intermediate` is therefore not a relaxation. The ONLY caller is `rotateRuntimeJournal`, building
+   * the base that every later read folds a tail onto — and every one of those reads runs these loops
+   * over the full hydrated state. Nothing stops being checked; it stops being checked at a point
+   * where the question has no meaning. NEVER pass it from a read path: there the question is exactly
+   * the one being asked.
+   */
+  if (options?.intermediate) {
+    return assembleRuntimeState()
+  }
+
   for (const attempt of attempts.values()) {
     const lease = leases.get(attempt.lease_id)
     if (ACTIVE_ATTEMPT.has(attempt.state)) {
@@ -2683,27 +3268,19 @@ export function foldRuntimeEvents(events: RuntimeEvent[]): RuntimeState {
     }
   }
 
-  return {
-    events,
-    controlled_executions: [...executions.values()],
-    workers: [...workers.values()],
-    grants: [...grants.values()],
-    engines: [...engines.values()],
-    works: [...works.values()],
-    attempts: [...attempts.values()],
-    leases: [...leases.values()],
-    resume_records: [...resumes.values()],
-    pane_mappings: [...panes.values()],
-    pane_identities: [...paneIdentities.values()],
-    messages: [...messages.values()],
-    pauses: [...pauses.values()],
-    trace_observations: [...observations.values()],
-    reopened_since_last_lease: [...reopenedSinceLastLease],
-  }
+  return assembleRuntimeState()
 }
 
-export function readRuntimeState(repoRoot: string): RuntimeState {
-  const state = foldRuntimeEvents(readRuntimeEvents(repoRoot))
+export function readRuntimeState(
+  repoRoot: string,
+  options?: { includeArchive?: boolean },
+): RuntimeState {
+  const state = options?.includeArchive
+    ? foldRuntimeEvents(readAllRuntimeEvents(repoRoot))
+    : (() => {
+        const journal = readRuntimeJournal(repoRoot)
+        return foldRuntimeEvents(journal.tail, journal.base)
+      })()
   for (const record of state.resume_records) {
     const attempt = state.attempts.find((candidate) => candidate.attempt_id === record.attempt_id)
     if (!attempt) throw new Error(`resume record references unknown attempt: ${record.attempt_id}`)
@@ -3198,37 +3775,14 @@ function validateAttemptAdmission(
           canonical(input.resumeEvidenceIds.toSorted())) ||
       record.worktree_id !== input.worktreeId ||
       input.worktreeHead !== record.worktree_head ||
-      record.last_event_offset > state.events.length
+      record.last_event_offset > state.sequence_high_water
     ) {
       throw new Error('resume record context does not match attempt admission')
     }
     if (!engine.resume_capability) throw new Error('runtime engine does not support resume')
-    const sameWorkTail = state.events
-      .slice(record.last_event_offset)
-      .filter((event) => event.work_id === work.work_id)
-    const recoveryKinds = new Set([
-      'attempt.state',
-      'attempt.flow',
-      // The one recovery kind this set was missing. It is how EVERY writer here ends the flow of an
-      // attempt that stopped without a verdict — the orphan reconciler, the unbound-attempt branch,
-      // and the relay handoff — so a resume record could never survive the very events that make a
-      // resume necessary. Added 2026-09-02 with rule 8; before it, a handed-off attempt's successor
-      // was refused with `resume record cursor is stale`.
-      'attempt.flow_recovered',
-      'lease.released',
-      'pane.state',
-      'work.state',
-    ])
-    if (
-      sameWorkTail.some(
-        (event) =>
-          !(
-            (event.kind === 'resume.recorded' &&
-              event.payload.record.resume_record_id === record.resume_record_id) ||
-            (event.attempt_id === previous.attempt_id && recoveryKinds.has(event.kind))
-          ),
-      )
-    ) {
+    // Read off the fold, NEVER by scanning `state.events` for this work: the answer must not depend
+    // on how much of the journal is still on disk. TD-939 Tier D.
+    if (state.stale_resume_record_ids.includes(record.resume_record_id)) {
       throw new Error('resume record cursor is stale for current canonical work facts')
     }
   } else if (
@@ -3278,7 +3832,7 @@ function validateAttemptAdmission(
  * - `evidence_insufficient` — the requirement is unchanged, but readiness judged the receipts on
  *   record insufficient under `required_work_terminal_with_current_evidence`. Emitted explicitly,
  *   carrying the receipt ids the judgement was made on (an empty list is legitimate: "no receipt at
- *   all" is precisely the shape <consumer-h>'s `W-2026-09-02-wsp-leavesubmitguard` had, driven to `done`
+ *   all" is precisely the shape <consumer-g>'s `W-2026-09-02-wsp-leavesubmitguard` had, driven to `done`
  *   by a RED-only attempt).
  *
  * What it deliberately does NOT do: mint a second work item for the same work spec (`materializeWork`
@@ -4037,11 +4591,15 @@ export function reconcileRuntimeFlowBoundaries(input: {
 }
 
 function readCanonicalJsonl(path: string): Array<Record<string, any>> {
-  if (!existsSync(path)) return []
-  return readFileSync(path, 'utf8')
-    .split('\n')
-    .filter(Boolean)
-    .map((line) => requireRecord(`canonical record in ${path}`, JSON.parse(line)))
+  // 快取理由同 `parseJournalShard`：projection-events / evidence 兩個檔在單趟 `/api/inbox`
+  // 各被重讀數十次。回傳複本，快取內那份 NEVER 交出去。
+  const cached = readParsedFile(path, () =>
+    readFileSync(path, 'utf8')
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => requireRecord(`canonical record in ${path}`, JSON.parse(line))),
+  )
+  return cached ? cached.slice() : []
 }
 
 function canonicalOpsxDigest(repoRoot: string, attempt: RuntimeAttempt): RuntimeDigest {
@@ -4092,7 +4650,7 @@ function assertCanonicalResumeRecord(
   if (record.evidence_ids.some((id) => !evidenceIds.has(id))) {
     throw new Error('resume record references non-canonical evidence')
   }
-  if (record.last_event_offset > state.events.length) {
+  if (record.last_event_offset > state.sequence_high_water) {
     throw new Error('resume record cursor exceeds the canonical journal')
   }
 }
@@ -4139,7 +4697,7 @@ export function createResumeRecord(input: {
       worktree_id: attempt.worktree_id,
       worktree_head: attempt.worktree_head,
       opsx_artifact_digest: opsxArtifactDigest,
-      last_event_offset: state.events.length,
+      last_event_offset: state.sequence_high_water,
       checkpoint_ids: input.checkpointIds ?? [],
       evidence_ids: input.evidenceIds ?? [],
       workspace_id: attempt.workspace_id,
@@ -4255,7 +4813,7 @@ export function handOffRuntimeAttempt(input: {
       // before it — which is what the fold checks (`last_event_offset !== event.sequence - 1`).
       // Everything after it in this batch is a recovery-kind event for this same attempt, which is
       // exactly the tail `validateAttemptAdmission` tolerates when the successor consumes it.
-      last_event_offset: state.events.length,
+      last_event_offset: state.sequence_high_water,
       checkpoint_ids: [],
       evidence_ids: [],
       workspace_id: attempt.workspace_id,
@@ -6064,10 +6622,14 @@ export function transferControlledExecution(input: {
       checkpoint_digest: input.checkpointDigest,
       stopped_owner: input.stoppedOwner,
     })
-    const intermediate = foldRuntimeEvents([
-      ...state.events,
-      { ...event, sequence: state.events.length + 1 },
-    ])
+    const intermediate = foldRuntimeEvents(
+      [{ ...event, sequence: state.sequence_high_water + 1 }],
+      {
+        through_sequence: state.sequence_high_water,
+        state,
+        last_event: state.events.at(-1) ?? null,
+      },
+    )
     const plan = planControlledAdmission(
       intermediate,
       next,
@@ -6147,15 +6709,14 @@ export function recordExecutionRoutingDecision(input: {
       mode: input.mode,
       locator: input.locator,
     }
-    const prior = state.events.find(
-      (event) =>
-        event.kind === 'execution.routing_decided' && event.payload.request_id === input.requestId,
+    const prior = state.routing_decisions.find(
+      (decision) => decision.request_id === input.requestId,
     )
     if (prior) {
       if (
         prior.work_id !== input.workId ||
         prior.actor !== input.actor ||
-        runtimeDigest(prior.payload) !== runtimeDigest(payload)
+        prior.payload_digest !== runtimeDigest(payload)
       ) {
         throw new Error('routing request reused with different decision')
       }

@@ -7,6 +7,8 @@ Local edits will be reverted by the next sync.
 
 # 兩種跑法：runner process vs in-session turn
 
+<!-- clade-targets: claude -->
+
 > 主檔 pointer：Step 0 決定怎麼起這個 loop 時 MUST 讀本檔。**已經在跑的輪次不必再讀**——
 > 本檔管的是「怎麼起」，不是「怎麼跑」。
 
@@ -56,7 +58,7 @@ runner 在跑第一輪之前先過四道門，任一不過就**一輪都不跑**
 
 headless 探針要付一次小的 `claude --print` 呼叫，並以顯式 `--preflight` 加 runner 未知 nonce
 **實際執行同一支 helper**（含 scanner syntax check、但不寫 scan；helper 以 nonce proof marker
-回寫 repo-local 路徑，runner 驗證後立即刪除），換掉的是**整個 run**：2026-08-10 <consumer-b> 因
+回寫 repo-local 路徑，runner 驗證後立即刪除），換掉的是**整個 run**：2026-08-10 <consumer-a> 因
 harness 權限閘門連續拒絕，空轉 99 輪、零待辦被修改。child `exit=0` 仍不構成成功；只有
 repo-local nonce proof marker 的內容逐字匹配 runner 產生的 nonce 才通過。helper stdout（包含任何
 token 或路徑）僅供診斷，不是 proof；只用 `[ -f ]` 看檔案存在會漏掉 script 無法執行或 scanner parse 失敗。
@@ -70,7 +72,7 @@ preflight 與每輪 child 都經 `project-unattended.ts` 檢查專案授權、�
 `ccg`、`ccagy`、`ccx` 入口已退役，會拒絕起跑；GPT／Codex 工作經 Pi dispatcher。
 
 第一次起跑需在 `/overview` 開啟該專案的自動開發，並確保 consumer 已接收 flow 投影、位於
-`consumers.local`、官方帳號已登入且 <consumer-c> 快照仍有效。缺少前置時錯誤會指出原因；
+`consumers.local`、官方帳號已登入且 <consumer-b> 快照仍有效。缺少前置時錯誤會指出原因；
 `--skip-preflight` 只略過 headless 工具探針，不略過訂閱、版本或專案授權。
 `--dry-run` 只印完整控制入口與 child 指令，不要求 consumer 已安裝 helper。
 
@@ -193,7 +195,7 @@ message 的投遞繞過 permission-class hold，且 Linux 連已退出的 child 
 
 ## 工具健檢為什麼要實跑（Step 2.5 的兩段實證）
 
-**為什麼是實跑**：2026-08-05 <consumer-h> 實證——`scripts/lib/detect-runtime.ts` 從未被散播，四支入口
+**為什麼是實跑**：2026-08-05 <consumer-g> 實證——`scripts/lib/detect-runtime.ts` 從未被散播，四支入口
 （`dev-session` / `dev-singleton` / `db-lease` / `claims-lib`）全部 `ERR_MODULE_NOT_FOUND`。
 **那四支檔案本身都在**，`[ -f ]` 一路綠燈；死的是它們 import 的東西。該輪因此白派了一個 worktree
 agent 出去，回來才知道 dev-port 組整組不可用。

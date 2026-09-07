@@ -17,6 +17,7 @@
 //   CLADE_CONSUMER_ID       override registry-resolved consumer id
 
 import { isRecord, parseJson } from '../lib/json-unknown.ts'
+import { readParsedFile } from '../lib/parsed-file-cache.ts'
 import type { FlowEvent } from './spine.ts'
 import { execFileSync } from 'node:child_process'
 import { randomBytes, randomUUID } from 'node:crypto'
@@ -43,16 +44,31 @@ export function flowDisabled() {
   return process.env.CLADE_FLOW_OFF === '1'
 }
 
+/**
+ * `cwd` 對應的 repo 根。**per-process memo，沒有 TTL**：一個路徑屬於哪個 repo 在行程存活期間
+ * 不會變（worktree 被砍掉重建，答案仍是同一個）。
+ *
+ * 這是 blocking 的 `execFileSync`，而 review-gui 的 `/api/inbox` 單趟請求實測打了它 **102 次、
+ * 只有 4 個相異 cwd**（2026-09-06，53 個 change 各自展開一次控制面投影）。每一次都 fork/exec 一個
+ * git 並把 libuv event loop 卡住，所以這裡省下的不只是 CPU，是整個 server 在那段時間的可用性。
+ */
+const gitTopLevelMemo = new Map<string, string>()
+
 function gitTopLevel(cwd: string): string {
+  const memo = gitTopLevelMemo.get(cwd)
+  if (memo !== undefined) return memo
+  let top = ''
   try {
-    return execFileSync('git', ['rev-parse', '--show-toplevel'], {
+    top = execFileSync('git', ['rev-parse', '--show-toplevel'], {
       cwd,
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'ignore'],
     }).trim()
   } catch {
-    return ''
+    top = ''
   }
+  gitTopLevelMemo.set(cwd, top)
+  return top
 }
 
 /**
@@ -654,18 +670,23 @@ function isReadableFlowEvent(value: unknown): value is FlowEvent & Record<string
 }
 
 export function readEventsFile(path: string) {
-  if (!existsSync(path)) return []
-  return readFileSync(path, 'utf8')
-    .split('\n')
-    .filter(Boolean)
-    .map((line) => {
-      try {
-        return parseJson(line)
-      } catch {
-        return null
-      }
-    })
-    .filter(isReadableFlowEvent)
+  // 快取是 stat-validated 的，不是 TTL：檔案沒動過時舊值就是新值，所以這裡**沒有**用新鮮度
+  // 換速度。回傳的是共用陣列參照，呼叫端 NEVER 就地改它（見 parsed-file-cache 的契約）。
+  return (
+    readParsedFile(path, () =>
+      readFileSync(path, 'utf8')
+        .split('\n')
+        .filter(Boolean)
+        .map((line) => {
+          try {
+            return parseJson(line)
+          } catch {
+            return null
+          }
+        })
+        .filter(isReadableFlowEvent),
+    )?.slice() ?? []
+  )
 }
 
 /** Read this repo's spine back. */
@@ -1259,7 +1280,7 @@ export function reviseDecisionEvent({
  * THE REASON THIS EXISTS: the spine is append-only, and a question's options live in the payload
  * of its `start` event. So when the thing that PRODUCED that payload is fixed — a parser that
  * could not read the bold shape the fleet actually writes — every question already on the queue
- * keeps the payload the broken parser wrote, forever. Measured 2026-08-27: <consumer-h>'s `TD-585` shows
+ * keeps the payload the broken parser wrote, forever. Measured 2026-08-27: <consumer-g>'s `TD-585` shows
  * zero options on `/decisions` while `HANDOFF.md` carries a clean A/B two feet away.
  *
  * The obvious repair is the forbidden one. `source_id` dedup is a DELIBERATE CONTRACT — a
@@ -1800,7 +1821,7 @@ export interface ReboundWorkInput {
  * A FACT, not a state change (plan section 10.6 ruling (n)). The control plane rebinds a work item
  * that is not terminal when the plan's revision runs ahead of the one frozen into `work.open`: a
  * work item with no accepted evidence has nothing to protect, so the advance is not staleness and
- * refusing it left <consumer-c>'s gate 5 with a work spec reachable by nothing. Nothing about the work
+ * refusing it left <consumer-b>'s gate 5 with a work spec reachable by nothing. Nothing about the work
  * moves, which is why this is a point event that no fold reads as a lifecycle edge — the reason it
  * exists at all is that before it, the rebind happened with no trace in either ledger.
  *

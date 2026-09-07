@@ -44,13 +44,34 @@ import { DatabaseSync } from 'node:sqlite'
 import { join, resolve } from 'node:path'
 
 import { linkWork, markWorkDone, openWork, readEvents } from './emit.ts'
-import { parseTdRegister, type TdEntry } from './nodes/lib/td-parse.ts'
+import {
+  parseTdRegister,
+  assertUniqueTdIds,
+  closureReceipt,
+  type TdEntry,
+} from './nodes/lib/td-parse.ts'
 import { buildWorkItems, foldSpans, type WorkItem } from './spine.ts'
 
 const REGISTER = join('docs', 'tech-debt.md')
 
 /** States that mean the card is already closed. Re-closing one would restate a claim as new. */
 const CLOSED_STATES = new Set(['done', 'accepted', 'dropped'])
+
+/** Rotation cannot stand in for closing the work. Read the persisted spine first. */
+export function assertWorkClosedBeforeRotation(repoRoot: string, ids: string[]): void {
+  if (process.env.CLADE_FLOW_EVENTS && !process.env.CLADE_FLOW_SYNC_ALLOW_OVERRIDE) {
+    throw new Error("rotation refused: CLADE_FLOW_EVENTS overrides this repo's spine")
+  }
+  const origins = new Set(ids.map((id) => `td:${id}`))
+  const pending = buildWorkItems(foldSpans(readEvents(repoRoot) as never))
+    .filter((card) => origins.has(card.origin_ref ?? '') && !CLOSED_STATES.has(card.state))
+    .map((card) => `${card.origin_ref} (${card.work_id})`)
+  if (pending.length) {
+    throw new Error(
+      `rotation refused: close and verify flow work first: ${pending.join(', ')}; run flow sources --apply, then check unwritten and the persisted work state`,
+    )
+  }
+}
 
 export interface WorkSyncAction {
   type: 'open' | 'done' | 'link'
@@ -59,12 +80,7 @@ export interface WorkSyncAction {
   title: string
   /** For `done`, the verification line. For `link`, the parent TD id. */
   detail: string | null
-  /**
-   * A `done` whose only evidence is the register saying so.
-   *
-   * Counted separately because thin and thick evidence are indistinguishable once both are just a
-   * string on a `work.done`, and `work.accept` is supposed to rest on the verification.
-   */
+  /** Compatibility field; unverifiable closures are now refused. */
   thin_evidence?: boolean
 }
 
@@ -85,7 +101,9 @@ export interface WorkSyncResult {
    * nothing look identical to a run that worked, forever. Verified against the file instead.
    */
   unwritten: string[]
+  /** Number of refused closures with missing or invalid receipts. */
   thin_evidence: number
+  unverified_closures: string[]
   /** Cards with a `td:` origin whose entry is no longer in the live register. Reported, not touched. */
   vanished: string[]
   /**
@@ -240,6 +258,7 @@ function emptyResult(repo: string): WorkSyncResult {
     actions: [],
     unwritten: [],
     thin_evidence: 0,
+    unverified_closures: [],
     vanished: [],
     unresolved_parents: [],
     skipped: null,
@@ -337,6 +356,7 @@ export function syncWork({
   }
 
   const entries = parseTdRegister(readFileSync(registerPath, 'utf8'))
+  assertUniqueTdIds(entries)
   result.scanned = entries.length
 
   const cards = buildWorkItems(foldSpans(readEvents(repoRoot) as never))
@@ -387,31 +407,26 @@ export function syncWork({
     // Closed in the register, and a card exists that has not been closed on the spine. A parked
     // entry is NOT closed — `wontfix-until-signal` is waiting, which is the state `settled`
     // already expresses honestly.
-    if (!actionable && !entry.isParked && existing && !CLOSED_STATES.has(existing.state)) {
-      const evidence = evidenceLine(entry)
-      const verification = evidence ?? thinVerification(entry)
-      if (!evidence) result.thin_evidence += 1
+    if (entry.isClosed && existing && !CLOSED_STATES.has(existing.state)) {
+      const receipt = closureReceipt(entry)
+      if (!receipt.valid) {
+        result.thin_evidence += 1
+        result.unverified_closures.push(entry.id)
+        continue
+      }
+      const verification = receipt.evidence ?? receipt.reason!
       const action: WorkSyncAction = {
         type: 'done',
         td: entry.id,
         work_id: existing.work_id,
         title: entry.title,
         detail: verification,
-        thin_evidence: !evidence,
+        thin_evidence: false,
       }
       if (!dryRun) {
         markWorkDone({
           work_id: existing.work_id,
           verification,
-          // Thin evidence and a missing artifact are ONE fact, not two. This close reads a register
-          // entry that says the work is done; it holds no coordinate to anything, and it never
-          // will. Filing the same absence twice — once as `thin_evidence`, once as a card whose
-          // artifact list is empty for unexplained reasons — would show a reader two problems where
-          // there is one, and the fix for the second one does not exist.
-          //
-          // A thick entry gets no waiver: its evidence line is a real acceptance predicate, and
-          // waiving output it never claimed to have would be an excuse nobody asked for.
-          ...(evidence ? {} : { artifactWaiver: thinVerification(entry) }),
           verifiedBy: 'tech-debt-register',
           actor,
           substrate: 'file-scan',

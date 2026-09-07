@@ -7,6 +7,8 @@ Local edits will be reverted by the next sync.
 
 # 開場決策清算（Step 2.7）
 
+<!-- clade-targets: claude -->
+
 > 主檔 pointer：Step 2.7 MUST 先完整讀本檔再執行。**每一輪都讀**——本檔管的是「開工前」，
 > 而 compaction 抹掉的正是「上一輪剛讀過」那份 context。
 
@@ -78,7 +80,7 @@ Charles 2026-08-05 逐字：「等我拍板的那些問題 其實你都能決策
 ## (a2) Open TD 不是 waiting-user
 
 開場清算的輸入不只 `awaiting[]`。`docs/tech-debt.md` 裡 open class、未 parked 的條目**預設是債**，
-不是「缺 `### 自驗` 所以等 Charles」。2026-08-20 <consumer-b> 實測 158 條 open 只有 2 條有那個 heading，
+不是「缺 `### 自驗` 所以等 Charles」。2026-08-20 <consumer-a> 實測 158 條 open 只有 2 條有那個 heading，
 runner 於是在還有 161 條債時寫 `no-admissible-work`。
 
 | 可觀察 predicate | 動作 |

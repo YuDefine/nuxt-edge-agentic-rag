@@ -15,12 +15,8 @@
 # 三條 fail-open：沒有 flow.ts、node 不在、跑超過各自的 timeout，都靜默 exit 0。SessionStart
 # hook 擋不住 session 才是它唯一不能做的事。
 #
-# 本檔共三次 node spawn，timeout 相加 MUST ≤ settings.json 給這支的 20 秒（現為 5 + 10 + 4
-# = 19）。**加第四次呼叫時 MUST 重新配這個和**，NEVER 只給新的那次一個 timeout 就收工——
-# 超過預算時被砍的不是新加的那一支，是整個 hook，三段訊號一起消失。
-#
-# 整支實測（2026-08-28，本機）：worktree spine 0.63 秒、clade home 1.4 MB / 5.3k 事件 spine
-# 0.53 秒——三次 spawn 全部走完的 wall time，不是單支。預算的 19 秒是最壞情況的上限。
+# 最壞時間：stdin 2 + brief 3 + telemetry 3 + stalled 8 + followups 3 = 19 秒，
+# 留在 settings.json 的 20 秒預算內。候選只印既有 collector 的有界摘要。
 set -uo pipefail
 
 # runner child 執行不了這些 action（見上）。印給它只會變成另一種底噪。
@@ -54,10 +50,8 @@ command -v node >/dev/null 2>&1 || exit 0
 # 取 `flow brief` 的第一行——它本來就是 `board: 待你 N · 受阻 N · …`（renderOverview 產）。
 # **NEVER 自己從 --json 重算一份 counts**：第二份推導就是第二塊板子，兩塊板子會漂。
 #
-# 4 秒 timeout（預算 5 + 10 + 4 = 19 ≤ settings.json 給的 20）。2026-08-28 實測，clade home
-# 1.4 MB / 5.3k 事件的 spine 連跑三次：0.08 / 0.12 / 0.11 秒；worktree 冷路徑（含 node 啟動
-# 與 ownership 掃描）0.35 秒。最壞情況 4 秒有 10 倍以上餘裕。
-BOARD=$(timeout 4 node "$FLOW" brief 2>/dev/null | head -1)
+# brief 最多 3 秒，完整預算見檔頭。
+BOARD=$(timeout 3 node "$FLOW" brief 2>/dev/null | head -1)
 
 # --- 治理軌跡（見 rules/core/flow-work-tracking.md § 治理軌跡） -----------------
 #
@@ -74,19 +68,16 @@ if [ -f "$TS" ]; then
   [ -t 0 ] || HOOK_INPUT=$(timeout 2 cat 2>/dev/null || true)
   SID=$(printf '%s' "$HOOK_INPUT" |
     sed -n 's/.*"session_id"[[:space:]]*:[[:space:]]*"\([0-9a-zA-Z-]\{1,128\}\)".*/\1/p' | head -1)
-  # 5 秒而非 8：這支與下面的 `flow status`、`flow brief` 共用 settings.json 給的 20 秒 hook
-  # 預算（5 + 10 + 4 = 19）。舊版的 8 + 15 = 23 已經超過預算，加第三次呼叫前先把總和壓回來——
-  # 超過預算不是某一支被砍，是 hook 整支被砍，三段訊號一起消失。
-  # 冷路徑實測 25 檔約 0.6 秒，5 秒仍是 8 倍餘裕不是門檻。
+  # telemetry 最多 3 秒。
   if [ -n "$SID" ]; then
-    (cd "$ROOT" && timeout 5 node "$TS" session --session-id "$SID" >/dev/null 2>&1) || true
+    (cd "$ROOT" && timeout 3 node "$TS" session --session-id "$SID" >/dev/null 2>&1) || true
   else
-    (cd "$ROOT" && timeout 5 node "$TS" session >/dev/null 2>&1) || true
+    (cd "$ROOT" && timeout 3 node "$TS" session >/dev/null 2>&1) || true
   fi
 fi
 
-# 10 秒而非 15：見上方預算算式。1.4 MB spine 實測 0.5 秒。
-OUT=$(timeout 10 node "$FLOW" status --stalled 2>/dev/null)
+# stalled 最多 8 秒，完整預算見檔頭。
+OUT=$(timeout 8 node "$FLOW" status --stalled 2>/dev/null)
 STATUS=$?
 
 # exit 3 是「有停滯」。0 = 乾淨、2 = 沒東西可看、124 = timeout、其餘 = 壞了：全部靜默。
@@ -109,4 +100,9 @@ fi
 case "$BOARD" in
   board:*) printf '[clade flow] %s — 跑 `flow brief` 看全景\n\n' "$BOARD" >&2 ;;
 esac
+# clade 使用既有 SessionStart；consumer 由 roadmap hook 呼叫同一 collector。
+COLLECTOR="$ROOT/vendor/scripts/spectra-advanced/collect-followups.ts"
+if [ -f "$ROOT/registry/consumers.json" ] && [ -f "$COLLECTOR" ]; then
+  (cd "$ROOT" && timeout 3 node "$COLLECTOR" --session-summary 2>&1 | head -c 1024) >&2 || true
+fi
 exit 0

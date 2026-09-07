@@ -9,6 +9,8 @@ Local edits will be reverted by the next sync.
 
 # spectra-propose — Step 0 選項 A Pi flow
 
+<!-- clade-targets: claude,codex,cursor -->
+
 > 本檔是 `spectra-propose/SKILL.md` 的執行細節分冊（clade fork 加料，2026-08-02 自 SKILL.md 抽出以縮 invoke 成本）。
 > SKILL.md 對應 step 的 inline pointer 指到本檔；**MUST 依 pointer 指示完整讀對應 § 再執行**。
 > 行為 gate（NEVER / MUST 判定）留在 SKILL.md inline；本檔是操作 recipe / 範本 / 查表。
@@ -77,7 +79,7 @@ Local edits will be reverted by the next sync.
       > — 同一批規則載入兩次。context pack + contract 讓 draft runtime 只讀一份共用 contract
       > 的命中 §，不再需要分別讀三份完整 rules 檔。cross-check 同理。
       > 完整規約內容見 `artifact-draft-contract.md` §1-§10。
-   3. **背景啟動 Pi dispatcher**（**Bash** tool 加 `run_in_background=true`）：
+   3. **背景啟動 Pi dispatcher**（**Bash** tool 加 `run_in_background=true`）。這是具名 `spectra-artifact-draft` planning-document write route：只准寫 context pack 指定的 propose artifacts，**不**構成一般 implementation grant：
 
       ```bash
       node ~/offline/clade/vendor/scripts/pi-dispatch.ts \
@@ -100,7 +102,7 @@ Local edits will be reverted by the next sync.
    - `0`：讀 `result`，往下走。
    - `2`：業務 fail；讀 `result` 的原因，主線決定修補或重派。
    - `3`：機械故障；讀 receipt 指向的 stderr log，依 watch protocol fallback。
-   - `4`：配額擋；本列是 astra 且是 workspace mutation，逐字採用 dispatcher payload，跳過 `sol-cursor` 交給 writable terminal carrier，**NEVER** 當成可立即重試的機械故障，**也 NEVER** 改派 Claude subagent。
+   - `4`：Astra planning route 配額擋；逐字採用 dispatcher payload 的 planning terminal，保留既有 main cross-check。**NEVER** 把這個 narrow artifact-write route 擴張成 implementation，也 NEVER 透過 Claude Code 或 native `cx` 承載 GPT worker。
 
    收到 `<task-notification> status=completed` 時**立刻**依序執行：
 

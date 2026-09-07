@@ -557,7 +557,7 @@ if (WORK_VERBS.has(cmd)) {
      * 憑證有沒有真的到 origin（R4）。量，但 NEVER 擋。
      *
      * 一個指向本機才有的 sha 的完成宣稱，對驗收的人來說是一張 fetch 不到的收據——2026-09-03
-     * 實測 `<consumer-h>/d7-phase5b-closeout`：worker 派出去 6 分鐘、work 已經 `done`、驗收列已經在
+     * 實測 `<consumer-g>/d7-phase5b-closeout`：worker 派出去 6 分鐘、work 已經 `done`、驗收列已經在
      * 佇列上，而那個 sha 當時只存在於 worker 的 worktree 裡。
      *
      * 標記而不是拒收，理由與 `--no-artifact` 那段是同一條：telemetry NEVER 改變被觀測工作的
@@ -920,7 +920,7 @@ if (cmd === 'pending') {
       }
       /*
        * 這一桶原本只印 near-miss，於是 `belongs-on-review` 在它最常出現的地方是隱形的——
-       * 措施實例（<consumer-f> product-save-hardening）正是落在 `## 需要 Charles 執行`。
+       * 措施實例（<consumer-e> product-save-hardening）正是落在 `## 需要 Charles 執行`。
        * 退回的文字寄到 span 上沒有用，讀這一頁的人看不到 clarification note；要嘛印在這裡，
        * 要嘛這條 lint 對這一桶等於不存在。
        */
@@ -1127,7 +1127,8 @@ function renderWork(results: WorkSyncResult[], verb: string, apply: boolean): nu
       r.actions.length === 0 &&
       r.vanished.length === 0 &&
       r.unwritten.length === 0 &&
-      r.unresolved_parents.length === 0
+      r.unresolved_parents.length === 0 &&
+      r.unverified_closures.length === 0
     )
       continue
     process.stdout.write(
@@ -1148,11 +1149,15 @@ function renderWork(results: WorkSyncResult[], verb: string, apply: boolean): nu
         process.stdout.write(`  ↳ 掛在  ${a.detail} 底下  ${a.td}\n`)
       }
     }
-    // Reported, never acted on: rotation into docs/archives IS closure, and inventing a closure
-    // event for it would write a claim nobody made.
+    if (r.unverified_closures.length > 0) {
+      process.stdout.write(
+        `  ⚠ 未關卡：缺少有效結案證據 ${r.unverified_closures.join(' ')}；補 Resolution 與 Evidence 後重跑。\n`,
+      )
+    }
+    // Missing register entries do not authorize completion events.
     if (r.vanished.length > 0) {
       process.stdout.write(
-        `  · ${r.vanished.length} 張卡的 TD 已不在 live register（輪出即結案，不動它）：${r.vanished.slice(0, 6).join(' ')}\n`,
+        `  · ${r.vanished.length} 張卡的 TD 已不在 live register（移除不代表結案，不動它）：${r.vanished.slice(0, 6).join(' ')}\n`,
       )
     }
     // Named, not acted on: there is no work id to link to, so an action here could never be

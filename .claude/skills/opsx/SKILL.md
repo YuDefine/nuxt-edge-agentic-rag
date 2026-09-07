@@ -1,8 +1,9 @@
 ---
 name: opsx
 description: 'OPSX — 用於 consumer 的需求建立、修訂、BDD 實作接續與 change 歸檔。歷史查詢也由此進入；clade 中央標準變更走 plan 與 work-loop，既有待拍板回答走 my。'
-effort: high
-permission_tier: action
+metadata:
+  clade:
+    permission_tier: action
 ---
 <!--
 🔒 LOCKED — managed by clade
@@ -11,6 +12,9 @@ Edit at: $CLADE_HOME
 Local edits will be reverted by the next sync.
 -->
 
+
+<!-- clade-targets: claude,codex,cursor -->
+<!-- clade-adapters: claude,codex,cursor -->
 
 # OPSX 需求交付
 
@@ -39,7 +43,7 @@ Local edits will be reverted by the next sync.
 - 每一個 Spectra writer 都已退役；NEVER 以舊 CLI、直接勾 tasks.md、修改 touched sidecar 或改歷史檔案替代 OPSX／flow command。`tasks.md` 是生成投影。
 - legacy 未完需求有 supersedes/provenance 承接後接續。封存原件只表示歷史保存，不表示原需求已完成。
 - 每一張 work 的 process exit、實作完成、BDD 通過、人工驗收、commit 與部署分開呈現。證據與當前 requirement revision 不符時保留為歷史，不能通過目前 gate。
-- 執行入口按任務類型選 harness/model/effort；Claude 只經 cc／ccw 機械選槽。專案自動關閉時保留全部觀測與手動進度，新自動工作遵守共同啟動 gate。
+- 執行入口按任務類型選 harness/model/effort；實際 launcher 由當前 runtime 的 live identity 判定，逐端操作見本檔末的 runtime 段落。沒有同 runtime 的 successor launcher 時回報不可用並保留 change/work 身分，NEVER 靜默換到別的 runtime。專案自動關閉時保留全部觀測與手動進度，新自動工作遵守共同啟動 gate。
 
 ## 回報
 

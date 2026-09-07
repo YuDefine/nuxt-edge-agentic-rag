@@ -9,6 +9,8 @@ Local edits will be reverted by the next sync.
 
 # spectra-apply — Step 8a.5 / 8a.6 / 8a.7 / 8b 執行細節與理由
 
+<!-- clade-targets: claude,codex,cursor -->
+
 > 本檔是 `spectra-apply/SKILL.md` 的執行細節分冊（clade fork 加料，2026-08-02 自 SKILL.md 抽出以縮 invoke 成本）。
 > SKILL.md 對應 step 的 inline pointer 指到本檔；**MUST 依 pointer 指示完整讀對應 § 再執行**。
 > 行為 gate（NEVER / MUST 判定）留在 SKILL.md inline；本檔是操作 recipe / 範本 / 查表。
@@ -23,9 +25,9 @@ Defense in depth：primary catches 是 propose / ingest / archive；apply Step 8
 
 ---
 
-## Step 8a.6 — 理由（<consumer-h> app-status-badge-extraction 2026-05-24 實證）
+## Step 8a.6 — 理由（<consumer-g> app-status-badge-extraction 2026-05-24 實證）
 
-The user must not be the **first** to discover trivial UX/data defects in the GUI. <consumer-h> `app-status-badge-extraction`（2026-05-24）handed 9 fabricated `(verified-ui:)` annotations + an all-「-」員工 column straight to the user because nothing between Step 8a and the GUI re-checked the change. Step 8a.6 is that re-check.
+The user must not be the **first** to discover trivial UX/data defects in the GUI. <consumer-g> `app-status-badge-extraction`（2026-05-24）handed 9 fabricated `(verified-ui:)` annotations + an all-「-」員工 column straight to the user because nothing between Step 8a and the GUI re-checked the change. Step 8a.6 is that re-check.
 
 ---
 
@@ -81,7 +83,7 @@ The user must not be the **first** to discover trivial UX/data defects in the GU
      --screenshots-dir screenshots/local/<change-name>
    ```
 
-   - Dispatcher stdout 印 JSON：`{"layer":"E.2","runtime":"codex","status":"pass"|"fail","findings":[{dimension,severity,evidence,suggested_fix}]}`。
+   - Dispatcher stdout 印 JSON：`{"layer":"E.2","runtime":"pi","transport":"pi","provider":"openai-codex","model":"gpt-6-astra","status":"pass"|"fail","findings":[{dimension,severity,evidence,suggested_fix}]}`。
    - **merge E.1 + E.2 findings**：兩方任一 `FAIL` → 對應 item 寫 `（issue: <dimension>: <evidence>）` annotation（去重；D2 fabrication 同樣 strip 假 `(verified-ui:)` + restore `[ ]`）。
    - **Fallback**：dispatcher 回 `status:"error"` + `fallback:"claude-subagent"`（pi 不在 / 無 parseable JSON）→ 改派一個 Claude subagent 用 `main-self-analysis.template.md` 同 5 dimension 做 cross-check（**NEVER** 憑記憶補；**NEVER** 跳過 cross-check 直接 handoff）。
 

@@ -6,7 +6,7 @@
  * ## 問題
  *
  * `spectra archive` 的 delta sync 把 `@trace` 的檔案清單建立在「archive 當下 working tree
- * 的 dirty 檔案」上，而不是該 change 自己的改動範圍。這產生兩層污染（下列佔比與實證取自 <consumer-b> 2026-08-29 全 repo 掃描）：
+ * 的 dirty 檔案」上，而不是該 change 自己的改動範圍。這產生兩層污染（下列佔比與實證取自 <consumer-a> 2026-08-29 全 repo 掃描）：
  *
  * 1. **可執行檔全數誤判為 dirty**（主要污染源，佔 ~90%）。spectra CLI 是 Windows binary
  *    跑在 wine 下，它的 git 實作讀不到 POSIX 的 executable bit，於是 index 裡每個 mode
@@ -130,7 +130,7 @@ const BULK_POLLUTION_MIN = 10
 /**
  * HEAD 上 mode 100755 的 tracked 檔。這是**污染的直接簽章** —— wine 底下的 spectra 讀不到
  * executable bit，於是每個可執行檔都被當成 mode-changed 掃進來。用實際的 mode 判定比用
- * 副檔名準：`infra/<consumer-b>-app/<consumer-b>-run-nitro-task`、`scripts/postgrest-ready-gate.mjs`、
+ * 副檔名準：`infra/<consumer-a>-app/<consumer-a>-run-nitro-task`、`scripts/postgrest-ready-gate.mjs`、
  * `.clade/bin/vp` 都沒有 `.sh` 結尾，卻是同一個成因掃進來的。
  */
 const executableTracked = new Set(

@@ -29,6 +29,7 @@ import { fileURLToPath } from 'node:url'
 import { isRecord } from './lib/json-unknown.ts'
 import { isLockedProjectionPathFor } from './locked-projection.ts'
 import {
+  type Attribution,
   lastWriterByPath,
   liveSessionIds,
   readJournal,
@@ -298,7 +299,7 @@ export function pathsClaimedByOthers(consumerPath, mySessionId) {
  *
  * 本 TD 的整個前提是「宣告型欄位實測不被維護」：17 個 claim 的 `expected_paths` 全 `[]`，
  * 於是 `classifyDirtyPaths` 的 claim 比對**永遠比不中**，`otherSession` 恆為空——
- * `rules/core/worktree-default.commit-ceremony.md` 已經量到這個後果（<consumer-h> 3 個 active claim
+ * `rules/core/worktree-default.commit-ceremony.md` 已經量到這個後果（<consumer-g> 3 個 active claim
  * 的 `expected_paths` 全空，88 條 unclaimed dirty 被 bulk-stash 捲走而 guard 零告警）。
  *
  * 而 `--task-summary` 那條用「改成必填」解決，這條**不能照抄**：開 worktree 的當下根本還不
@@ -359,7 +360,7 @@ export function derivedClaimPaths(
 
 /** Why one derived path is in a claim's effective range, and how much that reason is worth. */
 export interface DerivedPathEvidence {
-  attribution: 'hook' | 'mtime-diff'
+  attribution: Attribution
   /** ISO timestamp of the write this evidence comes from. */
   ts: string
   pane_id: string | null

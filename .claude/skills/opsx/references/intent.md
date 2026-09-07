@@ -7,6 +7,8 @@ Local edits will be reverted by the next sync.
 
 # 需求建立與修訂
 
+<!-- clade-targets: claude,codex,cursor -->
+
 輸入是責任 repo、可引用來源、交付目標、驗收條件及既有 change 身分。新需求與修訂都先讀已交付的 schema：clade 用 `docs/contracts/ai-control-plane/v1/native-intent.schema.json`，consumer 用 `.clade/vendor/contracts/ai-control-plane/v1/native-intent.schema.json`，並以現有 source 與 CLI validator 核對形狀。
 
 1. 保存來源定位、原句、captured time、digest 與來源 revision。既有相同來源保持同一 change/work，內容 digest 只識別修訂。

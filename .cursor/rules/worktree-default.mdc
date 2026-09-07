@@ -8,6 +8,9 @@ Edit at: $CLADE_HOME
 Local edits will be reverted by the next sync.
 -->
 
+<!-- clade-targets: claude,codex,cursor -->
+<!-- clade-adapters: claude,codex,cursor -->
+
 # Worktree Default
 
 > **無 frontmatter — unconditional always-load**。規約必須在每個會改 code 的 session Read 任何檔之前生效。
@@ -18,9 +21,13 @@ Local edits will be reverted by the next sync.
 最痛的兩次真實事故：TDMS `bcfde9c8`（`git add -A` 吞別 session WIP + clade 投影層一起 commit，同根因見 [[pitfall-consumer-ad-hoc-commit-eats-other-session-staged]]）與 `clade publish`（並行 session feature branch 還 checked out 時直接 publish，把未準備好的 commit 一起推 + propagate）。git worktree 從根本解掉這兩件事（per-session 獨立檔案系統 + 獨立 HEAD + 獨立 staging）。
 <!-- starter:strip-end -->
 
-操作層面由 `/wt` 全自動 orchestrate — user 不需手動 add / merge / cleanup，主線 cwd 全程不動。
+操作層面由已授權的 `/wt` workflow orchestrate — user 不需手動 add / merge / cleanup，主線 cwd 全程不動。入口的 native catalog、dispatch transport 與 interactive surface 由 target adapter 證明。
 
-此規則優先於全域 `~/.claude/AGENTS.md` 的「git workflow」相關段落（若存在）。
+此規則優先於 target runtime 的 global instruction file 中「git workflow」相關段落（若存在）。
+
+## Runtime boundary
+
+Worktree isolation, branch authorization, visibility before landing, and stale-slot safety are common clade contracts. A target adapter MUST identify the actual catalog operation and authorized transport that invokes `/wt`, handles a conflict, or reports a completion receipt; a projected rule or remembered product behavior is not execution evidence.
 
 ---
 
@@ -95,7 +102,7 @@ Dev-port slot 池滿時，**MUST** 跑 `wt-helper reclaim-stale` 釋放 stale sl
 | --- | --- | --- |
 | stale | worktree 已 merged，或 brief status 為 archived/completed/done/landed/merged | `reclaim-stale` 自動刪 dev-port record，釋放 slot |
 | live | brief status 為 active/in-progress/wip/dispatched/pending **且** last commit < 30min | 不動 |
-| unknown | 以上都不是 | attended → `AskUserQuestion`；unattended → packaging（不略過也不殺） |
+| unknown | 以上都不是 | attended → target adapter 的 authorized interactive question surface；unattended → packaging（不略過也不殺） |
 
 `reclaim-stale` 只刪 `~/.cache/clade/dev-port/<consumer>/<slug>.json`，**不刪** worktree 目錄。worktree cleanup 是獨立步驟（`prune` / `cleanup`）。
 

@@ -11,10 +11,12 @@ import {
   readdirSync,
   readFileSync,
   realpathSync,
+  renameSync,
   statSync,
   unlinkSync,
   writeFileSync,
 } from 'node:fs'
+import { hostname } from 'node:os'
 import { basename, dirname, join, relative, resolve as resolvePath } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { isRecord, parseJson, parseJsonRecord, parseJsonWith } from './lib/json-unknown.ts'
@@ -906,7 +908,7 @@ export function materializeWork(input: {
     // Read in stream order, last reopen wins, and the CAUSE IS NOT CONSULTED (ruling (n)). The
     // binding means "which requirement revision the next attempt's receipt is for", not "when the
     // requirement moved" — so an `evidence_insufficient` reopen carries a revision for the same
-    // reason a `revision` one does, and reading only the latter is what left <consumer-c>'s gate 5
+    // reason a `revision` one does, and reading only the latter is what left <consumer-b>'s gate 5
     // stuck: the r2 revision was made before the reopen emitter existed, so no `revision` reopen
     // was ever on the stream, and the `evidence_insufficient` reopen that followed was ignored.
     // `work.rebound` is read back here for exactly one reason: so that re-materializing a work item
@@ -1301,6 +1303,12 @@ function runtimeIgnoreBody(): string {
     'archive.jsonl',
     'evidence.jsonl',
     '*-events.jsonl',
+    // TD-939 Tier D shards the runtime journal. NEVER assume `*-events.jsonl` covers these: that
+    // pattern requires the name to END with `-events.jsonl`, and an archive shard ends with
+    // `.archive-<sequence>.jsonl`. Measured 2026-09-07 against this very file — both lines below
+    // were `NOT ignored` before they existed.
+    'runtime-events.archive-*.jsonl',
+    'runtime-snapshot.json',
     '*.lock',
     '!intent/',
     '!human-decisions.jsonl',
@@ -1787,7 +1795,7 @@ export function assertIntentRevisionStep(input: {
  * Same path on create and on revision (ruling (k) part 1): a revision that landed beside the
  * source rather than on it would leave every reader — the projector, the drift check, the
  * fresh-clone rebuild — reading r1 while the ledger held r2, which is the state TD-874 found
- * in the <consumer-h> canary.
+ * in the <consumer-g> canary.
  *
  * `previousSourceDigest` is what makes the overwrite safe without a lock: the caller states
  * which bytes it read before composing the revision, and a source that moved underneath it is
@@ -2166,6 +2174,179 @@ function withEvidenceLock<T>(path: string, run: () => T): T {
   return withFileLock(`${path}.lock`, 'evidence ledger', run)
 }
 
+/**
+ * Projection lock 的持有者身分（TD-923）。
+ *
+ * 鎖檔原本是**空檔**：contention 發生時沒有任何一方判得出那把鎖是活的還是程序異常退出
+ * 留下的殘骸，於是重試耗盡之後讀寫永遠報 contention。這裡把持有者寫進鎖檔本身，讓
+ * 「死鎖可安全接管、活鎖絕不被搶」成為可判定的事。
+ *
+ * NEVER 只記 pid：pid 會被重用，一個重用了死者 pid 的無關程序會讓死鎖看起來永遠是活的。
+ * 三個維度合起來才唯一：`boot_id`（重開機後全部作廢）＋ `pid` ＋ `start_ticks`
+ * （`/proc/<pid>/stat` 第 22 欄，同一次開機內 pid 重用必然改變）。
+ */
+type LockOwner = {
+  schema_version: 1
+  label: string
+  pid: number
+  boot_id: string | null
+  start_ticks: number | null
+  host: string
+  acquired_at: string
+}
+
+/** `alive` 不准搶；`dead` 可接管；`unknown` 保留現場 —— 三態不可合併成布林。 */
+type LockOwnerVerdict = 'alive' | 'dead' | 'unknown'
+
+function currentBootId(): string | null {
+  try {
+    return readFileSync('/proc/sys/kernel/random/boot_id', 'utf8').trim() || null
+  } catch {
+    return null
+  }
+}
+
+function processStartTicks(pid: number): number | null {
+  try {
+    const stat = readFileSync(`/proc/${pid}/stat`, 'utf8')
+    // 第 2 欄 comm 是被括號包住的執行檔名，**可以含空白與 `)`**，所以從**最後一個** `)`
+    // 之後切。NEVER 用 `stat.split(' ')[21]` —— 那對 `(foo bar)` 這種 comm 直接錯位。
+    const tail = stat.slice(stat.lastIndexOf(')') + 2).split(' ')
+    const ticks = Number(tail[19]) // 切點之後 tail[0] 是第 3 欄，所以第 22 欄 = tail[19]
+    return Number.isFinite(ticks) ? ticks : null
+  } catch {
+    return null
+  }
+}
+
+function lockOwnerRecord(label: string): LockOwner {
+  return {
+    schema_version: 1,
+    label,
+    pid: process.pid,
+    boot_id: currentBootId(),
+    start_ticks: processStartTicks(process.pid),
+    host: hostname(),
+    acquired_at: new Date().toISOString(),
+  }
+}
+
+function parseLockOwner(raw: string): LockOwner | null {
+  let value: unknown
+  try {
+    value = JSON.parse(raw)
+  } catch {
+    return null
+  }
+  if (!isRecord(value)) return null
+  if (value.schema_version !== 1) return null
+  if (typeof value.label !== 'string') return null
+  if (!Number.isInteger(value.pid) || (value.pid as number) <= 0) return null
+  if (typeof value.host !== 'string') return null
+  if (typeof value.acquired_at !== 'string' || Number.isNaN(Date.parse(value.acquired_at)))
+    return null
+  const bootId = value.boot_id
+  if (bootId !== null && typeof bootId !== 'string') return null
+  const startTicks = value.start_ticks
+  if (startTicks !== null && !Number.isInteger(startTicks)) return null
+  return {
+    schema_version: 1,
+    label: value.label,
+    pid: value.pid as number,
+    // `!== null` does not narrow `unknown` the way `typeof` does -- it subtracts from a union, and
+    // `unknown` is not one. So the compound guard above leaves this `unknown` while the sibling
+    // `typeof value.x !== 'string'` guards narrow cleanly. Same `as` idiom as `pid` and
+    // `start_ticks` two lines away, for the same reason.
+    boot_id: bootId as string | null,
+    start_ticks: startTicks as number | null,
+    host: value.host,
+    acquired_at: value.acquired_at,
+  }
+}
+
+/**
+ * NEVER 讓任何一條路徑用「檔案年齡」回答這個問題。年齡只說得出鎖有多舊，說不出持有者
+ * 死了沒——一個跑很久的合法寫入者與一個 crash 殘骸的年齡完全同形，而拿年齡搶鎖搶到的
+ * 那次，兩個 writer 會同時寫同一份 projection。判不出來就回 `unknown`，讓現場留著。
+ */
+function lockOwnerVerdict(owner: LockOwner | null): LockOwnerVerdict {
+  if (owner === null) return 'unknown'
+  // 別台機器的 pid 在這裡沒有意義（鎖檔可能在共享儲存上）。
+  if (owner.host !== hostname()) return 'unknown'
+  // 沒有 /proc 就沒有存活判定（非 Linux）——fail closed。
+  if (!existsSync('/proc/self/stat')) return 'unknown'
+  const bootId = currentBootId()
+  if (bootId !== null && owner.boot_id !== null && bootId !== owner.boot_id) return 'dead'
+  if (!existsSync(`/proc/${owner.pid}`)) return 'dead'
+  const ticks = processStartTicks(owner.pid)
+  if (ticks === null) return 'dead'
+  // 舊格式只有 pid：pid 重用讓「活著」不可信，判不出來就保留現場。
+  if (owner.start_ticks === null) return 'unknown'
+  return ticks === owner.start_ticks ? 'alive' : 'dead'
+}
+
+/**
+ * 接管一把判定為 `dead` 的鎖：把它 rename 成帶自己 pid 的隔離檔（**保留**，不刪——
+ * 那是現場證據），成功與否都不決定誰拿到鎖。真正的「並行接管只有一個成功」由後續的
+ * `openSync(lockPath, 'wx')` 保證：rename 只是把殘骸移開，`wx` 才是唯一的贏家判定。
+ */
+function reclaimDeadLock(lockPath: string, expectedIno: number): boolean {
+  const quarantine = `${lockPath}.stale-${process.pid}-${randomUUID()}`
+  try {
+    renameSync(lockPath, quarantine)
+  } catch (error) {
+    // 別人先搬走了 —— 不是失敗，下一輪 `wx` 照樣有機會贏。
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false
+    throw error
+  }
+  try {
+    // rename 保留 inode。對不上代表我們讀完判定之後、rename 之前，鎖檔已經被換成
+    // 另一份（很可能是別人剛取得的**活鎖**）——放回去，這一輪不接管。
+    if (statSync(quarantine).ino !== expectedIno) {
+      try {
+        renameSync(quarantine, lockPath)
+      } catch {}
+      return false
+    }
+  } catch {}
+  return true
+}
+
+/** EEXIST 那一刻的唯一判定入口：alive / unknown 一律不動，只有 dead 才搬走。 */
+function reclaimStaleLockIfDead(lockPath: string): void {
+  let ino: number
+  try {
+    ino = statSync(lockPath).ino
+  } catch {
+    return
+  }
+  let owner: LockOwner | null = null
+  try {
+    owner = parseLockOwner(readFileSync(lockPath, 'utf8'))
+  } catch {
+    return
+  }
+  if (lockOwnerVerdict(owner) !== 'dead') return
+  reclaimDeadLock(lockPath, ino)
+}
+
+function describeLockHolder(lockPath: string): string {
+  let owner: LockOwner | null = null
+  try {
+    owner = parseLockOwner(readFileSync(lockPath, 'utf8'))
+  } catch {
+    return 'holder unreadable'
+  }
+  if (owner === null) return 'holder unknown (unparseable lock file; 現場保留，NEVER 按年齡刪)'
+  return `holder ${owner.host}:${owner.pid} since ${owner.acquired_at} (${lockOwnerVerdict(owner)})`
+}
+
+function acquireOwnedLock(lockPath: string, label: string): number {
+  const fd = openSync(lockPath, 'wx')
+  writeFileSync(fd, `${JSON.stringify(lockOwnerRecord(label))}\n`)
+  return fd
+}
+
 function projectionLockPath(repoRoot: string, changeId: string): string {
   return join(
     repoRoot,
@@ -2186,14 +2367,16 @@ export async function withProjectionLock<T>(
   let fd: number | null = null
   for (let attempt = 0; attempt < 40; attempt += 1) {
     try {
-      fd = openSync(lockPath, 'wx')
+      fd = acquireOwnedLock(lockPath, 'projection-write')
       break
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
+      reclaimStaleLockIfDead(lockPath)
       await new Promise((resolve) => setTimeout(resolve, 5))
     }
   }
-  if (fd === null) throw new Error(`projection lock contention: ${lockPath}`)
+  if (fd === null)
+    throw new Error(`projection lock contention: ${lockPath} — ${describeLockHolder(lockPath)}`)
   try {
     return await run()
   } finally {
@@ -2210,14 +2393,16 @@ function withProjectionReadLock<T>(repoRoot: string, changeId: string, run: () =
   let fd: number | null = null
   for (let attempt = 0; attempt < 200; attempt += 1) {
     try {
-      fd = openSync(lockPath, 'wx')
+      fd = acquireOwnedLock(lockPath, 'projection-read')
       break
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
+      reclaimStaleLockIfDead(lockPath)
       sleepMs(10)
     }
   }
-  if (fd === null) throw new Error(`projection lock contention: ${lockPath}`)
+  if (fd === null)
+    throw new Error(`projection lock contention: ${lockPath} — ${describeLockHolder(lockPath)}`)
   try {
     return run()
   } finally {
@@ -2288,7 +2473,10 @@ function correlatedWorkEvents(repoRoot: string, changeId: string): Array<Record<
 }
 
 export function correlatedRuntimeState(repoRoot: string, changeId: string): RuntimeState {
-  const state = readRuntimeState(repoRoot)
+  // The archive read is load-bearing here, NEVER an abundance of caution: this state feeds the
+  // projection checkpoint's input digest, so dropping archived events would change that digest and
+  // report every stored checkpoint as stale. TD-939 Tier D.
+  const state = readRuntimeState(repoRoot, { includeArchive: true })
   const works = state.works.filter((work) => work.change_id === changeId)
   const workIds = new Set(works.map((work) => work.work_id))
   const repoIds = new Set(works.map((work) => work.repo_id))
@@ -2386,6 +2574,14 @@ export function correlatedRuntimeState(repoRoot: string, changeId: string): Runt
     reopened_since_last_lease: state.reopened_since_last_lease.filter((workId) =>
       workIds.has(workId),
     ),
+    routing_decisions: state.routing_decisions.filter((decision) => workIds.has(decision.work_id)),
+    stale_resume_record_ids: state.stale_resume_record_ids.filter((recordId) =>
+      state.resume_records.some(
+        (record) => record.resume_record_id === recordId && workIds.has(record.work_id),
+      ),
+    ),
+    sequence_high_water: state.sequence_high_water,
+    events_from_sequence: state.events_from_sequence,
   }
 }
 
@@ -2953,7 +3149,7 @@ export function reopenWorkForRevision(input: {
 /**
  * Reopen one `done` work whose evidence readiness judges insufficient (ruling (m), the other cause).
  *
- * The requirement has not moved; what is wrong is the record. <consumer-h>'s
+ * The requirement has not moved; what is wrong is the record. <consumer-g>'s
  * `W-2026-09-02-wsp-leavesubmitguard` is the first case: a RED-only attempt finished `ok` and drove
  * the work to `done` with no GREEN receipt behind it, and nothing could run it again.
  *

@@ -4,8 +4,8 @@
  *
  * 為什麼需要這層：`herdr tab create` 不帶 `--workspace` 時，Tab 建在**當下 focused
  * workspace**。agent 幾乎都從 clade session 起 consumer 的 dev server，於是每一台
- * dev server 的 Tab 都堆在 clade 的 workspace 裡（2026-08-12 實測：`dev-<consumer-b>` 的
- * pane cwd 是 <home>/offline/<consumer-b>，workspace 卻是 w2 = clade）。`--cwd` 只
+ * dev server 的 Tab 都堆在 clade 的 workspace 裡（2026-08-12 實測：`dev-<consumer-a>` 的
+ * pane cwd 是 <home>/offline/<consumer-a>，workspace 卻是 w2 = clade）。`--cwd` 只
  * 決定 shell 的工作目錄，對 Tab 歸屬零影響。
  *
  * 判定順序刻意與 `herdr-session-handoff.ts` 的 chooseWorkspace 同語意（label 消歧 +
@@ -54,8 +54,8 @@ function isInside(path: string, root: string): boolean {
 /**
  * dev-session 自己建的 Tab 不算 workspace 歸屬證據。
  *
- * 沒有這條會自我強化：`dev-<consumer-b>` 被誤建在 clade 的 workspace 之後，clade 的 workspace
- * 裡就有一個 cwd 落在 <consumer-b> repo 的 pane，下一次 cwd 比對於是同時命中 clade 與 <consumer-b> →
+ * 沒有這條會自我強化：`dev-<consumer-a>` 被誤建在 clade 的 workspace 之後，clade 的 workspace
+ * 裡就有一個 cwd 落在 <consumer-a> repo 的 pane，下一次 cwd 比對於是同時命中 clade 與 <consumer-a> →
  * ambiguous → 永遠修不回去。
  */
 function isDevSessionPane(pane: PaneInfo): boolean {

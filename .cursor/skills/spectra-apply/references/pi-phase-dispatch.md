@@ -9,6 +9,8 @@ Local edits will be reverted by the next sync.
 
 # spectra-apply — Step 6b C 類 phase pi 派工
 
+<!-- clade-targets: claude,codex,cursor -->
+
 > 本檔是 `spectra-apply/SKILL.md` 的執行細節分冊（clade fork 加料，2026-08-02 自 SKILL.md 抽出以縮 invoke 成本）。
 > SKILL.md 對應 step 的 inline pointer 指到本檔；**MUST 依 pointer 指示完整讀對應 § 再執行**。
 > 行為 gate（NEVER / MUST 判定）留在 SKILL.md inline；本檔是操作 recipe / 範本 / 查表。
@@ -40,7 +42,7 @@ IMPLEMENTATION_ORIGIN_ID = spectra-$CONSUMER_SLUG-$CHANGE_NAME-p$PHASE_NUMBER
 PRESCAN_ORIGIN_ID = $IMPLEMENTATION_ORIGIN_ID-prescan
 ```
 
-現行 `rolloutStage=shadow` 時，`effective` 必定是 `spectra-phase-implementation` / Astra medium。`mechanical.eligible=true` 只決定 cohort=`shadow-luna-candidate`，**不**授權 Luna mutation。
+現行 `rolloutStage=shadow` 時，`effective` 必定是 `spectra-phase-implementation` / Sol high。`mechanical.eligible=true` 只決定 cohort=`shadow-luna-candidate`，**不**授權 Luna mutation。
 
 ### 2. Eligible phase 先跑 Luna read-only prescan
 
@@ -73,12 +75,12 @@ node ~/offline/clade/vendor/scripts/pi-dispatch.ts \
 
 依 Pi Watch Protocol 收 terminal receipt：
 
-- `exit 0/2` 且有 parseable result → `PRESCAN_EVIDENCE=<receipt.lastMessagePath>`；即使 `needs_reconciliation=true` 仍保留 raw facts，裁決交下一步 Astra medium。
+- `exit 0/2` 且有 parseable result → `PRESCAN_EVIDENCE=<receipt.lastMessagePath>`；即使 `needs_reconciliation=true` 仍保留 raw facts，另走 `implementation-decision`（Astra medium、readonly）裁決，patch 工作回到 Sol implementation worker。
 - `exit 3/4` → 依標準 fallback 處理；不重試 Luna medium/high。若決定略過 prescan，`PRESCAN_EVIDENCE=(prescan unavailable: <exit/reason>)`，implementation 仍可開始。
 
 若 `prescan.eligible === false`，設 `PRESCAN_EVIDENCE=(not run)`。
 
-### 3. 用泛用 dispatcher 派 Astra medium implementation
+### 3. 用泛用 dispatcher 派 Sol high implementation
 
 每一個 C 類 phase 的 effective mutation 都走 named row `spectra-phase-implementation`。Template 與 output schema 是 clade SoT；**NEVER** 複製 raw `codex exec` 或在 caller 自行拼 model flag。
 
@@ -96,7 +98,7 @@ node ~/offline/clade/vendor/scripts/pi-dispatch.ts \
   --output-schema ~/offline/clade/vendor/snippets/pi-offload/schemas/spectra-phase-result.schema.json \
   --label "$IMPLEMENTATION_ORIGIN_ID" \
   --cwd <consumer-worktree-root> \
-  --model astra --effort medium \
+  --model sol --effort high \
   --route routing-table \
   --workspace-access mutation \
   --tier-basis table-row --table-row spectra-phase-implementation \
@@ -130,9 +132,9 @@ Marker 必須是 phase 內單一行 JSON comment：
 3. terminal notification 到達後 claim task ID，讀 dispatcher 的單一 JSON receipt。
 4. 依 exit code 分流：
    - `0`：讀 `result`，進下節 checks。
-   - `2`：業務 fail；讀 `result` 的 drift／skip／gate 原因，主線決定修補或重派。
+   - `2`：Sol 品質／業務 fail；依 receipt 的 `diagnosis_needed` 走 `implementation-decision`（Astra readonly，只下診斷與決策），patch 再交回 Sol implementation worker。
    - `3`：機械故障；讀 receipt 指向的 stderr log，依 watch protocol fallback。
-   - `4`：配額擋；依 quota fallback，**NEVER** 當成可立即重試的機械故障。
+   - `4`：Sol provider／quota blocker；依 dispatcher payload 明示 blocked，**NEVER** 改派 Astra implementation、Claude-hosted GPT 或 native `cx`。
 
 ### 6. Notification 後 MUST checks
 

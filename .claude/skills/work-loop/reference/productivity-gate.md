@@ -7,6 +7,9 @@ Local edits will be reverted by the next sync.
 
 # 准入與生產性：算法、邊界案例、反 Goodhart 防線
 
+<!-- clade-targets: claude -->
+<!-- carrier-independent candidate: 本檔的義務不經任何 runtime 專屬工具契約表達，是 [[TD-445]] 抽共用核心時最先可搬的一批。**這是候選標記，不是 audience**——真正的 audience 是上面那行 `clade-targets`，NEVER 因為看到本行就把 targets 放寬。放寬 reference 而不放寬 SKILL.md 會投出沒有 skill 入口指向的孤兒檔。 -->
+
 > 主檔 pointer：Step 0 § 開場准入判定 與 Step 6.3 § 生產性判定。**判準在主檔，本檔是論證與
 > 邊界案例**——執行時不必讀本檔，**改判準之前 MUST 讀**。
 
@@ -144,7 +147,7 @@ SKILL.md Step 6.3 留的是一句話對照表。**機械 SoT 是 `vendor/scripts
 | P4 | 新決策 packaging | `awaiting[]` 新增**先前未出現過的 id** 的完整條目（含 options）。**單輪 P4 至多貢獻一次**——三條 packaging 不等於三輪份的生產 |
 
 **P2 為什麼是排除集而不是路徑白名單**：白名單只可能列出寫規約那一刻手上那個 repo 的交付路徑。
-2026-08-19 <consumer-h> r54 實證——舊白名單逐字寫 `rules/core/`／`rules/modules/`／`vendor/`／
+2026-08-19 <consumer-g> r54 實證——舊白名單逐字寫 `rules/core/`／`rules/modules/`／`vendor/`／
 `plugins/hub-core/`／`scripts/`，那是 **clade 自己**的交付形狀；consumer 的交付落在 `packages/**`／
 `app/**`／`test/**`，**字面一條都不中**。那一輪關掉一條 TD（三條 HTTP 探測）並 land 一次 refactor
 （100 tests 全綠、已 merge-back），P1–P4 仍全部不成立 → `nonProductiveRounds` 進 2、整個 loop 停掉。
