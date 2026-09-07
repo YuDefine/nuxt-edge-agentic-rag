@@ -64,7 +64,7 @@ _(目前無 parked change — 2026-04-26 兩個 parked change 全 unpark + 實�
 
 ## Active Changes
 
-_last synced: 2026-06-09T22:40:05.499Z_
+_last synced: 2026-09-06T13:15:19.619Z_
 
 1 active change (0 ready · 1 in progress · 0 draft · 0 blocked)
 
@@ -123,8 +123,8 @@ _(none)_
 
 ## Parked Changes
 
-> 已 `spectra park` 的 changes。檔案暫時從 `openspec/changes/` 移出，
-> metadata 保留在 `.spectra/spectra.db`。`spectra unpark <name>` 可取回。
+> 歷史 legacy store 中仍保留 metadata 的 changes。原件可能已從工作樹移出，
+> 讀取結果只代表 historical record；接續前先建立原件 snapshot 與 provenance。
 
 _No parked changes._
 
