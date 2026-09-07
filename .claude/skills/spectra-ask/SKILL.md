@@ -1,8 +1,9 @@
 ---
 name: spectra-ask
 description: 'spectra-ask 相容入口；以 OPSX inquiry 的 ask 模式完成唯讀調查。'
-effort: high
-permission_tier: read-only
+metadata:
+  clade:
+    permission_tier: read-only
 ---
 <!--
 🔒 LOCKED — managed by clade
@@ -11,6 +12,9 @@ Edit at: $CLADE_HOME
 Local edits will be reverted by the next sync.
 -->
 
+
+<!-- clade-targets: claude,codex,cursor -->
+<!-- clade-adapters: claude -->
 
 # 接續 OPSX
 

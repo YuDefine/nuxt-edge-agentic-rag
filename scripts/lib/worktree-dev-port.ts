@@ -7,7 +7,7 @@
  * 的 N 條 worktree 全部指向同一個號碼，誰先起誰佔住，其餘的 item 只能顯示「port 3000 上跑
  * 的是別人的 dev server」。那不是提示，是設計本身要求人輪流等。
  *
- * 2026-08-28 實測：<consumer-b> 有 15 條 worktree、1 個 registry port，`shipment-loading-per-box-capacity`
+ * 2026-08-28 實測：<consumer-a> 有 15 條 worktree、1 個 registry port，`shipment-loading-per-box-capacity`
  * 的驗收 item 嵌不了預覽，因為 3000 正被 `product-process-hierarchy-and-naming` 佔著。
  *
  * 所以分配與讀取都收斂到本檔，讓「哪個 port」對每一個消費端都是同一個答案：
@@ -26,7 +26,7 @@
  *      號碼的專屬區段，與所有 base、dev-router 的 control/backend 區（3300–3510）完全不重疊。
  *
  * 兩池都排掉三件事：mapped port 落到別人的地盤、mapped port 撞到本 consumer 另一個宣告 port
- * （<consumer-h> 宣告 3040 + 3045）、offset 已被 sibling worktree 佔用。
+ * （<consumer-g> 宣告 3040 + 3045）、offset 已被 sibling worktree 佔用。
  *
  * 分配紀錄寫在 `~/.cache/clade/dev-port/<consumer>/<slug>.json`，**不**進 repo：`.clade/` 在
  * 多數 consumer 沒被 gitignore，寫進去等於每條 worktree 帶一個 untracked 檔進 merge-back /
@@ -80,7 +80,7 @@ export function devPortStateDir(consumerRoot: string): string {
 /**
  * base 池：1..9 之中最小的可用 offset，需同時滿足
  *   - 每個 mapped port 都在 `[base, base+9]` 內 —— 不會踩到下一個 consumer 的 base
- *   - mapped port 不等於本 consumer 另一個宣告 port（<consumer-h> 宣告 3040 + 3045，offset 5 會讓
+ *   - mapped port 不等於本 consumer 另一個宣告 port（<consumer-g> 宣告 3040 + 3045，offset 5 會讓
  *     `<client-a>` 蓋掉 `shared`）
  *   - offset 沒被 sibling worktree 佔用
  * 池滿回 null（由 band 池接手）。
@@ -106,7 +106,7 @@ export function pickDevPortOffset(
  * band 池：把 band 切成寬度 `spread + 1` 的槽（spread = 最高宣告 port − base），逐槽試。
  *
  * 回傳的仍是**一個 offset**（`槽首 − base`），與 base 池同型 —— 下游每個消費端算 port 的方式
- * 只有一條：`宣告 port + offset`。band 池回來的 offset 是三位數起跳（<consumer-b> base 3000、band
+ * 只有一條：`宣告 port + offset`。band 池回來的 offset 是三位數起跳（<consumer-a> base 3000、band
  * 4400 → offset 1400），那是刻意的：任何地方若把 offset 當成「1..9 的小數字」處理都會當場
  * 露餡，而不是安靜地算出一個別人的 port。
  */

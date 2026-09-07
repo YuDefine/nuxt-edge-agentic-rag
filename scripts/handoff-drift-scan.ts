@@ -30,7 +30,7 @@
  * Rationale: wt branches ≥ 50 commits behind main dramatically increase the
  * mechanical-conflict surface for merge-back pre-sync. Early signal lets users
  * sync proactively instead of discovering 95 conflicts at merge-back time
- * (<consumer-b> 2026-05-24 warehouse-items-tool-aggregation incident).
+ * (<consumer-a> 2026-05-24 warehouse-items-tool-aggregation incident).
  *
  * HANDOFF.md health triggers (independent of worktrees):
  *   5. handoff-size-exceeded — HANDOFF.md > max_kb threshold (default 35 KB,
@@ -584,7 +584,7 @@ function checkDrift(consumerRoot, worktree) {
 
   // Trigger 4 (lowest priority): wt branch far behind main even though HANDOFF
   // is in good shape. Surfaces early before merge-back blows up with N conflicts
-  // (<consumer-b> 2026-05-24 warehouse-items-tool-aggregation: 184 commits behind → 95
+  // (<consumer-a> 2026-05-24 warehouse-items-tool-aggregation: 184 commits behind → 95
   // pre-sync conflicts at merge-back).
   if (commitDistanceBehind >= threshold) {
     return {

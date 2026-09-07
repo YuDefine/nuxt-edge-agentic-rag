@@ -1,8 +1,9 @@
 ---
 name: spectra-analyze
 description: 'spectra-analyze 已退役；既有呼叫由此接續到 OPSX 的需求、實作、驗證與歷史入口。'
-effort: high
-permission_tier: draft
+metadata:
+  clade:
+    permission_tier: draft
 ---
 <!--
 🔒 LOCKED — managed by clade
@@ -11,6 +12,9 @@ Edit at: $CLADE_HOME
 Local edits will be reverted by the next sync.
 -->
 
+
+<!-- clade-targets: claude,codex,cursor -->
+<!-- clade-adapters: claude -->
 
 # 接續 OPSX
 

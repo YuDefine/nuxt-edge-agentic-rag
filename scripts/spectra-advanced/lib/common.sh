@@ -196,7 +196,7 @@ sux_find_change_by_name() {
 # from its fork point makes it arbitrarily large. Once the environment exceeds
 # ARG_MAX every subsequent `exec` in the sourcing script fails with
 # `Argument list too long`, and archive-gate.sh degrades into a gate that
-# reports success while none of its checks ever ran. Observed at <consumer-b>
+# reports success while none of its checks ever ran. Observed at <consumer-a>
 # 2026-08-07: a worktree with 2320 touched files produced a 256KB value and
 # silently disabled every check from Check 1 onward.
 sux_touched_files() {

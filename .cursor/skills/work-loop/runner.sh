@@ -19,7 +19,7 @@
 #
 # 起跑前先跑 quarantine、互斥鎖門檻、preflight 與待辦源健康門檻：任一不過就
 # **完全不啟動**，理由落在 $LOG_DIR/preflight.log。preflight 省的不是第 4 輪起的
-# 重複失敗，是全部那幾十輪 —— 2026-08-10 <consumer-b> 因 headless 權限閘門連續拒絕，空轉
+# 重複失敗，是全部那幾十輪 —— 2026-08-10 <consumer-a> 因 headless 權限閘門連續拒絕，空轉
 # 99 輪、零待辦被修改。互斥鎖命中（exit 6）是「已有 runner 在跑」，不是故障。
 #
 # 停止：state 檔出現 stoppedReason，或達 --max-rounds，或連續 2 輪 exit≠0，
@@ -81,6 +81,7 @@ CHILD_ENV=(
   -u ANTHROPIC_BASE_URL
   -u ANTHROPIC_AUTH_TOKEN
   -u ANTHROPIC_API_URL
+  -u ANTHROPIC_MODEL
   -u ANTHROPIC_DEFAULT_OPUS_MODEL
   -u ANTHROPIC_DEFAULT_SONNET_MODEL
   -u ANTHROPIC_DEFAULT_HAIKU_MODEL
@@ -112,7 +113,7 @@ case "$ORIGIN" in
   ccx)
     printf '%s\n' \
       'ERROR: ccx is retired; work-loop will not create a new child.' \
-      'Run GPT/Codex work through the Pi dispatcher (`cx` runtime), or start the loop from cc/ccw when AI Agent is required.' >&2
+      'Run GPT/Codex workers through the Pi dispatcher, or start the loop from cc/ccw when AI Agent is required.' >&2
     exit 2
     ;;
   *)
@@ -122,6 +123,21 @@ case "$ORIGIN" in
     exit 3
     ;;
 esac
+
+# The account router may choose either subscription slot after quota preflight. Refuse before the
+# first Claude process if either eligible settings file or any inherited model env points at GPT.
+# Conservative rejection is intentional: selecting a safe slot is the account router's job, while
+# this runner has no receipt proving which slot it will choose until after launch.
+MODEL_RESIDENCY_HELPER="$HOME/offline/clade/vendor/scripts/lib/claude-model-residency.ts"
+[ -r "$MODEL_RESIDENCY_HELPER" ] || {
+  echo "ERROR: missing Claude model residency helper: $MODEL_RESIDENCY_HELPER" >&2
+  exit 2
+}
+# Which env vars and settings keys carry a model is the helper's own contract; enumerating them
+# again in shell is how the two copies drift. One call covers both eligible profiles and prints
+# its own refusal.
+$NODE_PLAIN "$MODEL_RESIDENCY_HELPER" guard \
+  --config-dir "$HOME/.claude" --config-dir "$HOME/.claude-work" || exit 2
 QUARANTINE_FILE="$REPO/.clade/work-loop/orphan-quarantine.json"
 LOCK_HELPER="$HOME/offline/clade/vendor/scripts/work-loop-lock.ts"
 # 每輪一行的機械紀錄。round 內的敘事全在 $LOG_DIR/round-<ts>.log 裡，成功輪畫面上只剩
@@ -149,7 +165,7 @@ SKIP_PREFLIGHT=0
 # 3 是下限側的保守值 —— 低於它時一輪的固定成本（冷載 + scan + 分類）多半換不到一個 item。
 MIN_READY=3
 # `ScheduleWakeup` / `Monitor` 的 interval 下限（秒）。AGENTS.md 已有長等待規約，但 2026-08-12
-# 量測到 197 次呼叫（<consumer-b> 2.10 次/輪）證明無人值守下遵守不穩，所以在 runner 層把數字下沉進
+# 量測到 197 次呼叫（<consumer-a> 2.10 次/輪）證明無人值守下遵守不穩，所以在 runner 層把數字下沉進
 # 每輪的 prompt —— 它出現在 user turn，比冷載一次的規約大聲。
 MIN_WAKEUP=1200
 # acceptEdits 是刻意的預設：runner 要能無人值守跑，但 bypassPermissions 會連
@@ -436,7 +452,7 @@ print_runner_summary() {
 # 起跑前把「這個 runner 跑得起來嗎」問完。不過就 exit≠0 且**一輪都不跑**。
 #
 # 為什麼是前置探針而不是斷路器：斷路器要先燒掉 N 輪才會跳，而失敗模式是**起跑當下就已經
-# 確定**的（權限閘門不會在第 4 輪改變主意）。2026-08-10 <consumer-b> 空轉 99 輪的成本，前置探針能
+# 確定**的（權限閘門不會在第 4 輪改變主意）。2026-08-10 <consumer-a> 空轉 99 輪的成本，前置探針能
 # 全額省下，斷路器只省得到後面那 96 輪。
 #
 # 探針誤判過嚴時走 `--skip-preflight`，NEVER 靠拿掉探針本身解決。
@@ -750,3 +766,5 @@ done
 
 print_runner_summary
 exit "$runner_exit_code"
+
+# <!-- clade-targets: claude -->

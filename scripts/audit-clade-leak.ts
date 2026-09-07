@@ -401,9 +401,9 @@ export async function resolvePublicConsumers(
   return { roots, errors }
 }
 
-// 路徑 → consumer：比對**路徑區段**而非 substring。substring 會讓 `<consumer-e>` 命中
-// `<consumer-d>`，而選錯 consumer 就是選錯 repo_id、選錯 visibility。
-// 多個區段都命中時取最長的 id（`<consumer-d>` 勝過 `<consumer-e>`）。
+// 路徑 → consumer：比對**路徑區段**而非 substring。substring 會讓 `<consumer-d>` 命中
+// `<consumer-c>`，而選錯 consumer 就是選錯 repo_id、選錯 visibility。
+// 多個區段都命中時取最長的 id（`<consumer-c>` 勝過 `<consumer-d>`）。
 function matchConsumerEntry(path, entries) {
   const segments = new Set(path.split('/').filter(Boolean))
   let best = null
@@ -597,8 +597,8 @@ async function auditOneRoot(repoRoot, selfFlags = []) {
       // symlink 模式的 consumer（`.claude/rules/*.md` → `.clade/runtime/rules/`）：
       // git 裡存的是 mode 120000 的 53-byte 路徑字串，**target 未 tracked**，所以那些
       // 內容根本沒有被公開。readFile 會跟隨 symlink 讀到本機檔案，於是把「本機有」
-      // 誤報成「已洩漏」——2026-07-26 實測讓 agentic-rag 虛報 39 處 <consumer-h> / 32 處
-      // <consumer-b> / 5 處 <client-a>，全部來自未 tracked 的 symlink target。
+      // 誤報成「已洩漏」——2026-07-26 實測讓 agentic-rag 虛報 39 處 <consumer-g> / 32 處
+      // <consumer-a> / 5 處 <client-a>，全部來自未 tracked 的 symlink target。
       // 公開洩漏的判準是「git 裡有什麼」，不是「檔案系統上有什麼」。
       let stats
       try {

@@ -70,7 +70,7 @@ maybe_auto_index
 # ─────────────────────────────────────────────────────────
 #
 # 為什麼值得佔一段 session 啟動時間：temp 寫滿的**症狀完全不指向真因**。
-# 2026-08-05 實測（<consumer-b>）：測試 fixture 在 /tmp 累積 53,129 個目錄佔 13G，撞爆
+# 2026-08-05 實測（<consumer-a>）：測試 fixture 在 /tmp 累積 53,129 個目錄佔 13G，撞爆
 # tmpfs 的 usrquota 之後，vitest 547 個測試檔全數失敗於
 # `Unknown system error -122`（errno 122 = EDQUOT），重導向的 log 檔變成 0 bytes，
 # 連 `wc` 和 `python3` 的 stdout 都寫不出來。整組症狀看起來像 codebase 壞掉，

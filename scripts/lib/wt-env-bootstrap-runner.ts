@@ -39,7 +39,7 @@ export interface WtEnvBootstrapOptions {
 
 /**
  * `status` 的三態。語義由 consumer 的 wt-env-bootstrap 實作定義（reference impl：
- * <consumer-b> `scripts/wt-env-bootstrap.ts`）：
+ * <consumer-a> `scripts/wt-env-bootstrap.ts`）：
  *
  *   absent   clone DB 不存在
  *   created  clone 在，但 sidecar 還沒 ready
@@ -77,7 +77,7 @@ export interface BackingServiceProbe {
  * **Any other extension is a hard error, never a skip.** A consumer that ships
  * `wt-env-bootstrap.<something-else>` clearly intends the hook to run; treating
  * that as "consumer doesn't have one" makes both `ensure` and `destroy` no-op
- * with zero signal. Observed cost (<consumer-b> 2026-08-02, TD-315): every new worktree
+ * with zero signal. Observed cost (<consumer-a> 2026-08-02, TD-315): every new worktree
  * came up with `.env.local` still pointing at the *main* worktree's database,
  * and every `cleanup` left its PostgREST sidecar running — each orphan
  * permanently consuming a connection-admission slot until the ceiling was hit
@@ -169,11 +169,11 @@ const VALID_STATES = new Set<BackingServiceState>(['absent', 'created', 'ready']
 
 function toProbe(raw: unknown): BackingServiceProbe {
   const o = (raw ?? {}) as Record<string, unknown>
-  // 契約欄位是 `status`（reference impl：<consumer-b> `scripts/wt-env-bootstrap.ts` 的 `status()`，
+  // 契約欄位是 `status`（reference impl：<consumer-a> `scripts/wt-env-bootstrap.ts` 的 `status()`，
   // 回 `{status: 'absent'|'created'|'ready', dbName, containerName, port, …}`）。
   // `state` 只是相容別名 —— **NEVER** 只讀 `state`：讀錯 key 的失敗形狀是「永遠 applicable:false」，
   // 也就是 preflight 對每一個 consumer 靜默跳過，而外觀與「此 consumer 無 per-worktree 拓樸」
-  // 完全相同（2026-08-06 對 <consumer-b> 實測時抓到）。
+  // 完全相同（2026-08-06 對 <consumer-a> 實測時抓到）。
   const state = (o.status ?? o.state) as BackingServiceState
   if (!VALID_STATES.has(state)) {
     return { applicable: false, skipReason: `unrecognized state: ${JSON.stringify(o.state)}` }
@@ -241,7 +241,7 @@ export function probeBackingService(
   if (!script) {
     // shim 缺席有兩個成因，`applicable:false` 對兩者完全同形：此 consumer 沒有 per-worktree
     // 拓樸（正常，絕大多數），或**本 worktree 的 branch 過時**（拓樸已進 default branch，
-    // 這棵還沒 merge）。後者實測 2026-09-02 在 <consumer-h> 佔 30 棵中的 27 棵，全部零訊號。
+    // 這棵還沒 merge）。後者實測 2026-09-02 在 <consumer-g> 佔 30 棵中的 27 棵，全部零訊號。
     //
     // 判準刻意**不**讀 `.claude/hub.json` 的 capability —— 那個檔本身是 tracked、
     // 一樣 branch-dependent，過時的 branch 上它也還沒宣告 `worktree-db`，於是最該出聲的

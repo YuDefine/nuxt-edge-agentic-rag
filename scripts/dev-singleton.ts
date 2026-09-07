@@ -4,7 +4,7 @@
 /**
  * dev-singleton.ts — clade-managed dev server singleton wrapper
  *
- * Generalized from <consumer-b> scripts/singleton.mjs. Propagated into each consumer's
+ * Generalized from <consumer-a> scripts/singleton.mjs. Propagated into each consumer's
  * vendor/scripts/ by clade sync-vendor. Consumer wires up via package.json:
  *
  *   "dev:agent":  "node vendor/scripts/dev-singleton.ts --consumer-meta .claude/consumer-meta.json -- pnpm dev"
@@ -227,7 +227,7 @@ function cwdHash() {
 
 function sessionId(kind) {
   if (kind === 'human') return 'human'
-  return detectSessionId() || cwdHash()
+  return detectSessionId(process.env, kind) || cwdHash()
 }
 
 function appendAudit(lease, event, extra = {}) {

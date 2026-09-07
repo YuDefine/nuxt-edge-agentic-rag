@@ -9,6 +9,8 @@ Local edits will be reverted by the next sync.
 
 # spectra-archive — Resume 模式（Dispatch Table + Step 3.5b）
 
+<!-- clade-targets: claude,codex,cursor -->
+
 > 本檔是 `spectra-archive/SKILL.md` 的執行細節分冊（clade fork 加料，2026-08-02 自 SKILL.md 抽出以縮 invoke 成本）。
 > SKILL.md 對應 step 的 inline pointer 指到本檔；**MUST 依 pointer 指示完整讀對應 § 再執行**。
 > 行為 gate（NEVER / MUST 判定）留在 SKILL.md inline；本檔是操作 recipe / 範本 / 查表。

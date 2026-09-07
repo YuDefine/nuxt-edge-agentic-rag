@@ -106,7 +106,7 @@ export interface AskedDecision {
    * human, so the flag deliberately does not try to tell them apart. What it MUST NOT do is
    * assert the first cause, because that assertion has already been wrong once at fleet scale:
    * the 2026-08-27 measurement of 1-of-38 rulings carrying options was taken while the parser
-   * only accepted bold hugging the letter, and <consumer-h>'s TD-584 and TD-585 — both written out as
+   * only accepted bold hugging the letter, and <consumer-g>'s TD-584 and TD-585 — both written out as
    * A/B/C — sat in the 37.
    *
    * `\my` requires every ruling to carry 2–4 ordered options plus 推薦, and `extractOptions`
@@ -735,7 +735,7 @@ export type LandingProbe = (item: WorkItem, repo: string | null) => LandingEvide
  *      一個別人 fetch 不到的 sha，驗收在此刻沒有可驗的東西。
  *   3. **還有 span 沒收**（R4 的另一半）：dispatch 出去的 pane 仍在跑（`session_transport` 未 end）。
  *      `work.done` 與 dispatch 的完成握手是兩個獨立寫入，所以卡片會在工作還在跑時就 `done`——
- *      2026-09-03 實測 `<consumer-h>/d7-phase5b-closeout` 在 worker 派出去 6 分鐘後就出現在佇列上。
+ *      2026-09-03 實測 `<consumer-g>/d7-phase5b-closeout` 在 worker 派出去 6 分鐘後就出現在佇列上。
  *
  * 三道都是「證據還不成立」而不是「判斷不通過」。**NEVER** 在這裡加任何一條需要讀懂內容的過濾——
  * 那就是 agent 代人驗收，正是 `acceptRow` 檔頭那條硬約束擋的東西。

@@ -193,7 +193,7 @@ function stampOf(decision: Record<string, unknown>): SourceStamp | null {
  * closes, the next 60-second scan re-opens the identical question under a new span id, and the
  * page he reloads shows it unanswered again, forever.
  *
- * Measured on <consumer-b> 2026-08-27: source id `handoff:HANDOFF.md#…main-push-被-provenance-gate-擋`
+ * Measured on <consumer-a> 2026-08-27: source id `handoff:HANDOFF.md#…main-push-被-provenance-gate-擋`
  * opened as 8b0102 → answered 04:33:13 via review-gui → re-opened 04:33:20 (7 seconds) → answered
  * 04:40:17 → re-opened 04:41:02. Two rulings recorded, question still pending, and nothing in
  * either view said why.

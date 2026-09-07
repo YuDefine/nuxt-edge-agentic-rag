@@ -100,14 +100,14 @@ bump_err() { # $1 = context, $2 = raw output
 if [[ "$MODE" == "workflow" ]]; then
   # gh run list -c 只認**完整 40 碼 SHA**：傳縮寫 SHA 會靜默回空陣列（rc=0、不報錯），
   # 於是上面「查無 run = pending 繼續等」的設計把它當成 run 尚未建立，一路等到
-  # WATCH_TIMEOUT。2026-07-31 <consumer-h> 實證：`--commit e1738305`（8 碼）等滿 3600s 回
+  # WATCH_TIMEOUT。2026-07-31 <consumer-g> 實證：`--commit e1738305`（8 碼）等滿 3600s 回
   # run=unresolved，同一條 run 換完整 SHA 立刻查得到、而且早在 watcher 啟動後一分鐘
   # 內就 success。展不開就 fail fast，NEVER 讓 caller 白等一小時。
   # --tag 是 post-push 場景的正解：發版 tag 是**不可變的 ref**，指向你剛推的那個 commit。
   # 對照組 `--commit "$(git rev-parse HEAD)"` 在 dispatch 當下才解析 HEAD——多 session 共用
   # main 時，push 與派 watcher 之間別的 session 可能已經推了新 commit，HEAD 早就不是你的
   # 發版 commit 了，watcher 於是盯著一個沒有任何 run 的 SHA 等滿 TIMEOUT
-  # （2026-08-02 <consumer-b> v1.258.0 實證：HEAD 已前進 2 個 commit，gh run list -c 回空陣列）。
+  # （2026-08-02 <consumer-a> v1.258.0 實證：HEAD 已前進 2 個 commit，gh run list -c 回空陣列）。
   if [[ -n "$TAG" ]]; then
     if [[ -n "$COMMIT" ]]; then
       echo "RESULT: UNAVAILABLE (--tag 與 --commit 互斥，兩者都指定目標 commit)"
@@ -134,7 +134,7 @@ if [[ "$MODE" == "workflow" ]]; then
   # --commit 模式：SHA 本身已唯一識別 run，不疊 createdAt 下界 —— caller 常見模式是
   # 「push 完才派 watcher」，run 早於 script 啟動時間建立，若仍套用預設 120s-ago 下界
   # 會把已存在的 run 過濾掉，watcher 誤判「run 尚未建立」永遠 pending 到 WATCH_TIMEOUT
-  # （2026-07-28 <consumer-b> v1.252.9 實證：run 建立於 20:05:57Z，SINCE=20:06:01Z，晚 4 秒即被擋）。
+  # （2026-07-28 <consumer-a> v1.252.9 實證：run 建立於 20:05:57Z，SINCE=20:06:01Z，晚 4 秒即被擋）。
   # --since 顯式傳入時仍尊重使用者指定值；--branch 或無 commit 的模式維持既有時間窗。
   if [[ -z "$SINCE" ]]; then
     if [[ -n "$COMMIT" ]]; then
@@ -158,7 +158,7 @@ if [[ "$MODE" == "workflow" ]]; then
   # 那種錯**永遠不會自己好**，但下面的迴圈把 gh 的非零 exit 一律送進 bump_err（那是為 API
   # 抖動設計的重試路徑），於是重試 3 次後回一個通用 UNAVAILABLE，訊息與「gh 掛了 / 沒授權」
   # 同形，讀的人會去查 gh 狀態而不是回頭看自己傳了什麼字串
-  # （2026-08-28 <consumer-b> v1.272.0 實證：傳 "CI"，實際檔名 ci.yml / display name "CI / Deploy"）。
+  # （2026-08-28 <consumer-a> v1.272.0 實證：傳 "CI"，實際檔名 ci.yml / display name "CI / Deploy"）。
   # 這裡把不可恢復的錯誤從重試路徑移出去，並讓失敗訊息自帶正確答案。
   # jq 缺席時整段跳過：沒有 jq 就判不出名稱在不在，而「判不出」MUST fail-open 交回下面的
   # 迴圈——若照舊往下走，`jq -e` 的非零 exit 會被讀成「名稱不存在」，把**正確**的名稱擋掉，

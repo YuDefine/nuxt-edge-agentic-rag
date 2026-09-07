@@ -7,6 +7,8 @@ Local edits will be reverted by the next sync.
 
 # 專案風格審查規則
 
+<!-- clade-targets: claude -->
+
 本檔是 review 規則的**定義 SoT＋reviewer 語意兜底參考**。機械可檢段的 enforcement 由 `vendor/review-rules/patterns.json`（pre-commit / pre-push / CI 三層自動執行）承擔，**不靠 agent 讀本檔自律**；語意段由 commit 0-A review prompt 的 Semantic Verdict 契約承擔。新增規則 **MUST** 先分類機械或語意（見 [[pitfall-clade-review-rules-not-enforced-at-consumer]]）。
 
 違反本檔語意段的項目歸類為 🟠 Major。
@@ -55,7 +57,7 @@ Reviewer **額外**需人工判斷：
 
 > enforcement: audit(audit-pinia-mutation-loading.ts)（單檔偵測器另見 `vendor/scripts/checks/mutation-loading-detect.ts`；無對應 patterns.json semantic id）
 
-`@pinia/colada` 的 `useMutation()` 回傳的 `status`（`'pending' | 'success' | 'error'`）是 **data-state**，mount 當下就是 `'pending'`（還沒呼叫過、沒 data），**與有沒有執行無關**。拿它當 loading → 按鈕 / spinner 一進頁面就永久 loading，且 typecheck 全綠（`status` 是合法欄位、`'pending'` 是合法值）、不發任何 request、查 log 也查不到。實證：<consumer-h> 30+ 處、<consumer-b> 3 處（含**跨行 destructuring** 寫法，舊單行 grep heuristic 會漏抓）。
+`@pinia/colada` 的 `useMutation()` 回傳的 `status`（`'pending' | 'success' | 'error'`）是 **data-state**，mount 當下就是 `'pending'`（還沒呼叫過、沒 data），**與有沒有執行無關**。拿它當 loading → 按鈕 / spinner 一進頁面就永久 loading，且 typecheck 全綠（`status` 是合法欄位、`'pending'` 是合法值）、不發任何 request、查 log 也查不到。實證：<consumer-g> 30+ 處、<consumer-a> 3 處（含**跨行 destructuring** 寫法，舊單行 grep heuristic 會漏抓）。
 
 Reviewer **MUST** 檢查 diff 內 Pinia Colada loading 推導：
 

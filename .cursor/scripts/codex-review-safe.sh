@@ -216,7 +216,7 @@ trap 'rm -rf "$WORK_DIR"' EXIT
 #
 # 不一致時**先歸因再判定**（2026-08-22）：原本的全樹二值比對讓 exit 6 在 consumer 上
 # 幾乎必然觸發 —— clade bootstrap 每 20–40 分鐘 auto-commit 一次投影層，一次 review 要
-# 5–15 分鐘，兩者必然賽跑。<consumer-h> 單一 session 六輪撞三次，三次的變更明細全部只有
+# 5–15 分鐘，兩者必然賽跑。<consumer-g> 單一 session 六輪撞三次，三次的變更明細全部只有
 # `.clade/` / `.claude/` / `scripts/wt-helper.ts` / `vendor/snippets/`，受審 changeset
 # 一個檔都沒被動到。每次都紅的檢查，讀的人學會的是重跑 —— gate 對真訊號失去鑑別力。
 #

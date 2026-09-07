@@ -29,6 +29,7 @@ import {
   lastWriterByPath,
   liveSessionIds,
   readJournal,
+  unrecordedWriteSince,
   writerLiveness,
 } from '../ownership-journal.ts'
 
@@ -285,6 +286,42 @@ export function buildWhoRows(
             ? `no write-time evidence (Codex / hand edit / predates the journal) — NEVER sweep. Verify by hand: grep -rl '${basename(path)}' ~/.claude/projects`
             : // 「沒查」與「查過沒有」在畫面上同形，所以這裡逐字說是哪一個。
               `no journal entry — transcript 取證沒跑（這個呼叫端不付全 corpus 掃描的代價）。NEVER sweep. 要候選作者就跑: node vendor/scripts/flow/flow.ts who --transcripts`,
+      })
+      continue
+    }
+    // 在問「誰是持有者」之前，先問「這筆條目描述的還是這個檔現在的內容嗎」。
+    //
+    // journal 只看得到經 Claude tool 的寫入，所以 spawn 出去的 node script 改過的檔會退回
+    // 一筆**過期**的條目，而下面每一條分支都會拿它當持有者：`mine` 會叫你 commit 一份不是你
+    // 寫的 diff、`orphan` 會叫你替一個根本沒發生的孤兒收屍。2026-09-06 實測：判定說 52.4h、
+    // `stat` 說 40 分鐘，而 `registry/consumers.json` 那筆 diff 沒有任何人為它負責（TD-955）。
+    //
+    // NEVER 把這個情況判成 orphan / mine —— 它的正確答案就是 unknown：有一次寫入沒被登記，
+    // 而「沒被登記的寫入者是誰」這個問題 journal 結構上答不出來。
+    const stale = unrecordedWriteSince(writer, join(consumerRoot, path))
+    if (stale) {
+      rows.push({
+        kind: 'dirty-path',
+        resource: path,
+        verdict: 'unknown',
+        session_id: null,
+        pane_id: null,
+        written_at: stale.mtime,
+        action: `an unrecorded write landed after the newest journal entry (entry ${writer.ts} by ${writer.session_id}, file mtime ${stale.mtime}) — the journal does NOT describe this file's current content. NEVER treat ${writer.session_id} as the holder, NEVER sweep, NEVER run the dead-holder commit. Writers the hook cannot see are spawned node scripts (e.g. node scripts/rescaffold-playground.ts) and non-Claude editors: read the diff and establish who ran what before landing anything.`,
+      })
+      continue
+    }
+    // 一支 clade script 自報的寫入（`appendScriptWrite`）。它的 process 早就結束了，而**沒有
+    // 持有者可以等** —— 這既不是 orphan（沒有被遺棄的 session），也不是 mine。
+    if (writer.attribution === 'script') {
+      rows.push({
+        kind: 'dirty-path',
+        resource: path,
+        verdict: 'unknown',
+        session_id: writer.session_id,
+        pane_id: writer.pane_id,
+        written_at: writer.ts,
+        action: `written by ${writer.tool} (a script, not a session) at ${writer.ts} — its process exited by design, so there is NO holder to wait for and NEVER 盲等. Equally NEVER read it as an orphan: review the diff, then land or revert it deliberately.`,
       })
       continue
     }

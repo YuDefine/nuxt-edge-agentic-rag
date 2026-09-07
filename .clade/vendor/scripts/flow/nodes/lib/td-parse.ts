@@ -10,6 +10,7 @@
 // structurally rather than by grep.
 
 import { markdownSections, trimSeparatorTail } from './contract.ts'
+import { parseTechDebtStatus, isTerminalStatus } from '../../tech-debt-status.ts'
 
 export const TD_ID = /\bTD-\d+\b/
 export const DEBT_OPEN_STATUS = /\b(open|in-progress|pending|landed-pending-verification)\b/i
@@ -45,6 +46,7 @@ export interface TdEntry {
   needsPublish: boolean
   isOpen: boolean
   isParked: boolean
+  isClosed: boolean
   /** Line range of the whole entry within the source file, separator tail excluded. */
   start: number
   end: number
@@ -52,17 +54,47 @@ export interface TdEntry {
   text: string
 }
 
+/** Keep line coordinates while hiding examples and comments from metadata parsing. */
+export function metadataLines(source: string): string[] {
+  let fence: string | null = null
+  return source
+    .replace(/<!--[\s\S]*?(?:-->|$)/g, (comment) => comment.replace(/[^\n]/g, ' '))
+    .split('\n')
+    .map((line) => {
+      const marker = /^\s*(`{3,}|~{3,})/.exec(line)?.[1]
+      if (fence) {
+        if (
+          marker &&
+          marker[0] === fence[0] &&
+          marker.length >= fence.length &&
+          line.trim() === marker
+        )
+          fence = null
+        return ''
+      }
+      if (marker) {
+        fence = marker
+        return ''
+      }
+      return line
+    })
+}
+
 /**
- * Parse the register into entries. Section boundaries come from `markdownSections`, which skips
- * fenced blocks — the register embeds markdown examples whose `## ` lines are not entries.
+ * Parse the register into entries. Section boundaries come from `markdownSections`, but it is fed
+ * the copy `metadataLines` already blanked — that blanking is what skips fenced blocks and HTML
+ * comments (the register embeds markdown examples whose `## ` lines are not entries).
+ * `markdownSections` carries a fence branch of its own; on this path it never fires, so changing
+ * it has no effect here.
  */
 export function parseTdRegister(source: string): TdEntry[] {
   const lines = source.split('\n')
+  const visible = metadataLines(source)
   const entries: TdEntry[] = []
 
-  for (const section of markdownSections(lines)) {
+  for (const section of markdownSections(visible)) {
     const heading = /^##\s+(.*)$/.exec(section.heading)
-    if (!heading || !TD_ID.test(heading[1])) continue
+    if (!heading || !/^(?:\*\*)?TD-\d+\b/.test(heading[1])) continue
 
     const end = trimSeparatorTail(lines, section.start, section.end)
     const body = lines.slice(section.start, end)
@@ -73,7 +105,7 @@ export function parseTdRegister(source: string): TdEntry[] {
     let hasEvidence = false
     let needsPublish = false
 
-    for (const line of body.slice(1)) {
+    for (const line of visible.slice(section.start + 1, end)) {
       const st = STATUS_LINE.exec(line)
       if (st) status = st[1]
       const pa = PARENT_LINE.exec(line)
@@ -85,6 +117,9 @@ export function parseTdRegister(source: string): TdEntry[] {
       }
     }
 
+    const token = parseTechDebtStatus(visible.slice(section.start, end).join('\n'))
+    const isParked = token !== null && /blocked-attended-only|(?:-until(?:-|$))/i.test(token)
+
     entries.push({
       id: TD_ID.exec(heading[1])![0],
       title: heading[1],
@@ -93,8 +128,9 @@ export function parseTdRegister(source: string): TdEntry[] {
       parent,
       hasEvidence,
       needsPublish,
-      isOpen: DEBT_OPEN_STATUS.test(status) && !DEBT_PARKED_STATUS.test(status),
-      isParked: DEBT_PARKED_STATUS.test(status),
+      isOpen: token !== null && DEBT_OPEN_STATUS.test(token) && !isParked,
+      isParked,
+      isClosed: isTerminalStatus(token),
       start: section.start,
       end,
       text: body.join('\n'),
@@ -130,5 +166,77 @@ export function filterTdEntries(entries: TdEntry[], filter: TdFilter): TdEntry[]
       return entries.filter((e) => e.isOpen && e.hasEvidence && e.needsPublish)
     case 'no-evidence':
       return entries.filter((e) => e.isOpen && !e.hasEvidence)
+  }
+}
+
+/** Ambiguous identifiers cannot authorize state changes. */
+export function assertUniqueTdIds(entries: TdEntry[]): void {
+  const seen = new Set<string>()
+  for (const entry of entries) {
+    if (seen.has(entry.id)) throw new Error(`duplicate live TD ID: ${entry.id}`)
+    seen.add(entry.id)
+  }
+}
+
+/** A receipt is a reason plus evidence of completion, not an acceptance plan. */
+export function closureReceipt(entry: Pick<TdEntry, 'text'>): {
+  reason: string | null
+  evidence: string | null
+  valid: boolean
+} {
+  const text = entry.text.replace(/<!--[\s\S]*?(?:-->|$)/g, '')
+  const metadata = metadataLines(text).join('\n')
+  const status = parseTechDebtStatus(metadata)
+  const nonPlaceholder = (value: string | undefined): string | null => {
+    const cleaned = value?.trim()
+    if (
+      cleaned &&
+      /^(?:[-*+]\s+)?\*\*(?:Evidence|Verification|證據|驗證|Acceptance)\*\*:/i.test(cleaned)
+    )
+      return null
+    return cleaned && !/^(?:TODO|TBD|pending|待補|待驗|待確認|N\/A)(?:[\s.:：-]|$)/i.test(cleaned)
+      ? cleaned
+      : null
+  }
+  const reason =
+    nonPlaceholder(
+      metadata.match(
+        /^(?:[-*+]\s+)?\*\*(?:Reason|Wontfix reason|Resolution)\*\*:[ \t]*(.+)$/im,
+      )?.[1],
+    ) ??
+    nonPlaceholder(
+      metadata.match(
+        /^#{3,6}\s+(?:Reason|Wontfix reason|Resolution)\b[^\n]*\n+([\s\S]*?)(?=^#{1,6}\s|$(?![\s\S]))/im,
+      )?.[1],
+    )
+  const explicit = nonPlaceholder(
+    metadata.match(/^(?:[-*+]\s+)?\*\*(?:Evidence|Verification|證據|驗證)\*\*:[ \t]*(.+)$/im)?.[1],
+  )
+  // Historical receipts may place their concrete result in Resolution itself.
+  const candidate = explicit ?? reason
+  const carrier =
+    /https?:\/\/\S+|\b[a-f0-9]{7,40}\b|(?:[\w.-]+\/)+[\w.-]+|\b(?:node|pnpm|npm|git|bash|pytest|vitest)\s+\S+/i
+  const result =
+    /\b(?:passed|verified|PASS)\b|\bexit[ =:]?0\b|通過|驗證|確認|已修|已解|為零|= ?0|[1-9]\d*\s*pass/i
+  const negative =
+    /\b(?:unverified|untested|failed|should|must|will|would|planned|expected|not (?:run|executed|tested|pass|passed|verified))\b|未(?:執行|測試|驗證|通過)|待(?:執行|測試|驗|補)|預(?:計|期)|尚未|[1-9]\d*\s+(?:fail(?:ed|ing|ure|ures|s)?|errors?)\b|\b(?:exit(?:[ _-]?(?:code|status))?|rc|returncode|return[ _-]?code)[ =:]*[1-9]\d*\b/i
+  const evidence =
+    candidate &&
+    !/\b0\s+(?:tests?|pass(?:ed)?)\b/i.test(candidate) &&
+    !/\b(?:no tests|all (?:tests )?skipped)\b/i.test(candidate) &&
+    carrier.test(candidate) &&
+    result.test(candidate) &&
+    !negative.test(candidate.replace(/\b0\s+(?:fail(?:ed|ing|ure|ures|s)?|errors?)\b/gi, ''))
+      ? candidate
+      : null
+  const retired =
+    status !== null &&
+    // 只留這兩個：`valid` 同時要求 isTerminalStatus，而 duplicate / cancelled / canceled /
+    // dropped 連 LEGAL_STATUS_TOKENS 都不在，寫進來的那四個 alternative 結構上不可達。
+    /^(?:wontfix|superseded)(?:-|$)/.test(status)
+  return {
+    reason,
+    evidence,
+    valid: isTerminalStatus(status) && !!reason && (retired || !!evidence),
   }
 }

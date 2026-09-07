@@ -10,7 +10,7 @@
  * to decide that from the manifest alone. A manifest is a hand-written claim.
  * A consumer that says `push-main` while its workflow fires on tag push gets
  * the unattended-release branch for free, and nothing in the run says so —
- * <consumer-b> sat in that state until someone grepped workflows by hand (2026-08-22).
+ * <consumer-a> sat in that state until someone grepped workflows by hand (2026-08-22).
  *
  * So the gate asks this script, and the script asks the workflows. `push-main`
  * is confirmed only when the workflows agree; every other outcome — undeclared,
