@@ -31,7 +31,7 @@ import { scanHandoff, scanTasks, scanTechDebt } from './decision-sources.ts'
 function scannerFor(rel: string): ((root: string) => SourceItem[]) | null {
   if (rel === 'HANDOFF.md' || basename(rel) === 'HANDOFF.md') return scanHandoff
   if (rel.endsWith('docs/tech-debt.md')) return scanTechDebt
-  if (rel.startsWith('openspec/')) return scanTasks
+  if (rel.startsWith('tasks/')) return scanTasks
   return null
 }
 

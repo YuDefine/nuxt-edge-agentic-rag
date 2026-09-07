@@ -384,7 +384,7 @@ function identityKey(rawTitle: string): string {
  *
  * The real lines run to 2000+ characters because every annotation round appends another
  * `（deferred: …）` / `（issue: …）` block. The question is the part before all of that.
- * Both bracket widths, because `openspec` lines mix them freely.
+ * Both bracket widths, because task lines mix them freely.
  */
 function beforeAnnotation(text: string): string {
   const cut = text.search(
@@ -1013,37 +1013,45 @@ function stripContainerPrefix(heading: string): string {
 }
 
 /**
- * The live change slugs under `openspec/changes/`, archive excluded.
+ * The live work slugs under `tasks/`, one per `tasks/<date>-<slug>.md`.
  *
- * Archive is excluded for the same reason `scanTasks` excludes it, and the exclusion is what
- * keeps the `deferred-user-only` route intact: <consumer-g>'s `#5 True-device verification` and
- * <consumer-e>'s iPad-Safari row both name an ARCHIVED change, and both legitimately belong on
- * /decisions because /review has no surface for a change that is already closed.
+ * TD-977 re-keyed this from `openspec/changes/` when that carrier retired.
+ *
+ * The name is the SLUG — the basename with the `YYYY-MM-DD-` prefix stripped — not the filename.
+ * `restatesManualReview` below tests membership by substring against register prose, and prose
+ * names the work (「product-save-hardening 的人工檢查」), never the date the file happened to be
+ * opened. Keying on the filename makes every one of those rows silently stop matching.
+ *
+ * Non-recursive on purpose: `tasks/` holds one flat file per work item, and any subdirectory a
+ * repo grows there is an archive by convention — finished by definition, for the same reason the
+ * old `openspec/changes/archive/**` exclusion existed.
  */
 function liveChangeNames(repoRoot: string): string[] {
-  const changesDir = join(repoRoot, 'openspec', 'changes')
-  if (!existsSync(changesDir)) return []
+  return liveTaskFiles(repoRoot).map((task) => task.slug)
+}
+
+/** `tasks/<date>-<slug>.md` files. `name` is the basename, `slug` drops any date prefix. */
+function liveTaskFiles(repoRoot: string): Array<{ name: string; slug: string; rel: string }> {
+  const tasksDir = join(repoRoot, 'tasks')
+  if (!existsSync(tasksDir)) return []
   let entries: string[]
   try {
-    entries = readdirSync(changesDir)
+    entries = readdirSync(tasksDir)
   } catch {
     return []
   }
-  return entries.filter((name) => {
-    if (name === 'archive') return false
-    /*
-     * Four characters minimum, because the test below is a plain substring search over prose.
-     * A change slug is kebab-cased and multi-word in every measured instance; a two-letter
-     * directory name would match half the register by accident, and a false positive here hands
-     * a real question back to its author instead of asking it.
-     */
-    if (name.length < 4) return false
+  const out: Array<{ name: string; slug: string; rel: string }> = []
+  for (const entry of entries) {
+    if (!entry.endsWith('.md')) continue
     try {
-      return statSync(join(changesDir, name)).isDirectory()
+      if (!statSync(join(tasksDir, entry)).isFile()) continue
     } catch {
-      return false
+      continue
     }
-  })
+    const name = entry.slice(0, -3)
+    out.push({ name, slug: name.replace(/^\d{4}-\d{2}-\d{2}-/, ''), rel: `tasks/${entry}` })
+  }
+  return out
 }
 
 /**
@@ -1110,22 +1118,8 @@ function restatesManualReview(
  */
 export function changesWithOpenManualReview(repoRoot: string): Map<string, number> {
   const out = new Map<string, number>()
-  const changesDir = join(repoRoot, 'openspec', 'changes')
-  if (!existsSync(changesDir)) return out
-  let entries: string[]
-  try {
-    entries = readdirSync(changesDir)
-  } catch {
-    return out
-  }
-  for (const name of entries) {
-    if (name === 'archive' || name.length < 4) continue
-    try {
-      if (!statSync(join(changesDir, name)).isDirectory()) continue
-    } catch {
-      continue
-    }
-    const text = readIfPresent(join(changesDir, name, 'tasks.md'))
+  for (const task of liveTaskFiles(repoRoot)) {
+    const text = readIfPresent(join(repoRoot, task.rel))
     if (!text) continue
     let open = 0
     for (const line of text.split(/\r?\n/)) {
@@ -1133,7 +1127,7 @@ export function changesWithOpenManualReview(repoRoot: string): Map<string, numbe
       const box = /\[([ xX])\]/.exec(line)
       if (box && box[1] === ' ') open++
     }
-    if (open > 0) out.set(name, open)
+    if (open > 0) out.set(task.slug, open)
   }
   return out
 }
@@ -1345,7 +1339,7 @@ export function scanTechDebt(repoRoot: string): SourceItem[] {
   return out
 }
 
-/* --------------------------------------------- 4. openspec changes tasks.md */
+/* ------------------------------------------------------- 4. tasks/<work>.md */
 
 /**
  * `(deferred-user-only: …)` — work an agent cannot do, marked as such at the point of deferral.
@@ -1354,32 +1348,15 @@ export function scanTechDebt(repoRoot: string): SourceItem[] {
  * in someone's hand, a production OA account), never a choice between options. Filing them as
  * rulings would put an answer box under a task that has no answer, only a doing.
  *
- * `openspec/changes/archive/**` is excluded. An archived change is finished by definition, and
- * <consumer-a>'s archive alone carries four of them with the marker still on the line.
+ * TD-977 re-keyed this from `openspec/changes/<name>/tasks.md` to `tasks/<date>-<slug>.md` when
+ * that carrier retired. Subdirectories under `tasks/` are skipped for the reason the old
+ * `openspec/changes/archive/**` exclusion existed: an archived work item is finished by definition.
  */
 export function scanTasks(repoRoot: string): SourceItem[] {
-  const changesDir = join(repoRoot, 'openspec', 'changes')
-  if (!existsSync(changesDir)) return []
-
-  let entries: string[]
-  try {
-    entries = readdirSync(changesDir)
-  } catch {
-    return []
-  }
-
   const out: SourceItem[] = []
-  for (const name of entries) {
-    if (name === 'archive') continue
-    const tasksPath = join(changesDir, name, 'tasks.md')
-    try {
-      if (!statSync(join(changesDir, name)).isDirectory()) continue
-    } catch {
-      continue
-    }
-    const text = readIfPresent(tasksPath)
+  for (const { name, rel } of liveTaskFiles(repoRoot)) {
+    const text = readIfPresent(join(repoRoot, rel))
     if (!text) continue
-    const rel = `openspec/changes/${name}/tasks.md`
 
     /**
      * Only the OUTERMOST deferred task, never its children.
