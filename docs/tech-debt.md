@@ -847,3 +847,67 @@ python3 -c "import json,jsonschema;jsonschema.validate(json.load(open('.claude/c
 ```
 
 - [ ] 上列指令印出 `OK`（baseline 2026-09-06：3 個 error，全在 `database`）
+
+---
+
+## TD-075 — evlog adoption 端到端 revalidation 未執行
+
+**Status**: open
+**Priority**: low
+**Discovered**: 2026-09-06 — openspec 退場遷移時發現 `openspec/changes/chg-01m1rag01cnt00000000000000`（ai-control-plane 產生的 revalidation tracker）8 項 revalidation work item 全為 `state: ready` / `evidence: none`，未曾實際重跑
+**Location**: `docs/archives/openspec/changes/chg-01m1rag01cnt00000000000000-revalidation-stub/`（歷史紀錄，openspec 退場後保留）
+
+### Problem
+
+evlog adoption（`adopt-evlog-nuxthub-ai-t3`）本身已完成並有 manual review 證據（`server/utils/ai-logger.ts`、`server/plugins/evlog-cost-keep.ts`、`server/middleware/00-evlog-actor.ts` 等檔存在，package.json 已裝 `evlog` / `@evlog/nuxthub` / `@evlog/cli`），但 ai-control-plane 曾另開一份 revalidation 追蹤（8 個 work spec：pre-flight / D1 drain / enricher stack / AI SDK convention / SSE child logger / Better Auth identity / sampling policy / end-to-end evidence），全部停在 `ready` 未執行。
+
+openspec/spectra 生命週期已整批退場，這份追蹤機制本身不再存在，但底層問題（evlog 端到端證據是否仍然有效）沒有隨之解決。
+
+### Acceptance
+
+```bash
+node ~/offline/clade/scripts/evlog-adoption-audit.mjs --repo .
+```
+
+- [ ] 上列指令 5 check 全綠（原 `adopt-evlog-nuxthub-ai-t3/tasks.md` § 7.6 已定義此驗收）
+- [ ] D1 `SELECT count(*) FROM evlog_events WHERE created_at > now() - interval '1 hour'` > 0（實跑一次 dev/staging 觸發確認 pipeline 仍在運作）
+
+---
+
+## TD-076 — `scripts/spectra-advanced/` 內 6 支已無 package.json script 引用的腳本待清理
+
+**Status**: open
+**Priority**: low
+**Discovered**: 2026-09-06 — openspec 退場遷移移除 `package.json` 的 `spectra:*` scripts（`audit-screenshot-quality.ts` / `claim-work.mts` / `claims-status.mts` / `collect-followups.mts` / `release-work.mts` / `roadmap-sync.mts` / `upgrade-design-review.mts`），但底層檔案未刪
+**Location**: `scripts/spectra-advanced/`
+
+### Problem
+
+`scripts/spectra-advanced/` 目錄同時承載兩種東西：(a) 已退場的 spectra SDD 工作流機械腳本（上述 7 支）、(b) 仍在使用的 `audit-ux-drift`（`pnpm audit:ux-drift`）依賴的 `spectra-advanced.config.json` 與共用 lib/gate 腳本。移除 (a) 的 package.json 入口後，底層檔案是否仍被其他 script／CI 引用需要逐一確認才能安全刪除，避免誤刪 (b) 仍依賴的共用檔。
+
+### Acceptance
+
+```bash
+grep -rn "spectra-advanced/audit-screenshot-quality\|spectra-advanced/claim-work\|spectra-advanced/claims-status\|spectra-advanced/collect-followups\|spectra-advanced/release-work\|spectra-advanced/roadmap-sync\|spectra-advanced/upgrade-design-review" --include="*.ts" --include="*.mts" --include="*.yml" --include="*.json" .
+```
+
+- [ ] 上列指令零命中（確認無殘留引用）後，逐一刪除 7 支腳本檔；`scripts/audit-ux-drift.ts` 與 `spectra-advanced.config.json` 及其共用 lib **不在**刪除範圍內
+
+---
+
+## TD-077 — openspec 退場後，35 份現行能力 spec 只剩歷史封存、未落地新 SoT
+
+**Status**: open
+**Priority**: medium
+**Discovered**: 2026-09-06 — openspec 退場遷移將 `openspec/specs/`（35 個能力 spec，含 auth-redirect、document-ingestion-and-publishing、mcp-knowledge-tools 等現行系統行為定義）與 `openspec/config.yaml`（product baseline / 非協商邊界）搬到 `docs/archives/openspec/`；本 repo 的 SpecFormula 新 SoT（`docs/specs/`）目前只有 `index.md` 佔位，未承接任何實際內容
+**Location**: `docs/archives/openspec/specs/`、`docs/archives/openspec/config.yaml`
+
+### Problem
+
+這 35 份 spec 是系統目前實際行為的最後一份完整定義（覆蓋 auth / MCP / admin UI / governance 等全部能力面），現在只存在於 archive 路徑，語意上等同「未來不會再更新的歷史快照」。若後續改動觸及這些能力卻沒有人重新導回 `docs/specs/`（或決定改用 aixbdd `specs/truth/**`），會出現「code 已改、archive 裡的舊 spec 沒人維護、新 SoT 是空的」三不管地帶。
+
+### Acceptance
+
+- [ ] 決定新 SoT 位置（`docs/specs/` 或 `specs/truth/**`）並過一次 `/clarify-over-specs` 或等效判定
+- [ ] 至少把仍在維護、高變動風險的能力（auth、MCP、document ingestion）的 spec 從 `docs/archives/openspec/specs/` 遷移／重寫進新 SoT
+- [ ] `docs/archives/openspec/config.yaml` 內的 non-negotiable boundaries（admin allowlist、資料隔離、truth source 定義等）確認已被目前 `CLAUDE.md` 或等效現行文件涵蓋，未涵蓋的補回
