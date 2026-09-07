@@ -1,5 +1,5 @@
 {
-  "version": "1.12.26",
+  "version": "1.12.27",
   "rules_projection": "symlink",
   "consumer_id": "nuxt-edge-agentic-rag",
   "modules": {
@@ -9,9 +9,7 @@
     "runtime": "cf-workers",
     "framework": "nuxt",
     "domain": [],
-    "capabilities": [
-      "openspec"
-    ],
+    "capabilities": [],
     "ecosystem": [
       "node"
     ]

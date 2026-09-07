@@ -100,9 +100,7 @@ fi
 case "$BOARD" in
   board:*) printf '[clade flow] %s — 跑 `flow brief` 看全景\n\n' "$BOARD" >&2 ;;
 esac
-# clade 使用既有 SessionStart；consumer 由 roadmap hook 呼叫同一 collector。
-COLLECTOR="$ROOT/vendor/scripts/spectra-advanced/collect-followups.ts"
-if [ -f "$ROOT/registry/consumers.json" ] && [ -f "$COLLECTOR" ]; then
-  (cd "$ROOT" && timeout 3 node "$COLLECTOR" --session-summary 2>&1 | head -c 1024) >&2 || true
-fi
+# follow-up session summary 的 collector（spectra-advanced/collect-followups.ts）已於
+# 2026-09-07（TD-976 Wave 1）隨 spectra 退役。這裡刻意不換一支替代品：follow-up 的
+# 現況由 `flow status --stalled` 上面那段自己講完了。
 exit 0
