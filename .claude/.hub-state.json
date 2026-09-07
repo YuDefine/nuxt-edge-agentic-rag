@@ -111,7 +111,7 @@
     "scripts/codex-review-safe.sh": "b5ac6d2fbfbc4835",
     "scripts/commit-lock.mjs": "376b7cc85e6c3f55",
     "scripts/gh-ci-watch.sh": "c464b9dcd54253a5",
-    "skills/commit/SKILL.md": "826b15ad0c78d381",
+    "skills/commit/SKILL.md": "81324cb6597dc628",
     "skills/commit/batch.md": "d8f9bb10a346ae24",
     "skills/commit/gates.md": "8a3cc24bac23a647",
     "skills/commit/handoff-steps.md": "8fa44712e75858d4",
