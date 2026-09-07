@@ -42,6 +42,17 @@ export type WhoVerdict =
   | 'claimed'
   /** 證據來自 Claude transcript 而非 ownership journal —— 比 journal 弱，但遠強於 unknown。 */
   | 'transcript-evidence'
+  /**
+   * 同一個檔被**多個 session 的 mtime 時間窗**各記了一筆。時間窗記的是「這個 session 跑 Bash
+   * 期間這個檔動過」，不是「這個 session 寫了它」——所以多個 claimant 同時存在時，
+   * 其中**至多一個**是真的寫入者，而 journal 分不出是哪一個。
+   *
+   * 這個 verdict 存在的理由是：這種情況下 `other-live` 與 `mine` 兩個結論都會產生
+   * **具名且可執行**的錯誤動作（去跟錯的 pane 談 / 去 commit 不是自己寫的內容），
+   * 而它們與查證過的結論在畫面上完全同形。NEVER 把它折回 `unknown` —— 候選清單本身
+   * 有價值，`unknown` 會把它丟掉。
+   */
+  | 'mtime-window-contested'
 
 export interface WhoRow {
   kind: 'dirty-path' | 'worktree' | 'stash'
@@ -244,7 +255,25 @@ export function buildWhoRows(
   } = {},
 ): WhoRow[] {
   const rows: WhoRow[] = []
-  const byPath = lastWriterByPath(readJournal(consumerRoot), { tree: consumerRoot })
+  const journal = readJournal(consumerRoot)
+  const byPath = lastWriterByPath(journal, { tree: consumerRoot })
+  // 每個路徑上「用 mtime 時間窗記過一筆」的 session 集合。
+  //
+  // 時間窗的語義是共存不是作者（`pre-bash-ownership-stamp.sh` 自己寫著「窗內的併發寫入仍會
+  // 誤歸」），所以 size > 1 就是那個誤歸**已經發生**的直接證據：同一個檔不會有兩個寫入者，
+  // 而這裡有兩個以上宣稱。判定器只取最後一筆，於是這個訊號在 `lastWriterByPath` 之後就消失了
+  // —— 它必須在這裡算，NEVER 在下游從單筆 entry 反推。
+  const mtimeClaimants = new Map<string, Set<string>>()
+  for (const entry of journal) {
+    if (entry.worktree !== null && entry.worktree !== consumerRoot) continue
+    if (entry.attribution !== 'mtime-diff') continue
+    let set = mtimeClaimants.get(entry.path)
+    if (!set) {
+      set = new Set<string>()
+      mtimeClaimants.set(entry.path, set)
+    }
+    set.add(entry.session_id)
+  }
   // One probe for every row — see claim-helper.ts for why this is hoisted.
   let sessions = liveSessions
   if (sessions === undefined) {
@@ -322,6 +351,24 @@ export function buildWhoRows(
         pane_id: writer.pane_id,
         written_at: writer.ts,
         action: `written by ${writer.tool} (a script, not a session) at ${writer.ts} — its process exited by design, so there is NO holder to wait for and NEVER 盲等. Equally NEVER read it as an orphan: review the diff, then land or revert it deliberately.`,
+      })
+      continue
+    }
+    // 爭用判定放在 `mine` 之前，因為 `mine` 是這裡**最危險**的一格：它的 action 是
+    // 「land it: git commit --only」，照做就是把別人的內容 commit 成自己的。
+    const claimants = writer.attribution === 'mtime-diff' ? mtimeClaimants.get(path) : undefined
+    const contested = (claimants?.size ?? 0) > 1
+    if (contested && claimants) {
+      const others = [...claimants].toSorted()
+      rows.push({
+        kind: 'dirty-path',
+        resource: path,
+        verdict: 'mtime-window-contested',
+        // 具名是這條 verdict 要防的東西本身——欄位留空，候選放進 action。
+        session_id: null,
+        pane_id: null,
+        written_at: writer.ts,
+        action: `${others.length} sessions each recorded this path through their own mtime window (${others.join(', ')}) — a window records COEXISTENCE, not authorship, so at most one of them wrote it and the journal cannot say which. NEVER treat any of them as the holder, NEVER commit it as yours, NEVER 去跟其中一個談然後等它。要指認作者就跑: node vendor/scripts/flow/flow.ts who --transcripts`,
       })
       continue
     }
