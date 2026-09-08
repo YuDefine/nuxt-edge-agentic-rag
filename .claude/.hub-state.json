@@ -3,11 +3,11 @@
   "rulesProjection": "symlink",
   "checksums": {
     "rules/agent-routing.keepalive-wake.md": "da81cbe572648257",
-    "rules/agent-routing.md": "47f6514614898c25",
+    "rules/agent-routing.md": "e70bc48ecaaa4697",
     "rules/agent-routing.pi-input-intercept.md": "f304ef2f46b0402d",
-    "rules/agent-routing.pi-watch-protocol.md": "886dada34009984c",
+    "rules/agent-routing.pi-watch-protocol.md": "511e6fc82698d855",
     "rules/agent-routing.routing-table-rationale.md": "c18f0ac85692fb08",
-    "rules/agent-routing.routing-table.md": "78ffccf4894c02df",
+    "rules/agent-routing.routing-table.md": "5a752517a5490c1e",
     "rules/agent-self-verification.md": "9eefa70b06c77d0b",
     "rules/agent-self-verification.screenshot-evidence.md": "9fd30aebef16286d",
     "rules/aixbdd-workflow.md": "37b045e9a15ac45a",
@@ -57,7 +57,7 @@
     "rules/proactive-skills.manual-review-entry.md": "6d0e4360668472af",
     "rules/proactive-skills.md": "bd183297da151d9d",
     "rules/prod-mcp-safety.md": "25d1cc31cbc5fdad",
-    "rules/review-gui-surface.md": "1b7a4d59b56c8545",
+    "rules/review-gui-surface.md": "1a2df05ddef32988",
     "rules/review-tiers.md": "c1522cc1d6233306",
     "rules/rule-authoring.md": "3200a94eef55dc54",
     "rules/scope-discipline.md": "fa072b4b198b1ada",
@@ -113,7 +113,7 @@
     "scripts/gh-ci-watch.sh": "c464b9dcd54253a5",
     "skills/commit/SKILL.md": "81324cb6597dc628",
     "skills/commit/batch.md": "d8f9bb10a346ae24",
-    "skills/commit/gates.md": "9f6cae7872f0273e",
+    "skills/commit/gates.md": "a51da845ecf720e6",
     "skills/commit/handoff-steps.md": "8fa44712e75858d4",
     "skills/commit/review-policy.md": "c9e570211f28caaf",
     "skills/commit/runner-safety.md": "f4c3f306a2686fed",
@@ -133,7 +133,7 @@
     "skills/verification-maintain/scripts/check-feature-map.mjs": "d966ef5c47ed04a0",
     "skills/work-loop/SKILL.md": "26a3a3ae7caa541a",
     "skills/work-loop/reference/autonomy-predicate.md": "34538df3800bb908",
-    "skills/work-loop/reference/blocker-evaluation.md": "199d1999cd66e61f",
+    "skills/work-loop/reference/blocker-evaluation.md": "d206cc39564651b1",
     "skills/work-loop/reference/blocker-ledger.md": "ba54668c2ed1c787",
     "skills/work-loop/reference/decay.md": "6452231470f62770",
     "skills/work-loop/reference/decision-drain.md": "cc57986d98eb9f51",
@@ -154,6 +154,6 @@
     "agents/code-review.md": "1b48c36b3a949a49",
     "agents/dispatch-fallback.md": "515c2c8c36cdae07",
     "agents/references/clade-review-rules.md": "9f25d46e38fa3581",
-    "agents/screenshot-review.md": "25c04c12e418dd02"
+    "agents/screenshot-review.md": "efa92a68dbb11461"
   }
 }
