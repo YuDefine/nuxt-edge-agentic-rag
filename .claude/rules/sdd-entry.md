@@ -1,0 +1,1 @@
+../../.clade/runtime/rules/sdd-entry.md
