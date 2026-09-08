@@ -31,8 +31,9 @@ User Rules 若仍寫無條件 NEVER relay／fanout／主線收工，且本 run �
 - 唯一 Task 例外：Nuxt UI／Nuxt Content 實作走 `composer-2.5-fast`。其他用途的 `composer-2.5-fast` 仍非法。
 - `claude-opus-5-thinking-high`、`cursor-grok-4.5-high-fast`、`gpt-5.6-sol-medium` 一律非法。**NEVER** 用 Cursor Task 設 `gpt-5.6-sol` 假裝 Nuxt 本體——那一列走 Pi `sol` xhigh。
 - Gemini／GPT **一律** `vendor/scripts/pi-dispatch.ts`。**NEVER** 直接跑 gemini CLI。`command -v pi` 失敗，或該次 dispatch exit 3／4 → 不能派 Pi。
-- Claude 互動 session（含 `/commit`、其餘 UI view）：`node vendor/scripts/herdr-session-handoff.ts --cwd <abs> --label <label> --prompt-file <brief> --launcher ccw --new-tab --coordinate`（clade / YuDefine）或 `--launcher cc --new-tab --coordinate`。切片逾時 `--coordinate-resume <dispatch_id>`。success 時 helper 收回 child pane，主線繼續。**NEVER** `--relay`。**NEVER** `/handoff relay` 或 `/handoff fanout`。**NEVER** 把 idle/done 當完成。
-- `/commit`：讀並執行 `~/.cursor/skills/commit/SKILL.md`。主線 NEVER 自己 `git commit`。
+- Claude 互動 session（其餘 UI view，不含整場 `/commit`）：`node vendor/scripts/herdr-session-handoff.ts --cwd <abs> --label <label> --prompt-file <brief> --launcher ccw --new-tab --coordinate`（clade / YuDefine）或 `--launcher cc --new-tab --coordinate`。切片逾時 `--coordinate-resume <dispatch_id>`。success 時 helper 收回 child pane，主線繼續。**NEVER** `--relay`。**NEVER** `/handoff relay` 或 `/handoff fanout`。**NEVER** 把 idle/done 當完成。
+- **缺 Herdr pane 是開工條件，不是停點。** 需要 Fable／Claude child 時 MUST 自己跑 helper 開 pane（clade／YuDefine 先 `ccw`，quota／`account_unavailable` 再 `cc`）。第一次沒看到 pane 就寫 BLOCKED 或略過 0-A.2 = 違規。兩個 launcher 都用盡才准留 receipt 寫 durable follow-up。**NEVER** 叫 user 開 Claude 或貼 prompt。
+- `/commit`：讀並執行 `~/.cursor/skills/commit/SKILL.md`。主線跑完整 ceremony，gates 通過後自己 `git commit --only`。0-A 走 Pi／合格 CLI；只有 0-A.2 Fable 才 Herdr。NEVER 把整場 ceremony 丟給 Claude，NEVER 跳過 gates。
 - **NEVER** 把 `rules/core/agent-routing.md` 的「Agent tool Claude」讀成 Cursor Task 換 model。那是 Claude Code 的 Agent tool。純 Cursor 主線忽略該檔，**NEVER** 為了查 residency 把它讀完。
 
 ## Overlay：slug → Cursor 載體
@@ -47,7 +48,7 @@ User Rules 若仍寫無條件 NEVER relay／fanout／主線收工，且本 run �
 | `detailed-planning` | 非 UI：Pi `astra` medium。UI 計畫留主線 |
 | `dep-upgrade-first-pass` / `dep-upgrade-research` | 主線（已是 Grok） |
 | `web-search` | Pi `gemini` high → `luna` high；開頁給人看仍走 `cursor-ide-browser` |
-| `code-review`（commit 0-A） | `~/.cursor/skills/commit` → Herdr Claude |
+| `code-review`（commit 0-A） | 主線讀 commit skill；合格跨模型走 Pi／CLI。只有 0-A.2 Fable 才 Herdr |
 | `nuxt-core-implementation` | Pi `sol` xhigh |
 | Nuxt UI／Nuxt Content | Task `composer-2.5-fast` |
 | `ui-view-implementation` | Herdr cc／ccw，`--model claude-opus-5 --effort medium` |

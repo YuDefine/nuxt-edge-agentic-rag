@@ -415,7 +415,7 @@ PRE-EXISTING — 未觸碰：<file>:<line>（舉證本次 diff 不含此檔／�
 只在 0-A.1 出 Critical／Major 時執行；修復後的完整 snapshot 是輸入。
 
 1. 合格深度 reviewer 以已核准的深度檔檢查修法與連帶影響。使用共用 CLI 時為 `codex-review-safe.sh medium`，完整限制同 runner-safety。保存完整輸出，不只摘錄結論。
-2. 與深度 reviewer 不同模型族的合格裁決者取得該 snapshot、原始 0-A.1 findings 與深度結果，逐條確認 real issue、附反證 dismiss 或重標 severity，另查漏項。裁決者唯讀，主線負責修復。
+2. 與深度 reviewer 不同模型族的合格裁決者取得該 snapshot、原始 0-A.1 findings 與深度結果，逐條確認 real issue、附反證 dismiss 或重標 severity，另查漏項。裁決者唯讀，主線負責修復。Cursor 主線的 Fable 裁決走 Herdr create-only：缺 pane 時 **MUST** 主動 `herdr-session-handoff.ts --launcher ccw --new-tab --coordinate`（quota／`account_unavailable` 再 `cc`）。**NEVER** 把「無 Herdr pane／Herdr 不可用」當成可跳過 0-A.2 或整場 `/commit` 的出口。`idle`／`done` 不是完成。兩個 launcher 都用盡才准留下 launcher／exit／evidence dir 的 receipt，再寫 durable follow-up。**NEVER** `--relay`，**NEVER** 叫 user 開 Claude 或貼 prompt。
 
 深度輸出缺 `## Review Verdict`（含截斷／context exhaustion）時，明示深度階段未完整；不盲重跑相同耗盡命令。保留已有 findings，由合格裁決者以完整最新 diff、原始 0-A.1 輸出與相同完整性契約接手。只有它實際覆蓋缺失範圍並產出完整 verdict 才可收口；否則 0-A.2 保持未完成。
 
