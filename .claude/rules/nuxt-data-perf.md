@@ -1,1 +1,0 @@
-../../.clade/runtime/rules/nuxt-data-perf.md

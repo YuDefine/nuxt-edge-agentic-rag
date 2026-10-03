@@ -94,7 +94,7 @@ describe('MCP OAuth discovery metadata', () => {
   it('registers ChatGPT developer-mode connectors with a metadata document client id', async () => {
     mocks.getRequestURL.mockReturnValue(new URL('https://agentic.example/api/auth/mcp/register'))
     mocks.readBody.mockResolvedValue({
-      client_name: '<consumer-d> RAG',
+      client_name: 'Example RAG',
       redirect_uris: ['https://chatgpt.com/connector/oauth/callback_123'],
     })
     const { default: handler } = await import('../../server/api/auth/mcp/register.post')
@@ -102,7 +102,7 @@ describe('MCP OAuth discovery metadata', () => {
     const result = await handler(createMcpRouteEvent())
 
     expect(result).toMatchObject({
-      client_name: '<consumer-d> RAG',
+      client_name: 'Example RAG',
       grant_types: ['authorization_code'],
       redirect_uris: ['https://chatgpt.com/connector/oauth/callback_123'],
       response_types: ['code'],
@@ -110,7 +110,7 @@ describe('MCP OAuth discovery metadata', () => {
       token_endpoint_auth_method: 'none',
     })
     expect(result.client_id).toBe(
-      'https://agentic.example/api/auth/mcp/chatgpt-client-metadata?redirect_uri=https%3A%2F%2Fchatgpt.com%2Fconnector%2Foauth%2Fcallback_123&client_name=<consumer-d>+RAG',
+      'https://agentic.example/api/auth/mcp/chatgpt-client-metadata?redirect_uri=https%3A%2F%2Fchatgpt.com%2Fconnector%2Foauth%2Fcallback_123&client_name=Example+RAG',
     )
     expect(result.client_id_issued_at).toEqual(expect.any(Number))
   })
@@ -162,10 +162,10 @@ describe('MCP OAuth discovery metadata', () => {
 
   it('serves ChatGPT client metadata documents for registered connector redirects', async () => {
     const metadataUrl =
-      'https://agentic.example/api/auth/mcp/chatgpt-client-metadata?redirect_uri=https%3A%2F%2Fchatgpt.com%2Fconnector%2Foauth%2Fcallback_123&client_name=<consumer-d>+RAG'
+      'https://agentic.example/api/auth/mcp/chatgpt-client-metadata?redirect_uri=https%3A%2F%2Fchatgpt.com%2Fconnector%2Foauth%2Fcallback_123&client_name=Example+RAG'
     mocks.getRequestURL.mockReturnValue(new URL(metadataUrl))
     mocks.getQuery.mockReturnValue({
-      client_name: '<consumer-d> RAG',
+      client_name: 'Example RAG',
       redirect_uri: 'https://chatgpt.com/connector/oauth/callback_123',
     })
     const { default: handler } =
@@ -173,7 +173,7 @@ describe('MCP OAuth discovery metadata', () => {
 
     await expect(handler(createMcpRouteEvent())).resolves.toEqual({
       client_id: metadataUrl,
-      client_name: '<consumer-d> RAG',
+      client_name: 'Example RAG',
       redirect_uris: ['https://chatgpt.com/connector/oauth/callback_123'],
     })
   })

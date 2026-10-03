@@ -1,1 +1,0 @@
-../../.clade/runtime/rules/page-loading-golden-path.md

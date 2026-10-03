@@ -1,1 +1,0 @@
-../../.clade/runtime/rules/db-reset-coordination.md

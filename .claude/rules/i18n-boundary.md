@@ -1,1 +1,0 @@
-../../.clade/runtime/rules/i18n-boundary.md

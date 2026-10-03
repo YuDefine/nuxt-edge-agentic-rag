@@ -1,1 +1,0 @@
-../../.clade/runtime/rules/consumer-meta.md

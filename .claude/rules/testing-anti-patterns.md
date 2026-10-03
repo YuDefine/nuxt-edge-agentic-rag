@@ -1,1 +1,0 @@
-../../.clade/runtime/rules/testing-anti-patterns.md

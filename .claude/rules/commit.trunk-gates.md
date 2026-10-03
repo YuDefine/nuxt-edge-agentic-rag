@@ -1,1 +1,0 @@
-../../.clade/runtime/rules/commit.trunk-gates.md

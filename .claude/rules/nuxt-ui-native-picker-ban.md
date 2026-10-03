@@ -1,1 +1,0 @@
-../../.clade/runtime/rules/nuxt-ui-native-picker-ban.md

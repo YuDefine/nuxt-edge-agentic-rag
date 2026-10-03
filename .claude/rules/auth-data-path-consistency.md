@@ -1,1 +1,0 @@
-../../.clade/runtime/rules/auth-data-path-consistency.md

@@ -1,1 +1,0 @@
-../../.clade/runtime/rules/shell-script-safety.md

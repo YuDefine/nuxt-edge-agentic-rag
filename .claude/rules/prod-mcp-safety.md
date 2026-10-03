@@ -1,1 +1,0 @@
-../../.clade/runtime/rules/prod-mcp-safety.md

@@ -1,1 +1,0 @@
-../../.clade/runtime/rules/output-hygiene.md

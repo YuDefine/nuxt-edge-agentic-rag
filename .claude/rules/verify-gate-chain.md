@@ -1,1 +1,0 @@
-../../.clade/runtime/rules/verify-gate-chain.md

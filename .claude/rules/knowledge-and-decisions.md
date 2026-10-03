@@ -1,1 +1,0 @@
-../../.clade/runtime/rules/knowledge-and-decisions.md
