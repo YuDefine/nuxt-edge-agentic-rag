@@ -16,10 +16,16 @@ echo ""
 
 # Antfu Skills
 echo "📦 Antfu Skills..."
-for skill in nuxt vue vitest vueuse-functions pinia vitepress; do
+for skill in nuxt vue vitest pinia vitepress; do
   npx skills add antfu/skills@$skill $COPY_FLAGS
 done
 echo "  ✓ Antfu Skills 完成"
+echo ""
+
+# VueUse 官方 Skill（vueuse/skills；antfu/skills #39 已移除 vendored 版，2026-10-20 改追真上游）
+echo "📦 VueUse Skill..."
+npx skills add vueuse/skills@vueuse-functions $COPY_FLAGS
+echo "  ✓ VueUse Skill 完成"
 echo ""
 
 # Vue 官方 Skills（vuejs-ai/skills；antfu/skills #39 已移除 vendored 版，2026-10-20 改追真上游）
@@ -32,7 +38,7 @@ echo ""
 
 # Onmax Nuxt Skills
 # onmax/nuxt-skills@vueuse 已於上游下架（2026-08-02 實測 npx skills add 列不到），
-# 故從清單移除。VueUse 的 composable 參考仍由 antfu/skills@vueuse-functions 提供。
+# 故從清單移除。VueUse 的 composable 參考改由 vueuse/skills@vueuse-functions 提供。
 echo "📦 Onmax Nuxt Skills..."
 for skill in nuxthub reka-ui motion; do
   npx skills add onmax/nuxt-skills@$skill $COPY_FLAGS
