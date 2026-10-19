@@ -22,13 +22,13 @@ done
 echo "  ✓ Antfu Skills 完成"
 echo ""
 
-# VueUse 官方 Skill（vueuse/skills；antfu/skills #39 已移除 vendored 版，2026-10-20 改追真上游）
+# VueUse 官方 Skill（上游 vueuse/skills）
 echo "📦 VueUse Skill..."
 npx skills add vueuse/skills@vueuse-functions $COPY_FLAGS
 echo "  ✓ VueUse Skill 完成"
 echo ""
 
-# Vue 官方 Skills（vuejs-ai/skills；antfu/skills #39 已移除 vendored 版，2026-10-20 改追真上游）
+# Vue 官方 Skills（上游 vuejs-ai/skills）
 echo "📦 Vue Skills（vuejs-ai）..."
 for skill in vue-best-practices vue-testing-best-practices; do
   npx skills add vuejs-ai/skills@$skill $COPY_FLAGS
